@@ -226,7 +226,7 @@ print(output.getvalue())
         if not sandbox:
             return None
             
-        if sandbox.state not in [SandboxState.STOPPED, SandboxState.CREATED]:
+        if sandbox.state not in [SandboxState.STOPPED, SandboxState.CREATING]:
             raise HTTPException(status_code=409, detail="Sandbox must be stopped to start")
             
         sandbox.state = SandboxState.STARTING
