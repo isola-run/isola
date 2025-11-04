@@ -70,6 +70,7 @@ class AgentManager:
         # todo benl: properly config
         config = uvicorn.Config(self._app, host="localhost", port=8765, log_level="debug")
         self._server = uvicorn.Server(config)
+        self._server_task: asyncio.TTask | None = None
         self._app.add_api_websocket_route("/ws", self._manager_loop)
     
     async def _manager_loop(self, ws: WebSocket) -> None:
@@ -124,10 +125,16 @@ class AgentManager:
 
     async def start(self) -> None:
         logger.info("Starting agent manager server on localhost:8765...")
-        await self._server.serve()
+        # Run the server in a background task
+        self._server_task = asyncio.create_task(self._server.serve())
 
-    async def stop(self) -> None:
-        if self._server:
-            logger.info("Stopping agent manager server...")
-            self._server.should_exit = True
-            # self._server.force_exit = True # If graceful shutdown hangs
+    async def shutdown(self) -> None:
+        if self._server_task:
+            logger.info("Shutting agent manager server down...")
+            await self._server.shutdown()
+            logger.info("agent manager shutted down")
+            await self._server_task
+            logger.info("agent manager task completed")
+            self._server_task = None
+        else:
+            logger.warning("no server to shutdown")
