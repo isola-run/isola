@@ -90,11 +90,11 @@ result = client.execute_python(sandbox_id, """
 import math
 print(f"Pi is approximately {math.pi:.5f}")
 """)
-print(result["output"])
+print(result["stdout"])
 
 # Execute Bash commands
 result = client.execute_bash(sandbox_id, "echo 'Hello from sandbox!'")
-print(result["output"])
+print(result["stdout"])
 
 # Clean up
 client.delete_sandbox(sandbox_id, force=True)
@@ -115,7 +115,7 @@ with client.sandbox(config) as sandbox_ctx:
         for i in range(5):
             print(f"Count: {i}")
     """)
-    print(result["output"])
+    print(result["stdout"])
 ```
 
 ## Demo Features

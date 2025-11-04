@@ -260,7 +260,7 @@ class IsolaClient:
             timeout: Execution timeout in seconds
             
         Returns:
-            Execution result with output and exit code
+            Execution result with stdout, stderr and exit code
         """
         payload = {
             "code": code,

@@ -124,7 +124,7 @@ area = math.pi * radius ** 2
 print(f"Area of circle with radius {radius}: {area:.2f}")
 """
         result = client.execute_python(sandbox_id, code1)
-        print(f"     Output: {result['output'].strip()}")
+        print(f"     Output: {result['stdout'].strip()}")
         print(f"     Execution time: {result['executionTime']:.3f}s")
         
         # Example 2: Data processing
@@ -146,11 +146,11 @@ print(f"Youngest: {min(data['users'], key=lambda x: x['age'])['name']}")
 print(f"Oldest: {max(data['users'], key=lambda x: x['age'])['name']}")
 """
         result = client.execute_python(sandbox_id, code2)
-        print(f"     Output:\n{indent_lines(result['output'].strip(), 8)}")
+        print(f"     Output:\n{indent_lines(result['stdout'].strip(), 8)}")
         
         # Example 3: Error handling
         print("\n  c) Error handling:")
-        code3 = """
+        code = """
 def divide(a, b):
     return a / b
 
@@ -160,8 +160,8 @@ except ZeroDivisionError as e:
     print(f"Error caught: {e}")
     print("Cannot divide by zero!")
 """
-        result = client.execute_python(sandbox_id, code3)
-        print(f"     Output: {result['output'].strip()}")
+        result = client.execute_python(sandbox_id, code)
+        print(f"     Output: {result['stdout'].strip()}")
         
         # Execute Bash commands
         print("\n3. Executing Bash commands:")
@@ -169,7 +169,7 @@ except ZeroDivisionError as e:
         # Example 1: System information
         print("\n  a) System information:")
         result = client.execute_bash(sandbox_id, "uname -a && echo && python3 --version")
-        print(f"     Output:\n{indent_lines(result['output'].strip(), 8)}")
+        print(f"     Output:\n{result['stdout'].strip()}")
         
         # Example 2: File operations
         print("\n  b) File operations:")
@@ -183,7 +183,7 @@ echo "File info:"
 ls -la test.txt
 """
         result = client.execute_bash(sandbox_id, commands)
-        print(f"     Output:\n{indent_lines(result['output'].strip(), 8)}")
+        print(f"     Output:\n{indent_lines(result['stdout'].strip(), 8)}")
         
     finally:
         # Cleanup
@@ -233,7 +233,7 @@ print(f"Factorial of {n}: {factorial}")
 """
         
         result = sandbox_ctx.execute_python(code)
-        print(f"  Output:\n{indent_lines(result['output'].strip(), 4)}")
+        print(f"  Output:\n{indent_lines(result['stdout'].strip(), 4)}")
         
         # Get sandbox info
         print("\n3. Getting sandbox info:")
@@ -319,7 +319,7 @@ print(f"Letter count: {char_count}")
         for i, (sandbox_id, (task_name, code)) in enumerate(zip(sandbox_ids, tasks)):
             print(f"\n  Sandbox {i+1} - {task_name}:")
             result = client.execute_python(sandbox_id, code)
-            print(f"{indent_lines(result['output'].strip(), 4)}")
+            print(f"{indent_lines(result['stdout'].strip(), 4)}")
             print(f"    Execution time: {result['executionTime']:.3f}s")
         
     finally:
@@ -356,7 +356,7 @@ def broken_function(
 """
         result = client.execute_python(sandbox_id, code_with_error)
         print(f"     Exit code: {result['exitCode']}")
-        print(f"     Output: {result['output'].strip() or 'No output'}")
+        print(f"     Output: {result['stdout'].strip() or 'No output'}")
         print(f"     Error: {result['error'] or 'No error message'}")
         
         # Runtime error
@@ -367,7 +367,7 @@ print(numbers[10])  # IndexError
 """
         result = client.execute_python(sandbox_id, runtime_error_code)
         print(f"     Exit code: {result['exitCode']}")
-        print(f"     Output: {result['output'].strip()}")
+        print(f"     Output: {result['stdout'].strip()}")
         
         # Timeout scenario (if supported)
         print("\n  c) Execution timeout:")
@@ -379,14 +379,14 @@ print("Task completed")
 """
         result = client.execute_python(sandbox_id, timeout_code, timeout=2)
         print(f"     Exit code: {result['exitCode']}")
-        print(f"     Output: {result['output'].strip() or 'No output'}")
+        print(f"     Output: {result['stdout'].strip() or 'No output'}")
         print(f"     Error: {result['error'] or 'No error'}")
         
         # Invalid bash command
         print("\n  d) Invalid bash command:")
         result = client.execute_bash(sandbox_id, "nonexistentcommand --help")
         print(f"     Exit code: {result['exitCode']}")
-        print(f"     Output: {result['output'].strip() or 'No output'}")
+        print(f"     Output: {result['stdout'].strip() or 'No output'}")
         print(f"     Error: {result['error'] or 'No error'}")
         
     finally:
@@ -482,3 +482,11 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+
+        # Execute Bash commands in a sandbox
+        print("\n2. Executing Bash commands:")        
+        print("\n  a) System information:")
+        result = client.execute_bash(sandbox_id, "uname -a && echo && python3 --version")
+        print(f"     Output:\n{result['stdout'].strip()}")

@@ -42,7 +42,7 @@ def main():
         # Execute Python code examples
         code = "print 'Hello, Sandbox!'"
         result = client.execute_python(sandbox_id, code)
-        print(f"  Output: {result['output'].strip()}")
+        print(f"  Output: {result['stdout'].strip()}")
         print(f"  Execution time: {result['executionTime']:.3f}s")
 
 
