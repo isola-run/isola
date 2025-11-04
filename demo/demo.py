@@ -93,7 +93,7 @@ def demo_code_execution(client: IsolaClient):
     print("\n1. Creating sandbox for code execution...")
     sandbox_config = SandboxConfig(
         name="code-executor",
-        snapshot="python:3.11",
+        image="python:3.11",
         sandbox_class=SandboxClass.MEDIUM,
         cpu=2,
         memory=2,

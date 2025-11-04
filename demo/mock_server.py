@@ -53,7 +53,7 @@ class HealthStatus(BaseModel):
 
 class SystemConfig(BaseModel):
     version: str = "1.0.0"
-    defaultSnapshot: str = "python:3.11"
+    defaultImage: str = "python:3.11"
     sshGatewayHost: str = "localhost"
     sshGatewayPort: int = 22
     maxSandboxes: int = 10
@@ -63,7 +63,8 @@ class SystemConfig(BaseModel):
 
 class CreateSandbox(BaseModel):
     name: str
-    snapshot: Optional[str] = "python:3.11"
+    image: Optional[str] = None
+    snapshot: Optional[str] = None  # Deprecated: use 'image' instead
     class_: Optional[SandboxClass] = Field(default=SandboxClass.SMALL, alias="class")
     region: Optional[str] = "local"
     cpu: Optional[int] = 1
@@ -82,7 +83,7 @@ class Sandbox(BaseModel):
     desiredState: Optional[SandboxState] = None
     class_: SandboxClass = Field(alias="class")
     region: str
-    snapshot: str
+    image: str
     cpu: int
     memory: int
     disk: int
@@ -136,7 +137,7 @@ class SandboxStore:
             state=SandboxState.CREATING,
             **{"class": sandbox_class},  # Use the actual field name, not the alias
             region=create_req.region or "local",
-            snapshot=create_req.snapshot or "python:3.11",
+            image=create_req.image or create_req.snapshot or "python:3.11",  # Support both for backward compat
             cpu=create_req.cpu or 1,
             memory=create_req.memory or 1,
             disk=create_req.disk or 10,
@@ -410,7 +411,7 @@ async def get_sandbox(sandbox_id: str, x_api_key: Optional[str] = Header(None)):
 @app.delete("/sandboxes/{sandbox_id}", status_code=204)
 async def delete_sandbox(
     sandbox_id: str, 
-    force: bool = Query(default=False),
+    force: bool = Query(default=True),
     x_api_key: Optional[str] = Header(None)
 ):
     """Delete a sandbox"""
