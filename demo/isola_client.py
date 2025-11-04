@@ -38,7 +38,7 @@ class SandboxClass(str, Enum):
 class SandboxConfig:
     """Configuration for creating a sandbox"""
     name: str
-    snapshot: str = "python:3.11"
+    image: str = "python:3.11"
     sandbox_class: SandboxClass = SandboxClass.SMALL
     region: str = "local"
     cpu: int = 1
@@ -53,7 +53,7 @@ class SandboxConfig:
         """Convert to dictionary for API request"""
         data = {
             "name": self.name,
-            "snapshot": self.snapshot,
+            "image": self.image,
             "class": self.sandbox_class,
             "region": self.region,
             "cpu": self.cpu,
@@ -166,7 +166,7 @@ class IsolaClient:
         response = self._request("GET", f"/sandboxes/{sandbox_id}")
         return response.json()
     
-    def delete_sandbox(self, sandbox_id: str, force: bool = False) -> None:
+    def delete_sandbox(self, sandbox_id: str, force: bool = True) -> None:
         """
         Delete a sandbox
         
