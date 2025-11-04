@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import sys
-from isola_client import IsolaClient, SandboxConfig, SandboxState
+from isola_client import IsolaClient, SandboxConfig
 
 
 def main():    
@@ -19,16 +19,15 @@ def main():
         
         sandbox = client.create_sandbox(sandbox_config)
         sandbox_id = sandbox["id"]
+        print(f"Sandbox created: {sandbox_id}")
 
         # Execute Python code in a sandbox
         code = "print ('Hello, Sandbox!')"
         result = client.execute_python(sandbox_id, code)
-        print(f"Output: {result['output'].strip()}")
-        print(f"Execution time: {result['executionTime']:.3f}s")
+        print(f"Stdout from sandbox: {result['stdout'].strip()}")
 
         # Clean up
         client.delete_sandbox(sandbox_id)
-    
     except Exception as e:
         print(f"\nUnexpected error: {e}")
 
