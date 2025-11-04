@@ -111,8 +111,9 @@ class CodeExecutionRequest(BaseModel):
 
 
 class CodeExecutionResponse(BaseModel):
-    output: str
-    error: Optional[str] = None
+    stdout: str
+    stderr: Optional[str] = None
+    error: Optional[str] = None  # For execution errors (not stderr)
     exitCode: int
     executionTime: float
 
@@ -288,8 +289,9 @@ print(output.getvalue())
                 execution_time = time.time() - start_time
                 
                 return CodeExecutionResponse(
-                    output=result.stdout,
-                    error=result.stderr if result.stderr else None,
+                    stdout=result.stdout,
+                    stderr=result.stderr if result.stderr else None,
+                    error=None,
                     exitCode=result.returncode,
                     executionTime=execution_time
                 )
@@ -306,8 +308,9 @@ print(output.getvalue())
                 execution_time = time.time() - start_time
                 
                 return CodeExecutionResponse(
-                    output=result.stdout,
-                    error=result.stderr if result.stderr else None,
+                    stdout=result.stdout,
+                    stderr=result.stderr if result.stderr else None,
+                    error=None,
                     exitCode=result.returncode,
                     executionTime=execution_time
                 )
@@ -317,7 +320,8 @@ print(output.getvalue())
         except subprocess.TimeoutExpired:
             execution_time = time.time() - start_time
             return CodeExecutionResponse(
-                output="",
+                stdout="",
+                stderr=None,
                 error="Execution timed out",
                 exitCode=-1,
                 executionTime=execution_time
@@ -325,7 +329,8 @@ print(output.getvalue())
         except Exception as e:
             execution_time = time.time() - start_time
             return CodeExecutionResponse(
-                output="",
+                stdout="",
+                stderr=None,
                 error=str(e),
                 exitCode=-1,
                 executionTime=execution_time

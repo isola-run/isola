@@ -53,14 +53,14 @@ print(f"First 10 Fibonacci numbers: {fib_sequence}")
 """
         result = sandbox.execute_python(code)
         print("   Output:")
-        for line in result["output"].strip().split("\n"):
+        for line in result["stdout"].strip().split("\n"):
             print(f"   > {line}")
         
         # Example 2: System information
         print("\n2. Getting system information:")
         result = sandbox.execute_bash("uname -a && python3 --version && pwd")
         print("   Output:")
-        for line in result["output"].strip().split("\n"):
+        for line in result["stdout"].strip().split("\n"):
             print(f"   > {line}")
         
         # Example 3: Working with files
@@ -97,7 +97,7 @@ print(f"Unique words: {len(set(words))}")
 """
         result = sandbox.execute_python(process_file_code)
         print("   Output:")
-        for line in result["output"].strip().split("\n"):
+        for line in result["stdout"].strip().split("\n"):
             print(f"   > {line}")
         
         # Example 4: Installing packages (simulated)
@@ -121,7 +121,7 @@ print(f"Fruit counts: {dict(counts)}")
 """
         result = sandbox.execute_python(package_code)
         print("   Output:")
-        for line in result["output"].strip().split("\n"):
+        for line in result["stdout"].strip().split("\n"):
             print(f"   > {line}")
     
     print(f"\n✓ Sandbox automatically cleaned up")
