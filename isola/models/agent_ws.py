@@ -20,6 +20,16 @@ class Nack(MsgBase):
     type: Literal["nack"] = "nack"
     nacked_id: uuid.UUID
 
+class CreateSandboxRequest(MsgBase):
+    type: Literal["create_sandbox"] = "create_sandbox"
+    sandbox_id: str
+    name: str
+    image: str
+    cpu: float
+    memory: float
+    disk: float
+    env: Dict[str, str]
+    labels: Dict[str, str]
 
 # agent -> manager
 class AgentHello(MsgBase):
@@ -34,6 +44,13 @@ class AgentStatusUpdate(MsgBase):
     mem: float
 
 
+class CreateSandboxResponse(MsgBase):
+    type: Literal["sandbox_created"] = "sandbox_created"
+    sandbox_id: str
+    success: bool
+    error_reason: Optional[str] = None
+    ip_address: Optional[str] = None
+
 Incoming = Annotated[
     Union[AgentHello, AgentStatusUpdate, CreateSandboxResponse],
     Field(discriminator="type"),
@@ -47,22 +64,3 @@ Outgoing = Annotated[
     Field(discriminator="type"),
 ]
 
-# Control Plane -> isolaD agent
-class CreateSandboxRequest(MsgBase):
-    type: Literal["create_sandbox"] = "create_sandbox"
-    sandbox_id: str
-    name: str
-    image: str
-    cpu: float
-    memory: float
-    disk: float
-    env: Dict[str, str]
-    labels: Dict[str, str]
-
-# isolaD agent -> Control Plane
-class CreateSandboxResponse(MsgBase):
-    type: Literal["sandbox_created"] = "sandbox_created"
-    sandbox_id: str
-    success: bool
-    error_reason: Optional[str] = None
-    ip_address: Optional[str] = None
