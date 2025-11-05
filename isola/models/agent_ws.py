@@ -1,6 +1,6 @@
 import time
 import uuid
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal, Union, Dict, Optional
 
 from pydantic import BaseModel, Field, TypeAdapter
 
@@ -35,7 +35,7 @@ class AgentStatusUpdate(MsgBase):
 
 
 Incoming = Annotated[
-    Union[AgentHello, AgentStatusUpdate],
+    Union[AgentHello, AgentStatusUpdate, CreateSandboxResponse],
     Field(discriminator="type"),
 ]
 IncomingAdapter: TypeAdapter[Incoming] = TypeAdapter(Incoming)
@@ -43,7 +43,7 @@ IncomingAdapter: TypeAdapter[Incoming] = TypeAdapter(Incoming)
 
 # manager -> agent
 Outgoing = Annotated[
-    Union[Ack, Nack],
+    Union[Ack, Nack, CreateSandboxRequest],
     Field(discriminator="type"),
 ]
 
