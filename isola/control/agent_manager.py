@@ -9,9 +9,6 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from dataclasses import dataclass
 
 
-logger = logging.getLogger()
-
-
 from isola.models.agent_ws import (
     Ack,
     Nack,
@@ -19,6 +16,8 @@ from isola.models.agent_ws import (
     AgentStatusUpdate,
     IncomingAdapter,
 )
+
+logger = logging.getLogger()
 
 @dataclass
 class AgentStatus:
