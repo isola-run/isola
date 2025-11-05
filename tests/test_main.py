@@ -6,7 +6,7 @@ import websockets
 import uuid
 
 from isola import main as main_module
-from isola.control.agent_manager import AgentHello, AgentStatusUpdate
+from isola.models.agent_ws import AgentHello, AgentStatusUpdate
 
 logger = logging.getLogger()
 
