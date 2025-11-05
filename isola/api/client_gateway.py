@@ -148,29 +148,30 @@ async def create_sandbox(
     now = datetime.utcnow()
     
     # Create sandbox object
-    sandbox = Sandbox(
-        id=sandbox_id,
-        name=req.name,
-        state=SandboxState.creating,
-        desiredState=SandboxState.started if req.autoStart else SandboxState.stopped,
-        class_=req.class_,
-        region=req.region,
-        snapshot=req.snapshot,
-        cpu=req.cpu or 1,
-        memory=req.memory or 1,
-        disk=req.disk or 10,
-        gpu=req.gpu or 0,
-        env=req.env or {},
-        labels=req.labels or {},
-        volumes=req.volumes or [],
-        ports=[],
-        runnerId=None,
-        errorReason=None,
-        ipAddress=None,
-        createdAt=now,
-        updatedAt=now,
-        lastActivityAt=None
-    )
+    sandbox_data = {
+        "id": sandbox_id,
+        "name": req.name,
+        "state": SandboxState.creating.value,
+        "desiredState": (SandboxState.started if req.autoStart else SandboxState.stopped).value,
+        "class": req.class_.value if req.class_ else "small",  # Use JSON field name (alias)
+        "region": req.region if req.region else "default",
+        "snapshot": req.snapshot,
+        "cpu": req.cpu or 1,
+        "memory": req.memory or 1,
+        "disk": req.disk or 10,
+        "gpu": req.gpu or 0,
+        "env": req.env or {},
+        "labels": req.labels or {},
+        "volumes": req.volumes or [],
+        "ports": [],
+        "runnerId": None,
+        "errorReason": None,
+        "ipAddress": None,
+        "createdAt": now.isoformat(),  # Convert datetime to string
+        "updatedAt": now.isoformat(),
+        "lastActivityAt": None
+    }
+    sandbox = Sandbox.model_validate(sandbox_data)
     
     # Store sandbox in memory
     if tenant_id not in sandboxes:
