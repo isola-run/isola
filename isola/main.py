@@ -21,9 +21,13 @@ logger.addHandler(handler)
 agent_manager = AgentManager()
 
 async def main():
-    print("Hello from dev-isola!")
-
-    # Start the agent manager. It will run its server in the background.
+    print("Starting Isola Control Plane...")
+    
+    # Make agent_manager available to API
+    import isola.api.client_gateway as client_gateway_module
+    client_gateway_module._agent_manager = agent_manager
+    
+    # Start the agent manager
     await agent_manager.start()
     print("Agent manager is running in the background.")
     print("Main application can now proceed with other tasks.")

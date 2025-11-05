@@ -75,11 +75,27 @@ def tenant_from_api_key(api_key: Optional[str]) -> str:
 sandboxes: Dict[str, Dict[str, Sandbox]] = {}
 
 # Import the shared agent_manager instance
-# TODO: __OMER__
+# Try to use the instance from main.py if available, otherwise create our own
 _agent_manager = None 
+_agent_manager_started = False
 
 def get_agent_manager():
     """Get the shared AgentManager instance"""
+    global _agent_manager, _agent_manager_started
+    
+    # If already set (e.g., by main.py), use it
+    if _agent_manager is not None:
+        return _agent_manager
+    
+    # Otherwise, create a new one (for standalone uvicorn usage)
+    from isola.control.agent_manager import AgentManager
+    _agent_manager = AgentManager()
+    
+    if not _agent_manager_started:
+        _agent_manager_started = True
+        asyncio.create_task(_agent_manager.start())
+        logger.info("Auto-created AgentManager on ws://localhost:8765")
+    
     return _agent_manager
 
 # Sandboxes
@@ -192,16 +208,10 @@ async def create_sandbox(
     
     # Send request to agent via AgentManager
     agent_manager = get_agent_manager()
-    if agent_manager:
-        # Run async communication in background
-        asyncio.create_task(_handle_sandbox_creation(
-            tenant_id, sandbox_id, agent_request, agent_manager
-        ))
-    else:
-        # No agent manager available, mark as error
-        sandbox.state = SandboxState.error
-        sandbox.errorReason = "Agent manager not available"
-        sandbox.updatedAt = datetime.utcnow()
+    # Run async communication in background
+    asyncio.create_task(_handle_sandbox_creation(
+        tenant_id, sandbox_id, agent_request, agent_manager
+    ))
     
     return sandbox
 
@@ -214,7 +224,9 @@ async def _handle_sandbox_creation(
 ):
     """Handle sandbox creation with agent asynchronously"""
     try:
+        logger.info(f"Sending sandbox creation request to agent: {request}")
         response = await agent_manager.send_create_sandbox_request(request)
+        logger.info(f"Sandbox creation response: {response}")
         
         if sandbox_id in sandboxes.get(tenant_id, {}):
             sandbox = sandboxes[tenant_id][sandbox_id]
@@ -222,7 +234,7 @@ async def _handle_sandbox_creation(
             if response and response.success:
                 # Update sandbox state based on desired state
                 if sandbox.desiredState == SandboxState.started:
-                    sandbox.state = SandboxState.started
+                    sandbox.state = SandboxState.running   
                 else:
                     sandbox.state = SandboxState.stopped
                 sandbox.ipAddress = response.ip_address
