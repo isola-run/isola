@@ -1,6 +1,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -18,6 +20,9 @@ from isola.models.sandbox import (
     CreateSandbox,
     SandboxList,
 )
+from isola.models.agent_ws import CreateSandboxRequest, CreateSandboxResponse
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Isola Sandbox Infrastructure API",
@@ -66,7 +71,16 @@ def tenant_from_api_key(api_key: Optional[str]) -> str:
         return "e766a1e8-4b0e-4bb7-9612-80b9c1c8cd87"
 
 
-sandboxes: dict[str, dict[str, Sandbox]]= {}
+# In-memory storage for sandboxes: tenant_id -> {sandbox_id -> Sandbox}
+sandboxes: Dict[str, Dict[str, Sandbox]] = {}
+
+# Import the shared agent_manager instance
+# TODO: __OMER__
+_agent_manager = None 
+
+def get_agent_manager():
+    """Get the shared AgentManager instance"""
+    return _agent_manager
 
 # Sandboxes
 @app.get(
@@ -89,6 +103,23 @@ async def list_sandboxes(
 ):
     tenant_id = tenant_from_api_key(api_key)
     
+    tenant_sandboxes = sandboxes.get(tenant_id, {})
+    
+    # Filter by state if provided
+    items = list(tenant_sandboxes.values())
+    if state:
+        items = [s for s in items if s.state == state]
+    
+    # Apply pagination
+    total = len(items)
+    items = items[offset:offset + limit]
+    
+    return SandboxList(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset
+    )
 
 
 @app.post(
@@ -110,7 +141,104 @@ async def create_sandbox(
     req: CreateSandbox,
     api_key: Optional[str] = Security(api_key_header),
 ):
-    tenant_from_api_key(api_key)
+    tenant_id = tenant_from_api_key(api_key)
+    
+    # Generate sandbox ID
+    sandbox_id = str(uuid.uuid4())
+    now = datetime.utcnow()
+    
+    # Create sandbox object
+    sandbox = Sandbox(
+        id=sandbox_id,
+        name=req.name,
+        state=SandboxState.creating,
+        desiredState=SandboxState.started if req.autoStart else SandboxState.stopped,
+        class_=req.class_,
+        region=req.region,
+        snapshot=req.snapshot,
+        cpu=req.cpu or 1,
+        memory=req.memory or 1,
+        disk=req.disk or 10,
+        gpu=req.gpu or 0,
+        env=req.env or {},
+        labels=req.labels or {},
+        volumes=req.volumes or [],
+        ports=[],
+        runnerId=None,
+        errorReason=None,
+        ipAddress=None,
+        createdAt=now,
+        updatedAt=now,
+        lastActivityAt=None
+    )
+    
+    # Store sandbox in memory
+    if tenant_id not in sandboxes:
+        sandboxes[tenant_id] = {}
+    sandboxes[tenant_id][sandbox_id] = sandbox
+    
+    # Create request for agent
+    agent_request = CreateSandboxRequest(
+        sandbox_id=sandbox_id,
+        name=req.name,
+        image=req.snapshot or "python:3.11",  # Use snapshot as image
+        cpu=float(req.cpu or 1),
+        memory=float(req.memory or 1),
+        disk=float(req.disk or 10),
+        env=req.env or {},
+        labels=req.labels or {}
+    )
+    
+    # Send request to agent via AgentManager
+    agent_manager = get_agent_manager()
+    if agent_manager:
+        # Run async communication in background
+        asyncio.create_task(_handle_sandbox_creation(
+            tenant_id, sandbox_id, agent_request, agent_manager
+        ))
+    else:
+        # No agent manager available, mark as error
+        sandbox.state = SandboxState.error
+        sandbox.errorReason = "Agent manager not available"
+        sandbox.updatedAt = datetime.utcnow()
+    
+    return sandbox
+
+
+async def _handle_sandbox_creation(
+    tenant_id: str,
+    sandbox_id: str, 
+    request: CreateSandboxRequest,
+    agent_manager
+):
+    """Handle sandbox creation with agent asynchronously"""
+    try:
+        response = await agent_manager.send_create_sandbox_request(request)
+        
+        if sandbox_id in sandboxes.get(tenant_id, {}):
+            sandbox = sandboxes[tenant_id][sandbox_id]
+            
+            if response and response.success:
+                # Update sandbox state based on desired state
+                if sandbox.desiredState == SandboxState.started:
+                    sandbox.state = SandboxState.started
+                else:
+                    sandbox.state = SandboxState.stopped
+                sandbox.ipAddress = response.ip_address
+                # Note: agent_id is not in CreateSandboxResponse currently
+            else:
+                sandbox.state = SandboxState.error
+                sandbox.errorReason = response.error_reason if response else "No agent available"
+            
+            sandbox.updatedAt = datetime.utcnow()
+            logger.info(f"Sandbox {sandbox_id} creation completed with state: {sandbox.state}")
+    except Exception as e:
+        logger.error(f"Error creating sandbox {sandbox_id}: {e}")
+        if sandbox_id in sandboxes.get(tenant_id, {}):
+            sandbox = sandboxes[tenant_id][sandbox_id]
+            sandbox.state = SandboxState.error
+            sandbox.errorReason = str(e)
+            sandbox.updatedAt = datetime.utcnow()
 
 @app.get(
     "/sandboxes/{sandbox_id}",
@@ -126,7 +254,13 @@ async def create_sandbox(
     },
 )
 async def get_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_key_header)):
-    tenant_from_api_key(api_key)
+    tenant_id = tenant_from_api_key(api_key)
+    
+    tenant_sandboxes = sandboxes.get(tenant_id, {})
+    if sandbox_id not in tenant_sandboxes:
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+    
+    return tenant_sandboxes[sandbox_id]
 
 
 @app.delete(
@@ -187,7 +321,6 @@ async def stop_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_ke
 )
 async def restart_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_key_header)):
     tenant_from_api_key(api_key)
-
 
 
 

@@ -1,4 +1,5 @@
 import logging
+from typing import Dict, Optional
 from pydantic import ValidationError
 import uvicorn
 import asyncio
@@ -6,7 +7,7 @@ import time
 import uuid
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 from isola.models.agent_ws import (
@@ -15,6 +16,8 @@ from isola.models.agent_ws import (
     AgentHello,
     AgentStatusUpdate,
     IncomingAdapter,
+    CreateSandboxRequest,
+    CreateSandboxResponse,
 )
 
 logger = logging.getLogger()
@@ -26,15 +29,17 @@ class AgentStatus:
     # should probably keep several samples / equation for trend:
     last_cpu: float
     last_mem: float
+    websocket: WebSocket  # Track WebSocket connection for sending messages
 
 class AgentManager:
     def __init__(self) -> None:
         self._active_agents: dict[uuid.UUID, AgentStatus] = {}
+        self._pending_sandbox_requests: dict[str, asyncio.Future] = {}  # Track pending sandbox creation requests
         self._app = FastAPI()
         # todo benl: properly config
         config = uvicorn.Config(self._app, host="localhost", port=8765, log_level="debug")
         self._server = uvicorn.Server(config)
-        self._server_task: asyncio.TTask | None = None
+        self._server_task: asyncio.Task | None = None
         self._app.add_api_websocket_route("/ws", self._manager_loop)
     
     async def _manager_loop(self, ws: WebSocket) -> None:
@@ -59,6 +64,11 @@ class AgentManager:
                         self._active_agents[msg.agent_id].last_activity = msg.ts
                         self._active_agents[msg.agent_id].last_cpu = msg.cpu
                         self._active_agents[msg.agent_id].last_mem = msg.mem
+                    elif isinstance(msg, CreateSandboxResponse):
+                        # Handle sandbox creation response
+                        if msg.sandbox_id in self._pending_sandbox_requests:
+                            future = self._pending_sandbox_requests.pop(msg.sandbox_id)
+                            future.set_result(msg)
                     else:
                         ack = Ack(acked_id=msg.id)
                         await ws.send_text(ack.model_dump_json())
@@ -73,6 +83,7 @@ class AgentManager:
                             last_activity=msg.ts,
                             last_cpu=-1,
                             last_mem=-1,
+                            websocket=ws
                         )
                     else:
                         logger.warning("first message from agent is not hello, got: %s", msg)
@@ -82,6 +93,8 @@ class AgentManager:
                             
         except WebSocketDisconnect:
             logger.warning("Agent disconnected: %s", agent_id)
+            if agent_id and agent_id in self._active_agents:
+                del self._active_agents[agent_id]
         except Exception:
             logger.exception("Unknown exception, agent_id: %s", agent_id)
     
@@ -103,3 +116,50 @@ class AgentManager:
             self._server_task = None
         else:
             logger.warning("no server to shutdown")
+    
+    def get_available_agent(self) -> Optional[uuid.UUID]:
+        """Get the first available agent (simplest selection logic)"""
+        if not self._active_agents:
+            return None
+        
+        # For simplicty: picking the first agent for now
+        return next(iter(self._active_agents.keys()))
+    
+    async def send_create_sandbox_request(
+        self, 
+        sandbox_request: CreateSandboxRequest
+    ) -> Optional[CreateSandboxResponse]:
+        """Send create sandbox request to an available agent"""
+        agent_id = self.get_available_agent()
+        if not agent_id:
+            logger.warning("No available agents to handle sandbox creation")
+            return None
+        
+        isolad_agent = self._active_agents.get(agent_id)
+        if not isolad_agent or not isolad_agent.websocket:
+            logger.warning(f"No WebSocket connection for agent {agent_id}")
+            return None
+        
+        ws = isolad_agent.websocket
+        
+        # Create a future to wait for response
+        future = asyncio.Future()
+        self._pending_sandbox_requests[sandbox_request.sandbox_id] = future
+        
+        # Send creation request to agent
+        try:
+            await ws.send_text(sandbox_request.model_dump_json())
+            logger.info(f"Sent create_sandbox request to agent {agent_id} for sandbox {sandbox_request.sandbox_id}")
+        except Exception as e:
+            logger.error(f"Failed to send request to agent {agent_id}: {e}")
+            self._pending_sandbox_requests.pop(sandbox_request.sandbox_id, None)
+            return None
+        
+        # Wait for response (with timeout)
+        try:
+            response = await asyncio.wait_for(future, timeout=30.0)
+            return response
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout waiting for sandbox creation response for {sandbox_request.sandbox_id}")
+            self._pending_sandbox_requests.pop(sandbox_request.sandbox_id, None)
+            return None
