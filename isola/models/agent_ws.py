@@ -47,3 +47,22 @@ Outgoing = Annotated[
     Field(discriminator="type"),
 ]
 
+# Control Plane -> isolaD agent
+class CreateSandboxRequest(MsgBase):
+    type: Literal["create_sandbox"] = "create_sandbox"
+    sandbox_id: str
+    name: str
+    image: str
+    cpu: float
+    memory: float
+    disk: float
+    env: Dict[str, str]
+    labels: Dict[str, str]
+
+# isolaD agent -> Control Plane
+class CreateSandboxResponse(MsgBase):
+    type: Literal["sandbox_created"] = "sandbox_created"
+    sandbox_id: str
+    success: bool
+    error_reason: Optional[str] = None
+    ip_address: Optional[str] = None
