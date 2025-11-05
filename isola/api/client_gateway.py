@@ -9,41 +9,15 @@ from fastapi.responses import PlainTextResponse
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
-from fastapi.openapi.utils import get_openapi
 
 # Import Pydantic models and enums from dedicated modules
-from isola.api.models.common import HealthStatus, Error, SystemConfig, Labels
-from isola.api.models.api_key import ApiKey, CreateApiKey, ApiKeyWithSecret
+from isola.api.models.common import Error
 from isola.api.models.sandbox import (
     SandboxState,
-    SandboxClass,
-    AttachedVolume,
-    ExposedPort,
     Sandbox,
     CreateSandbox,
     SandboxList,
-    SshAccess,
 )
-from isola.api.models.snapshot import (
-    SnapshotState,
-    Snapshot,
-    CreateSnapshot,
-    SnapshotList,
-)
-from isola.api.models.volume import (
-    VolumeState,
-    VolumeAttachment,
-    Volume,
-    CreateVolume,
-    VolumeList,
-)
-from isola.api.models.runner import (
-    RunnerState,
-    RunnerCapacity,
-    RunnerUsage,
-    Runner,
-)
-
 
 app = FastAPI(
     title="Isola Sandbox Infrastructure API",
