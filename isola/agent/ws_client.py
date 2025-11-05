@@ -38,7 +38,13 @@ class ControlPlaneClient:
             try:
                 async with websockets.connect(self._control_plane_url) as ws:
                     await self._send_agent_hello(ws)
-
+                    while True:
+                        cpu, mem = self._sample_metrics()
+                        status_update = AgentStatusUpdate(
+                            agent_id=self._agent_id, cpu=cpu, mem=mem
+                        )
+                        await ws.send(status_update.model_dump_json())
+                        await asyncio.sleep(1)
             except Exception:
                 logger.exception("Exception in control plane client loop for agent: %s", self._agent_id)
 
