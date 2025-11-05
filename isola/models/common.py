@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, RootModel
 
 
 class Error(BaseModel):
@@ -22,8 +22,6 @@ class SystemConfig(BaseModel):
     regions: list[str] = ["default"]
 
 
-class Labels(BaseModel):
-    __root__: Dict[str, str]
-
+class Labels(RootModel[Dict[str, str]]):
     def to_dict(self) -> Dict[str, str]:
-        return dict(self.__root__)
+        return self.root
