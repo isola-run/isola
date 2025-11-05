@@ -11,8 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 
 # Import Pydantic models and enums from dedicated modules
-from isola.api.models.common import Error
-from isola.api.models.sandbox import (
+from isola.models.common import Error
+from isola.models.sandbox import (
     SandboxState,
     Sandbox,
     CreateSandbox,
