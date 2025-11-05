@@ -1,6 +1,5 @@
 import logging
-from typing import Annotated, Literal, Union
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+from pydantic import ValidationError
 import uvicorn
 import asyncio
 import time
@@ -13,47 +12,13 @@ from dataclasses import dataclass
 logger = logging.getLogger()
 
 
-# ---- Message schemas ----
-#todo benl: v, ts, id should probably be an envelope
-class MsgBase(BaseModel):
-    v: Literal[1] = 1        # schema version
-    ts: int = Field(default_factory=lambda: int(time.time() * 1000))
-    id: uuid.UUID = Field(default_factory=lambda: uuid.uuid4())
-
-class Ack(MsgBase):
-    type: Literal["ack"] = "ack"
-    acked_id: uuid.UUID
-
-class Nack(MsgBase):
-    type: Literal["nack"] = "nack"
-    nacked_id: uuid.UUID
-
-
-# agent -> mgr
-
-
-class AgentHello(MsgBase):
-    type: Literal["hello"] = "hello"
-    agent_id: uuid.UUID
-
-class AgentStatusUpdate(MsgBase):
-    type: Literal["status"] = "status"
-    agent_id: uuid.UUID
-    cpu: float
-    mem: float
-
-Incoming = Annotated[
-    Union[AgentHello, AgentStatusUpdate],
-    Field(discriminator="type"),
-]
-
-IncomingAdapter: TypeAdapter[Incoming] = TypeAdapter(Incoming)
-
-# mgr -> agent
-Outgoing = Annotated[
-    Union[Ack, Nack],
-    Field(discriminator="type"),
-]
+from isola.models.agent_ws import (
+    Ack,
+    Nack,
+    AgentHello,
+    AgentStatusUpdate,
+    IncomingAdapter,
+)
 
 @dataclass
 class AgentStatus:
@@ -76,6 +41,7 @@ class AgentManager:
     async def _manager_loop(self, ws: WebSocket) -> None:
         await ws.accept()
 
+        # agent_id -> ws
         agent_id: uuid.UUID | None = None
         try:
             while True:

@@ -138,7 +138,6 @@ async def create_sandbox(
 ):
     tenant_from_api_key(api_key)
 
-
 @app.get(
     "/sandboxes/{sandbox_id}",
     response_model=Sandbox,
