@@ -153,9 +153,9 @@ async def create_sandbox(
         "name": req.name,
         "state": SandboxState.creating.value,
         "desiredState": (SandboxState.started if req.autoStart else SandboxState.stopped).value,
-        "class": req.class_.value if req.class_ else "small",  # Use JSON field name (alias)
+        "class": req.class_.value if req.class_ else "small",
         "region": req.region if req.region else "default",
-        "snapshot": req.snapshot,
+        "image": req.image or "python:3.11",
         "cpu": req.cpu or 1,
         "memory": req.memory or 1,
         "disk": req.disk or 10,
@@ -167,7 +167,7 @@ async def create_sandbox(
         "runnerId": None,
         "errorReason": None,
         "ipAddress": None,
-        "createdAt": now.isoformat(),  # Convert datetime to string
+        "createdAt": now.isoformat(),
         "updatedAt": now.isoformat(),
         "lastActivityAt": None
     }
@@ -178,11 +178,11 @@ async def create_sandbox(
         sandboxes[tenant_id] = {}
     sandboxes[tenant_id][sandbox_id] = sandbox
     
-    # Create request for agent
+    # Create request for isolad agent
     agent_request = CreateSandboxRequest(
         sandbox_id=sandbox_id,
         name=req.name,
-        image=req.snapshot or "python:3.11",  # Use snapshot as image
+        image=req.image or "python:3.11",
         cpu=float(req.cpu or 1),
         memory=float(req.memory or 1),
         disk=float(req.disk or 10),

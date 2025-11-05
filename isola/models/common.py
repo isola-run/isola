@@ -14,7 +14,7 @@ class Error(BaseModel):
 
 class SystemConfig(BaseModel):
     version: str = "1.0.0"
-    defaultSnapshot: str = "ubuntu:22.04"
+    defaultImage: str = "ubuntu:22.04"
     sshGatewayHost: str = "ssh.isola.local"
     sshGatewayPort: int = 22
     maxSandboxes: int = 100

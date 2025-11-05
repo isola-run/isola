@@ -43,7 +43,7 @@ class Sandbox(BaseModel):
     desiredState: Optional[SandboxState] = None
     class_: SandboxClass = Field(alias="class")
     region: str
-    snapshot: Optional[str] = None
+    image: Optional[str] = None
     cpu: Optional[int] = None
     memory: Optional[int] = None
     disk: Optional[int] = None
@@ -62,12 +62,12 @@ class Sandbox(BaseModel):
 
 class CreateSandbox(BaseModel):
     name: str
-    snapshot: Optional[str] = None
+    image: Optional[str] = None
     class_: SandboxClass = Field(default=SandboxClass.small, alias="class")
     region: str = "default"
-    cpu: Optional[int] = None
-    memory: Optional[int] = None
-    disk: Optional[int] = None
+    cpu: Optional[float] = None
+    memory: Optional[float] = None
+    disk: Optional[float] = None
     gpu: int = 0
     env: Optional[Dict[str, str]] = None
     labels: Optional[Dict[str, str]] = None
