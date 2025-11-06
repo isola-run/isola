@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import random
@@ -7,7 +8,7 @@ import uuid
 import websockets
 
 
-from common.models.control_protocol import Ack, AgentHello, AgentStatusUpdate, OutgoingAdapter
+from common.models.control_protocol import Ack, AgentHello, AgentStatusUpdate, Nack, OutgoingAdapter
 
 
 
@@ -32,10 +33,14 @@ class ControlPlaneClient:
     async def _receiver_loop(self, ws: websockets.ClientConnection) -> None:
         while True:
             try:
-                data = await ws.recv()
+                raw = await ws.recv()
+                data = json.loads(raw)
                 msg = OutgoingAdapter.validate_python(data)
                 logger.info("received: %s", msg)
-                asyncio.create_task(ws.send(Ack(acked_id=msg.id).model_dump_json()))
+                if isinstance(msg, Ack) or isinstance(msg, Nack):
+                        pass
+                else:
+                    asyncio.create_task(ws.send(Ack(acked_id=msg.id).model_dump_json()))
             except Exception:
                 logger.exception("Exception in control plane client receiver loop for agent: %s", self._agent_id)
     
