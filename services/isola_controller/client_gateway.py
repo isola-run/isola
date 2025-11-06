@@ -24,10 +24,12 @@ from services.isola_controller.agent_manager import AgentManager
 
 logger = logging.getLogger(__name__)
 
+
+agent_manager = AgentManager()
+
 # todo benl: move this logic to somewhere more appropriate (if we keep)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    agent_manager = AgentManager()
     # app.state.agent_manager = agent_manager
     await agent_manager.start()     # spawns uvicorn WS server in the background
     try:
@@ -88,30 +90,6 @@ def tenant_from_api_key(api_key: Optional[str]) -> str:
 
 # In-memory storage for sandboxes: tenant_id -> {sandbox_id -> Sandbox}
 sandboxes: Dict[str, Dict[str, Sandbox]] = {}
-
-# Import the shared agent_manager instance
-# Try to use the instance from main.py if available, otherwise create our own
-_agent_manager = None 
-_agent_manager_started = False
-
-def get_agent_manager():
-    """Get the shared AgentManager instance"""
-    global _agent_manager, _agent_manager_started
-    
-    # If already set (e.g., by main.py), use it
-    if _agent_manager is not None:
-        return _agent_manager
-    
-    # Otherwise, create a new one (for standalone uvicorn usage)
-    from services.isola_controller.agent_manager import AgentManager
-    _agent_manager = AgentManager()
-    
-    if not _agent_manager_started:
-        _agent_manager_started = True
-        asyncio.create_task(_agent_manager.start())
-        logger.info("Auto-created AgentManager on ws://localhost:8765")
-    
-    return _agent_manager
 
 # Sandboxes
 @app.get(
