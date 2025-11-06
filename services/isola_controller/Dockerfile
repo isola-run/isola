@@ -12,4 +12,6 @@ RUN pip install --no-cache-dir fastapi uvicorn websockets pydantic
 EXPOSE 3000 8765
 
 # Run the API server which also starts the agent manager
-CMD ["python", "-m", "uvicorn", "isola.api.client_gateway:app", "--host", "0.0.0.0", "--port", "3000"]
+# todo benl: app is the http server, but we add another server (with lifespan) that starts the WS server
+# todo benl: that's a weird hack I am not sure how it would behave and should be revisited / rethink
+CMD ["python", "-m", "uvicorn", "services.isola_controller.client_gateway:app", "--host", "0.0.0.0", "--port", "3000"]

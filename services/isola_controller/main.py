@@ -23,10 +23,6 @@ agent_manager = AgentManager()
 async def main():
     print("Starting Isola Control Plane...")
     
-    # Make agent_manager available to API
-    import isola.api.client_gateway as client_gateway_module
-    client_gateway_module._agent_manager = agent_manager
-    
     # Start the agent manager
     await agent_manager.start()
     await asyncio.sleep(999)
