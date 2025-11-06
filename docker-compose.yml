@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: isola/control/Dockerfile
+    container_name: isola-controller
+    ports:
+      - "3000:3000"  # API port
+      - "8765:8765"  # WebSocket port
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - isola-network
+
+  agent:
+    build:
+      context: .
+      dockerfile: isola/agent/Dockerfile
+    container_name: isola-agent
+    depends_on:
+      - controller
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ISOLA_CONTROLLER_WS_URL=ws://controller:8765/ws
+    networks:
+      - isola-network
+
+networks:
+  isola-network:
+    driver: bridge
