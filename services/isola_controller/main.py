@@ -17,18 +17,14 @@ handler.setFormatter(formatter)
 
 logger.addHandler(handler)
 
-# Create a single, reusable instance of the AgentManager
 agent_manager = AgentManager()
 
 async def main():
-    print("Starting Isola Control Plane...")
+    logger.info("Starting Isola Control Plane...")
     
-    # Start the agent manager
     await agent_manager.start()
-    await asyncio.sleep(999)
-    print("Agent manager is running in the background.")
-    print("Main application can now proceed with other tasks.")
-
+    await asyncio.Event().wait()  # Block forever
+    
 
 if __name__ == "__main__":
     asyncio.run(main())

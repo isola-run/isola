@@ -27,7 +27,7 @@ async def main():
     control_plane_client = ControlPlaneClient(agent_id=agent_id, control_plane_url=control_plane_url)
     await control_plane_client.start()
     await asyncio.sleep(999)
-    logger.info("Control plane client started")
+    logger.info("Control plane client stopped")
 
 if __name__ == "__main__":
     asyncio.run(main())
