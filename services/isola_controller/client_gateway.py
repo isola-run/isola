@@ -55,7 +55,7 @@ app = FastAPI(
         "url": "https://opensource.org/licenses/MIT",
     },
     servers=[
-    {"url": "http://localhost:3000", "description": "local environment"},
+    {"url": "http://controller:3000", "description": "local environment"},
     {"url": "https://api.isola.run", "description": "Production environment"},
     ],
     lifespan=lifespan
