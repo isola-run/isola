@@ -24,7 +24,7 @@ async def main():
     agent_id = uuid.uuid4()
     logger.info("Starting agent %s", agent_id)
     control_plane_client = ControlPlaneClient(agent_id)
-    control_plane_client.start()
+    await control_plane_client.start()
     logger.info("Control plane client started")
 
 if __name__ == "__main__":
