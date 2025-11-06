@@ -8,7 +8,7 @@ services:
     container_name: isola-controller
     ports:
       - "3000:3000"  # API port
-      - "8765:8765"  # WebSocket port
+      - "8675:8675"  # WebSocket port
     environment:
       - PYTHONUNBUFFERED=1
     networks:

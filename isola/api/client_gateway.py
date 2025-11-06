@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 import logging
 import uuid
 from datetime import datetime
@@ -13,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 
 # Import Pydantic models and enums from dedicated modules
+from isola.control.agent_manager import AgentManager
 from isola.models.common import Error
 from isola.models.sandbox import (
     SandboxState,
@@ -23,6 +25,18 @@ from isola.models.sandbox import (
 from isola.models.agent_ws import CreateSandboxRequest, CreateSandboxResponse
 
 logger = logging.getLogger(__name__)
+
+# todo benl: move this logic to somewhere more appropriate (if we keep)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    agent_manager = AgentManager()
+    # app.state.agent_manager = agent_manager
+    await agent_manager.start()     # spawns uvicorn WS server in the background
+    try:
+        yield
+    finally:
+        await agent_manager.shutdown()
+
 
 app = FastAPI(
     title="Isola Sandbox Infrastructure API",
@@ -43,8 +57,10 @@ app = FastAPI(
     servers=[
     {"url": "http://localhost:3000", "description": "local environment"},
     {"url": "https://api.isola.run", "description": "Production environment"},
-    ]
+    ],
+    lifespan=lifespan
 )
+
 
 # CORS for convenience in demos
 # app.add_middleware(

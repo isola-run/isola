@@ -22,7 +22,7 @@ class ControlPlaneClient:
     def __init__(
         self,
         agent_id: uuid.UUID,
-        control_plane_url: str = "ws://localhost:8765/ws",
+        control_plane_url,
     ) -> None:
         self._control_plane_url = control_plane_url
         self._agent_id = agent_id
