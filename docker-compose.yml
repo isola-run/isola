@@ -4,7 +4,7 @@ services:
   controller:
     build:
       context: .
-      dockerfile: isola/control/Dockerfile
+      dockerfile: services/isola_controller/Dockerfile
     container_name: isola-controller
     ports:
       - "3000:3000"  # API port
@@ -17,7 +17,7 @@ services:
   agent:
     build:
       context: .
-      dockerfile: isola/agent/Dockerfile
+      dockerfile: services/isola_agent/Dockerfile
     container_name: isola-agent
     depends_on:
       - controller

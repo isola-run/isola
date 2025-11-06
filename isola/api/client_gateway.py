@@ -88,7 +88,7 @@ def get_agent_manager():
         return _agent_manager
     
     # Otherwise, create a new one (for standalone uvicorn usage)
-    from isola.control.agent_manager import AgentManager
+    from services.isola_controller.agent_manager import AgentManager
     _agent_manager = AgentManager()
     
     if not _agent_manager_started:

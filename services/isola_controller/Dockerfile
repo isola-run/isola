@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy the entire project (we need all isola modules)
+# Copy the entire project (we need all isola modules and services)
 COPY . /app
 
 # Install dependencies

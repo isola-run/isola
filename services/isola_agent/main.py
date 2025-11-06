@@ -3,7 +3,7 @@ import logging
 import sys
 import uuid
 
-from isola.agent.control_plane_client import ControlPlaneClient
+from services.isola_agent.control_plane_client import ControlPlaneClient
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)

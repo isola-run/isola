@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from isola.control.agent_manager import AgentManager
+from services.isola_controller.agent_manager import AgentManager
 import sys
 
 logger = logging.getLogger()
