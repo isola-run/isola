@@ -3,7 +3,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copy the entire project (we need all isola modules)
-COPY . .
+COPY . /app
 
 # Install dependencies
 RUN pip install --no-cache-dir fastapi uvicorn websockets pydantic
