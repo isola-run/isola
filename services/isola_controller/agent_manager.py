@@ -56,10 +56,11 @@ class AgentManager:
                         self._active_agents[msg.agent_id].last_cpu = msg.cpu
                         self._active_agents[msg.agent_id].last_mem = msg.mem
                     elif isinstance(msg, CreateSandboxResponse):
-                        # Handle sandbox creation response
                         if msg.sandbox_id in self._pending_sandbox_requests:
                             future = self._pending_sandbox_requests.pop(msg.sandbox_id)
                             future.set_result(msg)
+                        else:
+                            logger.warning("unrecognized CreateSandboxResponse for sandbox_id: %s, from agent_id: %s", msg.sandbox_id, agent_id)
                     elif isinstance(msg, Ack) or isinstance(msg, Nack):
                         pass
                     else:

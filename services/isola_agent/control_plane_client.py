@@ -8,7 +8,7 @@ import uuid
 import websockets
 
 
-from common.models.control_protocol import Ack, AgentHello, AgentStatusUpdate, Nack, OutgoingAdapter
+from common.models.control_protocol import Ack, AgentHello, AgentStatusUpdate, CreateSandboxRequest, CreateSandboxResponse, Nack, OutgoingAdapter
 
 
 
@@ -39,6 +39,8 @@ class ControlPlaneClient:
                 logger.info("received: %s", msg)
                 if isinstance(msg, Ack) or isinstance(msg, Nack):
                         pass
+                elif isinstance(msg, CreateSandboxRequest):
+                    asyncio.create_task(ws.send(CreateSandboxResponse(sandbox_id=msg.sandbox_id, success=True).model_dump_json()))
                 else:
                     asyncio.create_task(ws.send(Ack(acked_id=msg.id).model_dump_json()))
             except Exception:
