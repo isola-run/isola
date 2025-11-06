@@ -124,7 +124,7 @@ print(f"Fruit counts: {dict(counts)}")
         for line in result["stdout"].strip().split("\n"):
             print(f"   > {line}")
     
-    print(f"\n✓ Sandbox automatically cleaned up")
+    print("\n✓ Sandbox automatically cleaned up")
     print("\nQuick example completed successfully!")
 
 

@@ -2,9 +2,8 @@
 Isola API Client
 A Python client for interacting with the Isola Sandbox Infrastructure API
 """
-import json
 import time
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 
@@ -45,8 +44,8 @@ class SandboxConfig:
     memory: int = 1  # GB
     disk: int = 10  # GB
     gpu: int = 0
-    env: Dict[str, str] = None
-    labels: Dict[str, str] = None
+    env: Optional[dict[str, str]] = None
+    labels: Optional[dict[str, str]] = None
     auto_start: bool = True
 
     def to_dict(self):
@@ -146,7 +145,7 @@ class IsolaClient:
         Returns:
             List of sandboxes
         """
-        params = {"limit": limit, "offset": offset}
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
         if state:
             params["state"] = state
         
@@ -337,12 +336,12 @@ class SandboxContext:
             
             return self
             
-        except Exception as e:
+        except Exception:
             # Cleanup on error
             if self.sandbox_id:
                 try:
                     self.client.delete_sandbox(self.sandbox_id, force=True)
-                except:
+                except Exception:
                     pass
             raise
     

@@ -1,24 +1,14 @@
 import logging
-from typing import Dict, Optional
+from typing import Optional
 from pydantic import ValidationError
 import uvicorn
 import asyncio
-import time
 import uuid
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-
-from isola.models.agent_ws import (
-    Ack,
-    Nack,
-    AgentHello,
-    AgentStatusUpdate,
-    IncomingAdapter,
-    CreateSandboxRequest,
-    CreateSandboxResponse,
-)
+from common.models.control_protocol import Ack, AgentHello, AgentStatusUpdate, CreateSandboxRequest, CreateSandboxResponse, IncomingAdapter, Nack
 
 logger = logging.getLogger()
 
@@ -143,7 +133,7 @@ class AgentManager:
         ws = isolad_agent.websocket
         
         # Create a future to wait for response
-        future = asyncio.Future()
+        future: asyncio.Future = asyncio.Future()
         self._pending_sandbox_requests[sandbox_request.sandbox_id] = future
         
         # Send creation request to agent

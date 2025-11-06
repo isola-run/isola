@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 import sys
-import time
-from typing import Dict, Any
 from isola_client import IsolaClient, SandboxConfig, SandboxClass, SandboxState
 
 

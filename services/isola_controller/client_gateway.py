@@ -6,22 +6,20 @@ from contextlib import asynccontextmanager
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Dict, Optional
 
-from fastapi.responses import PlainTextResponse
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Security
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, Query, Security
 from fastapi.security import APIKeyHeader
 
 # Import Pydantic models and enums from dedicated modules
-from isola.models.common import Error
-from isola.models.sandbox import (
+from common.models.common import Error
+from common.models.control_protocol import CreateSandboxRequest
+from common.models.sandbox import (
     SandboxState,
     Sandbox,
     CreateSandbox,
     SandboxList,
 )
-from isola.models.agent_ws import CreateSandboxRequest, CreateSandboxResponse
 from services.isola_controller.agent_manager import AgentManager
 
 logger = logging.getLogger(__name__)
@@ -250,7 +248,7 @@ async def _handle_sandbox_creation(
             if response and response.success:
                 # Update sandbox state based on desired state
                 if sandbox.desiredState == SandboxState.started:
-                    sandbox.state = SandboxState.running   
+                    sandbox.state = SandboxState.started   
                 else:
                     sandbox.state = SandboxState.stopped
                 sandbox.ipAddress = response.ip_address
