@@ -83,6 +83,7 @@ def tenant_from_api_key(api_key: Optional[str]) -> str:
         return "2280e575-f37d-4329-b033-9de263ce7625"
     if api_key == "iso_sk_demo":
         return "e766a1e8-4b0e-4bb7-9612-80b9c1c8cd87"
+    return "e766a1e8-4b0e-4bb7-9612-80b9c1c8cd87"
 
 
 # In-memory storage for sandboxes: tenant_id -> {sandbox_id -> Sandbox}
