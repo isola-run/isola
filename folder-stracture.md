@@ -39,17 +39,16 @@ dev-isola/
 │       └── README.md
 │
 ├── common/                               # Shared library
-│   ├── isola_common/
-│   │   ├── models/                      
-│   │   │   ├── sandbox.py               # Pydantic models used by all services
-│   │   │   ├── runner.py
-│   │   │   ├── execution.py             # CodeExecutionRequest/Response
-│   │   │   └── __init__.py
-│   │   ├── auth/
-│   │   │   └── api_key.py              # Shared auth logic
-│   │   ├── utils/
-│   │   │   ├── logging.py
-│   │   │   └── validators.py
+│   ├── models/                      
+│   │   ├── sandbox.py               # Pydantic models used by all services
+│   │   ├── runner.py
+│   │   ├── execution.py             # CodeExecutionRequest/Response
+│   │   └── __init__.py
+│   ├── auth/
+│   │   └── api_key.py              # Shared auth logic
+│   ├── utils/
+│   │   ├── logging.py
+│   │   └── validators.py
 │   │   └── __init__.py
 │   ├── tests/
 │   ├── pyproject.toml
