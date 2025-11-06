@@ -29,12 +29,10 @@ async def main():
     
     # Start the agent manager
     await agent_manager.start()
+    await asyncio.sleep(999)
     print("Agent manager is running in the background.")
     print("Main application can now proceed with other tasks.")
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nApplication stopped by user.")
+    asyncio.run(main())

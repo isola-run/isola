@@ -37,7 +37,7 @@ class AgentManager:
         self._pending_sandbox_requests: dict[str, asyncio.Future] = {}  # Track pending sandbox creation requests
         self._app = FastAPI()
         # todo benl: properly config
-        config = uvicorn.Config(self._app, host="localhost", port=8765, log_level="debug")
+        config = uvicorn.Config(self._app, host="0.0.0.0", port=8765, log_level="debug")
         self._server = uvicorn.Server(config)
         self._server_task: asyncio.Task | None = None
         self._app.add_api_websocket_route("/ws", self._manager_loop)
