@@ -64,3 +64,4 @@ Outgoing = Annotated[
     Field(discriminator="type"),
 ]
 
+OutgoingAdapter: TypeAdapter[Outgoing] = TypeAdapter(Outgoing)

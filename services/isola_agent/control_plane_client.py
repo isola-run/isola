@@ -7,7 +7,7 @@ import uuid
 import websockets
 
 
-from common.models.control_protocol import AgentHello, AgentStatusUpdate
+from common.models.control_protocol import Ack, AgentHello, AgentStatusUpdate, OutgoingAdapter
 
 
 
@@ -29,29 +29,48 @@ class ControlPlaneClient:
         await ws.send(hello.model_dump_json())
 
 
-    async def _client_loop(self) -> None:
+    async def _receiver_loop(self, ws: websockets.ClientConnection) -> None:
+        while True:
+            try:
+                data = await ws.recv()
+                msg = OutgoingAdapter.validate_python(data)
+                logger.info("received: %s", msg)
+                asyncio.create_task(ws.send(Ack(acked_id=msg.id).model_dump_json()))
+            except Exception:
+                logger.exception("Exception in control plane client receiver loop for agent: %s", self._agent_id)
+    
+
+    async def _sender_loop(self, ws: websockets.ClientConnection) -> None:
+        while True:
+            try:
+                cpu, mem = self._sample_metrics()
+                status_update = AgentStatusUpdate(
+                    agent_id=self._agent_id, cpu=cpu, mem=mem
+                )
+                asyncio.create_task(ws.send(status_update.model_dump_json()))
+                await asyncio.sleep(1)
+            except Exception:
+                logger.exception("Exception in control plane client sender loop for agent: %s", self._agent_id)
+
+    async def _loop_with_reconnects(self) -> None:
         while True:
             try:
                 async with websockets.connect(self._control_plane_url) as ws:
+                    recv_task = asyncio.create_task(self._receiver_loop(ws))
                     await self._send_agent_hello(ws)
-                    while True:
-                        cpu, mem = self._sample_metrics()
-                        status_update = AgentStatusUpdate(
-                            agent_id=self._agent_id, cpu=cpu, mem=mem
-                        )
-                        await ws.send(status_update.model_dump_json())
-                        await asyncio.sleep(1)
+                    send_task = asyncio.create_task(self._sender_loop(ws))
+                    await asyncio.gather(recv_task, send_task)
             except Exception:
                 logger.exception("Exception in control plane client loop for agent: %s", self._agent_id)
-
     async def start(self) -> None:
-        asyncio.create_task(self._client_loop())
+        asyncio.create_task(self._loop_with_reconnects())
+
 
     def _sample_metrics(self) -> tuple[float, float]:
         """Sample CPU and memory usage.
 
         Tries to use psutil if available; otherwise falls back to simple
-        approximations so we don't depend on extra packages.
+        approxima   tions so we don't depend on extra packages.
         Returns (cpu_percent, mem_percent).
         """
         # Try psutil if available

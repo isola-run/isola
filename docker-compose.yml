@@ -6,9 +6,6 @@ services:
       context: .
       dockerfile: services/isola_controller/Dockerfile
     container_name: isola-controller
-    ports:
-      - "3000:3000"  # API port
-      - "8675:8675"  # WebSocket port
     environment:
       - PYTHONUNBUFFERED=1
     networks:
