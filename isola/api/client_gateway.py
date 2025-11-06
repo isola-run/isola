@@ -14,7 +14,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 
 # Import Pydantic models and enums from dedicated modules
-from isola.control.agent_manager import AgentManager
 from isola.models.common import Error
 from isola.models.sandbox import (
     SandboxState,
@@ -23,6 +22,7 @@ from isola.models.sandbox import (
     SandboxList,
 )
 from isola.models.agent_ws import CreateSandboxRequest, CreateSandboxResponse
+from services.isola_controller.agent_manager import AgentManager
 
 logger = logging.getLogger(__name__)
 
