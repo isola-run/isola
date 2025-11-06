@@ -200,7 +200,6 @@ async def create_sandbox(
     )
     
     # Send request to agent via AgentManager
-    agent_manager = get_agent_manager()
     # Run async communication in background
     asyncio.create_task(_handle_sandbox_creation(
         tenant_id, sandbox_id, agent_request, agent_manager
