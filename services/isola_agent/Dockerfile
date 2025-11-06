@@ -2,12 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy the entire project
+# Copy the entire project (we need isola models and services)
 COPY . /app
 
 # Install dependencies
 RUN pip install --no-cache-dir websockets pydantic
 
 # Run the agent
-CMD ["python", "-m", "isola.agent.main"]
+CMD ["python", "-m", "services.isola_agent.main"]
 
