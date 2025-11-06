@@ -118,7 +118,7 @@ class CodeExecutionResponse(BaseModel):
 
 # In-memory storage
 class SandboxStore:
-    def __init__(self):
+    def __init__(self) -> None:
         self.sandboxes: Dict[str, Sandbox] = {}
         self.sandbox_processes: Dict[str, Any] = {}
         self.sandbox_dirs: Dict[str, Path] = {}
