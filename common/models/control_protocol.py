@@ -52,7 +52,7 @@ class CreateSandboxResponse(MsgBase):
     ip_address: Optional[str] = None
 
 Incoming = Annotated[
-    Union[AgentHello, AgentStatusUpdate, CreateSandboxResponse],
+    Union[Ack, Nack, AgentHello, AgentStatusUpdate, CreateSandboxResponse],
     Field(discriminator="type"),
 ]
 IncomingAdapter: TypeAdapter[Incoming] = TypeAdapter(Incoming)

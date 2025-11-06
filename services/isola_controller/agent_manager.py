@@ -43,6 +43,7 @@ class AgentManager:
                 try:
                     data = json.loads(raw)
                     msg = IncomingAdapter.validate_python(data)
+                    logger.info("received: %s", msg)
                 except (json.JSONDecodeError, ValidationError):
                     logger.exception("Failed to validate incoming message: %s", raw)
                     continue
@@ -59,9 +60,10 @@ class AgentManager:
                         if msg.sandbox_id in self._pending_sandbox_requests:
                             future = self._pending_sandbox_requests.pop(msg.sandbox_id)
                             future.set_result(msg)
+                    elif isinstance(msg, Ack) or isinstance(msg, Nack):
+                        pass
                     else:
-                        ack = Ack(acked_id=msg.id)
-                        await ws.send_text(ack.model_dump_json())
+                        logger.warning("unhandled message: %s", msg)
                 else: # not identified yet - ~first message
                     if isinstance(msg, AgentHello):
                         logger.info("identified agent: %s", msg.agent_id)
