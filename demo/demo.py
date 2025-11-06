@@ -4,8 +4,7 @@ Isola Sandbox Demo
 Demonstrates creating sandboxes and executing code using the Isola API
 """
 import sys
-import time
-from typing import Dict, Any
+from typing import Any
 from isola_client import IsolaClient, SandboxConfig, SandboxClass, SandboxState
 
 
@@ -328,7 +327,7 @@ print(f"Letter count: {char_count}")
         for sandbox_id in sandbox_ids:
             try:
                 client.delete_sandbox(sandbox_id, force=True)
-            except:
+            except Exception:
                 pass
         print("All sandboxes deleted")
 
@@ -464,12 +463,6 @@ def main():
                 print(f"\nError during demo: {e}")
                 import traceback
                 traceback.print_exc()
-        
-    except requests.exceptions.ConnectionError:
-        print("\nERROR: Cannot connect to Isola API server!")
-        print("Please make sure the mock server is running:")
-        print("  python demo/mock_server.py")
-        return 1
     except Exception as e:
         print(f"\nUnexpected error: {e}")
         import traceback
@@ -483,10 +476,3 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 
-
-
-        # Execute Bash commands in a sandbox
-        print("\n2. Executing Bash commands:")        
-        print("\n  a) System information:")
-        result = client.execute_bash(sandbox_id, "uname -a && echo && python3 --version")
-        print(f"     Output:\n{result['stdout'].strip()}")

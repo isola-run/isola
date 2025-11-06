@@ -2,7 +2,6 @@
 Mock Isola API Server
 Implements a subset of the Isola API for demonstration purposes
 """
-import asyncio
 import subprocess
 import sys
 import tempfile
@@ -11,7 +10,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from enum import Enum
 import shutil
-import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Header, Query, BackgroundTasks

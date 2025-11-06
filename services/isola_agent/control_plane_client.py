@@ -1,21 +1,17 @@
 import asyncio
-import json
 import logging
 import os
 import random
-import sys
-import time
 import uuid
-from typing import Optional
 
 import websockets
 
-from isola.models.agent_ws import AgentHello, AgentStatusUpdate
+
+from common.models.control_protocol import AgentHello, AgentStatusUpdate
+
 
 
 logger = logging.getLogger(__name__)
-
-
 
 
 class ControlPlaneClient:
@@ -59,6 +55,8 @@ class ControlPlaneClient:
         Returns (cpu_percent, mem_percent).
         """
         # Try psutil if available
+        cpu: float = 0
+        mem: float = 0
         try:
             import psutil  # type: ignore
 
@@ -69,7 +67,6 @@ class ControlPlaneClient:
             pass
 
         # Fallback CPU: derive from load average if available
-        cpu: float
         try:
             load_1, _load5, _load15 = os.getloadavg()  # type: ignore[attr-defined]
             ncpu = os.cpu_count() or 1
