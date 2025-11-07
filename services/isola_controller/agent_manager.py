@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Optional
 from pydantic import ValidationError
 import uvicorn
@@ -27,7 +28,8 @@ class AgentManager:
         self._pending_sandbox_requests: dict[str, asyncio.Future] = {}  # Track pending sandbox creation requests
         self._app = FastAPI()
         # todo benl: properly config
-        config = uvicorn.Config(self._app, host="0.0.0.0", port=8765, log_level="debug")
+        log_level = os.getenv("LOG_LEVEL", "info").lower()
+        config = uvicorn.Config(self._app, host="0.0.0.0", port=8765, log_level=log_level)
         self._server = uvicorn.Server(config)
         self._server_task: asyncio.Task | None = None
         self._app.add_api_websocket_route("/ws", self._manager_loop)

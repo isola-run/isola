@@ -1,13 +1,15 @@
 import logging
+import os
 import asyncio
 from services.isola_controller.agent_manager import AgentManager
 import sys
 
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+log_level = os.getenv("LOG_LEVEL", "info").upper()
+logger.setLevel(getattr(logging, log_level, logging.INFO))
 
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.DEBUG)
+handler.setLevel(getattr(logging, log_level, logging.INFO))
 
 formatter = logging.Formatter(
     fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
