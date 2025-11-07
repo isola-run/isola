@@ -6,9 +6,12 @@ services:
       context: .
       dockerfile: services/isola_controller/Dockerfile
     container_name: isola-controller
+    ports:
+      - "3000:3000"  # API port
+      - "8675:8675"  # WebSocket port
     environment:
       - PYTHONUNBUFFERED=1
-      - LOG_LEVEL=info
+      - LOG_LEVEL=debug
     networks:
       - isola-network
 
@@ -22,10 +25,22 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - ISOLA_CONTROLLER_WS_URL=ws://controller:8765/ws
-      - LOG_LEVEL=info
+      - LOG_LEVEL=debug
     networks:
       - isola-network
+
+  test:
+    image: curlimages/curl:latest
+    container_name: isola-test
+    depends_on:
+      - controller
+    networks:
+      - isola-network
+    command: sleep infinity
+    stdin_open: true
+    tty: true
 
 networks:
   isola-network:
     driver: bridge
+
