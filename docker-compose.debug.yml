@@ -30,15 +30,24 @@ services:
       - isola-network
 
   test:
-    image: curlimages/curl:latest
+    build:
+      context: .
+      dockerfile: tests/Dockerfile
     container_name: isola-test
     depends_on:
       - controller
+      - agent
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TEST_BASE_URL=http://controller:3000
+      - TEST_API_KEY=iso_sk_demo
+    volumes:
+      - ./tests:/tests:ro
     networks:
       - isola-network
-    command: sleep infinity
     stdin_open: true
     tty: true
+    working_dir: /tests
 
 networks:
   isola-network:
