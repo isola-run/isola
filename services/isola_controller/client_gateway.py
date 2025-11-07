@@ -181,6 +181,7 @@ async def create_sandbox(
         "lastActivityAt": None
     }
     sandbox = Sandbox.model_validate(sandbox_data)
+    logger.info(f"Creating sandbox: {sandbox}")
     
     # Store sandbox in memory
     if tenant_id not in sandboxes:
@@ -205,6 +206,7 @@ async def create_sandbox(
         tenant_id, sandbox_id, agent_request, agent_manager
     ))
     
+    logger.info(f"Sandbox requestcreated: {sandbox}")
     return sandbox
 
 
