@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: isola-agent
+  labels:
+    app.kubernetes.io/name: isola-agent
+    app.kubernetes.io/instance: isola-agent-dev
+    app.kubernetes.io/version: dev
+    app.kubernetes.io/component: agent
+    app.kubernetes.io/part-of: isola
+#    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: isola-agent
+      app.kubernetes.io/instance: isola-agent-dev
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: isola-agent
+        app.kubernetes.io/instance: isola-agent-dev
+        app.kubernetes.io/version: dev
+        app.kubernetes.io/component: agent
+        app.kubernetes.io/part-of: isola
+      #    app.kubernetes.io/managed-by: Helm
+    spec:
+      containers:
+      - name: isola-agent
+        image: isola-agent:dev
+        imagePullPolicy: Never
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: ISOLA_CONTROLLER_WS_URL
+          value: "ws://isola-controller:8765/ws"
