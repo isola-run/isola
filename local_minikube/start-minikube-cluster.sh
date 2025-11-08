@@ -12,7 +12,13 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 echo "starting minikube single-node cluster..."
 minikube start
 
+echo "build images..."
+cd ${SCRIPT_DIR}/..
+minikube image build -t isola-controller:dev -f services/isola_controller/Dockerfile .
+minikube image build -t isola-agent:dev -f services/isola_agent/Dockerfile .
+
 echo "applying local_minikube manifests..."
+cd ${SCRIPT_DIR}/
 kubectl apply -f ${SCRIPT_DIR}/manifests/
 
 echo "pods:"
