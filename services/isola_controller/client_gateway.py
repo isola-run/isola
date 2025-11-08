@@ -7,7 +7,8 @@ import logging
 import uuid
 from datetime import datetime
 from typing import Dict, Optional
-
+import os
+import sys
 from fastapi import FastAPI, HTTPException, Query, Security
 from fastapi.security import APIKeyHeader
 
@@ -21,6 +22,22 @@ from common.models.sandbox import (
     SandboxList,
 )
 from services.isola_controller.agent_manager import AgentManager
+
+logger = logging.getLogger()
+if not logger.handlers:
+    log_level = os.getenv("LOG_LEVEL", "info").upper()
+    logger.setLevel(getattr(logging, log_level, logging.INFO))
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(getattr(logging, log_level, logging.INFO))
+
+    formatter = logging.Formatter(
+        fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    handler.setFormatter(formatter)
+
+    logger.addHandler(handler)
 
 logger = logging.getLogger(__name__)
 
