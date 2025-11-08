@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi[standard]>=0.120.4",
+    "kubernetes>=34.1.0",
     "pydantic>=2.12.3",
     "pytest-asyncio>=1.2.0",
     "websockets>=15.0.1",
