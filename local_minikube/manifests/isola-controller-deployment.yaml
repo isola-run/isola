@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: isola-controller
+  labels:
+    app.kubernetes.io/name: isola-controller
+    app.kubernetes.io/instance: isola-controller-dev
+    app.kubernetes.io/version: dev
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/part-of: isola
+#    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: isola-controller
+      app.kubernetes.io/instance: isola-controller-dev
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: isola-controller
+        app.kubernetes.io/instance: isola-controller-dev
+        app.kubernetes.io/version: dev
+        app.kubernetes.io/component: control-plane
+        app.kubernetes.io/part-of: isola
+      #    app.kubernetes.io/managed-by: Helm
+    spec:
+      containers:
+      - name: isola-controller
+        image: isola-controller:dev
+        imagePullPolicy: Never
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: LOG_LEVEL
+          value: "info"
+        ports:
+          - name: ws
+            containerPort: 8765
+          - name: http
+            containerPort: 3000
