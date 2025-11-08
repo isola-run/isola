@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  controller:
+  isola-controller:
     build:
       context: .
       dockerfile: services/isola_controller/Dockerfile
@@ -15,16 +15,16 @@ services:
     networks:
       - isola-network
 
-  agent:
+  isola-agent:
     build:
       context: .
       dockerfile: services/isola_agent/Dockerfile
     container_name: isola-agent
     depends_on:
-      - controller
+      - isola-controller
     environment:
       - PYTHONUNBUFFERED=1
-      - ISOLA_CONTROLLER_WS_URL=ws://controller:8765/ws
+      - ISOLA_CONTROLLER_WS_URL=ws://isola-controller:8765/ws
       - LOG_LEVEL=debug
     networks:
       - isola-network
@@ -35,11 +35,11 @@ services:
       dockerfile: tests/Dockerfile
     container_name: isola-test
     depends_on:
-      - controller
-      - agent
+      - isola-controller
+      - isola-agent
     environment:
       - PYTHONUNBUFFERED=1
-      - TEST_BASE_URL=http://controller:3000
+      - TEST_BASE_URL=http://isola-controller:3000
       - TEST_API_KEY=iso_sk_demo
     volumes:
       - ./tests:/tests:ro

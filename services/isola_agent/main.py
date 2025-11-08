@@ -23,7 +23,7 @@ logger.addHandler(handler)
 
 async def main():
     agent_id = uuid.uuid4()
-    control_plane_url = os.getenv("ISOLA_CONTROLLER_WS_URL", "ws://controller:8765/ws")
+    control_plane_url = os.getenv("ISOLA_CONTROLLER_WS_URL", "ws://isola-controller:8765/ws")
     logger.info("Starting agent %s", agent_id)
     control_plane_client = ControlPlaneClient(agent_id=agent_id, control_plane_url=control_plane_url)
     await control_plane_client.start()
