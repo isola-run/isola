@@ -9,10 +9,9 @@ from datetime import datetime
 from typing import Dict, Optional
 import os
 import sys
-from fastapi import FastAPI, HTTPException, Query, Security
+from fastapi import FastAPI, HTTPException, Query, Security, Response
 from fastapi.security import APIKeyHeader
 
-# Import Pydantic models and enums from dedicated modules
 from common.models.common import Error
 from common.models.control_protocol import CreateSandboxRequest
 from common.models.sandbox import (
@@ -22,6 +21,7 @@ from common.models.sandbox import (
     SandboxList,
 )
 from services.isola_controller.agent_manager import AgentManager
+from services.isola_controller.kubernetes_control.sandboxes import KubernetesManager
 
 logger = logging.getLogger()
 if not logger.handlers:
@@ -43,18 +43,41 @@ logger = logging.getLogger(__name__)
 
 
 agent_manager = AgentManager()
+SANDBOX_BACKENDS = {"agent", "kubernetes"}
+SANDBOX_BACKEND = os.getenv("SANDBOX_BACKEND", "agent").lower()
+SANDBOX_BACKEND = "kubernetes"
+if SANDBOX_BACKEND not in SANDBOX_BACKENDS:
+    logger.warning(
+        "Unsupported SANDBOX_BACKEND=%s detected, defaulting to 'agent'",
+        SANDBOX_BACKEND,
+    )
+    SANDBOX_BACKEND = "agent"
+
+KUBERNETES_NAMESPACE = os.getenv("KUBERNETES_NAMESPACE", "isola-sandboxes")
+MINIKUBE_API_SERVER = "https://192.168.49.2:8443"
+MINIKUBE_CA_CERT = "/etc/minikube/ca.crt"
+MINIKUBE_CLIENT_CERT = "/etc/minikube/client.crt"
+MINIKUBE_CLIENT_KEY = "/etc/minikube/client.key"
+
+kubernetes_manager = KubernetesManager(
+    namespace=KUBERNETES_NAMESPACE,
+    api_server_url=MINIKUBE_API_SERVER,
+    ca_cert_path=MINIKUBE_CA_CERT,
+    client_cert_path=MINIKUBE_CLIENT_CERT,
+    client_key_path=MINIKUBE_CLIENT_KEY,
+)
 
 # todo benl: move this logic to somewhere more appropriate (if we keep)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # app.state.agent_manager = agent_manager
     await agent_manager.start()     # spawns uvicorn WS server in the background
+    if SANDBOX_BACKEND == "kubernetes":
+        await kubernetes_manager.initialize()
     try:
         yield
     finally:
         await agent_manager.shutdown()
-
-
+            
 app = FastAPI(
     title="Isola Sandbox Infrastructure API",
     version="1.0.0",
@@ -128,6 +151,7 @@ async def list_sandboxes(
     api_key: Optional[str] = Security(api_key_header),
 ):
     tenant_id = tenant_from_api_key(api_key)
+    await _sync_tenant_sandboxes_with_backend(tenant_id)
     
     tenant_sandboxes = sandboxes.get(tenant_id, {})
     
@@ -172,13 +196,14 @@ async def create_sandbox(
     # Generate sandbox ID
     sandbox_id = str(uuid.uuid4())
     now = datetime.utcnow()
+    desired_state = SandboxState.started if req.autoStart else SandboxState.stopped
     
     # Create sandbox object
     sandbox_data = {
         "id": sandbox_id,
         "name": req.name,
-        "state": SandboxState.creating.value,
-        "desiredState": (SandboxState.started if req.autoStart else SandboxState.stopped).value,
+        "state": SandboxState.creating,
+        "desiredState": desired_state,
         "class": req.class_.value if req.class_ else "small",
         "region": req.region if req.region else "default",
         "image": req.image or "python:3.11",
@@ -193,8 +218,8 @@ async def create_sandbox(
         "runnerId": None,
         "errorReason": None,
         "ipAddress": None,
-        "createdAt": now.isoformat(),
-        "updatedAt": now.isoformat(),
+        "createdAt": now,
+        "updatedAt": now,
         "lastActivityAt": None
     }
     sandbox = Sandbox.model_validate(sandbox_data)
@@ -220,7 +245,7 @@ async def create_sandbox(
     # Send request to agent via AgentManager
     # Run async communication in background
     asyncio.create_task(_handle_sandbox_creation(
-        tenant_id, sandbox_id, agent_request, agent_manager
+        tenant_id, sandbox_id, agent_request, agent_manager, req.autoStart
     ))
     
     logger.info(f"Sandbox requestcreated: {sandbox}")
@@ -231,13 +256,32 @@ async def _handle_sandbox_creation(
     tenant_id: str,
     sandbox_id: str, 
     request: CreateSandboxRequest,
-    agent_manager
+    agent_manager,
+    auto_start: bool,
 ):
-    """Handle sandbox creation with agent asynchronously"""
+    """Handle sandbox creation asynchronously using the configured backend"""
+    if SANDBOX_BACKEND == "kubernetes":
+        await _handle_kubernetes_sandbox_creation(
+            tenant_id, sandbox_id, request, auto_start
+        )
+        return
+    
+    await _handle_agent_sandbox_creation(
+        tenant_id, sandbox_id, request, agent_manager
+    )
+
+
+async def _handle_agent_sandbox_creation(
+    tenant_id: str,
+    sandbox_id: str,
+    request: CreateSandboxRequest,
+    agent_manager: AgentManager,
+):
+    """Delegate sandbox creation to an Isola agent over WebSocket"""
     try:
-        logger.info(f"Sending sandbox creation request to agent: {request}")
+        logger.info("Sending sandbox creation request to agent: %s", request)
         response = await agent_manager.send_create_sandbox_request(request)
-        logger.info(f"Sandbox creation response: {response}")
+        logger.info("Sandbox creation response: %s", response)
         
         if sandbox_id in sandboxes.get(tenant_id, {}):
             sandbox = sandboxes[tenant_id][sandbox_id]
@@ -264,6 +308,57 @@ async def _handle_sandbox_creation(
             sandbox.errorReason = str(e)
             sandbox.updatedAt = datetime.utcnow()
 
+
+async def _handle_kubernetes_sandbox_creation(
+    tenant_id: str,
+    sandbox_id: str,
+    request: CreateSandboxRequest,
+    auto_start: bool,
+):
+    """Provision the sandbox directly via the Kubernetes manager"""
+    tenant_sandboxes = sandboxes.get(tenant_id, {})
+    sandbox = tenant_sandboxes.get(sandbox_id)
+    if sandbox is None:
+        logger.warning("Sandbox %s vanished before provisioning", sandbox_id)
+        return
+
+    try:
+        success, ip_address, error_reason = await kubernetes_manager.create_pod(
+            sandbox_id=sandbox_id,
+            name=request.name,
+            image=request.image,
+            cpu=request.cpu,
+            memory=request.memory,
+            disk=request.disk,
+            env=request.env,
+            labels=request.labels,
+            auto_start=auto_start,
+        )
+
+        if success:
+            target_state = SandboxState.started if auto_start else SandboxState.stopped
+            sandbox.state = target_state
+            sandbox.desiredState = target_state
+            sandbox.ipAddress = ip_address
+            sandbox.errorReason = None
+        else:
+            sandbox.state = SandboxState.error
+            sandbox.errorReason = error_reason or "Failed to create sandbox pod"
+
+        sandbox.updatedAt = datetime.utcnow()
+        logger.info(
+            "Sandbox %s Kubernetes provisioning result success=%s ip=%s reason=%s",
+            sandbox_id,
+            success,
+            ip_address,
+            error_reason,
+        )
+    except Exception as exc:
+        logger.error("Error creating sandbox %s via Kubernetes: %s", sandbox_id, exc)
+        sandbox.state = SandboxState.error
+        sandbox.errorReason = str(exc)
+        sandbox.updatedAt = datetime.utcnow()
+
 @app.get(
     "/sandboxes/{sandbox_id}",
     response_model=Sandbox,
@@ -278,13 +373,10 @@ async def _handle_sandbox_creation(
     },
 )
 async def get_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_key_header)):
+
     tenant_id = tenant_from_api_key(api_key)
-    
-    tenant_sandboxes = sandboxes.get(tenant_id, {})
-    if sandbox_id not in tenant_sandboxes:
-        raise HTTPException(status_code=404, detail="Sandbox not found")
-    
-    return tenant_sandboxes[sandbox_id]
+    await _sync_tenant_sandboxes_with_backend(tenant_id, [sandbox_id])
+    return _get_sandbox_or_404(tenant_id, sandbox_id)
 
 
 @app.delete(
@@ -306,8 +398,31 @@ async def delete_sandbox(
     force: bool = Query(default=False),
     api_key: Optional[str] = Security(api_key_header),
 ):
-    tenant_from_api_key(api_key)
-    return None
+    tenant_id = tenant_from_api_key(api_key)
+    _ = _get_sandbox_or_404(tenant_id, sandbox_id)
+
+    if SANDBOX_BACKEND == "kubernetes":
+        success, error_reason = await kubernetes_manager.delete_pod(
+            sandbox_id, force=force
+        )
+        if not success:
+            status_code = 404 if error_reason == "Pod not found" else 500
+            raise HTTPException(
+                status_code=status_code,
+                detail=error_reason or "Failed to delete sandbox",
+            )
+    else:
+        raise HTTPException(
+            status_code=501,
+            detail="Sandbox deletion is only implemented for the Kubernetes backend",
+        )
+
+    tenant_sandboxes = sandboxes.get(tenant_id, {})
+    tenant_sandboxes.pop(sandbox_id, None)
+    if not tenant_sandboxes:
+        sandboxes.pop(tenant_id, None)
+
+    return Response(status_code=204)
 
 @app.post(
     "/sandboxes/{sandbox_id}/stop",
@@ -326,7 +441,28 @@ async def delete_sandbox(
     },
 )
 async def stop_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_key_header)):
-    tenant_from_api_key(api_key)
+    tenant_id = tenant_from_api_key(api_key)
+    sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
+    sandbox.desiredState = SandboxState.stopped
+    sandbox.state = SandboxState.stopping
+
+    if SANDBOX_BACKEND != "kubernetes":
+        raise HTTPException(
+            status_code=501,
+            detail="Sandbox stop is only implemented for the Kubernetes backend",
+        )
+
+    success, error_reason = await kubernetes_manager.stop_pod(sandbox_id)
+    if not success:
+        status_code = 404 if error_reason == "Pod not found" else 409
+        raise HTTPException(
+            status_code=status_code,
+            detail=error_reason or "Failed to stop sandbox",
+        )
+
+    await _sync_tenant_sandboxes_with_backend(tenant_id, [sandbox_id])
+    sandbox.updatedAt = datetime.utcnow()
+    return sandbox
 
 
 @app.post(
@@ -344,7 +480,71 @@ async def stop_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_ke
     },
 )
 async def restart_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_key_header)):
-    tenant_from_api_key(api_key)
+    tenant_id = tenant_from_api_key(api_key)
+    sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
+    sandbox.desiredState = SandboxState.started
+    sandbox.state = SandboxState.starting
+
+    if SANDBOX_BACKEND != "kubernetes":
+        raise HTTPException(
+            status_code=501,
+            detail="Sandbox restart is only implemented for the Kubernetes backend",
+        )
+
+    success, ip_address, error_reason = await kubernetes_manager.restart_pod(sandbox_id)
+    if not success:
+        status_code = 404 if error_reason == "Pod not found" else 409
+        raise HTTPException(
+            status_code=status_code,
+            detail=error_reason or "Failed to restart sandbox",
+        )
+
+    await _sync_tenant_sandboxes_with_backend(tenant_id, [sandbox_id])
+    if ip_address:
+        sandbox.ipAddress = ip_address
+    sandbox.updatedAt = datetime.utcnow()
+    return sandbox
+
+
+def _get_sandbox_or_404(tenant_id: str, sandbox_id: str) -> Sandbox:
+    tenant_sandboxes = sandboxes.get(tenant_id, {})
+    sandbox = tenant_sandboxes.get(sandbox_id)
+    if sandbox is None:
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+    return sandbox
+
+
+async def _sync_tenant_sandboxes_with_backend(
+    tenant_id: str, sandbox_ids: Optional[list[str]] = None
+):
+    """Update sandbox state from the active backend if available."""
+    if SANDBOX_BACKEND != "kubernetes":
+        return
+    tenant_sandboxes = sandboxes.get(tenant_id)
+    if not tenant_sandboxes:
+        return
+
+    ids_to_sync = sandbox_ids or list(tenant_sandboxes.keys())
+    for sandbox_id in ids_to_sync:
+        sandbox = tenant_sandboxes.get(sandbox_id)
+        if sandbox is None:
+            continue
+        try:
+            state, ip_address, error_reason = await kubernetes_manager.get_pod_status(
+                sandbox_id
+            )
+        except Exception as exc:
+            logger.error("Failed to sync sandbox %s status: %s", sandbox_id, exc)
+            continue
+
+        if state:
+            sandbox.state = state
+        elif error_reason:
+            sandbox.state = SandboxState.error
+        if ip_address:
+            sandbox.ipAddress = ip_address
+        sandbox.errorReason = error_reason
+        sandbox.updatedAt = datetime.utcnow()
 
 
 

@@ -1,21 +1,22 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: isola-controller
+  name: isola-controller-nodeport
   labels:
     app.kubernetes.io/name: isola-controller
     app.kubernetes.io/instance: isola-controller-dev
     app.kubernetes.io/version: dev
     app.kubernetes.io/component: control-plane
     app.kubernetes.io/part-of: isola
-#    app.kubernetes.io/managed-by: Helm
+    # app.kubernetes.io/managed-by: local-minikube
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app.kubernetes.io/name: isola-controller
     app.kubernetes.io/instance: isola-controller-dev
   ports:
-  - name: ws
-    port: 8765
-    targetPort: ws
+  - name: http-nodeport
     protocol: TCP
+    port: 3000
+    targetPort: http
+    nodePort: 30080

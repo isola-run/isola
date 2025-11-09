@@ -5,7 +5,6 @@ import os
 import pytest
 import subprocess
 import time
-from typing import Generator
 
 
 def pytest_addoption(parser):
@@ -65,7 +64,7 @@ def docker_compose_services(request):
     yield
     
     # Cleanup: stop docker-compose
-    print(f"\nStopping services...")
+    print("\nStopping services...")
     subprocess.run(
         ["docker-compose", "-f", compose_file, "down"],
         check=True,
