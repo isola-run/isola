@@ -15,9 +15,9 @@ COPY ./local_minikube/client.key /etc/minikube
 RUN pip install --no-cache-dir fastapi uvicorn websockets pydantic kubernetes
 
 # Expose ports
-EXPOSE 3000 8765
+EXPOSE 30080 8765
 
 # Run the API server which also starts the agent manager
 # todo benl: app is the http server, but we add another server (with lifespan) that starts the WS server
 # todo benl: that's a weird hack I am not sure how it would behave and should be revisited / rethink
-CMD ["python", "-m", "uvicorn", "services.isola_controller.client_gateway:app", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["python", "-m", "uvicorn", "services.isola_controller.client_gateway:app", "--host", "0.0.0.0", "--port", "30080"]

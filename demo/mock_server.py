@@ -491,5 +491,5 @@ async def shutdown_event():
 if __name__ == "__main__":
     import sys
     print("Starting Isola Mock Server...")
-    print("API Documentation: http://localhost:3000/docs")
-    uvicorn.run(app, host="0.0.0.0", port=3000)
+    print("API Documentation: http://localhost:30080/docs")
+    uvicorn.run(app, host="0.0.0.0", port=30080)

@@ -71,7 +71,7 @@ class SandboxConfig:
 class IsolaClient:
     """Client for interacting with the Isola API"""
     
-    def __init__(self, base_url: str = "http://localhost:3000", api_key: Optional[str] = None):
+    def __init__(self, base_url: str = "http://localhost:30080", api_key: Optional[str] = None):
         """
         Initialize the Isola client
         

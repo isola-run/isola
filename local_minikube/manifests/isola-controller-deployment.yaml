@@ -38,4 +38,4 @@ spec:
           - name: ws
             containerPort: 8765
           - name: http
-            containerPort: 3000
+            containerPort: 30080
