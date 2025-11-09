@@ -55,9 +55,9 @@ if SANDBOX_BACKEND not in SANDBOX_BACKENDS:
 
 KUBERNETES_NAMESPACE = os.getenv("KUBERNETES_NAMESPACE", "isola-sandboxes")
 MINIKUBE_API_SERVER = "https://192.168.49.2:8443"
-MINIKUBE_CA_CERT = "/etc/minikube/ca.crt"
-MINIKUBE_CLIENT_CERT = "/etc/minikube/client.crt"
-MINIKUBE_CLIENT_KEY = "/etc/minikube/client.key"
+MINIKUBE_CA_CERT = "/etc/ssl/ca.crt"
+MINIKUBE_CLIENT_CERT = "/etc/ssl/client.crt"
+MINIKUBE_CLIENT_KEY = "/etc/ssl/client.key"
 
 kubernetes_manager = KubernetesManager(
     namespace=KUBERNETES_NAMESPACE,
