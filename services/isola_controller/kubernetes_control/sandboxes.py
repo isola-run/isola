@@ -21,7 +21,7 @@ class KubernetesManager:
     
     def __init__(
         self,
-        namespace: str = "isola",
+        namespace: str = "isola-sandboxes",
         runtime_class_name: Optional[str] = "gvisor",
         api_server_url: Optional[str] = None,
         ca_cert_path: Optional[str] = None,
