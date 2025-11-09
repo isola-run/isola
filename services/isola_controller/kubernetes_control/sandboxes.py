@@ -22,12 +22,14 @@ class KubernetesManager:
     def __init__(
         self,
         namespace: str = "isola",
+        runtime_class_name: Optional[str] = "gvisor",
         api_server_url: Optional[str] = None,
         ca_cert_path: Optional[str] = None,
         client_cert_path: Optional[str] = None,
         client_key_path: Optional[str] = None,
     ):
         self.namespace = namespace
+        self.runtime_class_name = runtime_class_name
         self.api_server_url = api_server_url
         self.ca_cert_path = ca_cert_path
         self.client_cert_path = client_cert_path
@@ -195,6 +197,7 @@ class KubernetesManager:
         pod_spec = client.V1PodSpec(
             containers=[container],
             restart_policy="Always",
+            runtime_class_name=self.runtime_class_name,
             # Service account for potential RBAC
             # service_account_name="isola-sandbox",
             # DNS policy
