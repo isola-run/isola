@@ -53,7 +53,7 @@ if SANDBOX_BACKEND not in SANDBOX_BACKENDS:
     )
     SANDBOX_BACKEND = "agent"
 
-KUBERNETES_NAMESPACE = os.getenv("KUBERNETES_NAMESPACE", "isola-sandboxes")
+KUBERNETES_NAMESPACE = os.getenv("KUBERNETES_NAMESPACE", "isola")
 MINIKUBE_API_SERVER = "https://192.168.49.2:8443"
 MINIKUBE_CA_CERT = "/etc/ssl/ca.crt"
 MINIKUBE_CLIENT_CERT = "/etc/ssl/client.crt"
