@@ -5,8 +5,6 @@ Tests the full flow of creating, listing, and retrieving sandboxes
 import time
 import pytest
 import requests
-import json
-from typing import Dict, Any
 
 
 @pytest.fixture(scope="module")
@@ -50,7 +48,7 @@ def created_sandbox(api_client, sandbox_data):
             f"{api_client.base_url}/sandboxes/{sandbox['id']}",
             params={"force": "true"}
         )
-    except:
+    except Exception:
         pass  # Ignore cleanup errors
 
 
@@ -258,7 +256,7 @@ class TestSandboxIntegration:
             for sandbox_id in sandbox_ids:
                 try:
                     api_client.delete(f"{api_client.base_url}/sandboxes/{sandbox_id}", params={"force": "true"})
-                except:
+                except Exception:
                     pass
 
 

@@ -36,7 +36,7 @@ class ControlPlaneClient:
                 raw = await ws.recv()
                 data = json.loads(raw)
                 msg = OutgoingAdapter.validate_python(data)
-                logger.info("received: %s", msg)
+                logger.debug("received: %s", msg)
                 if isinstance(msg, Ack) or isinstance(msg, Nack):
                         pass
                 elif isinstance(msg, CreateSandboxRequest):
