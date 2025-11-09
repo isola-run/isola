@@ -10,7 +10,7 @@ fi
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
 echo "starting minikube single-node cluster..."
-minikube start
+minikube start --container-runtime=containerd --docker-opt containerd=/var/run/containerd/containerd.sock
 
 # of course, in production we shouldn't put a .key file in the image...
 echo "copying current minikube ssl data so it's available for the images built..."
