@@ -5,11 +5,7 @@ WORKDIR /app
 # Copy the entire project (we need all isola modules and services)
 COPY . /app
 
-
-RUN mkdir -p /etc/minikube
-COPY ./local_minikube/ca.crt /etc/minikube
-COPY ./local_minikube/client.crt /etc/minikube
-COPY ./local_minikube/client.key /etc/minikube
+COPY ./local_minikube/ssl/ /etc
 
 # Install dependencies
 RUN pip install --no-cache-dir fastapi uvicorn websockets pydantic kubernetes
