@@ -43,13 +43,13 @@ sleep 3
 # Check if server is running
 if ! kill -0 $SERVER_PID 2>/dev/null; then
     echo "Error: Failed to start mock server"
-    echo "Please check if port 3000 is already in use"
+    echo "Please check if port 30080 is already in use"
     exit 1
 fi
 
 echo "Server started successfully (PID: $SERVER_PID)"
 echo ""
-echo "API Documentation available at: http://localhost:3000/docs"
+echo "API Documentation available at: http://localhost:30080/docs"
 echo ""
 echo "------------------------------------"
 echo ""
