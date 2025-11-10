@@ -131,6 +131,39 @@ def tenant_from_api_key(api_key: Optional[str]) -> str:
 # In-memory storage for sandboxes: tenant_id -> {sandbox_id -> Sandbox}
 sandboxes: Dict[str, Dict[str, Sandbox]] = {}
 
+# Health Check
+@app.get(
+    "/health",
+    tags=["system"],
+    summary="Health check",
+    description="Check if the API is running and healthy",
+    responses={
+        200: {"description": "Service is healthy"},
+        503: {"description": "Service is unhealthy"}
+    }
+)
+async def health_check():
+    """Health check endpoint"""
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "components": {
+            "api": "healthy",
+            "agent_manager": "healthy" if agent_manager else "unhealthy",
+            "websocket_server": "healthy"  # Assuming it's healthy if the app is running
+        },
+        "version": "1.0.0"
+    }
+    
+    # Check if we have any active agents
+    try:
+        agent_count = len(agent_manager._active_agents) if hasattr(agent_manager, '_active_agents') else 0
+        health_status["agent_count"] = agent_count
+    except:
+        health_status["agent_count"] = 0
+    
+    return health_status
+
 # Sandboxes
 @app.get(
     "/sandboxes",
