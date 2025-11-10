@@ -88,3 +88,13 @@ class SshAccess(BaseModel):
     username: str
     command: str
     publicKey: Optional[str] = None
+
+
+class ExecuteCommandRequest(BaseModel):
+    command: str
+
+
+class ExecuteCommandResponse(BaseModel):
+    stdout: str
+    stderr: str
+    exitCode: int

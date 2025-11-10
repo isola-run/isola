@@ -15,6 +15,8 @@ from fastapi.security import APIKeyHeader
 from common.models.common import Error
 from common.models.control_protocol import CreateSandboxRequest
 from common.models.sandbox import (
+    ExecuteCommandRequest,
+    ExecuteCommandResponse,
     SandboxState,
     Sandbox,
     CreateSandbox,
@@ -537,6 +539,65 @@ async def restart_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api
         sandbox.ipAddress = ip_address
     sandbox.updatedAt = datetime.utcnow()
     return sandbox
+
+
+# ============================================================================
+# Command Execution Routes
+# ============================================================================
+
+@app.post(
+    "/sandboxes/{sandbox_id}/execute",
+    response_model=ExecuteCommandResponse,
+    status_code=200,
+    tags=["execution"],
+    summary="Execute a command in a sandbox",
+    description="Execute a command in the specified sandbox",
+    operation_id="executeCommand",
+    responses={
+        200: {"description": "Command executed successfully"},
+        401: {"description": "Unauthorized - Invalid or missing API key", "model": Error},
+        404: {"description": "Sandbox not found", "model": Error},
+        409: {"description": "Conflict - Sandbox not in started state", "model": Error},
+        501: {"description": "Not implemented for non-Kubernetes backend", "model": Error},
+    }
+)
+async def execute_command(
+    sandbox_id: str,
+    command_request: ExecuteCommandRequest,
+    api_key: Optional[str] = Security(api_key_header)
+):
+    """Execute a command in a sandbox."""
+    tenant_id = tenant_from_api_key(api_key)
+    
+    # Get sandbox to verify it exists and belongs to tenant
+    # TODO: __OMER__ keeping this in memory isn't good because it doesn't survive restarts
+    # We should think about how to handle this better.
+    sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
+    
+    if sandbox.state != SandboxState.started:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Sandbox must be in 'started' state, current state: {sandbox.state}"
+        )
+    
+    # TODO: __OMER__ add support for other backends
+    if SANDBOX_BACKEND != "kubernetes":
+        raise HTTPException(
+            status_code=501,
+            detail="Command execution is only implemented for the Kubernetes backend"
+        )
+    
+    # Execute command in Kubernetes pod
+    stdout, stderr, exit_code = await kubernetes_manager.execute_command(
+        sandbox_id, 
+        command_request.command
+    )
+    
+    return ExecuteCommandResponse(
+        stdout=stdout,
+        stderr=stderr,
+        exitCode=exit_code
+    )
 
 
 def _get_sandbox_or_404(tenant_id: str, sandbox_id: str) -> Sandbox:
