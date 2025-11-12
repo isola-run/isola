@@ -14,7 +14,7 @@ COPY tests/ /tests/
 COPY pyproject.toml /tests/
 
 # Set environment for tests to use internal service names
-ENV TEST_BASE_URL=http://isola-controller:3000
+ENV TEST_BASE_URL=http://isola-controller:30080
 ENV TEST_API_KEY=iso_sk_demo
 
 # Keep container running

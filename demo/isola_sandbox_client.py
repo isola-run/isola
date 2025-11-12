@@ -5,7 +5,7 @@ from isola_client import IsolaClient, SandboxConfig
 
 def main():    
     # Initialize client
-    client = IsolaClient(base_url="http://localhost:3000")
+    client = IsolaClient(base_url="http://localhost:30080")
     
     try:        
         # Create a sandbox

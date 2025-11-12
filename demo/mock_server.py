@@ -130,23 +130,24 @@ class SandboxStore:
         # Access the class field properly
         sandbox_class = create_req.class_ if hasattr(create_req, 'class_') else SandboxClass.SMALL
         
-        sandbox = Sandbox(
-            id=sandbox_id,
-            name=create_req.name,
-            state=SandboxState.CREATING,
-            **{"class": sandbox_class},  # Use the actual field name, not the alias
-            region=create_req.region or "local",
-            image=create_req.image or create_req.snapshot or "python:3.11",  # Support both for backward compat
-            cpu=create_req.cpu or 1,
-            memory=create_req.memory or 1,
-            disk=create_req.disk or 10,
-            gpu=create_req.gpu or 0,
-            env=create_req.env or {},
-            labels=create_req.labels or {},
-            ipAddress=f"10.0.0.{len(self.sandboxes) + 1}",
-            createdAt=now,
-            updatedAt=now
-        )
+        sandbox_data = {
+            "id": sandbox_id,
+            "name": create_req.name,
+            "state": SandboxState.CREATING,
+            "class": sandbox_class,
+            "region": create_req.region or "local",
+            "image": create_req.image or create_req.snapshot or "python:3.11",
+            "cpu": create_req.cpu or 1,
+            "memory": create_req.memory or 1,
+            "disk": create_req.disk or 10,
+            "gpu": create_req.gpu or 0,
+            "env": create_req.env or {},
+            "labels": create_req.labels or {},
+            "ipAddress": f"10.0.0.{len(self.sandboxes) + 1}",
+            "createdAt": now,
+            "updatedAt": now
+        }
+        sandbox = Sandbox.model_validate(sandbox_data)
         
         # Create a temporary directory for this sandbox
         sandbox_dir = Path(tempfile.mkdtemp(prefix=f"isola_sandbox_{sandbox_id}_"))
@@ -490,5 +491,5 @@ async def shutdown_event():
 if __name__ == "__main__":
     import sys
     print("Starting Isola Mock Server...")
-    print("API Documentation: http://localhost:3000/docs")
-    uvicorn.run(app, host="0.0.0.0", port=3000)
+    print("API Documentation: http://localhost:30080/docs")
+    uvicorn.run(app, host="0.0.0.0", port=30080)

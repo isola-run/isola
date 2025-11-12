@@ -36,7 +36,7 @@ services:
       - isola-agent
     environment:
       - PYTHONUNBUFFERED=1
-      - TEST_BASE_URL=http://isola-controller:3000
+      - TEST_BASE_URL=http://isola-controller:30080
       - TEST_API_KEY=iso_sk_demo
     volumes:
       - ./tests:/tests:ro

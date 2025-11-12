@@ -45,7 +45,7 @@ class AgentManager:
                 try:
                     data = json.loads(raw)
                     msg = IncomingAdapter.validate_python(data)
-                    logger.info("received: %s", msg)
+                    logger.debug("received: %s", msg)
                 except (json.JSONDecodeError, ValidationError):
                     logger.exception("Failed to validate incoming message: %s", raw)
                     continue

@@ -11,7 +11,7 @@ def main():
     print("-" * 40)
     
     # Connect to the API
-    client = IsolaClient(base_url="http://localhost:3000")
+    client = IsolaClient(base_url="http://localhost:30080")
     
     # Check server health
     health = client.health_check()
