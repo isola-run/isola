@@ -604,6 +604,142 @@ class KubernetesManager:
         finally:
             w.stop()
     
+    async def upload_file(self, sandbox_id: str, file_path: str, content: str) -> int:
+        """
+        Upload a file to a pod (similar to Daytona's fs.uploadFile).
+        
+        Args:
+            sandbox_id: The sandbox ID (pod label)
+            file_path: The target path in the pod (absolute path)
+            content: File content as plain text
+            
+        Returns:
+            file_size: Size of the uploaded file in bytes
+            
+        Raises:
+            Exception if upload fails
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        try:
+            from kubernetes.stream import stream
+            
+            core_v1 = self._get_core_v1()
+            
+            # Find pod by sandbox ID
+            label_selector = f"sandbox-id={sandbox_id}"
+            pods = core_v1.list_namespaced_pod(
+                namespace=self.namespace,
+                label_selector=label_selector
+            )
+            
+            if not pods.items:
+                raise Exception(f"Pod not found for sandbox {sandbox_id}")
+            
+            pod = pods.items[0]
+            pod_name = self._require_metadata_name(pod.metadata)
+            
+            # Get content size for logging
+            import os
+            import base64
+            content_bytes = content.encode('utf-8')
+            file_size = len(content_bytes)
+            
+            # Create parent directory first
+            parent_dir = os.path.dirname(file_path)
+            if parent_dir:
+                # Try to create directory, handling permission issues gracefully
+                logger.info(f"Creating directory: {parent_dir}")
+                
+                # First check if directory exists
+                check_dir_cmd = ['/bin/sh', '-c', f'test -d "{parent_dir}" && echo "exists" || echo "missing"']
+                check_output = stream(
+                    core_v1.connect_get_namespaced_pod_exec,
+                    pod_name,
+                    self.namespace,
+                    command=check_dir_cmd,
+                    stderr=False,
+                    stdin=False,
+                    stdout=True,
+                    tty=False
+                )
+                
+                if "missing" in str(check_output):
+                    # Directory doesn't exist, try to create it
+                    mkdir_command = ['/bin/sh', '-c', f'mkdir -p "{parent_dir}" 2>&1']
+                    mkdir_output = stream(
+                        core_v1.connect_get_namespaced_pod_exec,
+                        pod_name,
+                        self.namespace,
+                        command=mkdir_command,
+                        stderr=True,
+                        stdin=False,
+                        stdout=True,
+                        tty=False
+                    )
+                    
+                    if mkdir_output:
+                        logger.info(f"mkdir output: {mkdir_output}")
+                        if "permission denied" in mkdir_output.lower():
+                            # Permission denied - suggest alternative path
+                            logger.warning(f"Permission denied creating {parent_dir}. Consider using /tmp or /workspace instead.")
+                            raise Exception(f"Permission denied creating directory {parent_dir}. Try using /tmp or another writable directory instead.")
+                        elif "error" in mkdir_output.lower():
+                            raise Exception(f"Failed to create directory {parent_dir}: {mkdir_output}")
+                    else:
+                        logger.info(f"Directory {parent_dir} created successfully")
+            
+            # Encode content as base64 to avoid any shell escaping issues
+            content_b64 = base64.b64encode(content_bytes).decode('ascii')
+            
+            # Write file using echo with base64 - simple and reliable
+            # We'll use echo with proper escaping of the base64 content
+            write_cmd = [
+                '/bin/sh', '-c',
+                f"echo '{content_b64}' | base64 -d > '{file_path}'"
+            ]
+            
+            write_output = stream(
+                core_v1.connect_get_namespaced_pod_exec,
+                pod_name,
+                self.namespace,
+                command=write_cmd,
+                stderr=True,
+                stdin=False,
+                stdout=True,
+                tty=False
+            )
+            
+            logger.info(f"Write command output: {write_output}")
+            
+            if write_output and "error" in str(write_output).lower():
+                raise Exception(f"Failed to write file: {write_output}")
+            
+            # Verify file was created and has correct size
+            verify_command = ['sh', '-c', f'ls -la {file_path} 2>&1']
+            verify_output = stream(
+                core_v1.connect_get_namespaced_pod_exec,
+                pod_name,
+                self.namespace,
+                command=verify_command,
+                stderr=True,
+                stdin=False,
+                stdout=True,
+                tty=False
+            )
+            
+            if isinstance(verify_output, str):
+                if "No such file" in verify_output or "cannot access" in verify_output:
+                    raise Exception(f"File was not created at {file_path}: {verify_output}")
+            
+            logger.info(f"Uploaded file to pod {pod_name}: {file_path} ({file_size} bytes)")
+            return file_size
+            
+        except Exception as e:
+            logger.error(f"Failed to upload file to sandbox {sandbox_id}: {e}")
+            raise Exception(f"Failed to upload file: {str(e)}")
+    
     async def execute_command(self, sandbox_id: str, command: str) -> tuple[str, str, int]:
         """
         Execute a command in a pod.

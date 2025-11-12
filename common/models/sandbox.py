@@ -98,3 +98,13 @@ class ExecuteCommandResponse(BaseModel):
     stdout: str
     stderr: str
     exitCode: int
+
+
+class FileUploadRequest(BaseModel):
+    path: str
+    content: str  # Plain text content only
+
+
+class FileUploadResponse(BaseModel):
+    path: str
+    size: int

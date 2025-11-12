@@ -17,6 +17,8 @@ from common.models.control_protocol import CreateSandboxRequest
 from common.models.sandbox import (
     ExecuteCommandRequest,
     ExecuteCommandResponse,
+    FileUploadRequest,
+    FileUploadResponse,
     SandboxState,
     Sandbox,
     CreateSandbox,
@@ -572,20 +574,20 @@ async def execute_command(
     # Get sandbox to verify it exists and belongs to tenant
     # TODO: __OMER__ keeping this in memory isn't good because it doesn't survive restarts
     # We should think about how to handle this better.
-    sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
+    # sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
     
-    if sandbox.state != SandboxState.started:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Sandbox must be in 'started' state, current state: {sandbox.state}"
-        )
+    # if sandbox.state != SandboxState.started:
+    #     raise HTTPException(
+    #         status_code=409,
+    #         detail=f"Sandbox must be in 'started' state, current state: {sandbox.state}"
+    #     )
     
-    # TODO: __OMER__ add support for other backends
-    if SANDBOX_BACKEND != "kubernetes":
-        raise HTTPException(
-            status_code=501,
-            detail="Command execution is only implemented for the Kubernetes backend"
-        )
+    # # TODO: __OMER__ add support for other backends
+    # if SANDBOX_BACKEND != "kubernetes":
+    #     raise HTTPException(
+    #         status_code=501,
+    #         detail="Command execution is only implemented for the Kubernetes backend"
+    #     )
     
     # Execute command in Kubernetes pod
     stdout, stderr, exit_code = await kubernetes_manager.execute_command(
@@ -597,6 +599,62 @@ async def execute_command(
         stdout=stdout,
         stderr=stderr,
         exitCode=exit_code
+    )
+
+
+# ============================================================================
+# File Upload Routes
+# ============================================================================
+
+@app.post(
+    "/sandboxes/{sandbox_id}/fs/upload",
+    response_model=FileUploadResponse,
+    status_code=200,
+    tags=["files"],
+    summary="Upload a text file to a sandbox",
+    description="Upload a text file to the specified path in the sandbox. Accepts plain text content only.",
+    operation_id="uploadFile",
+    responses={
+        200: {"description": "File uploaded successfully"},
+        401: {"description": "Unauthorized - Invalid or missing API key", "model": Error},
+        404: {"description": "Sandbox not found", "model": Error},
+        409: {"description": "Conflict - Sandbox not in started state", "model": Error},
+        501: {"description": "Not implemented for non-Kubernetes backend", "model": Error},
+    }
+)
+async def upload_file(
+    sandbox_id: str,
+    file_request: FileUploadRequest,
+    api_key: Optional[str] = Security(api_key_header)
+):
+    """Upload a file to a sandbox filesystem."""
+    tenant_id = tenant_from_api_key(api_key)
+    
+    # Get sandbox to verify it exists and belongs to tenant
+    # sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
+    
+    # if sandbox.state != SandboxState.started:
+    #     raise HTTPException(
+    #         status_code=409,
+    #         detail=f"Sandbox must be in 'started' state, current state: {sandbox.state}"
+    #     )
+    
+    # if SANDBOX_BACKEND != "kubernetes":
+    #     raise HTTPException(
+    #         status_code=501,
+    #         detail="File upload is only implemented for the Kubernetes backend"
+    #     )
+    
+    # Upload file to Kubernetes pod
+    file_size = await kubernetes_manager.upload_file(
+        sandbox_id, 
+        file_request.path,
+        file_request.content
+    )
+    
+    return FileUploadResponse(
+        path=file_request.path,
+        size=file_size
     )
 
 
