@@ -6,7 +6,7 @@ from isola_client import IsolaClient, SandboxConfig, SandboxClass, SandboxState
 def main():    
     # Initialize client
     print("\nInitializing Isola client...")
-    client = IsolaClient(base_url="http://localhost:3000")
+    client = IsolaClient(base_url="http://localhost:30080")
     
     try:
         # Check if server is running

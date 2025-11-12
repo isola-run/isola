@@ -5,7 +5,6 @@ import os
 import pytest
 import subprocess
 import time
-from typing import Generator
 
 
 def pytest_addoption(parser):
@@ -13,7 +12,7 @@ def pytest_addoption(parser):
     parser.addoption(
         "--base-url",
         action="store",
-        default="http://localhost:3000",
+        default="http://localhost:30080",
         help="Base URL for the API server"
     )
     parser.addoption(
@@ -65,7 +64,7 @@ def docker_compose_services(request):
     yield
     
     # Cleanup: stop docker-compose
-    print(f"\nStopping services...")
+    print("\nStopping services...")
     subprocess.run(
         ["docker-compose", "-f", compose_file, "down"],
         check=True,

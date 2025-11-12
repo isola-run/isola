@@ -14,7 +14,7 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: http://localhost:3000
+  - url: http://localhost:30080
     description: Default local server
   - url: https://api.isola.local
     description: Production server
