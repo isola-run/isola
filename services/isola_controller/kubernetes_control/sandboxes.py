@@ -24,16 +24,10 @@ class KubernetesManager:
         namespace: str = "isola-sandboxes",
         runtime_class_name: Optional[str] = "gvisor",
         api_server_url: Optional[str] = None,
-        ca_cert_path: Optional[str] = None,
-        client_cert_path: Optional[str] = None,
-        client_key_path: Optional[str] = None,
     ):
         self.namespace = namespace
         self.runtime_class_name = runtime_class_name
         self.api_server_url = api_server_url
-        self.ca_cert_path = ca_cert_path
-        self.client_cert_path = client_cert_path
-        self.client_key_path = client_key_path
         self.core_v1: Optional[client.CoreV1Api] = None
         self.apps_v1: Optional[client.AppsV1Api] = None
         self._initialized = False
@@ -49,10 +43,16 @@ class KubernetesManager:
             raise RuntimeError("KubernetesManager is not initialized (AppsV1Api missing)")
         return self.apps_v1
         
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize Kubernetes client - call from async context"""
         if self._initialized:
             return
+
+        logger.info(
+            "Initializing KubernetesManager for namespace '%s' (runtime_class=%s)",
+            self.namespace,
+            self.runtime_class_name,
+        )
 
         if self._init_lock is None:
             self._init_lock = asyncio.Lock()
@@ -61,62 +61,20 @@ class KubernetesManager:
             if self._initialized:
                 return
             
-            api_client: Optional[client.ApiClient] = None
-
-            if all(
-                [
-                    self.api_server_url,
-                    self.ca_cert_path,
-                    self.client_cert_path,
-                    self.client_key_path,
-                ]
-            ):
-                logger.info(
-                    "Using explicit Kubernetes credentials for %s",
-                    self.api_server_url,
-                )
-                configuration = client.Configuration()
-                configuration.host = self.api_server_url
-                configuration.ssl_ca_cert = self.ca_cert_path
-                configuration.cert_file = self.client_cert_path
-                configuration.key_file = self.client_key_path
-                configuration.verify_ssl = True
-                api_client = client.ApiClient(configuration)
-            else:
-                try:
-                    config.load_incluster_config()
-                    logger.info("Loaded in-cluster Kubernetes config")
-                except config.ConfigException:
-                    config.load_kube_config()
-                    logger.info("Loaded kubeconfig from file")
-                api_client = client.ApiClient()
+            try:
+                config.load_incluster_config()
+                logger.info("Loaded in-cluster Kubernetes config")
+            except config.ConfigException:
+                config.load_kube_config()
+                logger.info("Loaded kubeconfig from file")
+            api_client: client.ApiClient = client.ApiClient()
             
             self.core_v1 = client.CoreV1Api(api_client)
             self.apps_v1 = client.AppsV1Api(api_client)
             
-            # Ensure namespace exists
-            await self._ensure_namespace()
             self._initialized = True
         
-    async def _ensure_namespace(self):
-        """Create namespace if it doesn't exist"""
-        core_v1 = self._get_core_v1()
-        try:
-            core_v1.read_namespace(name=self.namespace)
-            logger.info(f"Namespace {self.namespace} already exists")
-        except ApiException as e:
-            if e.status == 404:
-                namespace_body = client.V1Namespace(
-                    metadata=client.V1ObjectMeta(
-                        name=self.namespace,
-                        labels={"app": "isola", "managed-by": "isola-controller"}
-                    )
-                )
-                core_v1.create_namespace(body=namespace_body)
-                logger.info(f"Created namespace {self.namespace}")
-            else:
-                raise
-    
+
     def _build_pod_spec(
         self,
         sandbox_id: str,
@@ -252,16 +210,28 @@ class KubernetesManager:
         env: Dict[str, str],
         labels: Dict[str, str],
         gpu: int = 0,
-        auto_start: bool = True
-    ) -> tuple[bool, Optional[str], Optional[str]]:
+            auto_start: bool = True
+        ) -> tuple[bool, Optional[str], Optional[str]]:
         """
         Create a pod for a sandbox.
-        
+
         Returns:
             (success, pod_name, error_reason)
         """
         if not self._initialized:
             await self.initialize()
+
+        logger.info(
+            "Creating pod for sandbox '%s' (%s) image=%s cpu=%s mem=%sGi disk=%sGi gpu=%s auto_start=%s",
+            sandbox_id,
+            name,
+            image,
+            cpu,
+            memory,
+            disk,
+            gpu,
+            auto_start,
+        )
         
         try:
             pod_spec = self._build_pod_spec(
@@ -300,6 +270,8 @@ class KubernetesManager:
         loop = asyncio.get_running_loop()
         start_time = loop.time()
         core_v1 = self._get_core_v1()
+
+        logger.info("Waiting for pod '%s' to receive IP (timeout=%ss)", pod_name, timeout)
         
         while True:
             try:
@@ -338,6 +310,8 @@ class KubernetesManager:
         """
         if not self._initialized:
             await self.initialize()
+
+        logger.info("Fetching pod status for sandbox '%s'", sandbox_id)
         
         try:
             core_v1 = self._get_core_v1()
@@ -390,6 +364,11 @@ class KubernetesManager:
         """List all sandbox pods"""
         if not self._initialized:
             await self.initialize()
+
+        logger.info(
+            "Listing sandbox pods with selector '%s'",
+            label_selector or "app=isola-sandbox",
+        )
         
         try:
             core_v1 = self._get_core_v1()
@@ -430,6 +409,8 @@ class KubernetesManager:
         """
         if not self._initialized:
             await self.initialize()
+
+        logger.info("Stopping pod for sandbox '%s'", sandbox_id)
         
         try:
             core_v1 = self._get_core_v1()
@@ -441,6 +422,7 @@ class KubernetesManager:
             )
             
             if not pods.items:
+                logger.info("No pod found to stop for sandbox '%s'", sandbox_id)
                 return False, "Pod not found"
             
             pod = pods.items[0]
@@ -485,6 +467,12 @@ class KubernetesManager:
         """
         if not self._initialized:
             await self.initialize()
+
+        logger.info(
+            "Deleting pod for sandbox '%s' (force=%s)",
+            sandbox_id,
+            force,
+        )
         
         try:
             core_v1 = self._get_core_v1()
@@ -496,6 +484,7 @@ class KubernetesManager:
             )
             
             if not pods.items:
+                logger.info("No pod found to delete for sandbox '%s'", sandbox_id)
                 return False, "Pod not found"
             
             pod = pods.items[0]
@@ -533,6 +522,8 @@ class KubernetesManager:
         """
         if not self._initialized:
             await self.initialize()
+
+        logger.info("Restarting pod for sandbox '%s'", sandbox_id)
         
         try:
             core_v1 = self._get_core_v1()
@@ -582,6 +573,12 @@ class KubernetesManager:
         
         core_v1 = self._get_core_v1()
         w = k8s_watch.Watch()
+
+        logger.info(
+            "Watching pod events for selector '%s'%s",
+            label_selector,
+            f" (sandbox_id={sandbox_id})" if sandbox_id else "",
+        )
         
         try:
             for event in w.stream(
@@ -603,6 +600,7 @@ class KubernetesManager:
             logger.error(f"Error watching pod events: {e}")
         finally:
             w.stop()
+            logger.info("Stopped watching pod events for selector '%s'", label_selector)
     
     async def execute_command(self, sandbox_id: str, command: str) -> tuple[str, str, int]:
         """
@@ -680,8 +678,8 @@ class KubernetesManager:
     
     async def cleanup(self):
         """Cleanup resources"""
+        logger.info("Cleanup requested for KubernetesManager (no-op)")
         # Kubernetes client doesn't need explicit cleanup
-        pass
 
     @staticmethod
     def _require_metadata_name(metadata: Optional[client.V1ObjectMeta]) -> str:

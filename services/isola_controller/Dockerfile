@@ -5,8 +5,6 @@ WORKDIR /app
 # Copy the entire project (we need all isola modules and services)
 COPY . /app
 
-COPY ./local_minikube/ssl/ /etc/ssl/
-
 # Install dependencies
 RUN pip install --no-cache-dir fastapi uvicorn websockets pydantic kubernetes
 
