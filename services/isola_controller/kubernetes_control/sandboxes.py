@@ -602,6 +602,80 @@ class KubernetesManager:
             w.stop()
             logger.info("Stopped watching pod events for selector '%s'", label_selector)
     
+    async def execute_command(self, sandbox_id: str, command: str) -> tuple[str, str, int]:
+        """
+        Execute a command in a pod.
+        
+        Args:
+            sandbox_id: The sandbox ID (pod label)
+            command: The command to execute
+            
+        Returns:
+            (stdout, stderr, exit_code)
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        try:
+            from kubernetes.stream import stream
+            
+            core_v1 = self._get_core_v1()
+            
+            # Find pod by sandbox ID
+            label_selector = f"sandbox-id={sandbox_id}"
+            pods = core_v1.list_namespaced_pod(
+                namespace=self.namespace,
+                label_selector=label_selector
+            )
+            
+            if not pods.items:
+                logger.error(f"Pod not found for sandbox {sandbox_id}")
+                return "", f"Pod not found for sandbox {sandbox_id}", 1
+            
+            pod = pods.items[0]
+            pod_name = self._require_metadata_name(pod.metadata)
+            
+            # Execute command in pod
+            exec_command = ['/bin/sh', '-c', command]
+            
+            resp = stream(
+                core_v1.connect_get_namespaced_pod_exec,
+                pod_name,
+                self.namespace,
+                command=exec_command,
+                stderr=True,
+                stdin=False,
+                stdout=True,
+                tty=False,
+                _preload_content=False
+            )
+            
+            # Read stdout and stderr
+            stdout_data = ""
+            stderr_data = ""
+            
+            while resp.is_open():
+                resp.update(timeout=1)
+                if resp.peek_stdout():
+                    stdout_data += resp.read_stdout()
+                if resp.peek_stderr():
+                    stderr_data += resp.read_stderr()
+            
+            # Get exit code
+            exit_code = resp.returncode if hasattr(resp, 'returncode') else 0
+            
+            resp.close()
+            
+            logger.info(f"Executed command in pod {pod_name}: {command[:50]}...")
+            return stdout_data, stderr_data, exit_code
+            
+        except ApiException as e:
+            logger.error(f"Failed to execute command in sandbox {sandbox_id}: {e}")
+            return "", f"API error: {e.reason}", 1
+        except Exception as e:
+            logger.error(f"Unexpected error executing command in sandbox {sandbox_id}: {e}")
+            return "", str(e), 1
+    
     async def cleanup(self):
         """Cleanup resources"""
         logger.info("Cleanup requested for KubernetesManager (no-op)")

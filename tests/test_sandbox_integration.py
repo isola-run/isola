@@ -55,13 +55,22 @@ def created_sandbox(api_client, sandbox_data):
 class TestSandboxIntegration:
     """Integration tests for sandbox management"""
     
-    # TODO: __OMER__ add health check
-    # def test_health_check(self, api_client):
-    #     """Test that the health endpoint is accessible"""
-    #     response = api_client.get(f"{api_client.base_url}/health")
-    #     assert response.status_code == 200
-    #     data = response.json()
-    #     assert data["status"] == "healthy"
+    def test_health_check(self, api_client):
+        """Test that the health endpoint is accessible"""
+        response = api_client.get(f"{api_client.base_url}/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert "timestamp" in data
+        assert "components" in data
+        assert "version" in data
+        assert "agent_count" in data
+        
+        # Verify components structure
+        components = data["components"]
+        assert "api" in components
+        assert "agent_manager" in components
+        assert "websocket_server" in components
     
     def test_create_sandbox(self, api_client, sandbox_data):
         """Test creating a new sandbox"""
