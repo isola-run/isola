@@ -97,7 +97,7 @@ class AgentManager:
         logger.info("websocket loop exiting for agent: %s", agent_id)
 
     async def start(self) -> None:
-        logger.info("Starting agent manager server on localhost:8765...")
+        logger.info("Starting agent manager server...")
         # Run the server in a background task
         self._server_task = asyncio.create_task(self._server.serve())
 

@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: isola-controller
+  namespace: isola-control-plane
   labels:
     app.kubernetes.io/name: isola-controller
     app.kubernetes.io/instance: isola-controller-dev
@@ -25,6 +26,7 @@ spec:
         app.kubernetes.io/part-of: isola
       #    app.kubernetes.io/managed-by: Helm
     spec:
+      serviceAccountName: isola-controller-serviceaccount
       containers:
       - name: isola-controller
         image: isola-controller:dev
