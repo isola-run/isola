@@ -2,11 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy the entire project (we need all isola modules and services)
-COPY . /app
-
 # Install dependencies
 RUN pip install --no-cache-dir fastapi uvicorn websockets pydantic kubernetes
+
+# Copy the entire project (we need all isola modules and services)
+COPY . /app
 
 # Expose ports
 EXPOSE 30080 8765
