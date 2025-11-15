@@ -1,0 +1,9 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sandboxes-manager
+  namespace: isola-sandboxes
+rules:
+- apiGroups: [""] # "" indicates the core API group
+  resources: ["pods", "pods/log", "pods/status"]
+  verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]

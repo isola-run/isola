@@ -53,18 +53,12 @@ if SANDBOX_BACKEND not in SANDBOX_BACKENDS:
     )
     SANDBOX_BACKEND = "agent"
 
-KUBERNETES_NAMESPACE = os.getenv("KUBERNETES_NAMESPACE", "isola")
+KUBERNETES_NAMESPACE = os.getenv("KUBERNETES_NAMESPACE", "isola-sandboxes")
 MINIKUBE_API_SERVER = "https://192.168.49.2:8443"
-MINIKUBE_CA_CERT = "/etc/ssl/ca.crt"
-MINIKUBE_CLIENT_CERT = "/etc/ssl/client.crt"
-MINIKUBE_CLIENT_KEY = "/etc/ssl/client.key"
 
 kubernetes_manager = KubernetesManager(
     namespace=KUBERNETES_NAMESPACE,
     api_server_url=MINIKUBE_API_SERVER,
-    ca_cert_path=MINIKUBE_CA_CERT,
-    client_cert_path=MINIKUBE_CLIENT_CERT,
-    client_key_path=MINIKUBE_CLIENT_KEY,
 )
 
 # todo benl: move this logic to somewhere more appropriate (if we keep)
