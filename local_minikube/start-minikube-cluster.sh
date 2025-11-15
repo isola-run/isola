@@ -15,10 +15,30 @@ if ! minikube addons list | grep -q "gvisor.*enabled"; then
   minikube addons enable gvisor
 fi
 
-echo "build images..."
+build_and_verify_image() {
+  local IMAGE_NAME=$1
+  local DOCKERFILE_PATH=$2
+  
+  echo "  → removing old ${IMAGE_NAME}..."
+  minikube image rm "${IMAGE_NAME}" 2>/dev/null || true
+  
+  echo "  → building ${IMAGE_NAME}..."
+  minikube image build -t "${IMAGE_NAME}" -f "${DOCKERFILE_PATH}" .
+  
+  # https://github.com/kubernetes/minikube/issues/16576
+  # Verify image exists because build failures don't return non-zero exit codes
+  if ! minikube image ls | grep -q "${IMAGE_NAME}"; then
+    echo "ERROR: Build failed for ${IMAGE_NAME}" >&2
+    return 1
+  fi
+  
+  echo "✓ ${IMAGE_NAME} built successfully"
+}
+
+echo "building images..."
 cd ${SCRIPT_DIR}/..
-minikube image build -t isola-controller:dev -f services/isola_controller/Dockerfile .
-minikube image build -t isola-agent:dev -f services/isola_agent/Dockerfile .
+build_and_verify_image "isola-controller:dev" "services/isola_controller/Dockerfile"
+build_and_verify_image "isola-agent:dev" "services/isola_agent/Dockerfile"
 
 echo "applying manifests in correct order..."
 cd ${SCRIPT_DIR}/
