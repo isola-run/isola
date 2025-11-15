@@ -205,7 +205,3 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-
-
-local_minikube/ssl/*.crt
-local_minikube/ssl/*.key
