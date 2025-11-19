@@ -27,24 +27,27 @@ class ControlPlaneClient:
         self._send_lock: asyncio.Lock = asyncio.Lock()
 
 
-    async def _send_agent_hello(self) -> None:
-        hello = AgentHello(agent_id=self._agent_id)
-        ws = await self._verify_solid_ground()
-        await ws.send(hello.model_dump_json())
-
     async def _verify_solid_ground(self) -> websockets.ClientConnection:
-        # todo benl: make sense of the locking
         async with self._send_lock:
+            needs_hello = False
             if self._current_ws is None:
                 self._current_ws = await websockets.connect(self._control_plane_url)
+                needs_hello = True
             if self._current_ws.close_code is not None:
                 logger.warning("current ws has close_code %s, will reconnect", self._current_ws.close_code)
                 self._current_ws = await websockets.connect(self._control_plane_url)
+                needs_hello = True
+                
+            if needs_hello:
+                hello = AgentHello(agent_id=self._agent_id)
+                logger.info("Sending agent hello to control plane: %s", hello)
+                await self._current_ws.send(hello.model_dump_json())
             return self._current_ws
             
 
 
     async def _fire_and_forget_send(self, payload: str) -> None:
+        logger.debug("sending: %s", payload)
         asyncio.create_task(self._send_via_current_ws(payload))
 
 
@@ -57,11 +60,13 @@ class ControlPlaneClient:
                 "Send aborted due to closed control plane connection for agent %s",
                 self._agent_id,
             )
+            raise
         except Exception:
             logger.exception(
                 "Unexpected error sending message to control plane for agent: %s",
                 self._agent_id,
             )
+            raise
 
 
     async def _receiver_loop(self) -> None:
@@ -82,13 +87,6 @@ class ControlPlaneClient:
                     )
                 else:
                     await self._fire_and_forget_send(Ack(acked_id=msg.id).model_dump_json())
-            except (ConnectionClosedError, ConnectionClosedOK) as exc:
-                logger.info(
-                    "Control plane connection closed for agent %s in receiver loop: %s",
-                    self._agent_id,
-                    exc,
-                )
-                break
             except Exception:
                 logger.exception("Exception in control plane client receiver loop for agent: %s", self._agent_id)
                 await asyncio.sleep(1)
@@ -103,13 +101,6 @@ class ControlPlaneClient:
                 )
                 await self._fire_and_forget_send(status_update.model_dump_json())
                 await asyncio.sleep(1)
-            except (ConnectionClosedError, ConnectionClosedOK) as exc:
-                logger.info(
-                    "Control plane connection closed for agent %s in sender loop: %s",
-                    self._agent_id,
-                    exc,
-                )
-                break
             except Exception:
                 logger.exception("Exception in control plane client sender loop for agent: %s", self._agent_id)
                 await asyncio.sleep(1)
@@ -117,10 +108,11 @@ class ControlPlaneClient:
     async def _loop(self) -> None:
         while True:
             try:
+                logger.info("Entering control plane client loop for agent: %s", self._agent_id)
                 recv_task = asyncio.create_task(self._receiver_loop())
-                await self._send_agent_hello()
                 send_task = asyncio.create_task(self._sender_loop())
                 await asyncio.gather(recv_task, send_task)
+                logger.info("Ended control plane client loop for agent: %s", self._agent_id)
             except Exception:
                 logger.exception("Exception in control plane client loop for agent: %s", self._agent_id)
                 await asyncio.sleep(1)
@@ -159,4 +151,3 @@ class ControlPlaneClient:
         # Fallback memory: random but stable range
         mem = float(random.uniform(10.0, 70.0))
         return cpu, mem
-

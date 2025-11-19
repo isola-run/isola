@@ -35,7 +35,9 @@ class AgentManager:
         self._app.add_api_websocket_route("/ws", self._manager_loop)
     
     async def _manager_loop(self, ws: WebSocket) -> None:
+        logger.info("accepting new connection")
         await ws.accept()
+        logger.info("accepted")
 
         # agent_id -> ws
         agent_id: uuid.UUID | None = None
@@ -74,6 +76,7 @@ class AgentManager:
                         await ws.send_text(ack.model_dump_json())
                         agent_id = msg.agent_id
                         # todo benl: better sentinel values
+                        # todo benl: we never delete from _active_agents
                         self._active_agents[msg.agent_id] = AgentStatus(
                             last_activity=msg.ts,
                             last_cpu=-1,
@@ -88,8 +91,6 @@ class AgentManager:
                             
         except WebSocketDisconnect:
             logger.warning("Agent disconnected: %s", agent_id)
-            if agent_id and agent_id in self._active_agents:
-                del self._active_agents[agent_id]
         except Exception:
             logger.exception("Unknown exception, agent_id: %s", agent_id)
     

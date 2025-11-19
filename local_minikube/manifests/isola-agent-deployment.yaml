@@ -34,6 +34,6 @@ spec:
         - name: PYTHONUNBUFFERED
           value: "1"
         - name: LOG_LEVEL
-          value: "info"
+          value: "debug"
         - name: ISOLA_CONTROLLER_WS_URL
           value: "ws://isola-controller:8765/ws"
