@@ -64,7 +64,7 @@ else
   install_minikube
 fi
 
-minikube stop
+minikube stop || true
 
 minikube start --container-runtime=containerd --docker-opt containerd=/var/run/containerd/containerd.sock
 
