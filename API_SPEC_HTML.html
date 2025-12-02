@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Isola API Specification</title>
+</head>
+<body>
+    <h1>Isola API Specification</h1>
+    
+    <h2>Base URL</h2>
+    <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px;">
+http://localhost:3000  # Docker Compose
+http://localhost:30080 # Minikube NodePort
+    </pre>
+    
+    <h2>Authentication</h2>
+    <p>All endpoints (except <code>/health</code>) require an API key header:</p>
+    <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px;">X-API-Key: iso_sk_demo</pre>
+    
+    <hr/>
+    
+    <h2>📚 API Endpoints</h2>
+    
+    <h3>System</h3>
+    
+    <h4>Health Check</h4>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>GET</code></td>
+            <td><code>/health</code></td>
+            <td>Check if the API is running and healthy</td>
+        </tr>
+    </table>
+    
+    <p><strong>Authentication:</strong> None required<br/>
+    <strong>Tags:</strong> <code>system</code></p>
+    
+    <p><strong>Responses:</strong></p>
+    <ul>
+        <li><code>200 OK</code> - Service is healthy</li>
+        <li><code>503 Service Unavailable</code> - Service is unhealthy</li>
+    </ul>
+    
+    <hr/>
+    
+    <h3>Sandboxes</h3>
+    
+    <h4>List Sandboxes</h4>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>GET</code></td>
+            <td><code>/sandboxes</code></td>
+            <td>Returns a list of all sandboxes</td>
+        </tr>
+    </table>
+    
+    <p><strong>Query Parameters:</strong></p>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Required</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>limit</code></td>
+            <td>integer</td>
+            <td>No</td>
+            <td>Maximum number of items to return (default: 20)</td>
+        </tr>
+        <tr>
+            <td><code>offset</code></td>
+            <td>integer</td>
+            <td>No</td>
+            <td>Number of items to skip (default: 0)</td>
+        </tr>
+    </table>
+    
+    <p><strong>Response:</strong> <code>SandboxList</code></p>
+    <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto;">
+{
+  "items": [
+    {
+      "id": "string",
+      "name": "string",
+      "state": "creating|starting|started|stopping|stopped|destroying|destroyed|error|unknown",
+      "desiredState": "string",
+      "class": "small|medium|large|xlarge",
+      "region": "string",
+      "image": "string",
+      "cpu": 1,
+      "memory": 1,
+      "disk": 10,
+      "gpu": 0,
+      "env": {},
+      "labels": {},
+      "volumes": [],
+      "ports": [],
+      "runnerId": "string",
+      "errorReason": "string",
+      "ipAddress": "string",
+      "createdAt": "2025-11-10T12:00:00",
+      "updatedAt": "2025-11-10T12:00:00",
+      "lastActivityAt": "2025-11-10T12:00:00"
+    }
+  ],
+  "total": 1,
+  "limit": 20,
+  "offset": 0
+}
+    </pre>
+    
+    <hr/>
+    
+    <h4>Create Sandbox</h4>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>POST</code></td>
+            <td><code>/sandboxes</code></td>
+            <td>Creates a new sandbox with the specified configuration</td>
+        </tr>
+    </table>
+    
+    <p><strong>Request Body:</strong> <code>CreateSandbox</code></p>
+    <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto;">
+{
+  "name": "my-sandbox",
+  "image": "python:3.11",
+  "class": "small",
+  "region": "default",
+  "cpu": 1,
+  "memory": 1,
+  "disk": 10,
+  "gpu": 0,
+  "env": {
+    "KEY": "value"
+  },
+  "labels": {
+    "project": "test"
+  },
+  "volumes": [],
+  "autoStart": true
+}
+    </pre>
+    
+    <hr/>
+    
+    <h4>Get Sandbox Details</h4>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>GET</code></td>
+            <td><code>/sandboxes/{sandbox_id}</code></td>
+            <td>Returns detailed information about a specific sandbox</td>
+        </tr>
+    </table>
+    
+    <p><strong>Path Parameters:</strong></p>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Required</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>sandbox_id</code></td>
+            <td>string</td>
+            <td>Yes</td>
+            <td>The sandbox ID</td>
+        </tr>
+    </table>
+    
+    <hr/>
+    
+    <h4>Delete Sandbox</h4>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>DELETE</code></td>
+            <td><code>/sandboxes/{sandbox_id}</code></td>
+            <td>Permanently deletes a sandbox and all associated resources</td>
+        </tr>
+    </table>
+    
+    <hr/>
+    
+    <h4>Stop Sandbox</h4>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>POST</code></td>
+            <td><code>/sandboxes/{sandbox_id}/stop</code></td>
+            <td>Stops a running sandbox</td>
+        </tr>
+    </table>
+    
+    <hr/>
+    
+    <h4>Restart Sandbox</h4>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>POST</code></td>
+            <td><code>/sandboxes/{sandbox_id}/restart</code></td>
+            <td>Restarts a sandbox (stop and start)</td>
+        </tr>
+    </table>
+    
+    <hr/>
+    
+    <h3>Execution</h3>
+    
+    <h4>Execute Command</h4>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>POST</code></td>
+            <td><code>/sandboxes/{sandbox_id}/execute</code></td>
+            <td>Execute a command in the specified sandbox</td>
+        </tr>
+    </table>
+    
+    <p><strong>Request Body:</strong> <code>ExecuteCommandRequest</code></p>
+    <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px;">
+{
+  "command": "echo 'Hello, World!'"
+}
+    </pre>
+    
+    <p><strong>Response:</strong> <code>ExecuteCommandResponse</code></p>
+    <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px;">
+{
+  "stdout": "Hello, World!\n",
+  "stderr": "",
+  "exitCode": 0
+}
+    </pre>
+    
+    <div style="background: #fff3cd; padding: 10px; border-left: 4px solid #ffc107; margin: 10px 0;">
+        <strong>⚠️ Note:</strong> Only available for Kubernetes backend
+    </div>
+    
+    <hr/>
+    
+    <h3>Files</h3>
+    
+    <h4>Upload File</h4>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>POST</code></td>
+            <td><code>/sandboxes/{sandbox_id}/fs/upload</code></td>
+            <td>Upload a text file to the specified path in the sandbox</td>
+        </tr>
+    </table>
+    
+    <p><strong>Request Body:</strong> <code>FileUploadRequest</code></p>
+    <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px;">
+{
+  "path": "/home/user/script.py",
+  "content": "print('Hello from Isola!')"
+}
+    </pre>
+    
+    <p><strong>Response:</strong> <code>FileUploadResponse</code></p>
+    <pre style="background: #f4f4f4; padding: 10px; border-radius: 5px;">
+{
+  "path": "/home/user/script.py",
+  "size": 26
+}
+    </pre>
+    
+    <div style="background: #fff3cd; padding: 10px; border-left: 4px solid #ffc107; margin: 10px 0;">
+        <strong>⚠️ Note:</strong> Only available for Kubernetes backend
+    </div>
+    
+    <hr/>
+    
+    <h2>📦 Data Models</h2>
+    
+    <h3>SandboxState (Enum)</h3>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Value</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><code>creating</code></td>
+            <td>Sandbox is being created</td>
+        </tr>
+        <tr>
+            <td><code>starting</code></td>
+            <td>Sandbox is starting</td>
+        </tr>
+        <tr>
+            <td><code>started</code></td>
+            <td>Sandbox is running</td>
+        </tr>
+        <tr>
+            <td><code>stopping</code></td>
+            <td>Sandbox is stopping</td>
+        </tr>
+        <tr>
+            <td><code>stopped</code></td>
+            <td>Sandbox is stopped</td>
+        </tr>
+        <tr>
+            <td><code>error</code></td>
+            <td>Sandbox encountered an error</td>
+        </tr>
+    </table>
+    
+    <h3>SandboxClass (Enum)</h3>
+    <table border="1" cellpadding="8" style="border-collapse: collapse;">
+        <tr style="background: #e0e0e0;">
+            <th>Value</th>
+            <th>Resources</th>
+        </tr>
+        <tr>
+            <td><code>small</code></td>
+            <td>1 CPU, 1GB RAM, 10GB disk</td>
+        </tr>
+        <tr>
+            <td><code>medium</code></td>
+            <td>2 CPU, 2GB RAM, 20GB disk</td>
+        </tr>
+        <tr>
+            <td><code>large</code></td>
+            <td>4 CPU, 4GB RAM, 40GB disk</td>
+        </tr>
+        <tr>
+            <td><code>xlarge</code></td>
+            <td>8 CPU, 8GB RAM, 80GB disk</td>
+        </tr>
+    </table>
+    
+    <hr/>
+    
+    <h2>🚀 Example Usage</h2>
+    
+    <h3>Complete Workflow</h3>
+    
+    <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        <h4>Step 1: Create a sandbox</h4>
+        <pre style="background: #e9ecef; padding: 10px; border-radius: 3px;">
+curl -X POST http://localhost:3000/sandboxes \
+  -H "X-API-Key: iso_sk_demo" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "dev-sandbox",
+    "image": "python:3.11",
+    "class": "small"
+  }'
+        </pre>
+    </div>
+    
+    <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        <h4>Step 2: Wait for sandbox to be ready</h4>
+        <pre style="background: #e9ecef; padding: 10px; border-radius: 3px;">
+curl http://localhost:3000/sandboxes/abc-123 \
+  -H "X-API-Key: iso_sk_demo"
+        </pre>
+    </div>
+    
+    <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        <h4>Step 3: Upload a file</h4>
+        <pre style="background: #e9ecef; padding: 10px; border-radius: 3px;">
+curl -X POST http://localhost:3000/sandboxes/abc-123/fs/upload \
+  -H "X-API-Key: iso_sk_demo" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "path": "/home/user/hello.py",
+    "content": "print(\"Hello, Isola!\")"
+  }'
+        </pre>
+    </div>
+    
+    <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        <h4>Step 4: Execute the file</h4>
+        <pre style="background: #e9ecef; padding: 10px; border-radius: 3px;">
+curl -X POST http://localhost:3000/sandboxes/abc-123/execute \
+  -H "X-API-Key: iso_sk_demo" \
+  -H "Content-Type: application/json" \
+  -d '{"command": "python /home/user/hello.py"}'
+        </pre>
+    </div>
+    
+    <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        <h4>Step 5: Clean up</h4>
+        <pre style="background: #e9ecef; padding: 10px; border-radius: 3px;">
+curl -X DELETE http://localhost:3000/sandboxes/abc-123 \
+  -H "X-API-Key: iso_sk_demo"
+        </pre>
+    </div>
+    
+    <hr/>
+    
+    <h2>⚠️ Important Notes</h2>
+    
+    <div style="background: #d1ecf1; padding: 15px; border-left: 4px solid #17a2b8; margin: 10px 0;">
+        <strong>Backend Support:</strong> Some features (execute, file upload, restart) are only available when using the Kubernetes backend (<code>SANDBOX_BACKEND=kubernetes</code>)
+    </div>
+    
+    <div style="background: #d1ecf1; padding: 15px; border-left: 4px solid #17a2b8; margin: 10px 0;">
+        <strong>Authentication:</strong> The demo API key is <code>iso_sk_demo</code>. In production, implement proper API key management.
+    </div>
+    
+    <div style="background: #d1ecf1; padding: 15px; border-left: 4px solid #17a2b8; margin: 10px 0;">
+        <strong>OpenAPI/Swagger:</strong> The full OpenAPI specification is available at <code>/openapi.json</code> and interactive documentation at <code>/docs</code>
+    </div>
+</body>
+</html>

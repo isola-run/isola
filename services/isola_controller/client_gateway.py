@@ -574,20 +574,20 @@ async def execute_command(
     # Get sandbox to verify it exists and belongs to tenant
     # TODO: __OMER__ keeping this in memory isn't good because it doesn't survive restarts
     # We should think about how to handle this better.
-    # sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
+    sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
     
-    # if sandbox.state != SandboxState.started:
-    #     raise HTTPException(
-    #         status_code=409,
-    #         detail=f"Sandbox must be in 'started' state, current state: {sandbox.state}"
-    #     )
+    if sandbox.state != SandboxState.started:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Sandbox must be in 'started' state, current state: {sandbox.state}"
+        )
     
-    # # TODO: __OMER__ add support for other backends
-    # if SANDBOX_BACKEND != "kubernetes":
-    #     raise HTTPException(
-    #         status_code=501,
-    #         detail="Command execution is only implemented for the Kubernetes backend"
-    #     )
+    # TODO: __OMER__ add support for other backends
+    if SANDBOX_BACKEND != "kubernetes":
+        raise HTTPException(
+            status_code=501,
+            detail="Command execution is only implemented for the Kubernetes backend"
+        )
     
     # Execute command in Kubernetes pod
     stdout, stderr, exit_code = await kubernetes_manager.execute_command(
@@ -631,19 +631,19 @@ async def upload_file(
     tenant_id = tenant_from_api_key(api_key)
     
     # Get sandbox to verify it exists and belongs to tenant
-    # sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
+    sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
     
-    # if sandbox.state != SandboxState.started:
-    #     raise HTTPException(
-    #         status_code=409,
-    #         detail=f"Sandbox must be in 'started' state, current state: {sandbox.state}"
-    #     )
+    if sandbox.state != SandboxState.started:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Sandbox must be in 'started' state, current state: {sandbox.state}"
+        )
     
-    # if SANDBOX_BACKEND != "kubernetes":
-    #     raise HTTPException(
-    #         status_code=501,
-    #         detail="File upload is only implemented for the Kubernetes backend"
-    #     )
+    if SANDBOX_BACKEND != "kubernetes":
+        raise HTTPException(
+            status_code=501,
+            detail="File upload is only implemented for the Kubernetes backend"
+        )
     
     # Upload file to Kubernetes pod
     file_size = await kubernetes_manager.upload_file(

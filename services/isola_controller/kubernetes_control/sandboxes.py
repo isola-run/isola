@@ -623,6 +623,7 @@ class KubernetesManager:
             await self.initialize()
         
         try:
+            import base64
             from kubernetes.stream import stream
             
             core_v1 = self._get_core_v1()
@@ -640,98 +641,51 @@ class KubernetesManager:
             pod = pods.items[0]
             pod_name = self._require_metadata_name(pod.metadata)
             
-            # Get content size for logging
-            import os
-            import base64
+            # Encode content as base64 for safe transmission through shell
             content_bytes = content.encode('utf-8')
+            content_b64 = base64.b64encode(content_bytes).decode('ascii')
             file_size = len(content_bytes)
             
-            # Create parent directory first
-            parent_dir = os.path.dirname(file_path)
+            # Create parent directory if it doesn't exist
+            parent_dir = '/'.join(file_path.split('/')[:-1])
             if parent_dir:
-                # Try to create directory, handling permission issues gracefully
-                logger.info(f"Creating directory: {parent_dir}")
-                
-                # First check if directory exists
-                check_dir_cmd = ['/bin/sh', '-c', f'test -d "{parent_dir}" && echo "exists" || echo "missing"']
-                check_output = stream(
+                mkdir_command = ['/bin/sh', '-c', f'mkdir -p {parent_dir}']
+                mkdir_resp = stream(
                     core_v1.connect_get_namespaced_pod_exec,
                     pod_name,
                     self.namespace,
-                    command=check_dir_cmd,
-                    stderr=False,
+                    command=mkdir_command,
+                    stderr=True,
                     stdin=False,
                     stdout=True,
-                    tty=False
+                    tty=False,
+                    _preload_content=False
                 )
                 
-                if "missing" in str(check_output):
-                    # Directory doesn't exist, try to create it
-                    mkdir_command = ['/bin/sh', '-c', f'mkdir -p "{parent_dir}" 2>&1']
-                    mkdir_output = stream(
-                        core_v1.connect_get_namespaced_pod_exec,
-                        pod_name,
-                        self.namespace,
-                        command=mkdir_command,
-                        stderr=True,
-                        stdin=False,
-                        stdout=True,
-                        tty=False
-                    )
-                    
-                    if mkdir_output:
-                        logger.info(f"mkdir output: {mkdir_output}")
-                        if "permission denied" in mkdir_output.lower():
-                            # Permission denied - suggest alternative path
-                            logger.warning(f"Permission denied creating {parent_dir}. Consider using /tmp or /workspace instead.")
-                            raise Exception(f"Permission denied creating directory {parent_dir}. Try using /tmp or another writable directory instead.")
-                        elif "error" in mkdir_output.lower():
-                            raise Exception(f"Failed to create directory {parent_dir}: {mkdir_output}")
-                    else:
-                        logger.info(f"Directory {parent_dir} created successfully")
+                # Wait for mkdir to complete and close connection
+                while mkdir_resp.is_open():
+                    mkdir_resp.update(timeout=0.1)
+                mkdir_resp.close()
             
-            # Encode content as base64 to avoid any shell escaping issues
-            content_b64 = base64.b64encode(content_bytes).decode('ascii')
+            # Write file using base64 to avoid shell escaping issues
+            write_command = ['/bin/sh', '-c', f'echo "{content_b64}" | base64 -d > {file_path}']
             
-            # Write file using echo with base64 - simple and reliable
-            # We'll use echo with proper escaping of the base64 content
-            write_cmd = [
-                '/bin/sh', '-c',
-                f"echo '{content_b64}' | base64 -d > '{file_path}'"
-            ]
-            
-            write_output = stream(
+            resp = stream(
                 core_v1.connect_get_namespaced_pod_exec,
                 pod_name,
                 self.namespace,
-                command=write_cmd,
+                command=write_command,
                 stderr=True,
                 stdin=False,
                 stdout=True,
-                tty=False
+                tty=False,
+                _preload_content=False
             )
             
-            logger.info(f"Write command output: {write_output}")
-            
-            if write_output and "error" in str(write_output).lower():
-                raise Exception(f"Failed to write file: {write_output}")
-            
-            # Verify file was created and has correct size
-            verify_command = ['sh', '-c', f'ls -la {file_path} 2>&1']
-            verify_output = stream(
-                core_v1.connect_get_namespaced_pod_exec,
-                pod_name,
-                self.namespace,
-                command=verify_command,
-                stderr=True,
-                stdin=False,
-                stdout=True,
-                tty=False
-            )
-            
-            if isinstance(verify_output, str):
-                if "No such file" in verify_output or "cannot access" in verify_output:
-                    raise Exception(f"File was not created at {file_path}: {verify_output}")
+            # Wait for write to complete and close connection
+            while resp.is_open():
+                resp.update(timeout=0.1)
+            resp.close()
             
             logger.info(f"Uploaded file to pod {pod_name}: {file_path} ({file_size} bytes)")
             return file_size
