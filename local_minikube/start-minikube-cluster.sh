@@ -10,10 +10,8 @@ fi
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
 echo "starting minikube single-node cluster..."
-minikube start --container-runtime=containerd --docker-opt containerd=/var/run/containerd/containerd.sock
-if ! minikube addons list | grep -q "gvisor.*enabled"; then
-  minikube addons enable gvisor
-fi
+minikube start --network-plugin=cni --container-runtime=containerd --docker-opt containerd=/var/run/containerd/containerd.sock --extra-config=kubelet.register-with-taints=node.cilium.io/agent-not-ready=true:NoExecute
+
 
 build_and_verify_image() {
   local IMAGE_NAME=$1

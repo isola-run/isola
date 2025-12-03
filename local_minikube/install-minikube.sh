@@ -5,6 +5,12 @@ set -euo pipefail
 
 install_minikube() {
 
+  if command -v minikube >/dev/null 2>&1; then
+    local minikube_version="$(minikube version --short 2>/dev/null || true)"
+    echo "minikube already installed (version ${minikube_version})" >&2
+    return
+  fi
+
   if ! command -v curl >/dev/null 2>&1; then
     echo "error: curl is required to download minikube" >&2
     exit 1
@@ -45,6 +51,7 @@ install_minikube() {
   url="https://github.com/kubernetes/minikube/releases/latest/download/${artifact}"
 
   echo "Downloading ${artifact}..."
+  cd /tmp
   curl -Lo "${artifact}" "${url}"
 
   echo "Installing minikube to /usr/local/bin (sudo may prompt for your password)..."
@@ -53,28 +60,36 @@ install_minikube() {
   echo "minikube has been installed successfully."
 }
 
-cleanup() {
-  rm -f "${artifact}"
+install_helm() {
+  if command -v helm >/dev/null 2>&1; then
+    local helm_version="$(helm version --short 2>/dev/null || true)"
+    echo "Helm already installed (version ${helm_version})" >&2
+    return
+  else
+    echo "Installing Helm..."
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash
+  fi
 }
 
-if command -v minikube >/dev/null 2>&1; then
-  echo "minikube already installed" >&2
-else
-  trap cleanup EXIT
-  install_minikube
-fi
+install_cilium() {
+  helm repo add cilium https://helm.cilium.io/
+  helm repo update
+  helm upgrade --install cilium cilium/cilium --version 1.18.4 --namespace kube-system --reuse-values --set operator.replicas=1 --set hubble.relay.enabled=true  --set hubble.ui.enabled=true
+}
+
+
+install_minikube
+
+install_helm
 
 minikube stop || true
 
-minikube start --container-runtime=containerd --docker-opt containerd=/var/run/containerd/containerd.sock
+minikube start --network-plugin=cni --container-runtime=containerd --docker-opt containerd=/var/run/containerd/containerd.sock --extra-config=kubelet.register-with-taints=node.cilium.io/agent-not-ready=true:NoExecute
+
+install_cilium
+
+cilium hubble enable --ui
 
 minikube addons enable gvisor
-
-
-
-
-
-
-
 
 
