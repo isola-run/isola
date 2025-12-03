@@ -1,0 +1,30 @@
+apiVersion: v2
+name: isola-platform
+description: Isola Platform - Complete sandbox orchestration system
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+dependencies:
+  - name: isola-controller
+    version: "0.1.0"
+    repository: "file://../isola-controller"
+    condition: controller.enabled
+    
+  - name: isola-agent
+    version: "0.1.0"
+    repository: "file://../isola-agent"
+    condition: agent.enabled
+    alias: agent
+
+keywords:
+  - isola
+  - platform
+  - sandbox
+  - orchestration
+home: https://github.com/yourusername/dev-isola
+sources:
+  - https://github.com/yourusername/dev-isola
+maintainers:
+  - name: Your Team
+    email: team@example.com
