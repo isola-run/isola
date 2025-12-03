@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "isola-controller.fullname" . }}
+  labels:
+    {{- include "isola-controller.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    {{- range $name, $port := .Values.service.ports }}
+    - port: {{ $port.port }}
+      targetPort: {{ $port.targetPort }}
+      protocol: {{ $port.protocol }}
+      name: {{ $name }}
+    {{- end }}
+  selector:
+    {{- include "isola-controller.selectorLabels" . | nindent 4 }}
+---
+{{- if .Values.nodePort.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "isola-controller.fullname" . }}-nodeport
+  labels:
+    {{- include "isola-controller.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.nodePort.type }}
+  ports:
+    {{- range $name, $port := .Values.nodePort.ports }}
+    - port: {{ $port.port }}
+      targetPort: {{ $port.targetPort }}
+      nodePort: {{ $port.nodePort }}
+      name: {{ $name }}
+    {{- end }}
+  selector:
+    {{- include "isola-controller.selectorLabels" . | nindent 4 }}
+{{- end }}
