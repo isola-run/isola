@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: isola-controller
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: isola-controller
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/part-of: isola
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:omereli/dev-isola.git
+    targetRevision: HEAD
+    path: local_minikube/manifests
+    directory:
+      include: 'isola-sandboxes-namespace.yaml|isola-controller-.*\.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: isola-control-plane
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 10
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas
