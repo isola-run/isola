@@ -5,26 +5,11 @@
 
 set -e
 
-REPO_URL=${REPO_URL:-"https://github.com/yourusername/dev-isola.git"}
+REPO_URL=${REPO_URL:-"https://github.com/omereli/dev-isola.git"}
 ENVIRONMENT=${ENVIRONMENT:-"dev"}
 ARGOCD_NAMESPACE="argocd"
 
-echo "========================================="
 echo "Isola Platform ArgoCD Bootstrap"
-echo "========================================="
-echo "Repository: ${REPO_URL}"
-echo "Environment: ${ENVIRONMENT}"
-echo ""
-
-# Function to wait for resource
-wait_for_resource() {
-    local resource=$1
-    local namespace=$2
-    local timeout=${3:-300}
-    
-    echo "Waiting for ${resource} in namespace ${namespace}..."
-    kubectl wait --for=condition=available --timeout=${timeout}s ${resource} -n ${namespace}
-}
 
 # Step 1: Install ArgoCD if not already installed
 if ! kubectl get namespace ${ARGOCD_NAMESPACE} &> /dev/null; then
@@ -60,32 +45,31 @@ metadata:
     environment: ${ENVIRONMENT}
 EOF
 
-# Step 4: Apply App of Apps
+# Step 4: Apply individual ArgoCD Applications
 echo ""
-echo "Deploying App of Apps for ${ENVIRONMENT}..."
-kubectl apply -f ../app-of-apps/${ENVIRONMENT}.yaml
+echo "Deploying ArgoCD Applications for ${ENVIRONMENT}..."
 
-# Step 5: Trigger initial sync
+# Apply all application manifests for the environment
+for app_file in ../applications/*-${ENVIRONMENT}.yaml; do
+    if [ -f "$app_file" ]; then
+        echo "Applying $(basename $app_file)..."
+        kubectl apply -f "$app_file"
+    fi
+done
+
+# Step 5: Wait for applications to be created
 echo ""
-echo "Triggering initial sync..."
-argocd app sync isola-apps-${ENVIRONMENT} --server localhost:8080 --insecure || {
-    echo "ArgoCD CLI not found or sync failed. You can sync manually from the UI."
-}
+echo "Waiting for applications to be registered..."
+sleep 5
+
+# List deployed applications
+echo ""
+echo "Deployed Applications:"
+kubectl get applications -n ${ARGOCD_NAMESPACE} -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REVISION:.status.sync.revision
+
 
 # Step 6: Display status
-echo ""
-echo "========================================="
+
 echo "Bootstrap Complete!"
-echo "========================================="
-echo ""
 echo "ArgoCD Applications Status:"
 kubectl get applications -n ${ARGOCD_NAMESPACE}
-
-echo ""
-echo "To access ArgoCD:"
-echo "1. Port-forward: kubectl port-forward svc/argocd-server -n ${ARGOCD_NAMESPACE} 8080:443"
-echo "2. Get admin password: kubectl -n ${ARGOCD_NAMESPACE} get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d"
-echo "3. Login at: https://localhost:8080 with username 'admin'"
-echo ""
-echo "To watch application sync status:"
-echo "watch kubectl get applications -n ${ARGOCD_NAMESPACE}"
