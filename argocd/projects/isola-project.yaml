@@ -1,0 +1,54 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: isola
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Isola Platform Project
+  
+  # Source repositories
+  sourceRepos:
+  - 'https://github.com/omereli/dev-isola.git'
+  - '*'  # Allow all repos during development, restrict in production
+  
+  # Destinations
+  destinations:
+  - namespace: 'isola-*'
+    server: https://kubernetes.default.svc
+  - namespace: 'default'
+    server: https://kubernetes.default.svc
+  
+  # Cluster resource whitelist
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  - group: 'rbac.authorization.k8s.io'
+    kind: ClusterRole
+  - group: 'rbac.authorization.k8s.io'
+    kind: ClusterRoleBinding
+  
+  # Namespace resource whitelist
+  namespaceResourceWhitelist:
+  - group: '*'
+    kind: '*'
+  
+  # Roles
+  roles:
+  - name: admin
+    policies:
+    - p, proj:isola:admin, applications, *, isola/*, allow
+    - p, proj:isola:admin, repositories, *, *, allow
+    groups:
+    - isola:admins
+    
+  - name: developer
+    policies:
+    - p, proj:isola:developer, applications, get, isola/*, allow
+    - p, proj:isola:developer, applications, sync, isola/*, allow
+    groups:
+    - isola:developers
+    
+  orphanedResources:
+    warn: true

@@ -1,0 +1,14 @@
+apiVersion: v2
+name: isola-controller
+description: Isola Controller - Control plane for sandbox orchestration
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - isola
+  - controller
+  - sandbox
+home: https://github.com/omereli/dev-isola
+sources:
+  - https://github.com/omereli/dev-isola
+icon: https://example.com/icon.png
