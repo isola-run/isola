@@ -10,7 +10,7 @@ spec:
   
   # Source repositories
   sourceRepos:
-  - 'https://github.com/yourusername/dev-isola.git'
+  - 'https://github.com/omereli/dev-isola.git'
   - '*'  # Allow all repos during development, restrict in production
   
   # Destinations

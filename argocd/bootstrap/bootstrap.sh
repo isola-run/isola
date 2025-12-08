@@ -21,29 +21,30 @@ else
 fi
 
 # Step 2: Configure Git repository access (if SSH key is provided)
-if [ -n "${SSH_PRIVATE_KEY_PATH}" ] && [ -f "${SSH_PRIVATE_KEY_PATH/#\~/$HOME}" ] && command -v argocd &> /dev/null; then
-    echo ""
-    echo "Configuring Git repository access..."
-    # Convert HTTPS URL to SSH format
-    SSH_REPO_URL=$(echo ${REPO_URL} | sed 's|https://github.com/|git@github.com:|')
-    # Expand ~ to home directory
-    EXPANDED_KEY_PATH="${SSH_PRIVATE_KEY_PATH/#\~/$HOME}"
+# Not working
+# if [ -n "${SSH_PRIVATE_KEY_PATH}" ] && [ -f "${SSH_PRIVATE_KEY_PATH/#\~/$HOME}" ] && command -v argocd &> /dev/null; then
+#     echo ""
+#     echo "Configuring Git repository access..."
+#     # Convert HTTPS URL to SSH format
+#     SSH_REPO_URL=$(echo ${REPO_URL} | sed 's|https://github.com/|git@github.com:|')
+#     # Expand ~ to home directory
+#     EXPANDED_KEY_PATH="${SSH_PRIVATE_KEY_PATH/#\~/$HOME}"
     
-    # Port-forward ArgoCD server
-    kubectl port-forward svc/argocd-server -n ${ARGOCD_NAMESPACE} 8080:443 > /dev/null 2>&1 &
-    PORT_FORWARD_PID=$!
-    sleep 3
+#     # Port-forward ArgoCD server
+#     kubectl port-forward svc/argocd-server -n ${ARGOCD_NAMESPACE} 8080:443 > /dev/null 2>&1 &
+#     PORT_FORWARD_PID=$!
+#     sleep 3
     
-    # Get admin password and login
-    ARGOCD_PASSWORD=$(kubectl -n ${ARGOCD_NAMESPACE} get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d 2>/dev/null || echo "")
-    if [ -n "${ARGOCD_PASSWORD}" ]; then
-        argocd login localhost:8080 --insecure --username admin --password "${ARGOCD_PASSWORD}" > /dev/null 2>&1 && \
-        argocd repo add ${SSH_REPO_URL} --ssh-private-key-path "${EXPANDED_KEY_PATH}" --insecure-skip-server-verification > /dev/null 2>&1 && \
-        echo "Repository configured successfully" || echo "Repository configuration skipped (may already exist)"
-    fi
+#     # Get admin password and login
+#     ARGOCD_PASSWORD=$(kubectl -n ${ARGOCD_NAMESPACE} get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d 2>/dev/null || echo "")
+#     if [ -n "${ARGOCD_PASSWORD}" ]; then
+#         argocd login localhost:8080 --insecure --username admin --password "${ARGOCD_PASSWORD}" > /dev/null 2>&1 && \
+#         argocd repo add ${SSH_REPO_URL} --ssh-private-key-path "${EXPANDED_KEY_PATH}" --insecure-skip-server-verification > /dev/null 2>&1 && \
+#         echo "Repository configured successfully" || echo "Repository configuration skipped (may already exist)"
+#     fi
     
-    kill $PORT_FORWARD_PID 2>/dev/null || true
-fi
+#     kill $PORT_FORWARD_PID 2>/dev/null || true
+# fi
 
 # Step 3: Apply ArgoCD Project
 echo ""
