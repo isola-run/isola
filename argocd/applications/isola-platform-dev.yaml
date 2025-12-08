@@ -9,7 +9,7 @@ spec:
   project: isola
   
   source:
-    repoURL: https://github.com/yourusername/dev-isola.git
+    repoURL: https://github.com/omereli/dev-isola.git
     targetRevision: HEAD
     path: charts/isola-platform
     helm:
