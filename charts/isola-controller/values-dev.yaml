@@ -1,0 +1,29 @@
+# Development environment overrides for isola-controller
+replicaCount: 1
+
+image:
+  repository: isola-controller
+  pullPolicy: Never  # For local development with minikube
+  tag: "dev"
+
+config:
+  logLevel: debug
+  
+nodePort:
+  enabled: true  # Enable NodePort for local development
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+env:
+  - name: PYTHONUNBUFFERED
+    value: "1"
+  - name: LOG_LEVEL
+    value: "debug"
+  - name: ENV
+    value: "development"
