@@ -14,7 +14,7 @@ spec:
   source:
     repoURL: git@github.com:omereli/dev-isola.git
     targetRevision: HEAD
-    path: argocd/charts/isola-controller
+    path: charts/isola-controller
     helm:
       releaseName: isola-controller
       valueFiles:
