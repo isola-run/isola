@@ -333,7 +333,7 @@ class KubernetesManager:
             
             # Map Kubernetes phase to SandboxState
             state_map = {
-                "Pending": SandboxState.creating,
+                "Pending": SandboxState.pending,
                 "Running": SandboxState.running,
                 "Succeeded": SandboxState.stopped,
                 "Failed": SandboxState.error,

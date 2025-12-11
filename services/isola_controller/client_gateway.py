@@ -247,7 +247,7 @@ async def create_sandbox(
     sandbox_data = {
         "id": sandbox_id,
         "name": req.name,
-        "state": SandboxState.creating,
+        "state": SandboxState.pending,
         "desiredState": desired_state,
         "class": req.class_.value if req.class_ else "small",
         "region": req.region if req.region else "default",
