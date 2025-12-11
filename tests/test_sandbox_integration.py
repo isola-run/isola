@@ -6,6 +6,8 @@ import time
 import pytest
 import requests
 
+from common.models.sandbox import SandboxState
+
 
 @pytest.fixture(scope="module")
 def api_client(base_url, api_key):
@@ -88,8 +90,8 @@ class TestSandboxIntegration:
         assert sandbox["name"] == sandbox_data["name"]
         assert sandbox["image"] == sandbox_data["image"]
         assert sandbox["class"] == sandbox_data["class"]
-        assert sandbox["state"] == "pending"
-        assert sandbox["desiredState"] == "running"
+        assert sandbox["state"] == SandboxState.pending.value
+        assert sandbox["desiredState"] == SandboxState.running.value
         assert "id" in sandbox
         assert "createdAt" in sandbox
         assert "updatedAt" in sandbox
@@ -151,9 +153,9 @@ class TestSandboxIntegration:
             assert response.status_code == 200
             
             sandbox = response.json()
-            if sandbox["state"] == "running":
+            if sandbox["state"] == SandboxState.running.value:
                 break
-            elif sandbox["state"] == "error":
+            elif sandbox["state"] == SandboxState.error.value:
                 pytest.fail(f"Sandbox entered error state: {sandbox.get('errorReason')}")
             
             time.sleep(0.5)  # Wait before next attempt
@@ -161,8 +163,8 @@ class TestSandboxIntegration:
             pytest.fail(f"Sandbox did not reach 'running' state after {max_attempts} attempts")
         
         # Verify final state
-        assert sandbox["state"] == "running"
-        assert sandbox["desiredState"] == "running"
+        assert sandbox["state"] == SandboxState.running.value
+        assert sandbox["desiredState"] == SandboxState.running.value
     
     def test_get_nonexistent_sandbox(self, api_client):
         """Test retrieving a sandbox that doesn't exist"""
