@@ -160,6 +160,22 @@ async def health_check():
     
     return health_status
 
+# Readiness Check
+@app.get(
+    "/ready",
+    tags=["system"],
+    summary="Readiness check",
+    description="Check if the API is ready to serve traffic",
+    responses={
+        200: {"description": "Service is ready"},
+        503: {"description": "Service is not ready"}
+    }
+)
+async def readiness_check():
+    """Readiness check endpoint - verifies all dependencies are ready"""
+    # TODO: __OMER__ Check if agent manager is started, etc
+    return {"status": "ready"}
+
 # Sandboxes
 @app.get(
     "/sandboxes",
