@@ -1,0 +1,12 @@
+{{- if .Values.sandboxesNamespace.create }}
+# Namespace for sandbox pods
+# This namespace is where the controller creates sandbox pods
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.sandboxesNamespace.name }}
+  labels:
+    {{- include "isola-controller.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox-environment
+{{- end }}
+

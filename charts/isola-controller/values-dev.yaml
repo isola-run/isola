@@ -6,6 +6,11 @@ image:
   pullPolicy: Never  # For local development with minikube
   tag: "dev"
 
+# Sandboxes namespace configuration
+sandboxesNamespace:
+  create: true
+  name: isola-sandboxes
+
 config:
   logLevel: debug
   
