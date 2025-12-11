@@ -173,7 +173,7 @@ async def health_check():
 )
 async def readiness_check():
     """Readiness check endpoint - verifies all dependencies are ready"""
-    # TODO: __OMER__ Check if agent manager is started, etc
+    # TODO: __OMER__ Check if agent manager is running, etc
     return {"status": "ready"}
 
 # Sandboxes
@@ -241,7 +241,7 @@ async def create_sandbox(
     # Generate sandbox ID
     sandbox_id = str(uuid.uuid4())
     now = datetime.utcnow()
-    desired_state = SandboxState.started if req.autoStart else SandboxState.stopped
+    desired_state = SandboxState.running if req.autoStart else SandboxState.stopped
     
     # Create sandbox object
     sandbox_data = {
@@ -333,8 +333,8 @@ async def _handle_agent_sandbox_creation(
             
             if response and response.success:
                 # Update sandbox state based on desired state
-                if sandbox.desiredState == SandboxState.started:
-                    sandbox.state = SandboxState.started   
+                if sandbox.desiredState == SandboxState.running:
+                    sandbox.state = SandboxState.running   
                 else:
                     sandbox.state = SandboxState.stopped
                 sandbox.ipAddress = response.ip_address
@@ -381,7 +381,7 @@ async def _handle_kubernetes_sandbox_creation(
         )
 
         if success:
-            target_state = SandboxState.started if auto_start else SandboxState.stopped
+            target_state = SandboxState.running if auto_start else SandboxState.stopped
             sandbox.state = target_state
             sandbox.desiredState = target_state
             sandbox.ipAddress = ip_address
@@ -527,7 +527,7 @@ async def stop_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_ke
 async def restart_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_key_header)):
     tenant_id = tenant_from_api_key(api_key)
     sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
-    sandbox.desiredState = SandboxState.started
+    sandbox.desiredState = SandboxState.running
     sandbox.state = SandboxState.starting
 
     if SANDBOX_BACKEND != "kubernetes":
@@ -567,7 +567,7 @@ async def restart_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api
         200: {"description": "Command executed successfully"},
         401: {"description": "Unauthorized - Invalid or missing API key", "model": Error},
         404: {"description": "Sandbox not found", "model": Error},
-        409: {"description": "Conflict - Sandbox not in started state", "model": Error},
+        409: {"description": "Conflict - Sandbox not in running state", "model": Error},
         501: {"description": "Not implemented for non-Kubernetes backend", "model": Error},
     }
 )
@@ -584,10 +584,10 @@ async def execute_command(
     # We should think about how to handle this better.
     sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
     
-    if sandbox.state != SandboxState.started:
+    if sandbox.state != SandboxState.running:
         raise HTTPException(
             status_code=409,
-            detail=f"Sandbox must be in 'started' state, current state: {sandbox.state}"
+            detail=f"Sandbox must be in 'running' state, current state: {sandbox.state}"
         )
     
     # TODO: __OMER__ add support for other backends

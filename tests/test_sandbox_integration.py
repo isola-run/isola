@@ -89,7 +89,7 @@ class TestSandboxIntegration:
         assert sandbox["image"] == sandbox_data["image"]
         assert sandbox["class"] == sandbox_data["class"]
         assert sandbox["state"] == "creating"
-        assert sandbox["desiredState"] == "started"
+        assert sandbox["desiredState"] == "running"
         assert "id" in sandbox
         assert "createdAt" in sandbox
         assert "updatedAt" in sandbox
@@ -141,7 +141,7 @@ class TestSandboxIntegration:
         assert sandbox["class"] == created_sandbox["class"]
         
     def test_sandbox_state_transition(self, api_client, created_sandbox):
-        """Test that sandbox transitions from creating to started state"""
+        """Test that sandbox transitions from creating to running state"""
         sandbox_id = created_sandbox["id"]
         
         # Poll for state change (with timeout)
@@ -151,18 +151,18 @@ class TestSandboxIntegration:
             assert response.status_code == 200
             
             sandbox = response.json()
-            if sandbox["state"] == "started":
+            if sandbox["state"] == "running":
                 break
             elif sandbox["state"] == "error":
                 pytest.fail(f"Sandbox entered error state: {sandbox.get('errorReason')}")
             
             time.sleep(0.5)  # Wait before next attempt
         else:
-            pytest.fail(f"Sandbox did not reach 'started' state after {max_attempts} attempts")
+            pytest.fail(f"Sandbox did not reach 'running' state after {max_attempts} attempts")
         
         # Verify final state
-        assert sandbox["state"] == "started"
-        assert sandbox["desiredState"] == "started"
+        assert sandbox["state"] == "running"
+        assert sandbox["desiredState"] == "running"
     
     def test_get_nonexistent_sandbox(self, api_client):
         """Test retrieving a sandbox that doesn't exist"""
