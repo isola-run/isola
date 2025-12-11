@@ -222,9 +222,10 @@ class KubernetesManager:
             await self.initialize()
 
         logger.info(
-            "Creating pod for sandbox '%s' (%s) image=%s cpu=%s mem=%sGi disk=%sGi gpu=%s auto_start=%s",
+            "Creating pod for sandbox '%s' (%s) namespace=%s image=%s cpu=%s mem=%sGi disk=%sGi gpu=%s auto_start=%s",
             sandbox_id,
             name,
+            self.namespace,
             image,
             cpu,
             memory,
