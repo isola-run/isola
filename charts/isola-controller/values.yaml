@@ -33,7 +33,7 @@ service:
   type: ClusterIP
   ports:
     http:
-      port: 80
+      port: 30080
       targetPort: http
       protocol: TCP
     websocket:
@@ -100,12 +100,18 @@ config:
   http:
     port: 30080
 
+# Sandboxes Namespace Configuration
+sandboxesNamespace:
+  create: true
+  name: isola-sandboxes
+
 # RBAC Configuration
+# Note: RBAC is namespace-scoped to isola-sandboxes namespace
 rbac:
   create: true
   rules:
     - apiGroups: [""]
-      resources: ["pods", "pods/log", "pods/exec"]
+      resources: ["pods", "pods/log", "pods/exec", "pods/status"]
       verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
     - apiGroups: ["apps"]
       resources: ["deployments", "replicasets"]
@@ -116,9 +122,6 @@ rbac:
     - apiGroups: [""]
       resources: ["configmaps", "secrets"]
       verbs: ["get", "list", "watch"]
-    - apiGroups: [""]
-      resources: ["namespaces"]
-      verbs: ["get", "list", "watch", "create"]
 
 # Environment variables
 env:
