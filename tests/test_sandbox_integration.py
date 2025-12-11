@@ -88,7 +88,7 @@ class TestSandboxIntegration:
         assert sandbox["name"] == sandbox_data["name"]
         assert sandbox["image"] == sandbox_data["image"]
         assert sandbox["class"] == sandbox_data["class"]
-        assert sandbox["state"] == "creating"
+        assert sandbox["state"] == "pending"
         assert sandbox["desiredState"] == "running"
         assert "id" in sandbox
         assert "createdAt" in sandbox
@@ -141,7 +141,7 @@ class TestSandboxIntegration:
         assert sandbox["class"] == created_sandbox["class"]
         
     def test_sandbox_state_transition(self, api_client, created_sandbox):
-        """Test that sandbox transitions from creating to running state"""
+        """Test that sandbox transitions from pending to running state"""
         sandbox_id = created_sandbox["id"]
         
         # Poll for state change (with timeout)

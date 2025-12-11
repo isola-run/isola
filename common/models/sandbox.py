@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 class SandboxState(str, Enum):
-    creating = "creating"
+    pending = "pending"
     starting = "starting"
     running = "running"
     stopping = "stopping"
