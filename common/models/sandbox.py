@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 class SandboxState(str, Enum):
     creating = "creating"
     starting = "starting"
-    started = "started"
+    running = "running"
     stopping = "stopping"
     stopped = "stopped"
     destroying = "destroying"
