@@ -455,9 +455,9 @@ class KubernetesManager:
             logger.error(f"Failed to stop pod for sandbox {sandbox_id}: {e}")
             return False, f"API error: {e.reason}"
     
-    async def delete_pod(self, sandbox_id: str, force: bool = False) -> tuple[bool, Optional[str]]:
+    async def terminate_pod(self, sandbox_id: str, force: bool = False) -> tuple[bool, Optional[str]]:
         """
-        Delete a pod for a sandbox.
+        Terminate a pod for a sandbox.
         
         Args:
             sandbox_id: The sandbox ID
@@ -489,6 +489,8 @@ class KubernetesManager:
                 return False, "Pod not found"
             
             pod = pods.items[0]
+
+            # TODO: __OMER__ do snapshot according to config 
             pod_name = self._require_metadata_name(pod.metadata)
             
             # Delete options

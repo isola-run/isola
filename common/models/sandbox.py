@@ -11,10 +11,8 @@ class SandboxState(str, Enum):
     pending = "pending"
     starting = "starting"
     running = "running"
-    stopping = "stopping"
+    terminating = "terminating"
     stopped = "stopped"
-    destroying = "destroying"
-    destroyed = "destroyed"
     error = "error"
     unknown = "unknown"
 

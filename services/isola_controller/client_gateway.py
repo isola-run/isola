@@ -424,21 +424,21 @@ async def get_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_key
     return _get_sandbox_or_404(tenant_id, sandbox_id)
 
 
-@app.delete(
+@app.terminate(
     "/sandboxes/{sandbox_id}",
     status_code=204,
     tags=["sandboxes"],
-    summary="Delete a sandbox",
-    description="Permanently deletes a sandbox and all associated resources",
-    operation_id="deleteSandbox",
+    summary="Terminate a sandbox",
+    description="Terminates a sandbox and all associated resources",
+    operation_id="terminateSandbox",
     responses={
-        204: {"description": "Sandbox deleted successfully"},
+        204: {"description": "Sandbox terminated successfully"},
         401: {"description": "Unauthorized - Invalid or missing API key", "model": Error},
         404: {"description": "Resource not found", "model": Error},
         409: {"description": "Conflict - Resource already exists or state conflict", "model": Error},
     },
 )
-async def delete_sandbox(
+async def terminate_sandbox(
     sandbox_id: str,
     force: bool = Query(default=False),
     api_key: Optional[str] = Security(api_key_header),
@@ -447,7 +447,7 @@ async def delete_sandbox(
     _ = _get_sandbox_or_404(tenant_id, sandbox_id)
 
     if SANDBOX_BACKEND == "kubernetes":
-        success, error_reason = await kubernetes_manager.delete_pod(
+        success, error_reason = await kubernetes_manager.terminate_pod(
             sandbox_id, force=force
         )
         if not success:
@@ -468,46 +468,6 @@ async def delete_sandbox(
         sandboxes.pop(tenant_id, None)
 
     return Response(status_code=204)
-
-@app.post(
-    "/sandboxes/{sandbox_id}/stop",
-    response_model=Sandbox,
-    status_code=202,
-    tags=["sandboxes"],
-    summary="Stop a sandbox",
-    description="Stops a running sandbox",
-    operation_id="stopSandbox",
-    responses={
-        202: {"description": "Sandbox stop initiated"},
-        400: {"description": "Bad request - Invalid input", "model": Error},
-        401: {"description": "Unauthorized - Invalid or missing API key", "model": Error},
-        404: {"description": "Resource not found", "model": Error},
-        409: {"description": "Conflict - Resource already exists or state conflict", "model": Error},
-    },
-)
-async def stop_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_key_header)):
-    tenant_id = tenant_from_api_key(api_key)
-    sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
-    sandbox.desiredState = SandboxState.stopped
-    sandbox.state = SandboxState.stopping
-
-    if SANDBOX_BACKEND != "kubernetes":
-        raise HTTPException(
-            status_code=501,
-            detail="Sandbox stop is only implemented for the Kubernetes backend",
-        )
-
-    success, error_reason = await kubernetes_manager.stop_pod(sandbox_id)
-    if not success:
-        status_code = 404 if error_reason == "Pod not found" else 409
-        raise HTTPException(
-            status_code=status_code,
-            detail=error_reason or "Failed to stop sandbox",
-        )
-
-    await _sync_tenant_sandboxes_with_backend(tenant_id, [sandbox_id])
-    sandbox.updatedAt = datetime.utcnow()
-    return sandbox
 
 
 @app.post(
