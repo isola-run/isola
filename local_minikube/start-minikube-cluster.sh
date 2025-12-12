@@ -14,6 +14,10 @@ minikube start --container-runtime=containerd --docker-opt containerd=/var/run/c
 if ! minikube addons list | grep -q "gvisor.*enabled"; then
   minikube addons enable gvisor
 fi
+if ! minikube addons list | grep -q "registry.*enabled"; then
+  echo "  → enabling registry addon..."
+  minikube addons enable registry
+fi
 
 build_and_verify_image() {
   local IMAGE_NAME=$1

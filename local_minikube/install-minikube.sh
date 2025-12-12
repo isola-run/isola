@@ -69,6 +69,7 @@ minikube stop || true
 minikube start --container-runtime=containerd --docker-opt containerd=/var/run/containerd/containerd.sock
 
 minikube addons enable gvisor
+minikube addons enable registry
 
 
 
