@@ -3,7 +3,7 @@ replicaCount: 1
 
 image:
   repository: registry.kube-system.svc.cluster.local:5000/isola-controller
-  pullPolicy: Never  # For local development with minikube
+  pullPolicy: IfNotPresent  # For local development with minikube
   tag: "dev"
 
 # Sandboxes namespace configuration
