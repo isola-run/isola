@@ -2,7 +2,7 @@
 replicaCount: 1
 
 image:
-  repository: registry.kube-system.svc.cluster.local:5000/isola-controller
+  repository: localhost:59928/isola-controller
   pullPolicy: IfNotPresent  # For local development with minikube
   tag: "dev"
 
