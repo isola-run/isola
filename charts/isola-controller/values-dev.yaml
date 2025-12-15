@@ -2,7 +2,7 @@
 replicaCount: 1
 
 image:
-  repository: localhost:59928/isola-controller
+  repository: isola-controller
   pullPolicy: IfNotPresent  # For local development with minikube
   tag: "dev"
 
