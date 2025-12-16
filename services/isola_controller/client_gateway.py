@@ -124,8 +124,6 @@ def tenant_from_api_key(api_key: Optional[str]) -> str:
     return "e766a1e8-4b0e-4bb7-9612-80b9c1c8cd87"
 
 
-# In-memory storage for sandboxes: tenant_id -> {sandbox_id -> Sandbox}
-sandboxes: Dict[str, Dict[str, Sandbox]] = {}
 
 # Health Check
 @app.get(
@@ -196,14 +194,18 @@ async def list_sandboxes(
     api_key: Optional[str] = Security(api_key_header),
 ):
     tenant_id = tenant_from_api_key(api_key)
-    await _sync_tenant_sandboxes_with_backend(tenant_id)
     
-    tenant_sandboxes = sandboxes.get(tenant_id, {})
-    
-    # Filter by state if provided
-    items = list(tenant_sandboxes.values())
-    if state:
-        items = [s for s in items if s.state == state]
+    # Get sandboxes directly from Kubernetes
+    if SANDBOX_BACKEND == "kubernetes":
+        pods = await kubernetes_manager.list_pods()
+        items = []
+        for pod_data in pods:
+            sandbox = Sandbox.model_validate(pod_data)
+            if state is None or sandbox.state == state:
+                items.append(sandbox)
+    else:
+        # For agent backend, return empty list for now
+        items = []
     
     # Apply pagination
     total = len(items)
@@ -243,7 +245,7 @@ async def create_sandbox(
     now = datetime.utcnow()
     desired_state = SandboxState.running if req.autoStart else SandboxState.stopped
     
-    # Create sandbox object
+    # Create sandbox object for response
     sandbox_data = {
         "id": sandbox_id,
         "name": req.name,
@@ -270,12 +272,7 @@ async def create_sandbox(
     sandbox = Sandbox.model_validate(sandbox_data)
     logger.info(f"Creating sandbox: {sandbox}")
     
-    # Store sandbox in memory
-    if tenant_id not in sandboxes:
-        sandboxes[tenant_id] = {}
-    sandboxes[tenant_id][sandbox_id] = sandbox
-    
-    # Create request for isolad agent
+    # Create request for backend
     agent_request = CreateSandboxRequest(
         sandbox_id=sandbox_id,
         name=req.name,
@@ -287,13 +284,13 @@ async def create_sandbox(
         labels=req.labels or {}
     )
     
-    # Send request to agent via AgentManager
+    # Send request to backend
     # Run async communication in background
     asyncio.create_task(_handle_sandbox_creation(
         tenant_id, sandbox_id, agent_request, agent_manager, req.autoStart
     ))
     
-    logger.info(f"Sandbox requestcreated: {sandbox}")
+    logger.info(f"Sandbox request created: {sandbox}")
     return sandbox
 
 
@@ -328,30 +325,13 @@ async def _handle_agent_sandbox_creation(
         response = await agent_manager.send_create_sandbox_request(request)
         logger.info("Sandbox creation response: %s", response)
         
-        if sandbox_id in sandboxes.get(tenant_id, {}):
-            sandbox = sandboxes[tenant_id][sandbox_id]
-            
-            if response and response.success:
-                # Update sandbox state based on desired state
-                if sandbox.desiredState == SandboxState.running:
-                    sandbox.state = SandboxState.running   
-                else:
-                    sandbox.state = SandboxState.stopped
-                sandbox.ipAddress = response.ip_address
-                # Note: agent_id is not in CreateSandboxResponse currently
-            else:
-                sandbox.state = SandboxState.error
-                sandbox.errorReason = response.error_reason if response else "No agent available"
-            
-            sandbox.updatedAt = datetime.utcnow()
-            logger.info(f"Sandbox {sandbox_id} creation completed with state: {sandbox.state}")
+        if response and response.success:
+            logger.info(f"Sandbox {sandbox_id} created successfully")
+        else:
+            error_reason = response.error_reason if response else "No agent available"
+            logger.error(f"Sandbox {sandbox_id} creation failed: {error_reason}")
     except Exception as e:
         logger.error(f"Error creating sandbox {sandbox_id}: {e}")
-        if sandbox_id in sandboxes.get(tenant_id, {}):
-            sandbox = sandboxes[tenant_id][sandbox_id]
-            sandbox.state = SandboxState.error
-            sandbox.errorReason = str(e)
-            sandbox.updatedAt = datetime.utcnow()
 
 
 async def _handle_kubernetes_sandbox_creation(
@@ -361,12 +341,6 @@ async def _handle_kubernetes_sandbox_creation(
     auto_start: bool,
 ):
     """Provision the sandbox directly via the Kubernetes manager"""
-    tenant_sandboxes = sandboxes.get(tenant_id, {})
-    sandbox = tenant_sandboxes.get(sandbox_id)
-    if sandbox is None:
-        logger.warning("Sandbox %s vanished before provisioning", sandbox_id)
-        return
-
     try:
         success, ip_address, error_reason = await kubernetes_manager.create_pod(
             sandbox_id=sandbox_id,
@@ -380,17 +354,6 @@ async def _handle_kubernetes_sandbox_creation(
             auto_start=auto_start,
         )
 
-        if success:
-            target_state = SandboxState.running if auto_start else SandboxState.stopped
-            sandbox.state = target_state
-            sandbox.desiredState = target_state
-            sandbox.ipAddress = ip_address
-            sandbox.errorReason = None
-        else:
-            sandbox.state = SandboxState.error
-            sandbox.errorReason = error_reason or "Failed to create sandbox pod"
-
-        sandbox.updatedAt = datetime.utcnow()
         logger.info(
             "Sandbox %s Kubernetes provisioning result success=%s ip=%s reason=%s",
             sandbox_id,
@@ -400,9 +363,6 @@ async def _handle_kubernetes_sandbox_creation(
         )
     except Exception as exc:
         logger.error("Error creating sandbox %s via Kubernetes: %s", sandbox_id, exc)
-        sandbox.state = SandboxState.error
-        sandbox.errorReason = str(exc)
-        sandbox.updatedAt = datetime.utcnow()
 
 @app.get(
     "/sandboxes/{sandbox_id}",
@@ -418,13 +378,46 @@ async def _handle_kubernetes_sandbox_creation(
     },
 )
 async def get_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_key_header)):
-
+    # TODO:__ISO2__ validate tenant_id belongs to the sandbox
     tenant_id = tenant_from_api_key(api_key)
-    await _sync_tenant_sandboxes_with_backend(tenant_id, [sandbox_id])
-    return _get_sandbox_or_404(tenant_id, sandbox_id)
+    
+    # Get sandbox directly from Kubernetes
+    if SANDBOX_BACKEND == "kubernetes":
+        state, ip_address, error_reason = await kubernetes_manager.get_pod_status(sandbox_id)
+        if state is None:
+            raise HTTPException(status_code=404, detail="Sandbox not found")
+        
+        # Construct sandbox object from pod status
+        # Note: This is simplified - in production you'd want more metadata
+        sandbox = Sandbox.model_validate({
+            "id": sandbox_id,
+            "name": f"sandbox-{sandbox_id[:8]}",
+            "state": state,
+            "desiredState": state,
+            "class": "small",
+            "region": "default",
+            "image": "unknown",
+            "cpu": 1,
+            "memory": 1,
+            "disk": 10,
+            "gpu": 0,
+            "env": {},
+            "labels": {},
+            "volumes": [],
+            "ports": [],
+            "runnerId": None,
+            "errorReason": error_reason,
+            "ipAddress": ip_address,
+            "createdAt": datetime.utcnow(),
+            "updatedAt": datetime.utcnow(),
+            "lastActivityAt": None
+        })
+        return sandbox
+    else:
+        raise HTTPException(status_code=404, detail="Sandbox not found")
 
 
-@app.terminate(
+@app.delete(
     "/sandboxes/{sandbox_id}",
     status_code=204,
     tags=["sandboxes"],
@@ -444,8 +437,7 @@ async def terminate_sandbox(
     api_key: Optional[str] = Security(api_key_header),
 ):
     tenant_id = tenant_from_api_key(api_key)
-    _ = _get_sandbox_or_404(tenant_id, sandbox_id)
-
+    
     if SANDBOX_BACKEND == "kubernetes":
         success, error_reason = await kubernetes_manager.terminate_pod(
             sandbox_id, force=force
@@ -462,53 +454,7 @@ async def terminate_sandbox(
             detail="Sandbox deletion is only implemented for the Kubernetes backend",
         )
 
-    tenant_sandboxes = sandboxes.get(tenant_id, {})
-    tenant_sandboxes.pop(sandbox_id, None)
-    if not tenant_sandboxes:
-        sandboxes.pop(tenant_id, None)
-
     return Response(status_code=204)
-
-
-@app.post(
-    "/sandboxes/{sandbox_id}/restart",
-    response_model=Sandbox,
-    status_code=202,
-    tags=["sandboxes"],
-    summary="Restart a sandbox",
-    description="Restarts a sandbox (stop and start)",
-    operation_id="restartSandbox",
-    responses={
-        202: {"description": "Sandbox restart initiated"},
-        401: {"description": "Unauthorized - Invalid or missing API key", "model": Error},
-        404: {"description": "Resource not found", "model": Error},
-    },
-)
-async def restart_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_key_header)):
-    tenant_id = tenant_from_api_key(api_key)
-    sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
-    sandbox.desiredState = SandboxState.running
-    sandbox.state = SandboxState.starting
-
-    if SANDBOX_BACKEND != "kubernetes":
-        raise HTTPException(
-            status_code=501,
-            detail="Sandbox restart is only implemented for the Kubernetes backend",
-        )
-
-    success, ip_address, error_reason = await kubernetes_manager.restart_pod(sandbox_id)
-    if not success:
-        status_code = 404 if error_reason == "Pod not found" else 409
-        raise HTTPException(
-            status_code=status_code,
-            detail=error_reason or "Failed to restart sandbox",
-        )
-
-    await _sync_tenant_sandboxes_with_backend(tenant_id, [sandbox_id])
-    if ip_address:
-        sandbox.ipAddress = ip_address
-    sandbox.updatedAt = datetime.utcnow()
-    return sandbox
 
 
 # ============================================================================
@@ -537,24 +483,24 @@ async def execute_command(
     api_key: Optional[str] = Security(api_key_header)
 ):
     """Execute a command in a sandbox."""
+    # TODO:__ISO2__ validate tenant_id belongs to the sandbox
     tenant_id = tenant_from_api_key(api_key)
     
-    # Get sandbox to verify it exists and belongs to tenant
-    # TODO: __OMER__ keeping this in memory isn't good because it doesn't survive restarts
-    # We should think about how to handle this better.
-    sandbox = _get_sandbox_or_404(tenant_id, sandbox_id)
-    
-    if sandbox.state != SandboxState.running:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Sandbox must be in 'running' state, current state: {sandbox.state}"
-        )
-    
-    # TODO: __OMER__ add support for other backends
     if SANDBOX_BACKEND != "kubernetes":
         raise HTTPException(
             status_code=501,
             detail="Command execution is only implemented for the Kubernetes backend"
+        )
+    
+    # Check sandbox exists and is running
+    state, _, _ = await kubernetes_manager.get_pod_status(sandbox_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+    
+    if state != SandboxState.running:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Sandbox must be in 'running' state, current state: {state}"
         )
     
     # Execute command in Kubernetes pod
@@ -568,48 +514,6 @@ async def execute_command(
         stderr=stderr,
         exitCode=exit_code
     )
-
-
-def _get_sandbox_or_404(tenant_id: str, sandbox_id: str) -> Sandbox:
-    tenant_sandboxes = sandboxes.get(tenant_id, {})
-    sandbox = tenant_sandboxes.get(sandbox_id)
-    if sandbox is None:
-        raise HTTPException(status_code=404, detail="Sandbox not found")
-    return sandbox
-
-
-async def _sync_tenant_sandboxes_with_backend(
-    tenant_id: str, sandbox_ids: Optional[list[str]] = None
-):
-    """Update sandbox state from the active backend if available."""
-    if SANDBOX_BACKEND != "kubernetes":
-        return
-    tenant_sandboxes = sandboxes.get(tenant_id)
-    if not tenant_sandboxes:
-        return
-
-    ids_to_sync = sandbox_ids or list(tenant_sandboxes.keys())
-    for sandbox_id in ids_to_sync:
-        sandbox = tenant_sandboxes.get(sandbox_id)
-        if sandbox is None:
-            continue
-        try:
-            state, ip_address, error_reason = await kubernetes_manager.get_pod_status(
-                sandbox_id
-            )
-        except Exception as exc:
-            logger.error("Failed to sync sandbox %s status: %s", sandbox_id, exc)
-            continue
-
-        if state:
-            sandbox.state = state
-        elif error_reason:
-            sandbox.state = SandboxState.error
-        if ip_address:
-            sandbox.ipAddress = ip_address
-        sandbox.errorReason = error_reason
-        sandbox.updatedAt = datetime.utcnow()
-
 
 
 # Convenience for external import
