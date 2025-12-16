@@ -515,49 +515,6 @@ class KubernetesManager:
             logger.error(f"Failed to delete pod for sandbox {sandbox_id}: {e}")
             return False, f"API error: {e.reason}"
     
-    async def restart_pod(self, sandbox_id: str) -> tuple[bool, Optional[str], Optional[str]]:
-        """
-        Restart a pod by deleting and waiting for recreation (if using Deployment).
-        For standalone pods, we delete and recreate.
-        
-        Returns:
-            (success, ip_address, error_reason)
-        """
-        if not self._initialized:
-            await self.initialize()
-
-        logger.info("Restarting pod for sandbox '%s'", sandbox_id)
-        
-        try:
-            core_v1 = self._get_core_v1()
-            # Get current pod configuration
-            label_selector = f"sandbox-id={sandbox_id}"
-            pods = core_v1.list_namespaced_pod(
-                namespace=self.namespace,
-                label_selector=label_selector
-            )
-            
-            if not pods.items:
-                return False, None, "Pod not found"
-            
-            # Delete the pod (gracefully)
-            success, error = await self.delete_pod(sandbox_id, force=False)
-            if not success:
-                return False, None, error
-            
-            # Wait for deletion to complete
-            await asyncio.sleep(2)
-            
-            # Recreate pod with same spec
-            # Note: Ideally this should be stored and reused
-            # For now, let the controller handle recreation via desired state
-            
-            logger.info(f"Restarted pod for sandbox {sandbox_id}")
-            return True, None, None
-            
-        except ApiException as e:
-            logger.error(f"Failed to restart pod for sandbox {sandbox_id}: {e}")
-            return False, None, f"API error: {e.reason}"
     
     async def watch_pod_events(self, sandbox_id: Optional[str] = None, callback=None):
         """
