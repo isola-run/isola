@@ -124,6 +124,40 @@ def tenant_from_api_key(api_key: Optional[str]) -> str:
     return "e766a1e8-4b0e-4bb7-9612-80b9c1c8cd87"
 
 
+async def get_sandbox_from_k8s(sandbox_id: str) -> Optional[Sandbox]:
+    """
+    Fetch sandbox details from Kubernetes and return a Sandbox object.
+    Returns None if the sandbox is not found.
+    """
+    state, ip_address, error_reason = await kubernetes_manager.get_pod_status(sandbox_id)
+    if state is None:
+        return None
+    
+    return Sandbox.model_validate({
+        "id": sandbox_id,
+        "name": f"sandbox-{sandbox_id[:8]}",
+        "state": state,
+        "desiredState": state,
+        "class": "small",
+        "region": "default",
+        "image": "unknown",
+        "cpu": 1,
+        "memory": 1,
+        "disk": 10,
+        "gpu": 0,
+        "env": {},
+        "labels": {},
+        "volumes": [],
+        "ports": [],
+        "runnerId": None,
+        "errorReason": error_reason,
+        "ipAddress": ip_address,
+        "createdAt": datetime.utcnow(),
+        "updatedAt": datetime.utcnow(),
+        "lastActivityAt": None
+    })
+
+
 
 # Health Check
 @app.get(
@@ -200,13 +234,18 @@ async def list_sandboxes(
         pods = await kubernetes_manager.list_pods()
         items = []
         for pod_data in pods:
-            sandbox = Sandbox.model_validate(pod_data)
-            if state is None or sandbox.state == state:
+            sandbox_id = pod_data.get("sandbox_id")
+            if not sandbox_id:
+                continue
+            
+            sandbox = await get_sandbox_from_k8s(sandbox_id)
+            if sandbox and (state is None or sandbox.state == state):
                 items.append(sandbox)
     else:
         # For agent backend, return empty list for now
         items = []
     
+    logger.info(f"There are {len(items)} sandboxes")
     # Apply pagination
     total = len(items)
     items = items[offset:offset + limit]
@@ -383,35 +422,9 @@ async def get_sandbox(sandbox_id: str, api_key: Optional[str] = Security(api_key
     
     # Get sandbox directly from Kubernetes
     if SANDBOX_BACKEND == "kubernetes":
-        state, ip_address, error_reason = await kubernetes_manager.get_pod_status(sandbox_id)
-        if state is None:
+        sandbox = await get_sandbox_from_k8s(sandbox_id)
+        if sandbox is None:
             raise HTTPException(status_code=404, detail="Sandbox not found")
-        
-        # Construct sandbox object from pod status
-        # Note: This is simplified - in production you'd want more metadata
-        sandbox = Sandbox.model_validate({
-            "id": sandbox_id,
-            "name": f"sandbox-{sandbox_id[:8]}",
-            "state": state,
-            "desiredState": state,
-            "class": "small",
-            "region": "default",
-            "image": "unknown",
-            "cpu": 1,
-            "memory": 1,
-            "disk": 10,
-            "gpu": 0,
-            "env": {},
-            "labels": {},
-            "volumes": [],
-            "ports": [],
-            "runnerId": None,
-            "errorReason": error_reason,
-            "ipAddress": ip_address,
-            "createdAt": datetime.utcnow(),
-            "updatedAt": datetime.utcnow(),
-            "lastActivityAt": None
-        })
         return sandbox
     else:
         raise HTTPException(status_code=404, detail="Sandbox not found")
