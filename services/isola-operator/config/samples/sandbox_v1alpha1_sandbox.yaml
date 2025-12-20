@@ -1,0 +1,9 @@
+apiVersion: sandbox.isola.run/v1alpha1
+kind: Sandbox
+metadata:
+  labels:
+    app.kubernetes.io/name: isola-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: sandbox-sample
+spec:
+  # TODO(user): Add fields here
