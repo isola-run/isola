@@ -7,7 +7,7 @@ domain: isola.run
 layout:
 - go.kubebuilder.io/v4
 projectName: isola-operator
-repo: github.com/omereli/dev-isola/dev-isola/services/isola-operator
+repo: github.com/omereli/dev-isola/services/isola-operator
 resources:
 - api:
     crdVersion: v1
@@ -16,7 +16,7 @@ resources:
   domain: isola.run
   group: sandbox
   kind: Sandbox
-  path: github.com/omereli/dev-isola/dev-isola/services/isola-operator/api/v1alpha1
+  path: github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -24,6 +24,6 @@ resources:
   domain: isola.run
   group: sandbox
   kind: SandboxTemplate
-  path: github.com/omereli/dev-isola/dev-isola/services/isola-operator/api/v1alpha1
+  path: github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1
   version: v1alpha1
 version: "3"

@@ -1,9 +1,26 @@
 apiVersion: sandbox.isola.run/v1alpha1
 kind: SandboxTemplate
 metadata:
+  name: default-template
+  namespace: isola-sandboxes
   labels:
     app.kubernetes.io/name: isola-operator
     app.kubernetes.io/managed-by: kustomize
-  name: sandboxtemplate-sample
 spec:
-  # TODO(user): Add fields here
+  podTemplate:
+    spec:
+# todo benl: restartPolicy should always be Never. Validating webhook?
+      restartPolicy: Never
+      containers:
+      - name: sandbox
+        image: python:3.11-slim
+        command: ["sleep", "3600"]
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+  timeoutSeconds: 300
+  shutdownPolicy: Delete

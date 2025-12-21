@@ -10,4 +10,3 @@ COPY . /app
 
 # Run the agent
 CMD ["python", "-m", "services.isola_agent.main"]
-

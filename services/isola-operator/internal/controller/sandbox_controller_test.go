@@ -27,7 +27,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	sandboxv1alpha1 "github.com/omereli/dev-isola/dev-isola/services/isola-operator/api/v1alpha1"
+	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
 )
 
 var _ = Describe("Sandbox Controller", func() {

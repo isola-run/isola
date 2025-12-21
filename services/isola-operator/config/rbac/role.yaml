@@ -5,6 +5,18 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - sandbox.isola.run
   resources:
   - sandboxes
@@ -30,3 +42,11 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - sandbox.isola.run
+  resources:
+  - sandboxtemplates
+  verbs:
+  - get
+  - list
+  - watch
