@@ -32,7 +32,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	sandboxv1alpha1 "github.com/omereli/dev-isola/dev-isola/services/isola-operator/api/v1alpha1"
+	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 

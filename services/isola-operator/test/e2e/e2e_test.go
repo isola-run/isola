@@ -30,11 +30,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/omereli/dev-isola/dev-isola/services/isola-operator/test/utils"
+	"github.com/omereli/dev-isola/services/isola-operator/test/utils"
 )
 
 // namespace where the project is deployed in
-const namespace = "isola-operator-system"
+const namespace = "isola-control-plane"
 
 // serviceAccountName created for the project
 const serviceAccountName = "isola-operator-controller-manager"
