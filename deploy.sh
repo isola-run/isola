@@ -14,6 +14,10 @@ helm upgrade --install isola-controller charts/isola-controller \
   -n isola-control-plane \
   --create-namespace
 
+# Force pod restart to pick up the new image
+echo "Restarting deployment to pick up new image..."
+kubectl rollout restart deployment/isola-controller -n isola-control-plane
+
 # Wait for deployment
 echo "Waiting for deployment to be ready..."
 kubectl rollout status deployment/isola-controller -n isola-control-plane --timeout=60s
