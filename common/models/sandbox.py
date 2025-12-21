@@ -40,22 +40,10 @@ class Sandbox(BaseModel):
     state: SandboxState
     desiredState: Optional[SandboxState] = None
     class_: SandboxClass = Field(alias="class")
-    region: str
-    image: Optional[str] = None
-    cpu: Optional[int] = None
-    memory: Optional[int] = None
-    disk: Optional[int] = None
-    gpu: int = 0
     env: Dict[str, str] = Field(default_factory=dict)
     labels: Dict[str, str] = Field(default_factory=dict)
-    volumes: List[AttachedVolume] = Field(default_factory=list)
-    ports: List[ExposedPort] = Field(default_factory=list)
-    runnerId: Optional[str] = None
     errorReason: Optional[str] = None
-    ipAddress: Optional[str] = None
     createdAt: datetime
-    updatedAt: datetime
-    lastActivityAt: Optional[datetime] = None
 
 
 class CreateSandbox(BaseModel):

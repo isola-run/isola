@@ -25,23 +25,21 @@ from common.models.sandbox import (
 from services.isola_controller.agent_manager import AgentManager
 from services.isola_controller.kubernetes_control.sandboxes import KubernetesManager
 
-logger = logging.getLogger()
-if not logger.handlers:
-    log_level = os.getenv("LOG_LEVEL", "info").upper()
-    logger.setLevel(getattr(logging, log_level, logging.INFO))
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(getattr(logging, log_level, logging.INFO))
-
-    formatter = logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    handler.setFormatter(formatter)
-
-    logger.addHandler(handler)
+# Configure module logger directly (don't rely on root logger which may be pre-configured by uvicorn)
+log_level = os.getenv("LOG_LEVEL", "info").upper()
 
 logger = logging.getLogger(__name__)
+logger.setLevel(getattr(logging, log_level, logging.INFO))
+
+# Add handler to this module's logger
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(getattr(logging, log_level, logging.INFO))
+formatter = logging.Formatter(
+    fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 
 agent_manager = AgentManager()
@@ -496,6 +494,8 @@ async def execute_command(
     api_key: Optional[str] = Security(api_key_header)
 ):
     """Execute a command in a sandbox."""
+    logger.info(f"[EXECUTE] Request for sandbox {sandbox_id}: {command_request.command}")
+    
     # TODO:__ISO2__ validate tenant_id belongs to the sandbox
     tenant_id = tenant_from_api_key(api_key)
     
@@ -508,9 +508,11 @@ async def execute_command(
     # Check sandbox exists and is running
     state, _, _ = await kubernetes_manager.get_pod_status(sandbox_id)
     if state is None:
+        logger.warning(f"[EXECUTE] Sandbox {sandbox_id} not found")
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
     if state != SandboxState.running:
+        logger.warning(f"[EXECUTE] Sandbox {sandbox_id} not in running state: {state}")
         raise HTTPException(
             status_code=409,
             detail=f"Sandbox must be in 'running' state, current state: {state}"
@@ -521,6 +523,8 @@ async def execute_command(
         sandbox_id, 
         command_request.command
     )
+    
+    logger.info(f"[EXECUTE] Command completed for sandbox {sandbox_id}: exit_code={exit_code}")
     
     return ExecuteCommandResponse(
         stdout=stdout,
