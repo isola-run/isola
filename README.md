@@ -28,3 +28,4 @@ curl -X POST http://localhost:30080/sandboxes/YOUR_SANDBOX_ID/execute \
   -H "Content-Type: application/json" \
   -H "X-API-Key: iso_sk_demo" \
   -d "{\"command\": \"echo 'hello from sandbox'\"}"
+
