@@ -17,13 +17,6 @@ class SandboxState(str, Enum):
     unknown = "unknown"
 
 
-class SandboxClass(str, Enum):
-    small = "small"
-    medium = "medium"
-    large = "large"
-    xlarge = "xlarge"
-
-
 class AttachedVolume(BaseModel):
     volumeId: str
     mountPath: str
@@ -39,7 +32,6 @@ class Sandbox(BaseModel):
     name: str
     state: SandboxState
     desiredState: Optional[SandboxState] = None
-    class_: SandboxClass = Field(alias="class")
     env: Dict[str, str] = Field(default_factory=dict)
     labels: Dict[str, str] = Field(default_factory=dict)
     errorReason: Optional[str] = None
@@ -49,7 +41,6 @@ class Sandbox(BaseModel):
 class CreateSandbox(BaseModel):
     name: str
     image: Optional[str] = None
-    class_: SandboxClass = Field(default=SandboxClass.small, alias="class")
     region: str = "default"
     cpu: Optional[float] = None
     memory: Optional[float] = None
