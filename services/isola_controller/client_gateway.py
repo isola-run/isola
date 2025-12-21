@@ -25,7 +25,6 @@ from common.models.sandbox import (
 from services.isola_controller.agent_manager import AgentManager
 from services.isola_controller.kubernetes_control.sandboxes import KubernetesManager
 
-# Configure module logger directly (don't rely on root logger which may be pre-configured by uvicorn)
 log_level = os.getenv("LOG_LEVEL", "info").upper()
 
 logger = logging.getLogger(__name__)
@@ -136,23 +135,10 @@ async def get_sandbox_from_k8s(sandbox_id: str) -> Optional[Sandbox]:
         "name": f"sandbox-{sandbox_id[:8]}",
         "state": state,
         "desiredState": state,
-        "class": "small",
-        "region": "default",
-        "image": "unknown",
-        "cpu": 1,
-        "memory": 1,
-        "disk": 10,
-        "gpu": 0,
         "env": {},
         "labels": {},
-        "volumes": [],
-        "ports": [],
-        "runnerId": None,
         "errorReason": error_reason,
-        "ipAddress": ip_address,
         "createdAt": datetime.utcnow(),
-        "updatedAt": datetime.utcnow(),
-        "lastActivityAt": None
     })
 
 
@@ -288,23 +274,10 @@ async def create_sandbox(
         "name": req.name,
         "state": SandboxState.pending,
         "desiredState": desired_state,
-        "class": req.class_.value if req.class_ else "small",
-        "region": req.region if req.region else "default",
-        "image": req.image or "python:3.11",
-        "cpu": req.cpu or 1,
-        "memory": req.memory or 1,
-        "disk": req.disk or 10,
-        "gpu": req.gpu or 0,
         "env": req.env or {},
         "labels": req.labels or {},
-        "volumes": req.volumes or [],
-        "ports": [],
-        "runnerId": None,
         "errorReason": None,
-        "ipAddress": None,
         "createdAt": now,
-        "updatedAt": now,
-        "lastActivityAt": None
     }
     sandbox = Sandbox.model_validate(sandbox_data)
     logger.info(f"Creating sandbox: {sandbox}")

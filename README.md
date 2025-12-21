@@ -29,3 +29,6 @@ curl -X POST http://localhost:30080/sandboxes/YOUR_SANDBOX_ID/execute \
   -H "X-API-Key: iso_sk_demo" \
   -d "{\"command\": \"echo 'hello from sandbox'\"}"
 
+# List all sandboxes
+curl -X GET "http://localhost:30080/sandboxes" \
+  -H "X-API-Key: iso_sk_demo"
