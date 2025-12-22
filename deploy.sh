@@ -3,9 +3,12 @@
 # Script exists if any command fails
 set -euo pipefail
 
-# Build the Docker image
-echo "Building Docker image..."
+# Build the Docker images
+echo "Building isola-controller Docker image..."
 minikube image build -t isola-controller:dev -f services/isola_controller/Dockerfile .
+
+echo "Building isola-agent Docker image..."
+minikube image build -t isola-agent:dev -f services/isola_agent/Dockerfile .
 
 # Deploy with Helm
 echo "Deploying with Helm..."
