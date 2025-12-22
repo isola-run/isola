@@ -9,7 +9,9 @@ from datetime import datetime
 from typing import Dict, Optional
 import os
 import sys
-from fastapi import FastAPI, HTTPException, Query, Security, Response
+
+import httpx
+from fastapi import FastAPI, File, Form, HTTPException, Query, Security, Response, UploadFile
 from fastapi.security import APIKeyHeader
 
 from common.models.common import Error
@@ -17,6 +19,7 @@ from common.models.control_protocol import CreateSandboxRequest
 from common.models.sandbox import (
     ExecuteCommandRequest,
     ExecuteCommandResponse,
+    FileUploadResponse,
     SandboxState,
     Sandbox,
     CreateSandbox,
@@ -54,6 +57,11 @@ if SANDBOX_BACKEND not in SANDBOX_BACKENDS:
 
 KUBERNETES_NAMESPACE = os.getenv("KUBERNETES_NAMESPACE", "isola-sandboxes")
 MINIKUBE_API_SERVER = "https://192.168.49.2:8443"
+
+# File upload configuration
+# Files larger than this threshold will require signed URL upload (not implemented yet)
+FILE_SIZE_THRESHOLD_BYTES = 5 * 1024 * 1024  # 5MB
+AGENT_SIDECAR_PORT = 8080
 
 kubernetes_manager = KubernetesManager(
     namespace=KUBERNETES_NAMESPACE,
@@ -504,6 +512,136 @@ async def execute_command(
         stderr=stderr,
         exitCode=exit_code
     )
+
+
+# ============================================================================
+# File Upload Routes
+# ============================================================================
+
+@app.post(
+    "/sandboxes/{sandbox_id}/files",
+    response_model=FileUploadResponse,
+    status_code=200,
+    tags=["files"],
+    summary="Upload a file to a sandbox",
+    description="Upload a file to the specified sandbox. Files smaller than 5MB are uploaded directly. Larger files will require signed URL upload (not yet implemented).",
+    operation_id="uploadFile",
+    responses={
+        200: {"description": "File uploaded successfully"},
+        400: {"description": "Bad request - Invalid input", "model": Error},
+        401: {"description": "Unauthorized - Invalid or missing API key", "model": Error},
+        404: {"description": "Sandbox not found", "model": Error},
+        409: {"description": "Conflict - Sandbox not in running state", "model": Error},
+        501: {"description": "Not implemented - Large file upload requires signed URL", "model": Error},
+    }
+)
+async def upload_file(
+    sandbox_id: str,
+    file: UploadFile = File(..., description="File to upload to the sandbox"),
+    path: str = Form(..., description="Target path in the sandbox where the file should be written"),
+    api_key: Optional[str] = Security(api_key_header),
+):
+    """
+    Upload a file to a sandbox.
+    
+    Small files (< 5MB) are uploaded directly via the agent sidecar.
+    Large files (>= 5MB) will return 501 - signed URL upload not yet implemented.
+    """
+    logger.info(f"[UPLOAD] Request for sandbox {sandbox_id}: path={path}")
+    
+    # Validate API key
+    tenant_id = tenant_from_api_key(api_key)
+    
+    if SANDBOX_BACKEND != "kubernetes":
+        raise HTTPException(
+            status_code=501,
+            detail="File upload is only implemented for the Kubernetes backend"
+        )
+    
+    # Check sandbox exists and is running
+    state, ip_address, error_reason = await kubernetes_manager.get_pod_status(sandbox_id)
+    if state is None:
+        logger.warning(f"[UPLOAD] Sandbox {sandbox_id} not found")
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+    
+    if state != SandboxState.running:
+        logger.warning(f"[UPLOAD] Sandbox {sandbox_id} not in running state: {state}")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Sandbox must be in 'running' state, current state: {state}"
+        )
+    
+    if not ip_address:
+        logger.error(f"[UPLOAD] Sandbox {sandbox_id} has no IP address")
+        raise HTTPException(
+            status_code=500,
+            detail="Sandbox pod has no IP address"
+        )
+    
+    # Read file content to check size
+    content = await file.read()
+    file_size = len(content)
+    
+    logger.info(f"[UPLOAD] File size: {file_size} bytes, threshold: {FILE_SIZE_THRESHOLD_BYTES} bytes")
+    
+    # Check file size threshold
+    if file_size >= FILE_SIZE_THRESHOLD_BYTES:
+        logger.info(f"[UPLOAD] File too large for direct upload: {file_size} bytes")
+        raise HTTPException(
+            status_code=501,
+            detail=f"File size ({file_size} bytes) exceeds direct upload limit ({FILE_SIZE_THRESHOLD_BYTES} bytes). Signed URL upload is not yet implemented."
+        )
+    
+    # Forward the file to the agent sidecar
+    agent_url = f"http://{ip_address}:{AGENT_SIDECAR_PORT}/upload"
+    logger.info(f"[UPLOAD] Forwarding to agent at {agent_url}")
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Prepare multipart form data
+            files = {"file": (file.filename or "uploaded_file", content)}
+            data = {"path": path}
+            
+            response = await client.post(agent_url, files=files, data=data)
+            
+            if response.status_code != 200:
+                logger.error(
+                    f"[UPLOAD] Agent returned error: {response.status_code} - {response.text}"
+                )
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Agent upload failed: {response.text}"
+                )
+            
+            agent_response = response.json()
+            logger.info(f"[UPLOAD] Successfully uploaded file to sandbox {sandbox_id}: {agent_response}")
+            
+            return FileUploadResponse(
+                success=agent_response.get("success", True),
+                path=agent_response.get("path", path),
+                size=agent_response.get("size", file_size)
+            )
+            
+    except httpx.TimeoutException:
+        logger.error(f"[UPLOAD] Timeout connecting to agent at {agent_url}")
+        raise HTTPException(
+            status_code=504,
+            detail="Timeout connecting to sandbox agent"
+        )
+    except httpx.ConnectError as e:
+        logger.error(f"[UPLOAD] Failed to connect to agent at {agent_url}: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to connect to sandbox agent: {str(e)}"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[UPLOAD] Unexpected error uploading to sandbox {sandbox_id}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error during upload: {str(e)}"
+        )
 
 
 # Convenience for external import
