@@ -75,3 +75,14 @@ class ExecuteCommandResponse(BaseModel):
     stdout: str
     stderr: str
     exitCode: int
+
+
+class FileUploadRequest(BaseModel):
+    path: str = Field(..., description="Target path in the sandbox where the file should be written")
+    content: bytes = Field(..., description="File content as bytes")
+
+
+class FileUploadResponse(BaseModel):
+    success: bool = Field(..., description="Whether the upload was successful")
+    path: str = Field(..., description="Path where the file was written")
+    size: int = Field(..., description="Size of the uploaded file in bytes")
