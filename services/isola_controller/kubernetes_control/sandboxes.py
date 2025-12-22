@@ -24,7 +24,7 @@ class KubernetesManager:
         namespace: str = "isola-sandboxes",
         runtime_class_name: Optional[str] = "gvisor",
         api_server_url: Optional[str] = None,
-        agent_image: str = "isola-agent:latest",
+        agent_image: str = "isola-agent:dev",
         controller_ws_url: str = "ws://isola-controller.isola-control-plane:8765/ws",
         shared_volume_name: str = "sandbox-data",
         shared_volume_mount_path: str = "/sandbox-data",
@@ -200,6 +200,7 @@ class KubernetesManager:
         agent_container = client.V1Container(
             name="isola-agent",
             image=self.agent_image,
+            image_pull_policy="Never",
             env=agent_env_vars,
             resources=agent_resources,
             volume_mounts=[shared_volume_mount],
