@@ -197,7 +197,6 @@ async def health_check():
 )
 async def readiness_check():
     """Readiness check endpoint - verifies all dependencies are ready"""
-    # TODO: __OMER__ Check if agent manager is running, etc
     return {"status": "ready"}
 
 # Sandboxes

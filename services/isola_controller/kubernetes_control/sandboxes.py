@@ -586,7 +586,7 @@ class KubernetesManager:
             
             pod = pods.items[0]
 
-            # TODO: __OMER__ do snapshot according to config 
+            # TODO: do snapshot according to config 
             pod_name = self._require_metadata_name(pod.metadata)
             
             # Delete options
