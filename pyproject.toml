@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "aioboto3>=13.0.0",
     "fastapi[standard]>=0.120.4",
     "httpx>=0.27.0",
     "kubernetes>=34.1.0",
