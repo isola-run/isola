@@ -28,3 +28,11 @@ curl -X POST http://localhost:30080/sandboxes/YOUR_SANDBOX_ID/execute \
   -H "Content-Type: application/json" \
   -H "X-API-Key: iso_sk_demo" \
   -d "{\"command\": \"echo 'hello from sandbox'\"}"
+
+# List all sandboxes
+curl -X GET "http://localhost:30080/sandboxes" \
+  -H "X-API-Key: iso_sk_demo"
+
+# Delete a sandbox
+curl -X DELETE "http://localhost:30080/sandboxes/YOUR_SANDBOX_ID" \
+  -H "X-API-Key: iso_sk_demo"

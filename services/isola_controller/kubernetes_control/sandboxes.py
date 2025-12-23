@@ -31,10 +31,20 @@ class KubernetesManager:
         namespace: str = "isola-sandboxes",
         runtime_class_name: Optional[str] = "gvisor",
         api_server_url: Optional[str] = None,
+        agent_image: str = "isola-agent:dev",
+        controller_ws_url: str = "ws://isola-controller.isola-control-plane:8765/ws",
+        shared_volume_name: str = "sandbox-data",
+        shared_volume_mount_path: str = "/sandbox-data",
+        agent_http_port: int = 8080,
     ):
         self.namespace = namespace
         self.runtime_class_name = runtime_class_name
         self.api_server_url = api_server_url
+        self.agent_image = agent_image
+        self.controller_ws_url = controller_ws_url
+        self.shared_volume_name = shared_volume_name
+        self.shared_volume_mount_path = shared_volume_mount_path
+        self.agent_http_port = agent_http_port
         self.core_v1: Optional[client.CoreV1Api] = None
         self.apps_v1: Optional[client.AppsV1Api] = None
         self.custom_api: Optional[client.CustomObjectsApi] = None
@@ -267,7 +277,7 @@ class KubernetesManager:
         labels: Dict[str, str],
         gpu: int = 0
     ) -> client.V1Pod:
-        """Build Kubernetes Pod specification for a sandbox"""
+        """Build Kubernetes Pod specification for a sandbox with agent sidecar"""
         
         # Combine default labels with user labels
         all_labels = {
@@ -277,7 +287,7 @@ class KubernetesManager:
             **labels
         }
         
-        # Build environment variables
+        # Build environment variables for sandbox container
         env_vars = [
             client.V1EnvVar(name=k, value=v) for k, v in env.items()
         ]
@@ -288,7 +298,7 @@ class KubernetesManager:
             client.V1EnvVar(name="SANDBOX_NAME", value=name),
         ])
         
-        # Build resource requirements
+        # Build resource requirements for sandbox container
         resource_requests = {
             "cpu": f"{cpu}",
             "memory": f"{int(memory * 1024)}Mi",
@@ -310,12 +320,25 @@ class KubernetesManager:
             limits=resource_limits
         )
         
-        # Build container spec
-        container = client.V1Container(
+        # Create shared volume for sandbox-data
+        shared_volume = client.V1Volume(
+            name=self.shared_volume_name,
+            empty_dir=client.V1EmptyDirVolumeSource()
+        )
+        
+        # Volume mount for shared data
+        shared_volume_mount = client.V1VolumeMount(
+            name=self.shared_volume_name,
+            mount_path=self.shared_volume_mount_path
+        )
+        
+        # Build sandbox container spec
+        sandbox_container = client.V1Container(
             name="sandbox",
             image=image,
             env=env_vars,
             resources=resource_requirements,
+            volume_mounts=[shared_volume_mount],
             # Keep container running
             command=["/bin/sh"],
             args=["-c", "trap 'exit 0' TERM; sleep infinity & wait"],
@@ -331,9 +354,81 @@ class KubernetesManager:
             )
         )
         
-        # Build pod spec
+        # TODO: __OMER__ move to file 
+        # Build agent sidecar container spec
+        agent_env_vars = [
+            client.V1EnvVar(name="SANDBOX_ID", value=sandbox_id),
+            client.V1EnvVar(name="SANDBOX_NAME", value=name),
+            client.V1EnvVar(name="ISOLA_CONTROLLER_WS_URL", value=self.controller_ws_url),
+            client.V1EnvVar(name="SANDBOX_DATA_PATH", value=self.shared_volume_mount_path),
+            client.V1EnvVar(name="HTTP_PORT", value=str(self.agent_http_port)),
+            client.V1EnvVar(name="LOG_LEVEL", value="info"),
+        ]
+        
+        # Agent sidecar resource requirements (lightweight)
+        agent_resources = client.V1ResourceRequirements(
+            requests={
+                "cpu": "50m",
+                "memory": "64Mi",
+            },
+            limits={
+                "cpu": "200m",
+                "memory": "128Mi",
+            }
+        )
+        
+        agent_container = client.V1Container(
+            name="isola-agent",
+            image=self.agent_image,
+            image_pull_policy="Never",
+            env=agent_env_vars,
+            resources=agent_resources,
+            volume_mounts=[shared_volume_mount],
+            ports=[
+                client.V1ContainerPort(
+                    container_port=self.agent_http_port,
+                    name="http",
+                    protocol="TCP"
+                )
+            ],
+            # Security context for agent (similar to sandbox)
+            security_context=client.V1SecurityContext(
+                run_as_non_root=True,
+                run_as_user=1000,
+                allow_privilege_escalation=False,
+                read_only_root_filesystem=False,
+                capabilities=client.V1Capabilities(
+                    drop=["ALL"]
+                )
+            ),
+            # Liveness probe for agent health
+            liveness_probe=client.V1Probe(
+                http_get=client.V1HTTPGetAction(
+                    path="/health",
+                    port=self.agent_http_port
+                ),
+                initial_delay_seconds=5,
+                period_seconds=10,
+                timeout_seconds=3,
+                failure_threshold=3
+            ),
+            # Readiness probe for agent
+            readiness_probe=client.V1Probe(
+                http_get=client.V1HTTPGetAction(
+                    path="/health",
+                    port=self.agent_http_port
+                ),
+                initial_delay_seconds=2,
+                period_seconds=5,
+                timeout_seconds=3,
+                failure_threshold=3
+            )
+        )
+        
+        # Build pod spec with both containers and shared volume
         pod_spec = client.V1PodSpec(
-            containers=[container],
+            containers=[sandbox_container, agent_container],
+            volumes=[shared_volume],
             restart_policy="Always",
             runtime_class_name=self.runtime_class_name,
             # Service account for potential RBAC
@@ -365,7 +460,8 @@ class KubernetesManager:
             annotations={
                 "isola.run/sandbox-id": sandbox_id,
                 "isola.run/sandbox-name": name,
-                "isola.run/created-at": datetime.utcnow().isoformat()
+                "isola.run/created-at": datetime.utcnow().isoformat(),
+                "isola.run/agent-port": str(self.agent_http_port)
             }
         )
         
@@ -670,7 +766,7 @@ class KubernetesManager:
             
             pod = pods.items[0]
 
-            # TODO: __OMER__ do snapshot according to config 
+            # TODO: do snapshot according to config 
             pod_name = self._require_metadata_name(pod.metadata)
             
             # Delete options
