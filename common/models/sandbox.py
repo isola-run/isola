@@ -86,3 +86,24 @@ class FileUploadResponse(BaseModel):
     success: bool = Field(..., description="Whether the upload was successful")
     path: str = Field(..., description="Path where the file was written")
     size: int = Field(..., description="Size of the uploaded file in bytes")
+
+
+class UploadUrlRequest(BaseModel):
+    """Request model for generating a presigned upload URL."""
+    path: str = Field(..., description="Target path in the sandbox where the file should be written")
+    filename: str = Field(..., description="Name of the file being uploaded")
+    content_type: Optional[str] = Field(None, description="Content type of the file (e.g., 'application/octet-stream')")
+
+
+class UploadUrlResponse(BaseModel):
+    """Response model for presigned upload URL."""
+    upload_url: str = Field(..., description="Presigned URL for uploading the file directly to S3")
+    upload_id: str = Field(..., description="Unique identifier for tracking this upload")
+    expires_in: int = Field(..., description="URL expiration time in seconds")
+
+
+class ConfirmUploadRequest(BaseModel):
+    """Request model for confirming an upload and triggering agent download."""
+    upload_id: str = Field(..., description="Upload ID returned from upload-url endpoint")
+    filename: str = Field(..., description="Name of the file that was uploaded (must match upload-url request)")
+    path: str = Field(..., description="Target path in the sandbox where the file should be written")
