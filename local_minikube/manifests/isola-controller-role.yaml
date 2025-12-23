@@ -7,3 +7,6 @@ rules:
 - apiGroups: [""] # "" indicates the core API group
   resources: ["pods", "pods/log", "pods/status"]
   verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+- apiGroups: ["sandbox.isola.run"]
+  resources: ["sandboxes", "sandboxes/status"]
+  verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]

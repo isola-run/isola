@@ -6,6 +6,7 @@ import asyncio
 import logging
 from typing import Dict, Optional, List
 from datetime import datetime
+from copy import deepcopy
 
 from kubernetes import client, config
 from kubernetes import watch as k8s_watch  # type: ignore[attr-defined]
@@ -18,6 +19,12 @@ logger = logging.getLogger(__name__)
 
 class KubernetesManager:
     """Manages Kubernetes resources for sandboxes"""
+    
+    # CRD configuration for Sandbox resources
+    SANDBOX_GROUP = "sandbox.isola.run"
+    SANDBOX_VERSION = "v1alpha1"
+    SANDBOX_PLURAL = "sandboxes"
+    SANDBOXTEMPLATE_PLURAL = "sandboxtemplates"
     
     def __init__(
         self,
@@ -40,6 +47,7 @@ class KubernetesManager:
         self.agent_http_port = agent_http_port
         self.core_v1: Optional[client.CoreV1Api] = None
         self.apps_v1: Optional[client.AppsV1Api] = None
+        self.custom_api: Optional[client.CustomObjectsApi] = None
         self._initialized = False
         self._init_lock: Optional[asyncio.Lock] = None
 
@@ -52,6 +60,11 @@ class KubernetesManager:
         if self.apps_v1 is None:
             raise RuntimeError("KubernetesManager is not initialized (AppsV1Api missing)")
         return self.apps_v1
+
+    def _get_custom_api(self) -> client.CustomObjectsApi:
+        if self.custom_api is None:
+            raise RuntimeError("KubernetesManager is not initialized (CustomObjectsApi missing)")
+        return self.custom_api
         
     async def initialize(self) -> None:
         """Initialize Kubernetes client - call from async context"""
@@ -81,8 +94,175 @@ class KubernetesManager:
             
             self.core_v1 = client.CoreV1Api(api_client)
             self.apps_v1 = client.AppsV1Api(api_client)
+            self.custom_api = client.CustomObjectsApi(api_client)
             
             self._initialized = True
+
+    async def create_sandbox_cr(
+        self,
+        sandbox_id: str,
+        name: str,
+        template_name: str = "default-template",
+    ) -> tuple[bool, Optional[str]]:
+        """
+        Create a Sandbox custom resource. The isola-operator will handle Pod creation.
+        
+        Args:
+            sandbox_id: Unique sandbox identifier
+            name: User-friendly sandbox name
+            template_name: Name of the SandboxTemplate to reference
+            
+        Returns:
+            (success, error_reason)
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        logger.info(
+            "Creating Sandbox CR '%s' (template=%s) in namespace '%s'",
+            sandbox_id,
+            template_name,
+            self.namespace,
+        )
+        
+        sandbox_body: dict = dict({
+            "apiVersion": f"{self.SANDBOX_GROUP}/{self.SANDBOX_VERSION}",
+            "kind": "Sandbox",
+            "metadata": {
+                "name": f"sandbox-{sandbox_id[:8]}",
+                "namespace": self.namespace,
+                "labels": {
+                    "sandbox-id": sandbox_id,
+                    "managed-by": "isola-controller",
+                },
+            },
+            "spec": {
+                "templateRef": {
+                    "name": template_name,
+                },
+            },
+        })
+        
+        sandbox_body["metadata"]["labels"]["sandbox-id"] = sandbox_id
+        
+        # Store original name in annotation
+        if "annotations" not in sandbox_body["metadata"]:
+            sandbox_body["metadata"]["annotations"] = {}
+        sandbox_body["metadata"]["annotations"]["isola.run/sandbox-name"] = name
+        
+        try:
+            custom_api = self._get_custom_api()
+            custom_api.create_namespaced_custom_object(
+                group=self.SANDBOX_GROUP,
+                version=self.SANDBOX_VERSION,
+                namespace=self.namespace,
+                plural=self.SANDBOX_PLURAL,
+                body=sandbox_body,
+            )
+            logger.info("Created Sandbox CR 'sandbox-%s' for sandbox %s", sandbox_id[:8], sandbox_id)
+            return True, None
+        except ApiException as e:
+            logger.error("Failed to create Sandbox CR for %s: %s", sandbox_id, e)
+            return False, f"Kubernetes API error: {e.reason}"
+        except Exception as e:
+            logger.error("Unexpected error creating Sandbox CR for %s: %s", sandbox_id, e)
+            return False, str(e)
+
+    async def get_sandbox_cr_status(
+        self,
+        sandbox_id: str,
+    ) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """
+        Get Sandbox CR status.
+        
+        Returns:
+            (state, ip_address, error_reason, name) - state is from conditions or None if not found
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        try:
+            custom_api = self._get_custom_api()
+            # First try to get by name
+            # todo benl: this is bad code. name might be overriden by user, lookup by unique id
+            sandbox_name = f"sandbox-{sandbox_id[:8]}"
+            sandbox = custom_api.get_namespaced_custom_object(
+                group=self.SANDBOX_GROUP,
+                version=self.SANDBOX_VERSION,
+                namespace=self.namespace,
+                plural=self.SANDBOX_PLURAL,
+                name=sandbox_name,
+            )
+            
+            status = sandbox.get("status", {})
+            metadata = sandbox.get("metadata", {})
+            
+            # Get name from annotation or fallback to CR name
+            annotations = metadata.get("annotations", {})
+            name = annotations.get("isola.run/sandbox-name", metadata.get("name"))
+            
+            # Check conditions for Ready state
+            conditions = status.get("conditions", [])
+            state = "pending"
+            for cond in conditions:
+                if cond.get("type") == "Ready":
+                    state = "running" if cond.get("status") == "True" else "pending"
+                    break # Found Ready condition
+                if cond.get("type") == "TimedOut" and cond.get("status") == "True":
+                    state = "stopped"
+                    break
+            
+            # Try to get pod IP by looking up the pod
+            ip_address = None
+            pod_state, ip_address, _ = await self.get_pod_status(sandbox_id)
+            
+            return state, ip_address, None, name
+            
+        except ApiException as e:
+            if e.status == 404:
+                logger.warning(
+                    "Sandbox CR '%s' not found in namespace '%s'",
+                    sandbox_name,
+                    self.namespace,
+                )
+                return None, None, "Sandbox not found", None
+            logger.error("Failed to get Sandbox CR status for %s: %s", sandbox_id, e)
+            return SandboxState.error.value, None, f"API error: {e.reason}", None
+
+    async def delete_sandbox_cr(
+        self,
+        sandbox_id: str,
+    ) -> tuple[bool, Optional[str]]:
+        """
+        Delete a Sandbox custom resource.
+        
+        Returns:
+            (success, error_reason)
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        sandbox_name = f"sandbox-{sandbox_id[:8]}"
+        logger.info("Deleting Sandbox CR '%s'", sandbox_name)
+        
+        try:
+            custom_api = self._get_custom_api()
+            custom_api.delete_namespaced_custom_object(
+                group=self.SANDBOX_GROUP,
+                version=self.SANDBOX_VERSION,
+                namespace=self.namespace,
+                plural=self.SANDBOX_PLURAL,
+                name=sandbox_name,
+            )
+            logger.info("Deleted Sandbox CR '%s'", sandbox_name)
+            return True, None
+        except ApiException as e:
+            if e.status == 404:
+                logger.warning("Sandbox CR '%s' already deleted", sandbox_name)
+                return True, None
+            logger.error("Failed to delete Sandbox CR '%s': %s", sandbox_name, e)
+            return False, f"API error: {e.reason}"
+
         
 
     def _build_pod_spec(

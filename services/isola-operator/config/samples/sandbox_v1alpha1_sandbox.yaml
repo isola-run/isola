@@ -1,0 +1,11 @@
+apiVersion: sandbox.isola.run/v1alpha1
+kind: Sandbox
+metadata:
+  name: test-sandbox
+  namespace: isola-sandboxes
+  labels:
+    app.kubernetes.io/name: isola-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  templateRef:
+    name: default-template

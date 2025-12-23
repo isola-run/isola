@@ -147,15 +147,15 @@ async def get_sandbox_from_k8s(sandbox_id: str) -> Optional[Sandbox]:
     Fetch sandbox details from Kubernetes and return a Sandbox object.
     Returns None if the sandbox is not found.
     """
-    state, ip_address, error_reason = await kubernetes_manager.get_pod_status(sandbox_id)
-    if state is None:
+    state_str, ip_address, error_reason, name = await kubernetes_manager.get_sandbox_cr_status(sandbox_id)
+    if error_reason == "Sandbox not found":
         return None
     
     return Sandbox.model_validate({
         "id": sandbox_id,
         "name": f"sandbox-{sandbox_id[:8]}",
-        "state": state,
-        "desiredState": state,
+        "state": state_str,
+        "desiredState": state_str,
         "env": {},
         "labels": {},
         "errorReason": error_reason,
@@ -370,29 +370,23 @@ async def _handle_kubernetes_sandbox_creation(
     request: CreateSandboxRequest,
     auto_start: bool,
 ):
-    """Provision the sandbox directly via the Kubernetes manager"""
+    """Provision the sandbox by creating a Sandbox CR (operator handles Pod creation)"""
     try:
-        success, ip_address, error_reason = await kubernetes_manager.create_pod(
+        # Create Sandbox CR - the isola-operator will watch for this and create the Pod
+        success, error_reason = await kubernetes_manager.create_sandbox_cr(
             sandbox_id=sandbox_id,
             name=request.name,
-            image=request.image,
-            cpu=request.cpu,
-            memory=request.memory,
-            disk=request.disk,
-            env=request.env,
-            labels=request.labels,
-            auto_start=auto_start,
+            template_name="default-template",  # Using the default template for now
         )
 
         logger.info(
-            "Sandbox %s Kubernetes provisioning result success=%s ip=%s reason=%s",
+            "Sandbox %s CR creation result success=%s reason=%s",
             sandbox_id,
             success,
-            ip_address,
             error_reason,
         )
     except Exception as exc:
-        logger.error("Error creating sandbox %s via Kubernetes: %s", sandbox_id, exc)
+        logger.error("Error creating sandbox %s via Kubernetes CR: %s", sandbox_id, exc)
 
 @app.get(
     "/sandboxes/{sandbox_id}",
@@ -443,11 +437,10 @@ async def terminate_sandbox(
     tenant_id = tenant_from_api_key(api_key)
     
     if SANDBOX_BACKEND == "kubernetes":
-        success, error_reason = await kubernetes_manager.terminate_pod(
-            sandbox_id, force=force
-        )
+        # Delete the Sandbox CR - the operator will handle pod cleanup via owner references
+        success, error_reason = await kubernetes_manager.delete_sandbox_cr(sandbox_id)
         if not success:
-            status_code = 404 if error_reason == "Pod not found" else 500
+            status_code = 404 if error_reason and "not found" in error_reason.lower() else 500
             raise HTTPException(
                 status_code=status_code,
                 detail=error_reason or "Failed to delete sandbox",
