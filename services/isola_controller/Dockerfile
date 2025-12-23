@@ -3,7 +3,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install dependencies
-RUN pip install --no-cache-dir fastapi uvicorn websockets pydantic kubernetes httpx python-multipart
+RUN pip install --no-cache-dir fastapi uvicorn websockets pydantic kubernetes httpx python-multipart aioboto3
 
 # Copy the entire project (we need all isola modules and services)
 COPY . /app
