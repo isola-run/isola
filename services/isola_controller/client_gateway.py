@@ -27,7 +27,6 @@ from common.models.sandbox import (
     UploadUrlRequest,
     UploadUrlResponse,
     ConfirmUploadRequest,
-    SandboxClass,
 )
 from services.isola_controller.agent_manager import AgentManager
 from services.isola_controller.kubernetes_control.sandboxes import KubernetesManager
