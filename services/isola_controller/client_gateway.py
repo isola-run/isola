@@ -154,8 +154,8 @@ async def get_sandbox_from_k8s(sandbox_id: str) -> Optional[Sandbox]:
     return Sandbox.model_validate({
         "id": sandbox_id,
         "name": f"sandbox-{sandbox_id[:8]}",
-        "state": state,
-        "desiredState": state,
+        "state": state_str,
+        "desiredState": state_str,
         "env": {},
         "labels": {},
         "errorReason": error_reason,
