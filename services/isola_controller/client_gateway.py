@@ -6,10 +6,12 @@ from contextlib import asynccontextmanager
 import logging
 import uuid
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Optional
 import os
 import sys
-from fastapi import FastAPI, HTTPException, Query, Security, Response
+
+import httpx
+from fastapi import FastAPI, File, Form, HTTPException, Query, Security, Response, UploadFile
 from fastapi.security import APIKeyHeader
 
 from common.models.common import Error
@@ -17,32 +19,35 @@ from common.models.control_protocol import CreateSandboxRequest
 from common.models.sandbox import (
     ExecuteCommandRequest,
     ExecuteCommandResponse,
+    FileUploadResponse,
     SandboxState,
     Sandbox,
     CreateSandbox,
     SandboxList,
+    UploadUrlRequest,
+    UploadUrlResponse,
+    ConfirmUploadRequest,
     SandboxClass,
 )
 from services.isola_controller.agent_manager import AgentManager
 from services.isola_controller.kubernetes_control.sandboxes import KubernetesManager
+from common.storage import create_storage
+from common.storage.base import ObjectStorage
 
-logger = logging.getLogger()
-if not logger.handlers:
-    log_level = os.getenv("LOG_LEVEL", "info").upper()
-    logger.setLevel(getattr(logging, log_level, logging.INFO))
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(getattr(logging, log_level, logging.INFO))
-
-    formatter = logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    handler.setFormatter(formatter)
-
-    logger.addHandler(handler)
+log_level = os.getenv("LOG_LEVEL", "info").upper()
 
 logger = logging.getLogger(__name__)
+logger.setLevel(getattr(logging, log_level, logging.INFO))
+
+# Add handler to this module's logger
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(getattr(logging, log_level, logging.INFO))
+formatter = logging.Formatter(
+    fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 
 agent_manager = AgentManager()
@@ -59,10 +64,23 @@ if SANDBOX_BACKEND not in SANDBOX_BACKENDS:
 KUBERNETES_NAMESPACE = os.getenv("KUBERNETES_NAMESPACE", "isola-sandboxes")
 MINIKUBE_API_SERVER = "https://192.168.49.2:8443"
 
+# File upload configuration
+# Files larger than this threshold will require signed URL upload (not implemented yet)
+FILE_SIZE_THRESHOLD_BYTES = 5 * 1024 * 1024  # 5MB
+AGENT_SIDECAR_PORT = 8080
+
 kubernetes_manager = KubernetesManager(
     namespace=KUBERNETES_NAMESPACE,
     api_server_url=MINIKUBE_API_SERVER,
 )
+
+# Initialize storage for large file uploads
+try:
+    storage: Optional[ObjectStorage] = create_storage()
+    logger.info("Storage initialized successfully")
+except Exception as e:
+    logger.warning(f"Failed to initialize storage: {e}. Large file uploads will not be available.")
+    storage = None
 
 # todo benl: move this logic to somewhere more appropriate (if we keep)
 @asynccontextmanager
@@ -136,26 +154,13 @@ async def get_sandbox_from_k8s(sandbox_id: str) -> Optional[Sandbox]:
     
     return Sandbox.model_validate({
         "id": sandbox_id,
-        "name": name or f"sandbox-{sandbox_id[:8]}",
-        "state": state_str,
-        "desiredState": SandboxState.running,
-        "class": SandboxClass.small,
-        "region": "default",
-        "image": "python:3.11",
-        "cpu": 1,
-        "memory": 1,
-        "disk": 10,
-        "gpu": 0,
+        "name": f"sandbox-{sandbox_id[:8]}",
+        "state": state,
+        "desiredState": state,
         "env": {},
         "labels": {},
-        "volumes": [],
-        "ports": [],
-        "runnerId": None,
         "errorReason": error_reason,
-        "ipAddress": ip_address,
-        "createdAt": datetime.now(), # TODO: get from CR metadata
-        "updatedAt": datetime.now(),
-        "lastActivityAt": None,
+        "createdAt": datetime.utcnow(),
     })
 
 
@@ -206,7 +211,6 @@ async def health_check():
 )
 async def readiness_check():
     """Readiness check endpoint - verifies all dependencies are ready"""
-    # TODO: __OMER__ Check if agent manager is running, etc
     return {"status": "ready"}
 
 # Sandboxes
@@ -291,23 +295,10 @@ async def create_sandbox(
         "name": req.name,
         "state": SandboxState.pending,
         "desiredState": desired_state,
-        "class": req.class_.value if req.class_ else "small",
-        "region": req.region if req.region else "default",
-        "image": req.image or "python:3.11",
-        "cpu": req.cpu or 1,
-        "memory": req.memory or 1,
-        "disk": req.disk or 10,
-        "gpu": req.gpu or 0,
         "env": req.env or {},
         "labels": req.labels or {},
-        "volumes": req.volumes or [],
-        "ports": [],
-        "runnerId": None,
         "errorReason": None,
-        "ipAddress": None,
         "createdAt": now,
-        "updatedAt": now,
-        "lastActivityAt": None
     }
     sandbox = Sandbox.model_validate(sandbox_data)
     logger.info(f"Creating sandbox: {sandbox}")
@@ -490,6 +481,8 @@ async def execute_command(
     api_key: Optional[str] = Security(api_key_header)
 ):
     """Execute a command in a sandbox."""
+    logger.info(f"[EXECUTE] Request for sandbox {sandbox_id}: {command_request.command}")
+    
     # TODO:__ISO2__ validate tenant_id belongs to the sandbox
     tenant_id = tenant_from_api_key(api_key)
     
@@ -502,9 +495,11 @@ async def execute_command(
     # Check sandbox exists and is running
     state, _, _ = await kubernetes_manager.get_pod_status(sandbox_id)
     if state is None:
+        logger.warning(f"[EXECUTE] Sandbox {sandbox_id} not found")
         raise HTTPException(status_code=404, detail="Sandbox not found")
     
     if state != SandboxState.running:
+        logger.warning(f"[EXECUTE] Sandbox {sandbox_id} not in running state: {state}")
         raise HTTPException(
             status_code=409,
             detail=f"Sandbox must be in 'running' state, current state: {state}"
@@ -516,11 +511,371 @@ async def execute_command(
         command_request.command
     )
     
+    logger.info(f"[EXECUTE] Command completed for sandbox {sandbox_id}: exit_code={exit_code}")
+    
     return ExecuteCommandResponse(
         stdout=stdout,
         stderr=stderr,
         exitCode=exit_code
     )
+
+
+# ============================================================================
+# File Upload Routes
+# ============================================================================
+
+@app.post(
+    "/sandboxes/{sandbox_id}/files",
+    response_model=FileUploadResponse,
+    status_code=200,
+    tags=["files"],
+    summary="Upload a file to a sandbox",
+    description="Upload a file to the specified sandbox. Files smaller than 5MB are uploaded directly. Larger files will require signed URL upload (not yet implemented).",
+    operation_id="uploadFile",
+    responses={
+        200: {"description": "File uploaded successfully"},
+        400: {"description": "Bad request - Invalid input", "model": Error},
+        401: {"description": "Unauthorized - Invalid or missing API key", "model": Error},
+        404: {"description": "Sandbox not found", "model": Error},
+        409: {"description": "Conflict - Sandbox not in running state", "model": Error},
+        501: {"description": "Not implemented - Large file upload requires signed URL", "model": Error},
+    }
+)
+async def upload_file(
+    sandbox_id: str,
+    file: UploadFile = File(..., description="File to upload to the sandbox"),
+    path: str = Form(..., description="Target path in the sandbox where the file should be written"),
+    api_key: Optional[str] = Security(api_key_header),
+):
+    """
+    Upload a file to a sandbox.
+    
+    Small files (< 5MB) are uploaded directly via the agent sidecar.
+    Large files (>= 5MB) will return 501 - signed URL upload not yet implemented.
+    """
+    logger.info(f"[UPLOAD] Request for sandbox {sandbox_id}: path={path}")
+    
+    # Validate API key
+    tenant_id = tenant_from_api_key(api_key)
+    
+    if SANDBOX_BACKEND != "kubernetes":
+        raise HTTPException(
+            status_code=501,
+            detail="File upload is only implemented for the Kubernetes backend"
+        )
+    
+    # Check sandbox exists and is running
+    state, ip_address, error_reason = await kubernetes_manager.get_pod_status(sandbox_id)
+    if state is None:
+        logger.warning(f"[UPLOAD] Sandbox {sandbox_id} not found")
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+    
+    if state != SandboxState.running:
+        logger.warning(f"[UPLOAD] Sandbox {sandbox_id} not in running state: {state}")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Sandbox must be in 'running' state, current state: {state}"
+        )
+    
+    if not ip_address:
+        logger.error(f"[UPLOAD] Sandbox {sandbox_id} has no IP address")
+        raise HTTPException(
+            status_code=500,
+            detail="Sandbox pod has no IP address"
+        )
+    
+    # Read file content to check size
+    content = await file.read()
+    file_size = len(content)
+    
+    logger.info(f"[UPLOAD] File size: {file_size} bytes, threshold: {FILE_SIZE_THRESHOLD_BYTES} bytes")
+    
+    # Check file size threshold
+    if file_size >= FILE_SIZE_THRESHOLD_BYTES:
+        logger.info(f"[UPLOAD] File too large for direct upload: {file_size} bytes")
+        raise HTTPException(
+            status_code=501,
+            detail=f"File size ({file_size} bytes) exceeds direct upload limit ({FILE_SIZE_THRESHOLD_BYTES} bytes). Signed URL upload is not yet implemented."
+        )
+    
+    # Forward the file to the agent sidecar
+    agent_url = f"http://{ip_address}:{AGENT_SIDECAR_PORT}/upload"
+    logger.info(f"[UPLOAD] Forwarding to agent at {agent_url}")
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Prepare multipart form data
+            files = {"file": (file.filename or "uploaded_file", content)}
+            data = {"path": path}
+            
+            response = await client.post(agent_url, files=files, data=data)
+            
+            if response.status_code != 200:
+                logger.error(
+                    f"[UPLOAD] Agent returned error: {response.status_code} - {response.text}"
+                )
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Agent upload failed: {response.text}"
+                )
+            
+            agent_response = response.json()
+            logger.info(f"[UPLOAD] Successfully uploaded file to sandbox {sandbox_id}: {agent_response}")
+            
+            return FileUploadResponse(
+                success=agent_response.get("success", True),
+                path=agent_response.get("path", path),
+                size=agent_response.get("size", file_size)
+            )
+            
+    except httpx.TimeoutException:
+        logger.error(f"[UPLOAD] Timeout connecting to agent at {agent_url}")
+        raise HTTPException(
+            status_code=504,
+            detail="Timeout connecting to sandbox agent"
+        )
+    except httpx.ConnectError as e:
+        logger.error(f"[UPLOAD] Failed to connect to agent at {agent_url}: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to connect to sandbox agent: {str(e)}"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[UPLOAD] Unexpected error uploading to sandbox {sandbox_id}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error during upload: {str(e)}"
+        )
+
+
+@app.post(
+    "/sandboxes/{sandbox_id}/files/upload-url",
+    response_model=UploadUrlResponse,
+    status_code=200,
+    tags=["files"],
+    summary="Generate presigned URL for large file upload",
+    description="Generate a presigned URL for uploading large files directly to S3. The client should upload the file to the returned URL, then call the confirm endpoint.",
+    operation_id="generateUploadUrl",
+    responses={
+        200: {"description": "Presigned URL generated successfully"},
+        400: {"description": "Bad request - Invalid input", "model": Error},
+        401: {"description": "Unauthorized - Invalid or missing API key", "model": Error},
+        404: {"description": "Sandbox not found", "model": Error},
+        409: {"description": "Sandbox not in running state", "model": Error},
+        501: {"description": "Not implemented - Storage not configured", "model": Error},
+    }
+)
+async def generate_upload_url(
+    sandbox_id: str,
+    request: UploadUrlRequest,
+    api_key: Optional[str] = Security(api_key_header),
+):
+    """
+    Generate a presigned URL for uploading large files directly to S3.
+    
+    The client should:
+    1. Upload the file to the returned presigned URL using PUT
+    2. Call the confirm endpoint with the upload_id to trigger agent download
+    """
+    logger.info(f"[UPLOAD-URL] Request for sandbox {sandbox_id}: path={request.path}, filename={request.filename}")
+    
+    # Validate API key
+    tenant_id = tenant_from_api_key(api_key)
+    
+    if storage is None:
+        raise HTTPException(
+            status_code=501,
+            detail="Storage not configured. Large file uploads are not available."
+        )
+    
+    if SANDBOX_BACKEND != "kubernetes":
+        raise HTTPException(
+            status_code=501,
+            detail="Large file upload is only implemented for the Kubernetes backend"
+        )
+    
+    # Check sandbox exists and is running
+    state, ip_address, error_reason = await kubernetes_manager.get_pod_status(sandbox_id)
+    if state is None:
+        logger.warning(f"[UPLOAD-URL] Sandbox {sandbox_id} not found")
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+    
+    if state != SandboxState.running:
+        logger.warning(f"[UPLOAD-URL] Sandbox {sandbox_id} not in running state: {state}")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Sandbox must be in 'running' state, current state: {state}"
+        )
+    
+    # Generate unique upload ID and S3 key
+    upload_id = str(uuid.uuid4())
+    s3_key = f"uploads/{tenant_id}/{sandbox_id}/{upload_id}/{request.filename}"
+    
+    # Generate presigned upload URL (15 minutes expiration)
+    expires_in = 900  # 15 minutes
+    try:
+        upload_url = await storage.generate_presigned_upload_url(
+            key=s3_key,
+            expires_in=expires_in,
+            content_type=request.content_type,
+        )
+    except Exception as e:
+        logger.error(f"[UPLOAD-URL] Failed to generate presigned URL: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate presigned URL: {str(e)}"
+        )
+    
+    logger.info(f"[UPLOAD-URL] Generated presigned URL for upload_id={upload_id}, s3_key={s3_key}")
+    
+    return UploadUrlResponse(
+        upload_url=upload_url,
+        upload_id=upload_id,
+        expires_in=expires_in,
+    )
+
+
+@app.post(
+    "/sandboxes/{sandbox_id}/files/confirm",
+    status_code=200,
+    tags=["files"],
+    summary="Confirm upload and trigger agent download",
+    description="Confirm that a file has been uploaded to S3 and trigger the agent to download it to the sandbox.",
+    operation_id="confirmUpload",
+    responses={
+        200: {"description": "Upload confirmed and agent download triggered"},
+        400: {"description": "Bad request - Invalid input or upload not found", "model": Error},
+        401: {"description": "Unauthorized - Invalid or missing API key", "model": Error},
+        404: {"description": "Sandbox not found or upload not found", "model": Error},
+        409: {"description": "Conflict - Sandbox not in running state", "model": Error},
+        501: {"description": "Not implemented - Storage not configured", "model": Error},
+    }
+)
+async def confirm_upload(
+    sandbox_id: str,
+    request: ConfirmUploadRequest,
+    api_key: Optional[str] = Security(api_key_header),
+):
+    """
+    Confirm that a file has been uploaded to S3 and trigger the agent to download it.
+    
+    This endpoint:
+    1. Reconstructs the S3 key from upload_id and filename
+    2. Generates a presigned download URL
+    3. Calls the agent's /download endpoint to download and write the file
+    4. The agent deletes the file from S3 after successful download
+    """
+    logger.info(f"[CONFIRM] Request for sandbox {sandbox_id}: upload_id={request.upload_id}, filename={request.filename}, path={request.path}")
+    
+    # Validate API key
+    tenant_id = tenant_from_api_key(api_key)
+    
+    if storage is None:
+        raise HTTPException(
+            status_code=501,
+            detail="Storage not configured. Large file uploads are not available."
+        )
+    
+    if SANDBOX_BACKEND != "kubernetes":
+        raise HTTPException(
+            status_code=501,
+            detail="Large file upload is only implemented for the Kubernetes backend"
+        )
+    
+    # Check sandbox exists and is running
+    state, ip_address, error_reason = await kubernetes_manager.get_pod_status(sandbox_id)
+    if state is None:
+        logger.warning(f"[CONFIRM] Sandbox {sandbox_id} not found")
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+    
+    if state != SandboxState.running:
+        logger.warning(f"[CONFIRM] Sandbox {sandbox_id} not in running state: {state}")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Sandbox must be in 'running' state, current state: {state}"
+        )
+    
+    if not ip_address:
+        logger.error(f"[CONFIRM] Sandbox {sandbox_id} has no IP address")
+        raise HTTPException(
+            status_code=500,
+            detail="Sandbox pod has no IP address"
+        )
+    
+    # Reconstruct S3 key from upload_id and filename (must match upload-url endpoint)
+    s3_key = f"uploads/{tenant_id}/{sandbox_id}/{request.upload_id}/{request.filename}"
+    target_path = request.path
+    
+    # Generate presigned download URL for the agent
+    try:
+        download_url = await storage.generate_presigned_download_url(
+            key=s3_key,
+            expires_in=900,  # 15 minutes
+        )
+    except Exception as e:
+        logger.error(f"[CONFIRM] Failed to generate presigned download URL: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate download URL: {str(e)}"
+        )
+    
+    # Call agent's /download endpoint
+    agent_url = f"http://{ip_address}:{AGENT_SIDECAR_PORT}/download"
+    logger.info(f"[CONFIRM] Triggering agent download at {agent_url}")
+    
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Send download request to agent
+            # The agent will download from S3, write to shared volume, and delete from S3
+            response = await client.post(
+                agent_url,
+                json={
+                    "download_url": download_url,
+                    "path": target_path,
+                    "delete_after": True,
+                }
+            )
+            
+            if response.status_code != 200:
+                logger.error(
+                    f"[CONFIRM] Agent returned error: {response.status_code} - {response.text}"
+                )
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Agent download failed: {response.text}"
+                )
+            
+            agent_response = response.json()
+            logger.info(f"[CONFIRM] Successfully triggered download for sandbox {sandbox_id}: {agent_response}")
+            
+            return {
+                "success": True,
+                "path": agent_response.get("path", target_path),
+                "size": agent_response.get("size", 0),
+            }
+            
+    except httpx.TimeoutException:
+        logger.error(f"[CONFIRM] Timeout connecting to agent at {agent_url}")
+        raise HTTPException(
+            status_code=504,
+            detail="Timeout connecting to sandbox agent"
+        )
+    except httpx.ConnectError as e:
+        logger.error(f"[CONFIRM] Failed to connect to agent at {agent_url}: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to connect to sandbox agent: {str(e)}"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[CONFIRM] Unexpected error confirming upload for sandbox {sandbox_id}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error during upload confirmation: {str(e)}"
+        )
 
 
 # Convenience for external import

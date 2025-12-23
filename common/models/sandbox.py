@@ -17,13 +17,6 @@ class SandboxState(str, Enum):
     unknown = "unknown"
 
 
-class SandboxClass(str, Enum):
-    small = "small"
-    medium = "medium"
-    large = "large"
-    xlarge = "xlarge"
-
-
 class AttachedVolume(BaseModel):
     volumeId: str
     mountPath: str
@@ -39,29 +32,15 @@ class Sandbox(BaseModel):
     name: str
     state: SandboxState
     desiredState: Optional[SandboxState] = None
-    class_: SandboxClass = Field(alias="class")
-    region: str
-    image: Optional[str] = None
-    cpu: Optional[int] = None
-    memory: Optional[int] = None
-    disk: Optional[int] = None
-    gpu: int = 0
     env: Dict[str, str] = Field(default_factory=dict)
     labels: Dict[str, str] = Field(default_factory=dict)
-    volumes: List[AttachedVolume] = Field(default_factory=list)
-    ports: List[ExposedPort] = Field(default_factory=list)
-    runnerId: Optional[str] = None
     errorReason: Optional[str] = None
-    ipAddress: Optional[str] = None
     createdAt: datetime
-    updatedAt: datetime
-    lastActivityAt: Optional[datetime] = None
 
 
 class CreateSandbox(BaseModel):
     name: str
     image: Optional[str] = None
-    class_: SandboxClass = Field(default=SandboxClass.small, alias="class")
     region: str = "default"
     cpu: Optional[float] = None
     memory: Optional[float] = None
@@ -96,3 +75,35 @@ class ExecuteCommandResponse(BaseModel):
     stdout: str
     stderr: str
     exitCode: int
+
+
+class FileUploadRequest(BaseModel):
+    path: str = Field(..., description="Target path in the sandbox where the file should be written")
+    content: bytes = Field(..., description="File content as bytes")
+
+
+class FileUploadResponse(BaseModel):
+    success: bool = Field(..., description="Whether the upload was successful")
+    path: str = Field(..., description="Path where the file was written")
+    size: int = Field(..., description="Size of the uploaded file in bytes")
+
+
+class UploadUrlRequest(BaseModel):
+    """Request model for generating a presigned upload URL."""
+    path: str = Field(..., description="Target path in the sandbox where the file should be written")
+    filename: str = Field(..., description="Name of the file being uploaded")
+    content_type: Optional[str] = Field(None, description="Content type of the file (e.g., 'application/octet-stream')")
+
+
+class UploadUrlResponse(BaseModel):
+    """Response model for presigned upload URL."""
+    upload_url: str = Field(..., description="Presigned URL for uploading the file directly to S3")
+    upload_id: str = Field(..., description="Unique identifier for tracking this upload")
+    expires_in: int = Field(..., description="URL expiration time in seconds")
+
+
+class ConfirmUploadRequest(BaseModel):
+    """Request model for confirming an upload and triggering agent download."""
+    upload_id: str = Field(..., description="Upload ID returned from upload-url endpoint")
+    filename: str = Field(..., description="Name of the file that was uploaded (must match upload-url request)")
+    path: str = Field(..., description="Target path in the sandbox where the file should be written")

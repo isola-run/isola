@@ -26,8 +26,7 @@ def sandbox_data():
     """Default sandbox creation data"""
     return {
         "name": "test-sandbox",
-        "image": "python:3.11",
-        "class": "small"
+        "image": "python:3.11"
     }
 
 
@@ -89,7 +88,6 @@ class TestSandboxIntegration:
         # Verify sandbox properties
         assert sandbox["name"] == sandbox_data["name"]
         assert sandbox["image"] == sandbox_data["image"]
-        assert sandbox["class"] == sandbox_data["class"]
         assert sandbox["state"] == SandboxState.pending.value
         assert sandbox["desiredState"] == SandboxState.running.value
         assert "id" in sandbox
@@ -140,7 +138,6 @@ class TestSandboxIntegration:
         assert sandbox["id"] == sandbox_id
         assert sandbox["name"] == created_sandbox["name"]
         assert sandbox["image"] == created_sandbox["image"]
-        assert sandbox["class"] == created_sandbox["class"]
         
     def test_sandbox_state_transition(self, api_client, created_sandbox):
         """Test that sandbox transitions from pending to running state"""
@@ -181,8 +178,7 @@ class TestSandboxIntegration:
             f"{base_url}/sandboxes",
             json={
                 "name": "unauthorized-sandbox",
-                "image": "python:3.11",
-                "class": "small"
+                "image": "python:3.11"
             },
             headers={"Content-Type": "application/json"}  # No API key
         )
@@ -194,7 +190,6 @@ class TestSandboxIntegration:
         sandbox_data = {
             "name": "full-sandbox",
             "image": "python:3.11",
-            "class": "medium",
             "region": "default",
             "cpu": 2,
             "memory": 4,
@@ -222,7 +217,6 @@ class TestSandboxIntegration:
         
         # Verify all fields
         assert sandbox["name"] == sandbox_data["name"]
-        assert sandbox["class"] == sandbox_data["class"]
         assert sandbox["cpu"] == sandbox_data["cpu"]
         assert sandbox["memory"] == sandbox_data["memory"]
         assert sandbox["disk"] == sandbox_data["disk"]
@@ -241,8 +235,7 @@ class TestSandboxIntegration:
                 f"{api_client.base_url}/sandboxes",
                 json={
                     "name": f"pagination-test-{i}",
-                    "image": "python:3.11",
-                    "class": "small"
+                    "image": "python:3.11"
                 }
             )
             assert response.status_code == 201
