@@ -55,6 +55,41 @@ spec:
         - name: {{ .name }}
           value: {{ .value | quote }}
         {{- end }}
+        {{- if .Values.storage.enabled }}
+        {{- if .Values.storage.bucket }}
+        - name: S3_BUCKET
+          value: {{ .Values.storage.bucket | quote }}
+        {{- end }}
+        {{- if .Values.storage.endpointUrl }}
+        - name: S3_ENDPOINT_URL
+          value: {{ .Values.storage.endpointUrl | quote }}
+        {{- end }}
+        {{- if .Values.storage.region }}
+        - name: S3_REGION
+          value: {{ .Values.storage.region | quote }}
+        {{- end }}
+        {{- if and .Values.storage.existingSecret (not .Values.storage.accessKeyId) }}
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.storage.existingSecret }}
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.storage.existingSecret }}
+              key: AWS_SECRET_ACCESS_KEY
+        {{- else }}
+        {{- if .Values.storage.accessKeyId }}
+        - name: AWS_ACCESS_KEY_ID
+          value: {{ .Values.storage.accessKeyId | quote }}
+        {{- end }}
+        {{- if .Values.storage.secretAccessKey }}
+        - name: AWS_SECRET_ACCESS_KEY
+          value: {{ .Values.storage.secretAccessKey | quote }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
         {{- with .Values.envFrom }}
         envFrom:
           {{- toYaml . | nindent 12 }}
