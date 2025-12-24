@@ -94,9 +94,6 @@ cd "${SCRIPT_DIR}/../services/isola-operator"
 make deploy IMG=isola-operator:dev
 cd "${SCRIPT_DIR}"
 
-echo "  → applying default SandboxTemplate..."
-kubectl apply -f "${SCRIPT_DIR}/../services/isola-operator/config/samples/sandbox_v1alpha1_sandboxtemplate.yaml"
-
 echo "  → creating/updating deployments..."
 kubectl apply -f "${SCRIPT_DIR}/manifests/isola-controller-deployment.yaml"
 kubectl apply -f "${SCRIPT_DIR}/manifests/isola-agent-deployment.yaml"
