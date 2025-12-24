@@ -4,6 +4,7 @@ import logging
 from typing import Optional
 
 import aioboto3
+import boto3
 from botocore.exceptions import ClientError
 
 from common.storage.base import ObjectStorage
@@ -68,43 +69,45 @@ class S3ObjectStorage(ObjectStorage):
         Returns:
             A presigned URL that can be used to upload the object via PUT request
         """
-        session = aioboto3.Session()
-        
-        async with session.client(
-            "s3",
-            region_name=self.region,
-            **self.session_kwargs,
-        ) as s3_client:
-            try:
-                params = {
-                    "Bucket": self.bucket,
-                    "Key": key,
-                    "ExpiresIn": expires_in,
-                }
-                
-                if content_type:
-                    params["ContentType"] = content_type
-                
-                # generate_presigned_url is synchronous (no network call)
-                url = s3_client.generate_presigned_url(
-                    "put_object",
-                    Params=params,
-                )
-                
-                logger.debug(
-                    "Generated presigned upload URL for key=%s, expires_in=%d",
-                    key,
-                    expires_in,
-                )
-                
-                return url
-            except ClientError as e:
-                logger.error(
-                    "Failed to generate presigned upload URL for key=%s: %s",
-                    key,
-                    e,
-                )
-                raise
+        try:
+            # Use synchronous boto3 client for presigned URL generation
+            # (no network call needed, purely computational)
+            s3_client = boto3.client(
+                "s3",
+                region_name=self.region,
+                **self.session_kwargs,
+            )
+            
+            params = {
+                "Bucket": self.bucket,
+                "Key": key,
+            }
+            
+            if content_type:
+                params["ContentType"] = content_type
+            
+            # generate_presigned_url is synchronous (no network call)
+            # ExpiresIn is a separate parameter, not part of Params
+            url = s3_client.generate_presigned_url(
+                "put_object",
+                Params=params,
+                ExpiresIn=expires_in,
+            )
+            
+            logger.debug(
+                "Generated presigned upload URL for key=%s, expires_in=%d",
+                key,
+                expires_in,
+            )
+            
+            return url
+        except ClientError as e:
+            logger.error(
+                "Failed to generate presigned upload URL for key=%s: %s",
+                key,
+                e,
+            )
+            raise
     
     async def generate_presigned_download_url(
         self,
@@ -121,38 +124,39 @@ class S3ObjectStorage(ObjectStorage):
         Returns:
             A presigned URL that can be used to download the object via GET request
         """
-        session = aioboto3.Session()
-        
-        async with session.client(
-            "s3",
-            region_name=self.region,
-            **self.session_kwargs,
-        ) as s3_client:
-            try:
-                # generate_presigned_url is synchronous (no network call)
-                url = s3_client.generate_presigned_url(
-                    "get_object",
-                    Params={
-                        "Bucket": self.bucket,
-                        "Key": key,
-                    },
-                    ExpiresIn=expires_in,
-                )
-                
-                logger.debug(
-                    "Generated presigned download URL for key=%s, expires_in=%d",
-                    key,
-                    expires_in,
-                )
-                
-                return url
-            except ClientError as e:
-                logger.error(
-                    "Failed to generate presigned download URL for key=%s: %s",
-                    key,
-                    e,
-                )
-                raise
+        try:
+            # Use synchronous boto3 client for presigned URL generation
+            # (no network call needed, purely computational)
+            s3_client = boto3.client(
+                "s3",
+                region_name=self.region,
+                **self.session_kwargs,
+            )
+            
+            # generate_presigned_url is synchronous (no network call)
+            url = s3_client.generate_presigned_url(
+                "get_object",
+                Params={
+                    "Bucket": self.bucket,
+                    "Key": key,
+                },
+                ExpiresIn=expires_in,
+            )
+            
+            logger.debug(
+                "Generated presigned download URL for key=%s, expires_in=%d",
+                key,
+                expires_in,
+            )
+            
+            return url
+        except ClientError as e:
+            logger.error(
+                "Failed to generate presigned download URL for key=%s: %s",
+                key,
+                e,
+            )
+            raise
     
     async def delete_object(self, key: str) -> bool:
         """

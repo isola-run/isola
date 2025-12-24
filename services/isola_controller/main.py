@@ -19,6 +19,18 @@ handler.setFormatter(formatter)
 
 logger.addHandler(handler)
 
+# Suppress verbose websockets debug logs
+websockets_logger = logging.getLogger("websockets")
+websockets_logger.setLevel(logging.WARNING)
+
+# Suppress uvicorn websocket protocol debug logs
+# uvicorn_websockets_logger = logging.getLogger("uvicorn.protocols.websockets")
+# uvicorn_websockets_logger.setLevel(logging.INFO)
+# uvicorn_websockets_auto_logger = logging.getLogger("uvicorn.protocols.websockets.auto")
+# uvicorn_websockets_auto_logger.setLevel(logging.INFO)
+# uvicorn_protocols_logger = logging.getLogger("uvicorn.protocols")
+# uvicorn_protocols_logger.setLevel(logging.INFO)
+
 agent_manager = AgentManager()
 
 async def main():

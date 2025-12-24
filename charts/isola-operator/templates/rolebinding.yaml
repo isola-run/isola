@@ -1,0 +1,18 @@
+{{- if .Values.leaderElection.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "isola-operator.leaderElectionRoleName" . }}
+  labels:
+    {{- include "isola-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "isola-operator.leaderElectionRoleName" . }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "isola-operator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+

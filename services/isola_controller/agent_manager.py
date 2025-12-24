@@ -29,6 +29,17 @@ class AgentManager:
         self._app = FastAPI()
         # todo benl: properly config
         log_level = os.getenv("LOG_LEVEL", "info").lower()
+        
+        # Suppress verbose websocket debug logs before creating uvicorn server
+        websockets_logger = logging.getLogger("websockets")
+        websockets_logger.setLevel(logging.WARN)
+        # uvicorn_websockets_logger = logging.getLogger("uvicorn.protocols.websockets")
+        # uvicorn_websockets_logger.setLevel(logging.INFO)
+        # uvicorn_websockets_auto_logger = logging.getLogger("uvicorn.protocols.websockets.auto")
+        # uvicorn_websockets_auto_logger.setLevel(logging.INFO)
+        # uvicorn_protocols_logger = logging.getLogger("uvicorn.protocols")
+        # uvicorn_protocols_logger.setLevel(logging.INFO)
+        
         config = uvicorn.Config(self._app, host="0.0.0.0", port=8765, log_level=log_level)
         self._server = uvicorn.Server(config)
         self._server_task: asyncio.Task | None = None
