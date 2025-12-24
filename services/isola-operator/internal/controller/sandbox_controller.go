@@ -32,6 +32,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
+	"k8s.io/client-go/tools/record"
 )
 
 const (
@@ -52,7 +53,8 @@ const (
 // SandboxReconciler reconciles a Sandbox object
 type SandboxReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 func isPodReady(pod *corev1.Pod) bool {
@@ -71,11 +73,96 @@ func isPodReady(pod *corev1.Pod) bool {
 	return false
 }
 
+func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandboxv1alpha1.Sandbox, newSandbox *sandboxv1alpha1.Sandbox, newConditions []metav1.Condition) error {
+	if newSandbox.Status.Conditions == nil {
+		newSandbox.Status.Conditions = []metav1.Condition{}
+	}
+
+	for _, cond := range newConditions {
+		meta.SetStatusCondition(&newSandbox.Status.Conditions, cond)
+	}
+
+	if err := r.Status().Patch(ctx, newSandbox, client.MergeFrom(baseSandbox)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// todo benl: get sandbox if create failed with already exists?
+func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, podName string, podNamespace string) (ctrl.Result, error) {
+	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log.Info("Creating Pod")
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: podNamespace,
+		},
+		// todo benl: copy labels, annotations as well?
+		Spec: template.Spec.PodTemplate.Spec,
+	}
+
+	// Set Pod's object owner reference to the Sandbox object
+	if err := controllerutil.SetControllerReference(sandbox, pod, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference")
+		return ctrl.Result{}, err
+	}
+
+	if err := r.Create(ctx, pod); err != nil {
+		log.Error(err, "Failed creating Pod")
+		_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxPodReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             "PodCreationFailed",
+				Message:            err.Error(),
+				ObservedGeneration: sandbox.Generation,
+			},
+			{
+				Type:               SandboxReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             "PodCreationFailed",
+				Message:            err.Error(),
+				ObservedGeneration: sandbox.Generation,
+			},
+		})
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Pod created")
+
+	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "PodCreated", "Sandbox Pod created")
+
+	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+		{
+			Type:               SandboxPodReadyCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             "PodCreating",
+			Message:            "Creating sandbox Pod",
+			ObservedGeneration: sandbox.Generation,
+		},
+		{
+			Type:               SandboxReadyCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             "Reconciling",
+			Message:            "Waiting for Pod to be created/ready",
+			ObservedGeneration: sandbox.Generation,
+		},
+	}); err != nil {
+		log.Error(err, "Failed to update Sandbox status")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/finalizers,verbs=update
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxtemplates,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -118,31 +205,32 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// todo benl: assuming template is in the same namespace as the sandbox
 	if err := r.Get(ctx, types.NamespacedName{Name: sandbox.Spec.TemplateRef.Name, Namespace: req.Namespace}, template); err != nil {
 		if errors.IsNotFound(err) {
-			meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-				Type:               SandboxTemplateReadyCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonTemplateNotFound,
-				Message:            "Sandbox template not found",
-				ObservedGeneration: sandbox.Generation,
-			})
 
-			meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-				Type:               SandboxReadyCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonTemplateNotFound,
-				Message:            "Sandbox template not found",
-				ObservedGeneration: sandbox.Generation,
-			})
-
-			if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
-				if errors.IsConflict(err) {
-					log.Info("Sandbox resource updated by another controller")
-					// todo benl: return an error to allow the controller to trigger reconcile again later (with rate limiting)
-					return ctrl.Result{}, err
-				}
+			if err := r.patchStatus(
+				ctx,
+				baseSandbox,
+				sandbox,
+				[]metav1.Condition{
+					{
+						Type:               SandboxTemplateReadyCondition,
+						Status:             metav1.ConditionFalse,
+						Reason:             CondReasonTemplateNotFound,
+						Message:            "Sandbox template not found",
+						ObservedGeneration: sandbox.Generation,
+					},
+					{
+						Type:               SandboxReadyCondition,
+						Status:             metav1.ConditionFalse,
+						Reason:             CondReasonTemplateNotFound,
+						Message:            "Sandbox template not found",
+						ObservedGeneration: sandbox.Generation,
+					},
+				},
+			); err != nil {
 				log.Error(err, "Failed to update Sandbox status")
 				return ctrl.Result{}, err
 			}
+
 			log.Error(err, "Sandbox template not found")
 			// todo benl: we'll stop reconciling (steady failed state) - add watch on SandboxTemplate to reconcile the sandbox when template is created
 			return ctrl.Result{}, nil
@@ -162,139 +250,56 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	podName := sandbox.Name + "-pod"
 	podNamespace := sandbox.Namespace
 
-	// check if pod already exists
 	pod := &corev1.Pod{}
-	err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: podNamespace}, pod)
-	if err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: podNamespace}, pod); err != nil {
 		if errors.IsNotFound(err) {
-			meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-				Type:               SandboxPodReadyCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             "PodCreating",
-				Message:            "Creating sandbox Pod",
-				ObservedGeneration: sandbox.Generation,
-			})
-			meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-				Type:               SandboxReadyCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             "Reconciling",
-				Message:            "Waiting for Pod to be created/ready",
-				ObservedGeneration: sandbox.Generation,
-			})
-
-			// todo benl: take spec as-is from template for now. Think about how we:
-			// * force some fields (?) like RestartPolicy
-			// * override some fields (user defined? global policy?)
-			// * tweak some fields? (E.g. more ephermal storage needed for snapshotting?)
-			pod = &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      podName,
-					Namespace: podNamespace,
-				},
-				Spec: template.Spec.PodTemplate.Spec,
-			}
-
-			// Set Pod's object owner reference to the Sandbox object
-			if err := controllerutil.SetControllerReference(sandbox, pod, r.Scheme); err != nil {
-				log.Error(err, "Failed to set controller reference")
-				return ctrl.Result{}, err
-			}
-
-			log.Info("Creating Pod")
-			// todo benl: handle pod creation failure, handle race between 2 controllers creating the same pod
-			if err := r.Create(ctx, pod); err != nil {
-				if errors.IsAlreadyExists(err) {
-					log.Info("Pod already exists")
-					// Someone beat us to it: treat as success and continue by fetching it.
-					if err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: podNamespace}, pod); err != nil {
-						log.Error(err, "Failed to get sandbox pod")
-						return ctrl.Result{}, err
-					}
-				} else {
-					meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-						Type:               SandboxPodReadyCondition,
-						Status:             metav1.ConditionFalse,
-						Reason:             "PodCreationFailed",
-						Message:            err.Error(),
-						ObservedGeneration: sandbox.Generation,
-					})
-					meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-						Type:               SandboxReadyCondition,
-						Status:             metav1.ConditionFalse,
-						Reason:             "PodCreationFailed",
-						Message:            err.Error(),
-						ObservedGeneration: sandbox.Generation,
-					})
-					if patchErr := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); patchErr != nil {
-						log.Error(patchErr, "Failed to update Sandbox status after pod creation failure")
-					}
-					log.Error(err, "Failed to create sandbox pod")
-					return ctrl.Result{}, err
-				}
-			}
-			log.Info("Pod created")
-			if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
-				if errors.IsConflict(err) {
-					log.Info("Sandbox resource updated by another controller")
-					// todo benl: return an error to allow the controller to trigger reconcile again later (with rate limiting)
-					return ctrl.Result{}, err
-				}
-				log.Error(err, "Failed to update Sandbox status")
-				return ctrl.Result{}, err
-			}
-			// reconcile will trigger when pod changes status since our sandbox owns the pod
-			return ctrl.Result{}, nil
-		} else {
-			log.Error(err, "Failed to get sandbox pod")
-			return ctrl.Result{}, err
+			return r.CreateSandboxPod(ctx, sandbox, baseSandbox, template, podName, podNamespace)
 		}
-
+		return ctrl.Result{}, err
 	}
 
 	podReady := isPodReady(pod)
 
 	if podReady {
-		// todo benl: when adding more elaborate mechanisms like networkpolicy, change SandboxReady from True here if they are not ready yet
-		meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-			Type:               SandboxPodReadyCondition,
-			Status:             metav1.ConditionTrue,
-			Reason:             "PodRunning",
-			Message:            "Pod is running",
-			ObservedGeneration: sandbox.Generation,
-		})
-		meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-			Type:               SandboxReadyCondition,
-			Status:             metav1.ConditionTrue,
-			Reason:             "PodRunning",
-			Message:            "Pod is running",
-			ObservedGeneration: sandbox.Generation,
-		})
-	} else {
-		meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-			Type:               SandboxPodReadyCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             "PodPending",
-			Message:            "Pod is not ready yet",
-			ObservedGeneration: sandbox.Generation,
-		})
-		meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-			Type:               SandboxReadyCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             "PodPending",
-			Message:            "Pod is not ready yet",
-			ObservedGeneration: sandbox.Generation,
-		})
-	}
-
-	log.Info("Updating Sandbox status", "status", podReady)
-	if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
-		if errors.IsConflict(err) {
-			log.Info("Sandbox resource updated by another controller")
-			// todo benl: return an error to allow the controller to trigger reconcile again later (with rate limiting)
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxPodReadyCondition,
+				Status:             metav1.ConditionTrue,
+				Reason:             "PodRunning",
+				Message:            "Pod is running",
+				ObservedGeneration: sandbox.Generation,
+			},
+			{
+				Type:               SandboxReadyCondition,
+				Status:             metav1.ConditionTrue,
+				Reason:             "PodRunning",
+				Message:            "Pod is running",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			log.Error(err, "Failed to update Sandbox status")
 			return ctrl.Result{}, err
 		}
-		log.Error(err, "Failed to update Sandbox status")
-		return ctrl.Result{}, err
+	} else {
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxPodReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             "PodPending",
+				Message:            "Pod is not ready yet",
+				ObservedGeneration: sandbox.Generation,
+			},
+			{
+				Type:               SandboxReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             "PodPending",
+				Message:            "Pod is not ready yet",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			log.Error(err, "Failed to update Sandbox status")
+			return ctrl.Result{}, err
+		}
 	}
 
 	// check timeout
@@ -333,6 +338,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.Recorder = mgr.GetEventRecorderFor("sandbox-controller")
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.Sandbox{}).
 		// Pod owned by Sandbox via SetControllerReference will trigger sandbox_controller re-reconcile on pod changes:
