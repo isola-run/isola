@@ -279,13 +279,27 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			// * force some fields (?) like RestartPolicy
 			// * override some fields (user defined? global policy?)
 			// * tweak some fields? (E.g. more ephermal storage needed for snapshotting?)
-			pod = &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      podName,
-					Namespace: podNamespace,
-				},
-				Spec: template.Spec.PodTemplate.Spec,
+		// Get sandbox-id from Sandbox CR labels (set by controller with full UUID)
+		// Fall back to sandbox.Name if not present
+		sandboxID := sandbox.Name
+		if sandbox.Labels != nil {
+			if id, ok := sandbox.Labels["sandbox-id"]; ok && id != "" {
+				sandboxID = id
 			}
+		}
+
+		pod = &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName,
+				Namespace: podNamespace,
+				Labels: map[string]string{
+					"app":        "isola-sandbox",
+					"sandbox-id": sandboxID,
+					"managed-by": "isola-operator",
+				},
+			},
+			Spec: template.Spec.PodTemplate.Spec,
+		}
 
 			// Inject isola-agent sidecar container and shared volume
 			r.injectSidecar(pod, sandbox.Name)
