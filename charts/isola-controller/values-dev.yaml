@@ -32,3 +32,14 @@ env:
     value: "debug"
   - name: ENV
     value: "development"
+
+# S3/LocalStack configuration for development
+# TODO: __OMER__ change the name
+storage:
+  enabled: true
+  bucket: "isola-uploads"
+  endpointUrl: "http://localstack:4566"
+  region: "us-east-1"
+  # LocalStack test credentials
+  accessKeyId: "test"
+  secretAccessKey: "test"

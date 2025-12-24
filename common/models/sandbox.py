@@ -107,3 +107,19 @@ class ConfirmUploadRequest(BaseModel):
     upload_id: str = Field(..., description="Upload ID returned from upload-url endpoint")
     filename: str = Field(..., description="Name of the file that was uploaded (must match upload-url request)")
     path: str = Field(..., description="Target path in the sandbox where the file should be written")
+
+
+class DownloadRequest(BaseModel):
+    """Request model for downloading a file from S3 to the sandbox (used by agent)."""
+    download_url: str = Field(..., description="Presigned URL to download the file from")
+    path: str = Field(..., description="Target path in the sandbox where the file should be written")
+    s3_key: Optional[str] = Field(None, description="S3 key for the object (required if delete_after is True)")
+    delete_after: bool = Field(False, description="Whether to delete the file from S3 after download")
+
+
+class DownloadResponse(BaseModel):
+    """Response model for download operation (used by agent)."""
+    success: bool = Field(..., description="Whether the download was successful")
+    path: str = Field(..., description="Path where the file was written")
+    size: int = Field(..., description="Size of the downloaded file in bytes")
+    deleted_from_s3: bool = Field(False, description="Whether the file was deleted from S3")
