@@ -130,12 +130,34 @@ env:
   - name: LOG_LEVEL
     value: "info"
 
+# S3/Object Storage configuration for large file uploads
+# These credentials are passed to agent containers for downloading files from S3
+storage:
+  # Enable/disable S3 storage for large file uploads
+  enabled: false
+  # S3 bucket name for file uploads
+  bucket: ""
+  # S3 endpoint URL (for LocalStack or S3-compatible storage)
+  # Leave empty for AWS S3
+  endpointUrl: ""
+  # AWS region
+  region: "us-east-1"
+  # AWS credentials (for production, use secretRef instead)
+  # accessKeyId: ""
+  # secretAccessKey: ""
+  # Reference to an existing Kubernetes secret containing AWS credentials
+  # The secret should have keys: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+  existingSecret: ""
+
 # Additional environment variables from ConfigMap/Secret
 envFrom: []
   # - configMapRef:
   #     name: isola-controller-config
   # - secretRef:
   #     name: isola-controller-secrets
+  # For S3 credentials, consider using:
+  # - secretRef:
+  #     name: isola-s3-credentials
 
 # Volume mounts
 volumeMounts: []

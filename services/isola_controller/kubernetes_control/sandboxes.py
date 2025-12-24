@@ -36,6 +36,12 @@ class KubernetesManager:
         shared_volume_name: str = "sandbox-data",
         shared_volume_mount_path: str = "/sandbox-data",
         agent_http_port: int = 8080,
+        # S3 configuration for agent file operations
+        s3_bucket: Optional[str] = None,
+        s3_endpoint_url: Optional[str] = None,
+        s3_region: str = "us-east-1",
+        aws_access_key_id: Optional[str] = None,
+        aws_secret_access_key: Optional[str] = None,
     ):
         self.namespace = namespace
         self.runtime_class_name = runtime_class_name
@@ -45,6 +51,12 @@ class KubernetesManager:
         self.shared_volume_name = shared_volume_name
         self.shared_volume_mount_path = shared_volume_mount_path
         self.agent_http_port = agent_http_port
+        # S3 configuration
+        self.s3_bucket = s3_bucket
+        self.s3_endpoint_url = s3_endpoint_url
+        self.s3_region = s3_region
+        self.aws_access_key_id = aws_access_key_id
+        self.aws_secret_access_key = aws_secret_access_key
         self.core_v1: Optional[client.CoreV1Api] = None
         self.apps_v1: Optional[client.AppsV1Api] = None
         self.custom_api: Optional[client.CustomObjectsApi] = None
@@ -456,6 +468,18 @@ class KubernetesManager:
             client.V1EnvVar(name="HTTP_PORT", value=str(self.agent_http_port)),
             client.V1EnvVar(name="LOG_LEVEL", value="info"),
         ]
+        
+        # Add S3 credentials for large file uploads if configured
+        if self.s3_bucket:
+            agent_env_vars.append(client.V1EnvVar(name="S3_BUCKET", value=self.s3_bucket))
+        if self.s3_endpoint_url:
+            agent_env_vars.append(client.V1EnvVar(name="S3_ENDPOINT_URL", value=self.s3_endpoint_url))
+        if self.s3_region:
+            agent_env_vars.append(client.V1EnvVar(name="S3_REGION", value=self.s3_region))
+        if self.aws_access_key_id:
+            agent_env_vars.append(client.V1EnvVar(name="AWS_ACCESS_KEY_ID", value=self.aws_access_key_id))
+        if self.aws_secret_access_key:
+            agent_env_vars.append(client.V1EnvVar(name="AWS_SECRET_ACCESS_KEY", value=self.aws_secret_access_key))
         
         # Agent sidecar resource requirements (lightweight)
         agent_resources = client.V1ResourceRequirements(
