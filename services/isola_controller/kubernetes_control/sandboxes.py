@@ -145,6 +145,7 @@ class KubernetesManager:
         
         sandbox_body["metadata"]["labels"]["sandbox-id"] = sandbox_id
         
+        # todo benl: properly define what "name" actually means both for the client and the k8s object - where and what is stored
         # Store original name in annotation
         if "annotations" not in sandbox_body["metadata"]:
             sandbox_body["metadata"]["annotations"] = {}
