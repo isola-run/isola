@@ -75,6 +75,9 @@ echo "  → creating namespaces..."
 kubectl apply -f "${SCRIPT_DIR}/manifests/isola-control-plane-namespace.yaml"
 kubectl apply -f "${SCRIPT_DIR}/manifests/isola-sandboxes-namespace.yaml"
 
+echo "  → creating runtime class..."
+kubectl apply -f "${SCRIPT_DIR}/manifests/gvisor-runtime-class.yaml"
+
 echo "  → creating service accounts..."
 kubectl apply -f "${SCRIPT_DIR}/manifests/isola-controller-service-account.yaml"
 
@@ -111,10 +114,5 @@ kubectl get pods -n isola-control-plane -o wide
 
 echo -e "\n=== Services in isola-control-plane ==="
 kubectl get svc -n isola-control-plane
-
-echo -e "\n=== RBAC Configuration ==="
-echo "ServiceAccount: isola-controller (isola-control-plane)"
-echo "Role: sandboxes-manager (isola-sandboxes)"
-echo "RoleBinding: isola-controller-sandboxes-binding (isola-sandboxes)"
 
 echo -e "\nDeployment complete! ✓"

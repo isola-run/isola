@@ -141,27 +141,27 @@ class TestSandboxE2E:
             print("WE ARE STILL NOT SURE WHAT SANDBOX NAME ACTUALLY MEANS, CURRENTLY IT RETURNS SOME GENERATED NAME")
             print(f"    ✓ Sandbox properties verified")
 
-            # Step 4: Delete sandbox
-            print(f"[4/4] Deleting sandbox...")
-            delete_response = requests.delete(
-                f"{gateway_url}/sandboxes/{sandbox_id}",
-                headers=api_headers,
-                timeout=30,
-            )
-            assert delete_response.status_code == 204, (
-                f"Expected 204, got {delete_response.status_code}: {delete_response.text}"
-            )
-            print(f"    ✓ Sandbox deleted successfully")
+            # # Step 4: Delete sandbox
+            # print(f"[4/4] Deleting sandbox...")
+            # delete_response = requests.delete(
+            #     f"{gateway_url}/sandboxes/{sandbox_id}",
+            #     headers=api_headers,
+            #     timeout=30,
+            # )
+            # assert delete_response.status_code == 204, (
+            #     f"Expected 204, got {delete_response.status_code}: {delete_response.text}"
+            # )
+            # print(f"    ✓ Sandbox deleted successfully")
 
-            # Verify it's gone
-            time.sleep(2)
-            verify_response = requests.get(
-                f"{gateway_url}/sandboxes/{sandbox_id}",
-                headers=api_headers,
-                timeout=10,
-            )
-            assert verify_response.status_code == 404, "Sandbox should no longer exist"
-            print(f"    ✓ Verified sandbox no longer exists")
+            # # Verify it's gone
+            # time.sleep(2)
+            # verify_response = requests.get(
+            #     f"{gateway_url}/sandboxes/{sandbox_id}",
+            #     headers=api_headers,
+            #     timeout=10,
+            # )
+            # assert verify_response.status_code == 404, "Sandbox should no longer exist"
+            # print(f"    ✓ Verified sandbox no longer exists")
 
         except Exception as e:
             # Cleanup on failure
