@@ -3,3 +3,4 @@ kind: RuntimeClass
 metadata:
   name: gvisor
 handler: runsc
+# todo benl: consider adding scheduling node selector constraints
