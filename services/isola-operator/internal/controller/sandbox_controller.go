@@ -111,6 +111,8 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	if err := r.Create(ctx, pod); err != nil {
 		log.Error(err, "Failed creating Pod")
+
+		// not checking err here, best effort status patch and return the create error
 		_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxPodReadyCondition,
@@ -157,6 +159,57 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	return ctrl.Result{}, nil
 }
 
+func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.SandboxTemplate, ctrl.Result, error) {
+	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	template := &sandboxv1alpha1.SandboxTemplate{}
+
+	if err := r.Get(ctx, types.NamespacedName{Name: sandbox.Spec.TemplateRef.Name, Namespace: sandbox.Namespace}, template); err != nil {
+		if errors.IsNotFound(err) {
+
+			if err := r.patchStatus(
+				ctx,
+				baseSandbox,
+				sandbox,
+				[]metav1.Condition{
+					{
+						Type:               SandboxTemplateReadyCondition,
+						Status:             metav1.ConditionFalse,
+						Reason:             CondReasonTemplateNotFound,
+						Message:            "Sandbox template not found",
+						ObservedGeneration: sandbox.Generation,
+					},
+					{
+						Type:               SandboxReadyCondition,
+						Status:             metav1.ConditionFalse,
+						Reason:             CondReasonTemplateNotFound,
+						Message:            "Sandbox template not found",
+						ObservedGeneration: sandbox.Generation,
+					},
+				},
+			); err != nil {
+				log.Error(err, "Failed to update Sandbox status")
+				return nil, ctrl.Result{}, err
+			}
+
+			log.Error(err, "Sandbox template not found")
+			// todo benl: we'll stop reconciling (steady failed state) - add watch on SandboxTemplate to reconcile the sandbox when template is created
+			return nil, ctrl.Result{}, nil
+		}
+		log.Error(err, "Failed to get Sandbox template")
+		return nil, ctrl.Result{}, err
+	}
+
+	meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
+		Type:               SandboxTemplateReadyCondition,
+		Status:             metav1.ConditionTrue,
+		Reason:             "TemplateOK",
+		Message:            "Template resolved",
+		ObservedGeneration: sandbox.Generation,
+	})
+
+	return template, ctrl.Result{}, nil
+}
+
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/finalizers,verbs=update
@@ -201,51 +254,13 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		sandbox.Status.Conditions = []metav1.Condition{}
 	}
 
-	template := &sandboxv1alpha1.SandboxTemplate{}
-	// todo benl: assuming template is in the same namespace as the sandbox
-	if err := r.Get(ctx, types.NamespacedName{Name: sandbox.Spec.TemplateRef.Name, Namespace: req.Namespace}, template); err != nil {
-		if errors.IsNotFound(err) {
-
-			if err := r.patchStatus(
-				ctx,
-				baseSandbox,
-				sandbox,
-				[]metav1.Condition{
-					{
-						Type:               SandboxTemplateReadyCondition,
-						Status:             metav1.ConditionFalse,
-						Reason:             CondReasonTemplateNotFound,
-						Message:            "Sandbox template not found",
-						ObservedGeneration: sandbox.Generation,
-					},
-					{
-						Type:               SandboxReadyCondition,
-						Status:             metav1.ConditionFalse,
-						Reason:             CondReasonTemplateNotFound,
-						Message:            "Sandbox template not found",
-						ObservedGeneration: sandbox.Generation,
-					},
-				},
-			); err != nil {
-				log.Error(err, "Failed to update Sandbox status")
-				return ctrl.Result{}, err
-			}
-
-			log.Error(err, "Sandbox template not found")
-			// todo benl: we'll stop reconciling (steady failed state) - add watch on SandboxTemplate to reconcile the sandbox when template is created
-			return ctrl.Result{}, nil
-		}
-		log.Error(err, "Failed to get Sandbox template")
-		return ctrl.Result{}, err
+	template, result, err := r.EnsureTemplate(ctx, sandbox, baseSandbox)
+	if err != nil {
+		return result, err
 	}
-
-	meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-		Type:               SandboxTemplateReadyCondition,
-		Status:             metav1.ConditionTrue,
-		Reason:             "TemplateOK",
-		Message:            "Template resolved",
-		ObservedGeneration: sandbox.Generation,
-	})
+	if template == nil {
+		return ctrl.Result{}, nil
+	}
 
 	podName := sandbox.Name + "-pod"
 	podNamespace := sandbox.Namespace
