@@ -36,6 +36,17 @@ spec:
           value: "1"
         - name: LOG_LEVEL
           value: "debug"
+        # S3 configuration for large file uploads (LocalStack for development)
+        - name: S3_BUCKET
+          value: "isola-uploads"
+        - name: S3_ENDPOINT_URL
+          value: "http://localstack:4566"
+        - name: S3_REGION
+          value: "us-east-1"
+        - name: AWS_ACCESS_KEY_ID
+          value: "test"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "test"
         ports:
           - name: ws
             containerPort: 8765

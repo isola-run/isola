@@ -37,3 +37,14 @@ spec:
           value: "debug"
         - name: ISOLA_CONTROLLER_WS_URL
           value: "ws://isola-controller:8765/ws"
+        # S3 configuration for large file uploads (LocalStack for development)
+        - name: S3_BUCKET
+          value: "isola-uploads"
+        - name: S3_ENDPOINT_URL
+          value: "http://localstack:4566"
+        - name: S3_REGION
+          value: "us-east-1"
+        - name: AWS_ACCESS_KEY_ID
+          value: "test"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "test"
