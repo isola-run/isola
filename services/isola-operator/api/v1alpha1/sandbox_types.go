@@ -39,8 +39,6 @@ const (
 
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-
-
 // SandboxShutdownPolicy defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotFilesystem;SnapshotMemory
 type SandboxShutdownPolicy string
@@ -54,7 +52,7 @@ const (
 // SandboxSpec defines the desired state of Sandbox
 type SandboxSpec struct {
 	// TemplateRef refers to a SandboxTemplate to inherit defaults from. The lean object reference is used to query the api server for the actual SandboxTemplate object referenced.
-	// +optional
+	// +required
 	TemplateRef *corev1.LocalObjectReference `json:"templateRef,omitempty"`
 
 	//todo benl: figure out the best way to expose overrides in a user and etcd friendly way (I don't think that duplicating spec fields is intuitive, see what other projects do)
@@ -62,10 +60,6 @@ type SandboxSpec struct {
 
 // SandboxStatus defines the observed state of Sandbox.
 type SandboxStatus struct {
-	// ObservedGeneration represents the .metadata.generation that the status was set based upon.
-	// +optional
-	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
@@ -89,14 +83,16 @@ type SandboxStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status",description="Aggregate readiness"
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason",description="Reason for Ready condition"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // Sandbox is the Schema for the sandboxes API
 type Sandbox struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is a standard object metadata
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec defines the desired state of Sandbox
 	// +required
@@ -104,7 +100,7 @@ type Sandbox struct {
 
 	// status defines the observed state of Sandbox
 	// +optional
-	Status SandboxStatus `json:"status,omitzero"`
+	Status SandboxStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -112,7 +108,7 @@ type Sandbox struct {
 // SandboxList contains a list of Sandbox
 type SandboxList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitzero"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Sandbox `json:"items"`
 }
 
