@@ -24,6 +24,9 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+//todo benl: I am not sure how to implement NetworkConfig / NetworkPolicy
+// should we use a NetworkPolicy spec or create our own IsolaNetworkPolicy that may or may not be translated into a NetworkPolicy object?
+// what to do with possible races between pod creation and NetworkPolicy application (if the policy is from outside and not enforced by, say, a gVisor patch)? init container that waits?
 
 // NetworkConfig configure network isolation and limits
 type NetworkConfig struct {
@@ -36,7 +39,6 @@ type NetworkConfig struct {
 	AllowedOutgoing []string `json:"allowedOutgoing,omitempty"`
 }
 
-
 // SandboxTemplateSpec defines the desired state of SandboxTemplate
 type SandboxTemplateSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -45,19 +47,18 @@ type SandboxTemplateSpec struct {
 	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 
 	// PodTemplate describes the pod that will be created to run the sandbox.
-    // The Sandbox controller will override specific security settings (runtimeClassName, etc.)
-    // but allows users to define containers, volumes, and env vars.
+	// The Sandbox controller will override specific security settings (runtimeClassName, etc.)
+	// but allows users to define containers, volumes, and env vars.
 	// TODO benl: allow defining volumes? everything?
-    //
-    // +kubebuilder:pruning:PreserveUnknownFields
-    // +kubebuilder:validation:Schemaless
+	//
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
 	// + required
 	// todo benl: I am extremly unsure about the kubebuilder attributes above
 	//todo benl: agent-sandbox use PodTemplate instead of PodTemplateSpec but from my research the PodTemplateSpec is far more popular and suitable
 	// todo benl: enforce PreemptionPolicy never in validating webhook?
 	// todo benl: verify total resources make sense, etc
-    PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
-
+	PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
 
 	// todo benl: is this the right place for it? should we allow / ready to change this policy at runtime?
 	// Network configures network isolation and limits
@@ -81,10 +82,6 @@ type SandboxTemplateSpec struct {
 
 // SandboxTemplateStatus defines the observed state of SandboxTemplate.
 type SandboxTemplateStatus struct {
-	// ObservedGeneration represents the .metadata.generation that the status was set based upon.
-	// +optional
-	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
@@ -115,7 +112,7 @@ type SandboxTemplate struct {
 
 	// metadata is a standard object metadata
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec defines the desired state of SandboxTemplate
 	// +required
@@ -123,7 +120,7 @@ type SandboxTemplate struct {
 
 	// status defines the observed state of SandboxTemplate
 	// +optional
-	Status SandboxTemplateStatus `json:"status,omitzero"`
+	Status SandboxTemplateStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -131,7 +128,7 @@ type SandboxTemplate struct {
 // SandboxTemplateList contains a list of SandboxTemplate
 type SandboxTemplateList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitzero"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []SandboxTemplate `json:"items"`
 }
 

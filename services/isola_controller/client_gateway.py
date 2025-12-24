@@ -372,11 +372,55 @@ async def _handle_kubernetes_sandbox_creation(
 ):
     """Provision the sandbox by creating a Sandbox CR (operator handles Pod creation)"""
     try:
+        template_name = f"template-{sandbox_id}"
+        template_spec: dict = {
+            "podTemplate": {
+                "spec": {
+                    "restartPolicy": "Never",
+                    "containers": [
+                        {
+                            "name": "sandbox",
+                            "image": request.image,
+                            "command": ["sleep", "3600"],
+                            "env": [{"name": k, "value": v} for k, v in request.env.items()],
+                            "resources": {
+                                "requests": {
+                                    "cpu": f"{int(request.cpu * 1000)}m",
+                                    "memory": f"{int(request.memory * 1024)}Mi"
+                                },
+                                "limits": {
+                                    "cpu": f"{int(request.cpu * 1000)}m",
+                                    "memory": f"{int(request.memory * 1024)}Mi"
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "timeoutSeconds": 60,
+            "shutdownPolicy": "Delete"
+        }
+
+
+
+        success, reason = await kubernetes_manager.create_sandbox_template(
+            template_name=template_name,
+            template_spec=template_spec,
+        )
+
+        logger.info(
+            "Sandbox template %s creation result success=%s reason=%s",
+            template_name,
+            success,
+            reason,
+        )
+
+
         # Create Sandbox CR - the isola-operator will watch for this and create the Pod
         success, error_reason = await kubernetes_manager.create_sandbox_cr(
             sandbox_id=sandbox_id,
             name=request.name,
-            template_name="default-template",  # Using the default template for now
+            template_name=template_name,
         )
 
         logger.info(

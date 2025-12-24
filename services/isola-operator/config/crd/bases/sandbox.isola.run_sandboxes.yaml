@@ -14,7 +14,19 @@ spec:
     singular: sandbox
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Aggregate readiness
+      jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - description: Reason for Ready condition
+      jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Sandbox is the Schema for the sandboxes API
@@ -55,6 +67,8 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+            required:
+            - templateRef
             type: object
           status:
             description: status defines the observed state of Sandbox
@@ -128,11 +142,6 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              observedGeneration:
-                description: ObservedGeneration represents the .metadata.generation
-                  that the status was set based upon.
-                format: int64
-                type: integer
             type: object
         required:
         - spec

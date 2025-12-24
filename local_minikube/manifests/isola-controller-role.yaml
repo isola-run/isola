@@ -8,5 +8,5 @@ rules:
   resources: ["pods", "pods/log", "pods/status"]
   verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
 - apiGroups: ["sandbox.isola.run"]
-  resources: ["sandboxes", "sandboxes/status"]
+  resources: ["sandboxes", "sandboxes/status", "sandboxtemplates", "sandboxtemplates/status"]
   verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]

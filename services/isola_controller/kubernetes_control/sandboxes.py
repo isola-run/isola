@@ -98,11 +98,77 @@ class KubernetesManager:
             
             self._initialized = True
 
+    async def create_sandbox_template(
+        self,
+        template_name: str,
+        template_spec: Dict,
+    ) -> tuple[bool, Optional[str]]:
+        """
+        Create a SandboxTemplate custom resource.
+
+        Args:
+            template_name: Name of the SandboxTemplate to create.
+            template_spec: Dict following SandboxTemplateSpec (podTemplate, network, timeoutSeconds, shutdownPolicy).
+
+        Returns:
+            (success, error_reason)
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        if "podTemplate" not in template_spec:
+            return False, "SandboxTemplate spec must include 'podTemplate'"
+
+        logger.info(
+            "Creating SandboxTemplate '%s' in namespace '%s'",
+            template_name,
+            self.namespace,
+        )
+
+        template_body: dict = {
+            "apiVersion": f"{self.SANDBOX_GROUP}/{self.SANDBOX_VERSION}",
+            "kind": "SandboxTemplate",
+            "metadata": {
+                "name": template_name,
+                "namespace": self.namespace,
+                "labels": {
+                    "managed-by": "isola-controller",
+                },
+            },
+            "spec": deepcopy(template_spec),
+        }
+
+        try:
+            custom_api = self._get_custom_api()
+            custom_api.create_namespaced_custom_object(
+                group=self.SANDBOX_GROUP,
+                version=self.SANDBOX_VERSION,
+                namespace=self.namespace,
+                plural=self.SANDBOXTEMPLATE_PLURAL,
+                body=template_body,
+            )
+            logger.info(
+                "Created SandboxTemplate '%s' in namespace '%s'",
+                template_name,
+                self.namespace,
+            )
+            return True, None
+        except ApiException as e:
+            logger.error("Failed to create SandboxTemplate '%s': %s", template_name, e)
+            return False, f"Kubernetes API error: {e.reason}"
+        except Exception as e:
+            logger.error(
+                "Unexpected error creating SandboxTemplate '%s': %s",
+                template_name,
+                e,
+            )
+            return False, str(e)
+
     async def create_sandbox_cr(
         self,
         sandbox_id: str,
         name: str,
-        template_name: str = "default-template",
+        template_name: str,
     ) -> tuple[bool, Optional[str]]:
         """
         Create a Sandbox custom resource. The isola-operator will handle Pod creation.
@@ -145,6 +211,7 @@ class KubernetesManager:
         
         sandbox_body["metadata"]["labels"]["sandbox-id"] = sandbox_id
         
+        # todo benl: properly define what "name" actually means both for the client and the k8s object - where and what is stored
         # Store original name in annotation
         if "annotations" not in sandbox_body["metadata"]:
             sandbox_body["metadata"]["annotations"] = {}
