@@ -61,6 +61,9 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var agentImage string
+	var controllerWSURL string
+	var sharedVolumeMountPath string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -79,6 +82,12 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&agentImage, "agent-image", "isola-agent:dev",
+		"The container image for the isola-agent sidecar injected into sandbox pods.")
+	flag.StringVar(&controllerWSURL, "controller-ws-url", "ws://isola-controller.isola-control-plane:8765",
+		"The WebSocket URL for the isola-agent to connect to the isola-controller.")
+	flag.StringVar(&sharedVolumeMountPath, "shared-volume-mount-path", "/shared",
+		"The mount path for the shared volume between sandbox and agent containers.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -178,9 +187,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	setupLog.Info("Configuring SandboxReconciler with agent settings",
+		"agent-image", agentImage,
+		"controller-ws-url", controllerWSURL,
+		"shared-volume-mount-path", sharedVolumeMountPath)
+
 	if err := (&controller.SandboxReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:                mgr.GetClient(),
+		Scheme:                mgr.GetScheme(),
+		AgentImage:            agentImage,
+		ControllerWSURL:       controllerWSURL,
+		SharedVolumeMountPath: sharedVolumeMountPath,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
 		os.Exit(1)

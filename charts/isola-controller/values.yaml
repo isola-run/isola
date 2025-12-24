@@ -122,6 +122,9 @@ rbac:
     - apiGroups: [""]
       resources: ["configmaps", "secrets"]
       verbs: ["get", "list", "watch"]
+    - apiGroups: ["sandbox.isola.run"]
+      resources: ["sandboxes", "sandboxes/status", "sandboxtemplates", "sandboxtemplates/status"]
+      verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
 
 # Environment variables
 env:

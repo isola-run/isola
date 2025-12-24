@@ -3,7 +3,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install dependencies
-RUN pip install --no-cache-dir websockets pydantic fastapi uvicorn python-multipart
+RUN pip install --no-cache-dir websockets pydantic fastapi uvicorn python-multipart httpx
 
 # Copy the entire project (we need isola models and services)
 COPY . /app

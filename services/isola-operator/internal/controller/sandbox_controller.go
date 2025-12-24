@@ -23,6 +23,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -53,7 +54,25 @@ const (
 type SandboxReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	// AgentImage is the container image for the isola-agent sidecar
+	AgentImage string
+	// ControllerWSURL is the WebSocket URL for the agent to connect to the controller
+	ControllerWSURL string
+	// SharedVolumeMountPath is the mount path for the shared volume between sandbox and agent
+	SharedVolumeMountPath string
 }
+
+const (
+	// Default values for agent configuration
+	DefaultAgentImage           = "isola-agent:dev"
+	DefaultControllerWSURL      = "ws://isola-controller.isola-control-plane:8765"
+	DefaultSharedVolumeMountPath = "/shared"
+
+	// Volume and container names
+	SharedVolumeName   = "shared-data"
+	AgentContainerName = "isola-agent"
+)
 
 func isPodReady(pod *corev1.Pod) bool {
 	if pod == nil {
@@ -69,6 +88,80 @@ func isPodReady(pod *corev1.Pod) bool {
 		}
 	}
 	return false
+}
+
+// buildAgentContainer creates the isola-agent sidecar container spec
+func (r *SandboxReconciler) buildAgentContainer(sandboxName string) corev1.Container {
+	agentImage := r.AgentImage
+	if agentImage == "" {
+		agentImage = DefaultAgentImage
+	}
+
+	controllerWSURL := r.ControllerWSURL
+	if controllerWSURL == "" {
+		controllerWSURL = DefaultControllerWSURL
+	}
+
+	sharedVolumeMountPath := r.SharedVolumeMountPath
+	if sharedVolumeMountPath == "" {
+		sharedVolumeMountPath = DefaultSharedVolumeMountPath
+	}
+
+	return corev1.Container{
+		Name:  AgentContainerName,
+		Image: agentImage,
+		Env: []corev1.EnvVar{
+			{Name: "SANDBOX_ID", Value: sandboxName},
+			{Name: "SANDBOX_NAME", Value: sandboxName},
+			{Name: "ISOLA_CONTROLLER_WS_URL", Value: controllerWSURL},
+			{Name: "SHARED_VOLUME_PATH", Value: sharedVolumeMountPath},
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      SharedVolumeName,
+				MountPath: sharedVolumeMountPath,
+			},
+		},
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("50m"),
+				corev1.ResourceMemory: resource.MustParse("64Mi"),
+			},
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("200m"),
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			},
+		},
+	}
+}
+
+// injectSidecar adds the isola-agent sidecar container and shared volume to the pod spec
+func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod, sandboxName string) {
+	sharedVolumeMountPath := r.SharedVolumeMountPath
+	if sharedVolumeMountPath == "" {
+		sharedVolumeMountPath = DefaultSharedVolumeMountPath
+	}
+
+	// Add shared volume to pod
+	sharedVolume := corev1.Volume{
+		Name: SharedVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	}
+	pod.Spec.Volumes = append(pod.Spec.Volumes, sharedVolume)
+
+	// Add volume mount to all existing containers
+	for i := range pod.Spec.Containers {
+		pod.Spec.Containers[i].VolumeMounts = append(pod.Spec.Containers[i].VolumeMounts, corev1.VolumeMount{
+			Name:      SharedVolumeName,
+			MountPath: sharedVolumeMountPath,
+		})
+	}
+
+	// Add agent sidecar container
+	agentContainer := r.buildAgentContainer(sandboxName)
+	pod.Spec.Containers = append(pod.Spec.Containers, agentContainer)
 }
 
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes,verbs=get;list;watch;create;update;patch;delete
@@ -193,6 +286,10 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				},
 				Spec: template.Spec.PodTemplate.Spec,
 			}
+
+			// Inject isola-agent sidecar container and shared volume
+			r.injectSidecar(pod, sandbox.Name)
+			log.Info("Injected isola-agent sidecar", "agentImage", r.AgentImage, "controllerWSURL", r.ControllerWSURL)
 
 			// Set Pod's object owner reference to the Sandbox object
 			if err := controllerutil.SetControllerReference(sandbox, pod, r.Scheme); err != nil {
