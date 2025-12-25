@@ -134,6 +134,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	log.Info("Pod created")
 
+	// todo benl: this doesn't print anything - rbac issues?
 	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "PodCreated", "Sandbox Pod created")
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
