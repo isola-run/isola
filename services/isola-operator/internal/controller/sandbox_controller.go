@@ -176,6 +176,13 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		"app.kubernetes.io/managed-by": "isola-operator",
 	}
 
+	// Copy sandbox-id label from Sandbox CR to pod if it exists
+	if sandbox.Labels != nil {
+		if sandboxID, exists := sandbox.Labels["sandbox-id"]; exists {
+			labels["sandbox-id"] = sandboxID
+		}
+	}
+
 	// Merge with template labels if any
 	if template.Spec.PodTemplate.Labels != nil {
 		for k, v := range template.Spec.PodTemplate.Labels {
