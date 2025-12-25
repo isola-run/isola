@@ -1,103 +1,11 @@
-# Default values for isola-operator
-replicaCount: 1
+# isola-operator values
 
 image:
   repository: isola-operator
-  pullPolicy: IfNotPresent
-  tag: ""  # Overrides the image tag whose default is the chart appVersion
+  tag: "latest"
 
-imagePullSecrets: []
-nameOverride: ""
-fullnameOverride: ""
-
-serviceAccount:
-  create: true
-  annotations: {}
-  name: ""
-
-podAnnotations:
-  kubectl.kubernetes.io/default-container: manager
-
-podSecurityContext:
-  runAsNonRoot: true
-  seccompProfile:
-    type: RuntimeDefault
-
-securityContext:
-  capabilities:
-    drop:
-    - ALL
-  readOnlyRootFilesystem: true
-  allowPrivilegeEscalation: false
-
-resources:
-  limits:
-    cpu: 500m
-    memory: 128Mi
-  requests:
-    cpu: 10m
-    memory: 64Mi
-
-nodeSelector: {}
-
-tolerations: []
-
-affinity: {}
-
-# CRD management
-crds:
-  install: true
-
-# Leader election configuration
-leaderElection:
-  enabled: true
-
-# Health probes configuration
-healthProbes:
-  bindAddress: ":8081"
-  livenessProbe:
-    httpGet:
-      path: /healthz
-      port: 8081
-    initialDelaySeconds: 15
-    periodSeconds: 20
-  readinessProbe:
-    httpGet:
-      path: /readyz
-      port: 8081
-    initialDelaySeconds: 5
-    periodSeconds: 10
-
-# Agent sidecar configuration
-agentImage: isola-agent:dev
+# Agent sidecar image injected into sandbox pods
+agentImage: isola-agent:latest
 
 # Controller WebSocket URL for agent connection
 controllerWSURL: ws://isola-controller.isola-control-plane:8765
-
-# Sandboxes namespace where pods will be created
-sandboxesNamespace: isola-sandboxes
-
-# Environment variables
-env: []
-  # - name: MY_VAR
-  #   value: "my-value"
-
-# Additional environment variables from ConfigMap/Secret
-envFrom: []
-  # - configMapRef:
-  #     name: isola-operator-config
-  # - secretRef:
-  #     name: isola-operator-secrets
-
-# Volume mounts
-volumeMounts: []
-  # - name: config
-  #   mountPath: /config
-  #   readOnly: true
-
-# Volumes
-volumes: []
-  # - name: config
-  #   configMap:
-  #     name: isola-operator-config
-

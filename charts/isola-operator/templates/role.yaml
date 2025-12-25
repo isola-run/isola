@@ -1,12 +1,10 @@
-{{- if .Values.leaderElection.enabled }}
----
-# permissions to do leader election.
+# Leader election role
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ include "isola-operator.leaderElectionRoleName" . }}
+  name: isola-operator-leader-election
   labels:
-    {{- include "isola-operator.labels" . | nindent 4 }}
+    app: isola-operator
 rules:
 - apiGroups:
   - ""
@@ -39,5 +37,3 @@ rules:
   verbs:
   - create
   - patch
-{{- end }}
-
