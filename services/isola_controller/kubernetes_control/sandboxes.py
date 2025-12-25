@@ -87,7 +87,7 @@ class KubernetesManager:
             
             self._initialized = True
 
-    async def create_sandbox_template(
+    async def _create_sandbox_template_cr(
         self,
         template_name: str,
         template_spec: Dict,
@@ -127,36 +127,27 @@ class KubernetesManager:
             "spec": deepcopy(template_spec),
         }
 
-        try:
-            custom_api = self._get_custom_api()
-            custom_api.create_namespaced_custom_object(
-                group=self.SANDBOX_GROUP,
-                version=self.SANDBOX_VERSION,
-                namespace=self.namespace,
-                plural=self.SANDBOXTEMPLATE_PLURAL,
-                body=template_body,
-            )
-            logger.info(
-                "Created SandboxTemplate '%s' in namespace '%s'",
-                template_name,
-                self.namespace,
-            )
-            return True, None
-        except ApiException as e:
-            logger.error("Failed to create SandboxTemplate '%s': %s", template_name, e)
-            return False, f"Kubernetes API error: {e.reason}"
-        except Exception as e:
-            logger.error(
-                "Unexpected error creating SandboxTemplate '%s': %s",
-                template_name,
-                e,
-            )
-            return False, str(e)
+
+        custom_api = self._get_custom_api()
+        custom_api.create_namespaced_custom_object(
+            group=self.SANDBOX_GROUP,
+            version=self.SANDBOX_VERSION,
+            namespace=self.namespace,
+            plural=self.SANDBOXTEMPLATE_PLURAL,
+            body=template_body,
+        )
+        logger.info(
+            "Created SandboxTemplate '%s' in namespace '%s': %s",
+            template_name,
+            self.namespace,
+            template_body
+        )
+
 
     async def create_sandbox_cr(
         self,
         sandbox_id: str,
-        name: str,
+        request: CreateSandboxRequest,
         template_name: str,
     ) -> tuple[bool, Optional[str]]:
         """
@@ -172,6 +163,40 @@ class KubernetesManager:
         """
         if not self._initialized:
             await self.initialize()
+
+        template_spec: dict = {
+            "podTemplate": {
+                "spec": {
+                    "runtimeClassName": self.runtime_class_name,
+                    "restartPolicy": "Never",
+                    "containers": [
+                        {
+                            "name": "sandbox",
+                            "image": request.image,
+                            "command": ["sleep", "3600"],
+                            "env": [{"name": k, "value": v} for k, v in request.env.items()],
+                            "resources": {
+                                "requests": {
+                                    "cpu": f"{int(request.cpu * 1000)}m",
+                                    "memory": f"{int(request.memory * 1024)}Mi"
+                                },
+                                "limits": {
+                                    "cpu": f"{int(request.cpu * 1000)}m",
+                                    "memory": f"{int(request.memory * 1024)}Mi"
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "timeoutSeconds": 600,
+            "shutdownPolicy": "Delete"
+        }
+
+        await self._create_sandbox_template_cr(
+            template_name=template_name,
+            template_spec=template_spec,
+        )
         
         logger.info(
             "Creating Sandbox CR '%s' (template=%s) in namespace '%s'",
@@ -204,7 +229,7 @@ class KubernetesManager:
         # Store original name in annotation
         if "annotations" not in sandbox_body["metadata"]:
             sandbox_body["metadata"]["annotations"] = {}
-        sandbox_body["metadata"]["annotations"]["isola.run/sandbox-name"] = name
+        sandbox_body["metadata"]["annotations"]["isola.run/sandbox-name"] = request.name
         
         try:
             custom_api = self._get_custom_api()
