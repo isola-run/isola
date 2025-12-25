@@ -71,4 +71,4 @@ spec:
           value: {{ .Values.storage.accessKeyId | quote }}
         - name: AWS_SECRET_ACCESS_KEY
           value: {{ .Values.storage.secretAccessKey | quote }}
-        {{- end }}
+      {{- end }}
