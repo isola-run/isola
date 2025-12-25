@@ -28,14 +28,6 @@ logger.addHandler(handler)
 websockets_logger = logging.getLogger("websockets")
 websockets_logger.setLevel(logging.WARNING)
 
-# Suppress uvicorn websocket protocol debug logs
-# uvicorn_websockets_logger = logging.getLogger("uvicorn.protocols.websockets")
-# uvicorn_websockets_logger.setLevel(logging.INFO)
-# uvicorn_websockets_auto_logger = logging.getLogger("uvicorn.protocols.websockets.auto")
-# uvicorn_websockets_auto_logger.setLevel(logging.INFO)
-# uvicorn_protocols_logger = logging.getLogger("uvicorn.protocols")
-# uvicorn_protocols_logger.setLevel(logging.INFO)
-
 # HTTP server configuration
 HTTP_HOST = os.getenv("HTTP_HOST", "0.0.0.0")
 HTTP_PORT = int(os.getenv("HTTP_PORT", "8080"))
