@@ -1,35 +1,11 @@
-# Development environment overrides for isola-operator
-replicaCount: 1
+# Development environment values
 
 image:
   repository: isola-operator
-  pullPolicy: Never  # For local development with minikube
   tag: "dev"
 
-# CRD management
-crds:
-  install: true
-
-# Leader election - can be disabled for single replica development
-leaderElection:
-  enabled: true
-
-resources:
-  limits:
-    cpu: 200m
-    memory: 128Mi
-  requests:
-    cpu: 10m
-    memory: 64Mi
-
-# Agent sidecar configuration
+# Agent sidecar image for development
 agentImage: isola-agent:dev
 
-# Controller WebSocket URL for agent connection
+# Controller WebSocket URL
 controllerWSURL: ws://isola-controller.isola-control-plane:8765
-
-# Sandboxes namespace where pods will be created
-sandboxesNamespace: isola-sandboxes
-
-env: []
-

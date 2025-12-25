@@ -1,84 +1,62 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "isola-operator.fullname" . }}
+  name: isola-operator
   labels:
-    {{- include "isola-operator.labels" . | nindent 4 }}
+    app: isola-operator
+    control-plane: controller-manager
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: 1
   selector:
     matchLabels:
       {{- include "isola-operator.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
       annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+        kubectl.kubernetes.io/default-container: manager
       labels:
         {{- include "isola-operator.selectorLabels" . | nindent 8 }}
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      serviceAccountName: {{ include "isola-operator.serviceAccountName" . }}
+      serviceAccountName: isola-operator
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       terminationGracePeriodSeconds: 10
       containers:
       - name: manager
         command:
         - /manager
         args:
-        {{- if .Values.leaderElection.enabled }}
         - --leader-elect
-        {{- end }}
-        - --health-probe-bind-address={{ .Values.healthProbes.bindAddress }}
+        - --health-probe-bind-address=:8081
         - --agent-image={{ .Values.agentImage }}
         - --controller-ws-url={{ .Values.controllerWSURL }}
         securityContext:
-          {{- toYaml .Values.securityContext | nindent 12 }}
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: IfNotPresent
         ports: []
-        {{- if .Values.healthProbes.livenessProbe }}
         livenessProbe:
-          {{- toYaml .Values.healthProbes.livenessProbe | nindent 12 }}
-        {{- end }}
-        {{- if .Values.healthProbes.readinessProbe }}
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
         readinessProbe:
-          {{- toYaml .Values.healthProbes.readinessProbe | nindent 12 }}
-        {{- end }}
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
         resources:
-          {{- toYaml .Values.resources | nindent 12 }}
-        env:
-        {{- range .Values.env }}
-        - name: {{ .name }}
-          value: {{ .value | quote }}
-        {{- end }}
-        {{- with .Values.envFrom }}
-        envFrom:
-          {{- toYaml . | nindent 12 }}
-        {{- end }}
-        {{- with .Values.volumeMounts }}
-        volumeMounts:
-          {{- toYaml . | nindent 12 }}
-        {{- end }}
-      {{- with .Values.volumes }}
-      volumes:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi

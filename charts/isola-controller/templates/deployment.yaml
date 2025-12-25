@@ -1,116 +1,74 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "isola-controller.fullname" . }}
+  name: isola-controller
   labels:
-    {{- include "isola-controller.labels" . | nindent 4 }}
+    app: isola-controller
 spec:
-  {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
-  {{- end }}
+  replicas: 1
   selector:
     matchLabels:
       {{- include "isola-controller.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
-      annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
       labels:
         {{- include "isola-controller.selectorLabels" . | nindent 8 }}
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      serviceAccountName: {{ include "isola-controller.serviceAccountName" . }}
+      serviceAccountName: isola-controller
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
-      - name: {{ .Chart.Name }}
+      - name: isola-controller
         securityContext:
-          {{- toYaml .Values.securityContext | nindent 12 }}
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: IfNotPresent
         ports:
         - name: ws
-          containerPort: {{ .Values.config.websocket.port }}
+          containerPort: 8765
           protocol: TCP
         - name: http
-          containerPort: {{ .Values.config.http.port }}
+          containerPort: 30080
           protocol: TCP
-        {{- if .Values.livenessProbe }}
         livenessProbe:
-          {{- toYaml .Values.livenessProbe | nindent 12 }}
-        {{- end }}
-        {{- if .Values.readinessProbe }}
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
         readinessProbe:
-          {{- toYaml .Values.readinessProbe | nindent 12 }}
-        {{- end }}
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
         resources:
-          {{- toYaml .Values.resources | nindent 12 }}
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 250m
+            memory: 256Mi
         env:
-        {{- range .Values.env }}
-        - name: {{ .name }}
-          value: {{ .value | quote }}
-        {{- end }}
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: LOG_LEVEL
+          value: {{ .Values.logLevel | default "info" | quote }}
         {{- if .Values.storage.enabled }}
-        {{- if .Values.storage.bucket }}
         - name: S3_BUCKET
           value: {{ .Values.storage.bucket | quote }}
-        {{- end }}
-        {{- if .Values.storage.endpointUrl }}
         - name: S3_ENDPOINT_URL
           value: {{ .Values.storage.endpointUrl | quote }}
-        {{- end }}
-        {{- if .Values.storage.region }}
         - name: S3_REGION
           value: {{ .Values.storage.region | quote }}
-        {{- end }}
-        {{- if and .Values.storage.existingSecret (not .Values.storage.accessKeyId) }}
-        - name: AWS_ACCESS_KEY_ID
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Values.storage.existingSecret }}
-              key: AWS_ACCESS_KEY_ID
-        - name: AWS_SECRET_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Values.storage.existingSecret }}
-              key: AWS_SECRET_ACCESS_KEY
-        {{- else }}
-        {{- if .Values.storage.accessKeyId }}
         - name: AWS_ACCESS_KEY_ID
           value: {{ .Values.storage.accessKeyId | quote }}
-        {{- end }}
-        {{- if .Values.storage.secretAccessKey }}
         - name: AWS_SECRET_ACCESS_KEY
           value: {{ .Values.storage.secretAccessKey | quote }}
         {{- end }}
-        {{- end }}
-        {{- end }}
-        {{- with .Values.envFrom }}
-        envFrom:
-          {{- toYaml . | nindent 12 }}
-        {{- end }}
-        {{- with .Values.volumeMounts }}
-        volumeMounts:
-          {{- toYaml . | nindent 12 }}
-        {{- end }}
-      {{- with .Values.volumes }}
-      volumes:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
