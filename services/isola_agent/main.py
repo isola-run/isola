@@ -25,8 +25,10 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 # Suppress verbose websockets debug logs
-websockets_logger = logging.getLogger("websockets")
-websockets_logger.setLevel(logging.WARNING)
+logging.getLogger("websockets").disabled = True
+logging.getLogger("websockets.client").disabled = True
+logging.getLogger("websockets.server").disabled = True
+logging.getLogger("websockets.protocol").disabled = True
 
 # HTTP server configuration
 HTTP_HOST = os.getenv("HTTP_HOST", "0.0.0.0")
