@@ -83,7 +83,7 @@ func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Contain
 				Value: sandboxID,
 			},
 			{
-				Name:  "CONTROLLER_WS_URL",
+				Name:  "ISOLA_CONTROLLER_WS_URL",
 				Value: r.ControllerWSURL,
 			},
 			{

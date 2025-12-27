@@ -13,7 +13,7 @@ nodePort:
 storage:
   enabled: true
   bucket: "isola-uploads"
-  endpointUrl: "http://localstack:4566"
+  endpointUrl: "http://localstack.localstack.svc.cluster.local:4566"
   region: "us-east-1"
   accessKeyId: "test"
   secretAccessKey: "test"

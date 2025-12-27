@@ -160,6 +160,7 @@ async def download_file(request: DownloadRequest):
         
         # Download the file from the presigned URL
         async with httpx.AsyncClient(timeout=DOWNLOAD_TIMEOUT_SECONDS) as client:
+            logger.info("Sending GET request to download URL")
             response = await client.get(request.download_url)
             
             if response.status_code != 200:
@@ -216,8 +217,15 @@ async def download_file(request: DownloadRequest):
         
     except HTTPException:
         raise
-    except httpx.TimeoutException:
-        logger.error("Timeout downloading file from S3")
+    except httpx.TimeoutException as e:
+        logger.error("Timeout downloading file from S3: %s", e)
+        logger.error("Timeout occurred after %s seconds", DOWNLOAD_TIMEOUT_SECONDS)
+        try:
+            from urllib.parse import urlparse
+            parsed_url = urlparse(request.download_url)
+            logger.error("Timeout URL hostname: %s", parsed_url.hostname)
+        except Exception as parse_error:
+            logger.warning("Could not parse download URL in timeout handler: %s", parse_error)
         raise HTTPException(
             status_code=504,
             detail="Timeout downloading file from S3"
