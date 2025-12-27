@@ -13,6 +13,20 @@ minikube image build -t isola-agent:dev -f services/isola_agent/Dockerfile .
 echo "Building isola-operator Docker image..."
 (cd services/isola-operator && minikube image build -t isola-operator:dev .)
 
+# Deploy LocalStack for S3 storage
+echo "Deploying LocalStack..."
+kubectl create namespace localstack --dry-run=client -o yaml | kubectl apply -f -
+helm repo add localstack https://localstack.github.io/helm-charts --force-update
+helm upgrade --install localstack localstack/localstack -n localstack --wait
+
+# Create S3 bucket
+echo "Creating S3 bucket..."
+kubectl run aws-cli --rm -i --restart=Never -n localstack \
+  --image=amazon/aws-cli \
+  --env="AWS_ACCESS_KEY_ID=test" \
+  --env="AWS_SECRET_ACCESS_KEY=test" \
+  -- s3api create-bucket --bucket isola-uploads --endpoint-url http://localstack:4566 --region us-east-1 || true
+
 # Deploy with Helm
 # Deploy isola-operator first (installs CRDs + operator)
 echo "Deploying isola-operator with Helm..."

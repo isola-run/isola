@@ -7,5 +7,5 @@ image:
 # Agent sidecar image injected into sandbox pods
 agentImage: isola-agent:latest
 
-# Controller WebSocket URL for agent connection
-controllerWSURL: ws://isola-controller.isola-control-plane:8765
+# Controller WebSocket URL for agent connection (FQDN for cross-namespace reliability)
+controllerWSURL: ws://isola-controller.isola-control-plane.svc.cluster.local:8765/ws

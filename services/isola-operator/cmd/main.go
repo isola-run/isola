@@ -82,7 +82,7 @@ func main() {
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&agentImage, "agent-image", "isola-agent:dev", "Container image for the isola-agent sidecar")
-	flag.StringVar(&controllerWSURL, "controller-ws-url", "ws://isola-controller.isola-control-plane:8765", "WebSocket URL for agent to connect to controller")
+	flag.StringVar(&controllerWSURL, "controller-ws-url", "ws://isola-controller.isola-control-plane.svc.cluster.local:8765/ws", "WebSocket URL for agent to connect to controller")
 	opts := zap.Options{
 		Development: true,
 	}
