@@ -15,15 +15,23 @@ wait $pid1 $pid2 $pid3
 echo "Deploying LocalStack..."
 kubectl create namespace localstack --dry-run=client -o yaml | kubectl apply -f -
 helm repo add localstack https://localstack.github.io/helm-charts --force-update
-helm upgrade --install localstack localstack/localstack -n localstack --wait
 
-# Create S3 bucket
-echo "Creating S3 bucket..."
+if ! helm status localstack -n localstack >/dev/null 2>&1; then
+  helm upgrade --install localstack localstack/localstack -n localstack --wait
+else
+  helm upgrade --install localstack localstack/localstack -n localstack
+fi
+
+echo "Creating S3 bucket (if missing)..."
 kubectl run aws-cli --rm -i --restart=Never -n localstack \
   --image=amazon/aws-cli \
   --env="AWS_ACCESS_KEY_ID=test" \
   --env="AWS_SECRET_ACCESS_KEY=test" \
-  -- s3api create-bucket --bucket isola-uploads --endpoint-url http://localstack:4566 --region us-east-1 || true
+  --env="AWS_DEFAULT_REGION=us-east-1" \
+  -- sh -lc '
+    aws --no-cli-pager --endpoint-url http://localstack:4566 s3api head-bucket --bucket isola-uploads 2>/dev/null \
+      || aws --no-cli-pager --endpoint-url http://localstack:4566 s3api create-bucket --bucket isola-uploads
+  '
 
 # Deploy with Helm
 # Deploy isola-operator first (installs CRDs + operator)
