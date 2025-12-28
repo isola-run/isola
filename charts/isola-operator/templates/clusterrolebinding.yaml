@@ -1,15 +1,14 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
-  name: isola-controller
-  namespace: isola-sandboxes
+  name: isola-operator-manager-rolebinding
   labels:
-    app: isola-controller
+    app: isola-operator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: isola-controller
+  kind: ClusterRole
+  name: isola-operator-manager-role
 subjects:
 - kind: ServiceAccount
-  name: isola-controller
+  name: isola-operator
   namespace: {{ .Release.Namespace }}
