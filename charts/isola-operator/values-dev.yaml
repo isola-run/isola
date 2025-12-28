@@ -1,0 +1,11 @@
+# Development environment values
+
+image:
+  repository: isola-operator
+  tag: "dev"
+
+# Agent sidecar image for development
+agentImage: isola-agent:dev
+
+# Controller WebSocket URL (FQDN for cross-namespace reliability)
+controllerWSURL: ws://isola-controller.isola-control-plane.svc.cluster.local:8765/ws

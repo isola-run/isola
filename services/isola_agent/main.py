@@ -24,6 +24,12 @@ handler.setFormatter(formatter)
 
 logger.addHandler(handler)
 
+# Suppress verbose websockets debug logs
+logging.getLogger("websockets").disabled = True
+logging.getLogger("websockets.client").disabled = True
+logging.getLogger("websockets.server").disabled = True
+logging.getLogger("websockets.protocol").disabled = True
+
 # HTTP server configuration
 HTTP_HOST = os.getenv("HTTP_HOST", "0.0.0.0")
 HTTP_PORT = int(os.getenv("HTTP_PORT", "8080"))

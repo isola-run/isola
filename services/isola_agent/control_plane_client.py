@@ -8,6 +8,10 @@ import uuid
 import websockets
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
+# Suppress verbose websocket debug logs
+for ws_logger in ["websockets", "websockets.client", "websockets.server", "websockets.protocol"]:
+    logging.getLogger(ws_logger).setLevel(logging.WARNING)
+
 from common.models.control_protocol import Ack, AgentHello, AgentStatusUpdate, CreateSandboxRequest, CreateSandboxResponse, Nack, OutgoingAdapter
 
 

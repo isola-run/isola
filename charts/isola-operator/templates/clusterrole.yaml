@@ -1,0 +1,53 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: isola-operator-manager-role
+  labels:
+    app: isola-operator
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - sandbox.isola.run
+  resources:
+  - sandboxes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - sandbox.isola.run
+  resources:
+  - sandboxes/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - sandbox.isola.run
+  resources:
+  - sandboxes/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - sandbox.isola.run
+  resources:
+  - sandboxtemplates
+  verbs:
+  - get
+  - list
+  - watch
