@@ -4,15 +4,13 @@
 set -euo pipefail
 
 # Build the Docker images
-echo "Building isola-controller Docker image..."
-minikube image build -t isola-controller:dev -f services/isola_controller/Dockerfile .
+echo "Building images in parallel..."
+minikube image build -t isola-controller:dev -f services/isola_controller/Dockerfile . & pid1=$!
+minikube image build -t isola-agent:dev -f services/isola_agent/Dockerfile . & pid2=$!
+( cd services/isola-operator && minikube image build -t isola-operator:dev . ) & pid3=$!
+wait $pid1 $pid2 $pid3
 
-echo "Building isola-agent Docker image..."
-minikube image build -t isola-agent:dev -f services/isola_agent/Dockerfile .
-
-echo "Building isola-operator Docker image..."
-(cd services/isola-operator && minikube image build -t isola-operator:dev .)
-
+  
 # Deploy LocalStack for S3 storage
 echo "Deploying LocalStack..."
 kubectl create namespace localstack --dry-run=client -o yaml | kubectl apply -f -
