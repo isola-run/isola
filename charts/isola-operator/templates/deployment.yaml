@@ -31,6 +31,27 @@ spec:
         - --leader-elect
         - --health-probe-bind-address=:8081
         - --agent-image={{ .Values.agentImage }}
+        env:
+        {{- if .Values.s3.bucket }}
+        - name: S3_BUCKET
+          value: {{ .Values.s3.bucket | quote }}
+        {{- end }}
+        {{- if .Values.s3.endpointUrl }}
+        - name: S3_ENDPOINT_URL
+          value: {{ .Values.s3.endpointUrl | quote }}
+        {{- end }}
+        {{- if .Values.s3.region }}
+        - name: S3_REGION
+          value: {{ .Values.s3.region | quote }}
+        {{- end }}
+        {{- if .Values.s3.accessKeyId }}
+        - name: AWS_ACCESS_KEY_ID
+          value: {{ .Values.s3.accessKeyId | quote }}
+        {{- end }}
+        {{- if .Values.s3.secretAccessKey }}
+        - name: AWS_SECRET_ACCESS_KEY
+          value: {{ .Values.s3.secretAccessKey | quote }}
+        {{- end }}
         securityContext:
           capabilities:
             drop:

@@ -31,10 +31,6 @@ spec:
         image: isola-agent:dev
         imagePullPolicy: Never
         env:
-        - name: PYTHONUNBUFFERED
-          value: "1"
-        - name: LOG_LEVEL
-          value: "debug"
         # S3 configuration for large file uploads (LocalStack for development)
         - name: S3_BUCKET
           value: "isola-uploads"

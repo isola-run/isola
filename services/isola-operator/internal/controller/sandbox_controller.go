@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"os"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -73,19 +74,58 @@ func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Contain
 		mountPath = defaultSharedVolumeMountPath
 	}
 
+	env := []corev1.EnvVar{
+		{
+			Name:  "SANDBOX_ID",
+			Value: sandboxID,
+		},
+		{
+			Name:  "SHARED_DIR",
+			Value: mountPath,
+		},
+		{
+			Name:  "SANDBOX_DATA_PATH",
+			Value: mountPath,
+		},
+	}
+
+	// Pass through S3 configuration from operator's environment to agent sidecar
+	// These are optional - agent will work without them but S3 delete functionality will be disabled
+	if s3Bucket := os.Getenv("S3_BUCKET"); s3Bucket != "" {
+		env = append(env, corev1.EnvVar{
+			Name:  "S3_BUCKET",
+			Value: s3Bucket,
+		})
+	}
+	if s3Endpoint := os.Getenv("S3_ENDPOINT_URL"); s3Endpoint != "" {
+		env = append(env, corev1.EnvVar{
+			Name:  "S3_ENDPOINT_URL",
+			Value: s3Endpoint,
+		})
+	}
+	if s3Region := os.Getenv("S3_REGION"); s3Region != "" {
+		env = append(env, corev1.EnvVar{
+			Name:  "S3_REGION",
+			Value: s3Region,
+		})
+	}
+	if awsAccessKey := os.Getenv("AWS_ACCESS_KEY_ID"); awsAccessKey != "" {
+		env = append(env, corev1.EnvVar{
+			Name:  "AWS_ACCESS_KEY_ID",
+			Value: awsAccessKey,
+		})
+	}
+	if awsSecretKey := os.Getenv("AWS_SECRET_ACCESS_KEY"); awsSecretKey != "" {
+		env = append(env, corev1.EnvVar{
+			Name:  "AWS_SECRET_ACCESS_KEY",
+			Value: awsSecretKey,
+		})
+	}
+
 	return corev1.Container{
 		Name:  "isola-agent",
 		Image: r.AgentImage,
-		Env: []corev1.EnvVar{
-			{
-				Name:  "SANDBOX_ID",
-				Value: sandboxID,
-			},
-			{
-				Name:  "SHARED_DIR",
-				Value: mountPath,
-			},
-		},
+		Env:   env,
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      sharedVolumeName,
