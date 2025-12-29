@@ -56,7 +56,6 @@ type SandboxReconciler struct {
 	Scheme               *runtime.Scheme
 	Recorder             record.EventRecorder
 	AgentImage           string
-	ControllerWSURL      string
 	SharedVolumeMountPath string
 }
 
@@ -81,10 +80,6 @@ func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Contain
 			{
 				Name:  "SANDBOX_ID",
 				Value: sandboxID,
-			},
-			{
-				Name:  "ISOLA_CONTROLLER_WS_URL",
-				Value: r.ControllerWSURL,
 			},
 			{
 				Name:  "SHARED_DIR",
