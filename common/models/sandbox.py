@@ -113,7 +113,7 @@ class DownloadRequest(BaseModel):
     """Request model for downloading a file from S3 to the sandbox (used by agent)."""
     download_url: str = Field(..., description="Presigned URL to download the file from")
     path: str = Field(..., description="Target path in the sandbox where the file should be written")
-    s3_key: Optional[str] = Field(None, description="S3 key for the object (required if delete_after is True)")
+    s3_key: Optional[str] = Field(None, description="S3 key for the object")
     delete_after: bool = Field(False, description="Whether to delete the file from S3 after download")
 
 

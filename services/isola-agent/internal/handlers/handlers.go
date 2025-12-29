@@ -40,11 +40,11 @@ func NewHandler() (*Handler, error) {
 		sandboxDataPath = DefaultSandboxDataPath
 	}
 
-	// Storage is optional - only needed for delete_after functionality
+	// Storage is optional - only needed for s3 functionality
 	blobStorage, err := storage.GetStorage()
 	if err != nil {
 		log.Printf("Warning: blob storage not initialized: %v", err)
-		log.Printf("S3 delete_after functionality will be disabled")
+		log.Printf("S3 functionality will be disabled")
 		blobStorage = nil
 	}
 
