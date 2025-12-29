@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	// ErrBucketNotConfigured is returned when S3_BUCKET env var is not set.
-	ErrBucketNotConfigured = errors.New("S3_BUCKET environment variable is required")
+	// ErrBucketNotConfigured is returned when BUCKET_NAME env var is not set.
+	ErrBucketNotConfigured = errors.New("BUCKET_NAME environment variable is required")
 )
 
 // BlobStorage wraps go-cloud blob operations for S3/LocalStack.
@@ -34,9 +34,9 @@ var (
 
 // GetStorage returns the singleton BlobStorage instance.
 // It initializes the storage on first call using environment variables:
-//   - S3_BUCKET: The S3 bucket name (required)
-//   - S3_ENDPOINT_URL: Optional endpoint URL for LocalStack
-//   - S3_REGION: AWS region (default: "us-east-1")
+//   - BUCKET_NAME: The S3 bucket name (required)
+//   - ENDPOINT_URL: Optional endpoint URL for LocalStack
+//   - REGION: AWS region (default: "us-east-1")
 //   - AWS_ACCESS_KEY_ID: AWS access key (optional)
 //   - AWS_SECRET_ACCESS_KEY: AWS secret key (optional)
 func GetStorage() (*BlobStorage, error) {
@@ -48,13 +48,13 @@ func GetStorage() (*BlobStorage, error) {
 
 // newBlobStorage creates a new BlobStorage instance from environment variables.
 func newBlobStorage() (*BlobStorage, error) {
-	bucketName := os.Getenv("S3_BUCKET")
+	bucketName := os.Getenv("BUCKET_NAME")
 	if bucketName == "" {
 		return nil, ErrBucketNotConfigured
 	}
 
-	endpointURL := os.Getenv("S3_ENDPOINT_URL")
-	region := os.Getenv("S3_REGION")
+	endpointURL := os.Getenv("ENDPOINT_URL")
+	region := os.Getenv("REGION")
 	if region == "" {
 		region = "us-east-1"
 	}
