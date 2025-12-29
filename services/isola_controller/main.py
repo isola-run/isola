@@ -1,7 +1,6 @@
 import logging
 import os
 import asyncio
-from services.isola_controller.agent_manager import AgentManager
 import sys
 
 logger = logging.getLogger()
@@ -20,23 +19,10 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.info(f"Log level set to: {log_level}")
 
-# Suppress verbose websockets and uvicorn debug logs
-for ws_logger in [
-    "websockets",
-    "websockets.client", 
-    "websockets.server",
-    "websockets.protocol",
-    "uvicorn.error",
-    "uvicorn.access",
-]:
-    logging.getLogger(ws_logger).setLevel(logging.WARNING)
-
-agent_manager = AgentManager()
-
 async def main():
     logger.info("Starting Isola Control Plane...")
-    
-    await agent_manager.start()
+    # Note: This file is not currently used - the controller is started via uvicorn in the Dockerfile
+    # which runs: uvicorn services.isola_controller.client_gateway:app
     await asyncio.Event().wait()  # Block forever
     
 

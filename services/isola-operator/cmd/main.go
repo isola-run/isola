@@ -63,7 +63,6 @@ func main() {
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
 	var agentImage string
-	var controllerWSURL string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -82,7 +81,6 @@ func main() {
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&agentImage, "agent-image", "isola-agent:dev", "Container image for the isola-agent sidecar")
-	flag.StringVar(&controllerWSURL, "controller-ws-url", "ws://isola-controller.isola-control-plane.svc.cluster.local:8765/ws", "WebSocket URL for agent to connect to controller")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -186,7 +184,6 @@ func main() {
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		AgentImage:      agentImage,
-		ControllerWSURL: controllerWSURL,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
 		os.Exit(1)
