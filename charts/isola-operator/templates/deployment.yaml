@@ -33,15 +33,15 @@ spec:
         - --agent-image={{ .Values.agentImage }}
         env:
         {{- if .Values.s3.bucket }}
-        - name: S3_BUCKET
+        - name: BUCKET_NAME
           value: {{ .Values.s3.bucket | quote }}
         {{- end }}
         {{- if .Values.s3.endpointUrl }}
-        - name: S3_ENDPOINT_URL
+        - name: ENDPOINT_URL
           value: {{ .Values.s3.endpointUrl | quote }}
         {{- end }}
         {{- if .Values.s3.region }}
-        - name: S3_REGION
+        - name: REGION
           value: {{ .Values.s3.region | quote }}
         {{- end }}
         {{- if .Values.s3.accessKeyId }}

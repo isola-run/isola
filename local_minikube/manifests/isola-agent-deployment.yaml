@@ -32,11 +32,11 @@ spec:
         imagePullPolicy: Never
         env:
         # S3 configuration for large file uploads (LocalStack for development)
-        - name: S3_BUCKET
+        - name: BUCKET_NAME
           value: "isola-uploads"
-        - name: S3_ENDPOINT_URL
+        - name: ENDPOINT_URL
           value: "http://localstack:4566"
-        - name: S3_REGION
+        - name: REGION
           value: "us-east-1"
         - name: AWS_ACCESS_KEY_ID
           value: "test"

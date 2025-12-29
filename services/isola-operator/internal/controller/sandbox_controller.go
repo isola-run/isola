@@ -91,22 +91,22 @@ func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Contain
 
 	// Pass through S3 configuration from operator's environment to agent sidecar
 	// These are optional - agent will work without them but S3 delete functionality will be disabled
-	if s3Bucket := os.Getenv("S3_BUCKET"); s3Bucket != "" {
+	if bucketName := os.Getenv("BUCKET_NAME"); bucketName != "" {
 		env = append(env, corev1.EnvVar{
-			Name:  "S3_BUCKET",
-			Value: s3Bucket,
+			Name:  "BUCKET_NAME",
+			Value: bucketName,
 		})
 	}
-	if s3Endpoint := os.Getenv("S3_ENDPOINT_URL"); s3Endpoint != "" {
+	if endpointURL := os.Getenv("ENDPOINT_URL"); endpointURL != "" {
 		env = append(env, corev1.EnvVar{
-			Name:  "S3_ENDPOINT_URL",
-			Value: s3Endpoint,
+			Name:  "ENDPOINT_URL",
+			Value: endpointURL,
 		})
 	}
-	if s3Region := os.Getenv("S3_REGION"); s3Region != "" {
+	if region := os.Getenv("REGION"); region != "" {
 		env = append(env, corev1.EnvVar{
-			Name:  "S3_REGION",
-			Value: s3Region,
+			Name:  "REGION",
+			Value: region,
 		})
 	}
 	if awsAccessKey := os.Getenv("AWS_ACCESS_KEY_ID"); awsAccessKey != "" {
