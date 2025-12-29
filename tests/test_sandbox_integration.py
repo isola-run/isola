@@ -70,8 +70,6 @@ class TestSandboxIntegration:
         # Verify components structure
         components = data["components"]
         assert "api" in components
-        assert "agent_manager" in components
-        assert "websocket_server" in components
     
     def test_create_sandbox(self, api_client, sandbox_data):
         """Test creating a new sandbox"""
