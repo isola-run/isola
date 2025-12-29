@@ -183,7 +183,6 @@ async def health_check():
         "components": {
             "api": "healthy",
             "agent_manager": "healthy" if agent_manager else "unhealthy",
-            "websocket_server": "healthy"  # Assuming it's healthy if the app is running
         },
         "version": "1.0.0"
     }
@@ -349,19 +348,8 @@ async def _handle_agent_sandbox_creation(
     request: CreateSandboxRequest,
     agent_manager: AgentManager,
 ):
-    """Delegate sandbox creation to an Isola agent over WebSocket"""
-    try:
-        logger.info("Sending sandbox creation request to agent: %s", request)
-        response = await agent_manager.send_create_sandbox_request(request)
-        logger.info("Sandbox creation response: %s", response)
-        
-        if response and response.success:
-            logger.info(f"Sandbox {sandbox_id} created successfully")
-        else:
-            error_reason = response.error_reason if response else "No agent available"
-            logger.error(f"Sandbox {sandbox_id} creation failed: {error_reason}")
-    except Exception as e:
-        logger.error(f"Error creating sandbox {sandbox_id}: {e}")
+    """Agent backend is not available (websockets removed)"""
+    logger.error(f"Sandbox {sandbox_id} creation failed: Agent backend is not available (websockets removed)")
 
 
 async def _handle_kubernetes_sandbox_creation(

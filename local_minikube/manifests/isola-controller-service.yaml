@@ -16,7 +16,7 @@ spec:
     app.kubernetes.io/name: isola-controller
     app.kubernetes.io/instance: isola-controller-dev
   ports:
-  - name: ws
-    port: 8765
-    targetPort: ws
+  - name: http
+    port: 30080
+    targetPort: http
     protocol: TCP
