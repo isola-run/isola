@@ -35,8 +35,6 @@ spec:
           value: "1"
         - name: LOG_LEVEL
           value: "debug"
-        - name: ISOLA_CONTROLLER_WS_URL
-          value: "ws://isola-controller:8765/ws"
         # S3 configuration for large file uploads (LocalStack for development)
         - name: S3_BUCKET
           value: "isola-uploads"

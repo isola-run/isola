@@ -20,17 +20,6 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.info(f"Log level set to: {log_level}")
 
-# Suppress verbose websockets and uvicorn debug logs
-for ws_logger in [
-    "websockets",
-    "websockets.client", 
-    "websockets.server",
-    "websockets.protocol",
-    "uvicorn.error",
-    "uvicorn.access",
-]:
-    logging.getLogger(ws_logger).setLevel(logging.WARNING)
-
 agent_manager = AgentManager()
 
 async def main():

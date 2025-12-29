@@ -30,9 +30,6 @@ spec:
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: IfNotPresent
         ports:
-        - name: ws
-          containerPort: 8765
-          protocol: TCP
         - name: http
           containerPort: 30080
           protocol: TCP

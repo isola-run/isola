@@ -48,7 +48,5 @@ spec:
         - name: AWS_SECRET_ACCESS_KEY
           value: "test"
         ports:
-          - name: ws
-            containerPort: 8765
           - name: http
             containerPort: 30080

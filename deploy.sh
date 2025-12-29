@@ -23,15 +23,14 @@ else
 fi
 
 echo "Creating S3 bucket (if missing)..."
+# Create bucket (ignore error if it already exists)
 kubectl run aws-cli --rm -i --restart=Never -n localstack \
   --image=amazon/aws-cli \
   --env="AWS_ACCESS_KEY_ID=test" \
   --env="AWS_SECRET_ACCESS_KEY=test" \
   --env="AWS_DEFAULT_REGION=us-east-1" \
-  -- sh -lc '
-    aws --no-cli-pager --endpoint-url http://localstack:4566 s3api head-bucket --bucket isola-uploads 2>/dev/null \
-      || aws --no-cli-pager --endpoint-url http://localstack:4566 s3api create-bucket --bucket isola-uploads
-  '
+  --override-type=json \
+  --overrides='{"spec":{"containers":[{"name":"aws-cli","command":["/bin/sh","-c","aws --no-cli-pager --endpoint-url http://localstack:4566 s3api create-bucket --bucket isola-uploads || true"]}]}}' || true
 
 # Deploy with Helm
 # Deploy isola-operator first (installs CRDs + operator)
