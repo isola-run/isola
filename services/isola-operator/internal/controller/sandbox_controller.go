@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -53,34 +54,18 @@ const (
 // SandboxReconciler reconciles a Sandbox object
 type SandboxReconciler struct {
 	client.Client
-	Scheme               *runtime.Scheme
-	Recorder             record.EventRecorder
-	AgentImage           string
-	SharedVolumeMountPath string
+	Scheme     *runtime.Scheme
+	Recorder   record.EventRecorder
+	AgentImage string
 }
 
-const (
-	// Shared volume name for communication between sandbox container and agent sidecar
-	sharedVolumeName = "sandbox-shared"
-	// Default mount path for shared volume
-	defaultSharedVolumeMountPath = "/sandbox-shared"
-)
 
 // buildAgentContainer creates the agent sidecar container spec
 func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Container {
-	mountPath := r.SharedVolumeMountPath
-	if mountPath == "" {
-		mountPath = defaultSharedVolumeMountPath
-	}
-
 	env := []corev1.EnvVar{
 		{
 			Name:  "SANDBOX_ID",
 			Value: sandboxID,
-		},
-		{
-			Name:  "SANDBOX_DATA_PATH",
-			Value: mountPath,
 		},
 	}
 
@@ -88,40 +73,30 @@ func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Contain
 		Name:  "isola-agent",
 		Image: r.AgentImage,
 		Env:   env,
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      sharedVolumeName,
-				MountPath: mountPath,
+		// SYS_PTRACE capability is required to access main container's filesystem
+		// via /proc/<pid>/root when using shared PID namespace.
+		// RunAsUser 0 (root) is needed to read /proc/<pid>/environ of other users' processes.
+		SecurityContext: &corev1.SecurityContext{
+			RunAsUser: ptr.To(int64(0)),
+			Capabilities: &corev1.Capabilities{
+				Add: []corev1.Capability{"SYS_PTRACE"},
 			},
 		},
 	}
 }
 
-// injectSidecar injects the agent sidecar container and shared volume into the pod spec
+// injectSidecar injects the agent sidecar container into the pod spec
 func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod, sandboxID string) {
-	mountPath := r.SharedVolumeMountPath
-	if mountPath == "" {
-		mountPath = defaultSharedVolumeMountPath
-	}
+	// Enable shared PID namespace so the agent can access main container's filesystem via /proc/<pid>/root
+	pod.Spec.ShareProcessNamespace = ptr.To(true)
 
-	// Add shared volume to pod
-	sharedVolume := corev1.Volume{
-		Name: sharedVolumeName,
-		VolumeSource: corev1.VolumeSource{
-			EmptyDir: &corev1.EmptyDirVolumeSource{},
-		},
-	}
-	pod.Spec.Volumes = append(pod.Spec.Volumes, sharedVolume)
-
-	// Add shared volume mount to all existing containers
+	// Mark all existing containers as main containers so the agent can discover them
+	// via /proc/<pid>/environ
 	for i := range pod.Spec.Containers {
-		pod.Spec.Containers[i].VolumeMounts = append(
-			pod.Spec.Containers[i].VolumeMounts,
-			corev1.VolumeMount{
-				Name:      sharedVolumeName,
-				MountPath: mountPath,
-			},
-		)
+		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, corev1.EnvVar{
+			Name:  "ISOLA_MAIN_CONTAINER",
+			Value: "true",
+		})
 	}
 
 	// Add agent sidecar container
