@@ -79,10 +79,6 @@ func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Contain
 			Value: sandboxID,
 		},
 		{
-			Name:  "SHARED_DIR",
-			Value: mountPath,
-		},
-		{
 			Name:  "SANDBOX_DATA_PATH",
 			Value: mountPath,
 		},
