@@ -11,7 +11,6 @@ dependencies = [
     "kubernetes>=34.1.0",
     "pydantic>=2.12.3",
     "pytest-asyncio>=1.2.0",
-    "websockets>=15.0.1",
 ]
 
 [dependency-groups]

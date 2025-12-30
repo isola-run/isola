@@ -1,45 +1,19 @@
-# Development environment overrides for isola-controller
-replicaCount: 1
+# Development environment values
 
 image:
   repository: isola-controller
-  pullPolicy: IfNotPresent  # For local development with minikube
   tag: "dev"
 
-# Sandboxes namespace configuration
-sandboxesNamespace:
-  create: true
-  name: isola-sandboxes
+logLevel: debug
 
-config:
-  logLevel: debug
-  
 nodePort:
-  enabled: true  # Enable NodePort for local development
+  enabled: true
 
-resources:
-  limits:
-    cpu: 200m
-    memory: 256Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
-
-env:
-  - name: PYTHONUNBUFFERED
-    value: "1"
-  - name: LOG_LEVEL
-    value: "debug"
-  - name: ENV
-    value: "development"
-
-# S3/LocalStack configuration for development
-# TODO: __OMER__ change the name
+# LocalStack configuration for development
 storage:
   enabled: true
   bucket: "isola-uploads"
-  endpointUrl: "http://localstack:4566"
+  endpointUrl: "http://localstack.localstack.svc.cluster.local:4566"
   region: "us-east-1"
-  # LocalStack test credentials
   accessKeyId: "test"
   secretAccessKey: "test"
