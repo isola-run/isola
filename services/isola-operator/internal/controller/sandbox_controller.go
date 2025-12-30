@@ -69,9 +69,9 @@ const defaultSnapshotTimeoutSeconds int64 = 300
 // SandboxReconciler reconciles a Sandbox object
 type SandboxReconciler struct {
 	client.Client
-	Scheme               *runtime.Scheme
-	Recorder             record.EventRecorder
-	AgentImage           string
+	Scheme                *runtime.Scheme
+	Recorder              record.EventRecorder
+	AgentImage            string
 	SharedVolumeMountPath string
 }
 
@@ -80,6 +80,7 @@ const (
 	sharedVolumeName = "sandbox-shared"
 	// Default mount path for shared volume
 	defaultSharedVolumeMountPath = "/sandbox-shared"
+	agentContainerName           = "isola-agent"
 )
 
 // buildAgentContainer creates the agent sidecar container spec
@@ -91,8 +92,8 @@ func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Contain
 
 	rp := corev1.ContainerRestartPolicyAlways
 	return corev1.Container{
-		Name:  "isola-agent",
-		Image: r.AgentImage,
+		Name:          "isola-agent",
+		Image:         r.AgentImage,
 		RestartPolicy: &rp,
 		Env: []corev1.EnvVar{
 			{
@@ -138,7 +139,7 @@ func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod, sandboxID string) {
 	}
 
 	agentContainer := r.buildAgentContainer(sandboxID)
-	pod.Spec.InitContainers = []corev1.Container{agentContainer} 
+	pod.Spec.InitContainers = []corev1.Container{agentContainer}
 }
 
 func isPodReady(pod *corev1.Pod) bool {
@@ -162,6 +163,26 @@ func isPodTerminated(pod *corev1.Pod) bool {
 		return false
 	}
 	return pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed
+}
+
+func describePodContainerState(pod *corev1.Pod) string {
+	if pod == nil || len(pod.Status.ContainerStatuses) == 0 {
+		return "container status unavailable"
+	}
+
+	cs := pod.Status.ContainerStatuses[0]
+	if cs.State.Terminated != nil {
+		term := cs.State.Terminated
+		return fmt.Sprintf("terminated: reason=%s exitCode=%d message=%s", term.Reason, term.ExitCode, term.Message)
+	}
+	if cs.State.Waiting != nil {
+		wait := cs.State.Waiting
+		return fmt.Sprintf("waiting: reason=%s message=%s", wait.Reason, wait.Message)
+	}
+	if cs.State.Running != nil {
+		return "running"
+	}
+	return "unknown container state"
 }
 
 // extractContainerID extracts the container ID from a pod's container status
@@ -258,8 +279,8 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	log.Info("Creating Pod")
 
 	labels := map[string]string{
-		"app":                       "isola-sandbox",
-		"sandbox.isola.run/id":      sandbox.Name,
+		"app":                          "isola-sandbox",
+		"sandbox.isola.run/id":         sandbox.Name,
 		"app.kubernetes.io/managed-by": "isola-operator",
 	}
 
@@ -280,7 +301,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getSandboxPodName(sandbox),
 			Namespace: sandbox.Namespace,
-			Labels: labels,
+			Labels:    labels,
 		},
 		// todo benl: copy annotations as well?
 		Spec: template.Spec.PodTemplate.Spec,
@@ -969,12 +990,15 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 
 	switch snapshotterPod.Status.Phase {
 	case corev1.PodSucceeded:
+		stateDesc := describePodContainerState(snapshotterPod)
+		log.Info("Filesystem snapshot pod succeeded", "state", stateDesc)
+		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", stateDesc)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxFilesystemSnapshotCondition,
 				Status:             metav1.ConditionTrue,
 				Reason:             CondReasonSnapshotComplete,
-				Message:            "Filesystem snapshot completed",
+				Message:            fmt.Sprintf("Filesystem snapshot completed (%s)", stateDesc),
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
@@ -982,12 +1006,15 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 		}
 		return ctrl.Result{}, true, nil
 	case corev1.PodFailed:
+		stateDesc := describePodContainerState(snapshotterPod)
+		log.Info("Filesystem snapshot pod failed", "state", stateDesc)
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", stateDesc)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxFilesystemSnapshotCondition,
 				Status:             metav1.ConditionFalse,
 				Reason:             CondReasonSnapshotFailed,
-				Message:            "Filesystem snapshot pod failed",
+				Message:            fmt.Sprintf("Filesystem snapshot pod failed (%s)", stateDesc),
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
