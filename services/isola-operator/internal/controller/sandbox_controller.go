@@ -40,8 +40,6 @@ import (
 	"k8s.io/client-go/tools/record"
 )
 
-const SandboxFinalizer = "isola.run/sandbox-finalizer"
-
 const (
 	// Summary condition
 	SandboxReadyCondition = "Ready"
@@ -66,6 +64,7 @@ const (
 	CondReasonInvalidRuntime         = "InvalidRuntime"
 )
 
+const defaultSnapshotTimeoutSeconds int64 = 300
 
 // SandboxReconciler reconciles a Sandbox object
 type SandboxReconciler struct {
@@ -631,7 +630,6 @@ func (r *SandboxReconciler) reconcileSandboxStatus(ctx context.Context, sandbox 
 
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/finalizers,verbs=update
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxtemplates,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
@@ -655,9 +653,6 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	log.Info("Sandbox found")
 
-	// todo benl: if we set finalizers, k8s will set sandbox.ObjectMeta.DeletionTimestamp for us to cleanup with finalizers. currently no finalizers
-	// relying on sandbox resource owning other objects like pods
-
 	// DeepCopy to allow patching only the diff between the new sandbox and the old one
 	baseSandbox := sandbox.DeepCopy()
 
@@ -674,24 +669,9 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 	}
 
-	// finalization logic:
-	// {optional sandbox timeout} -> Delete sandbox -> Finalizers run snapshotting if needed (have until the sandbox deletionGracePeriodSeconds)
-	// if shutdown policy is simply delete, no need to apply a finalizer for cleanups
-	hasNonTrivialCleanup := template.Spec.ShutdownPolicy != nil && template.Spec.ShutdownPolicy.Policy != sandboxv1alpha1.ShutdownPolicyDelete
-	// set finalizers before creating any resource:
-	if hasNonTrivialCleanup {
-		if !controllerutil.ContainsFinalizer(sandbox, SandboxFinalizer) {
-			controllerutil.AddFinalizer(sandbox, SandboxFinalizer)
-			if err := r.Update(ctx, sandbox); err != nil {
-				log.Error(err, "Failed to add finalizer")
-				return ctrl.Result{}, err
-			}
-		}
-	}
-
-	sandboxDeleted := !sandbox.DeletionTimestamp.IsZero()
-	if hasNonTrivialCleanup && sandboxDeleted {
-		return r.finalizeSandbox(ctx, template, sandbox, baseSandbox, nil)
+	if !sandbox.DeletionTimestamp.IsZero() {
+		log.Info("Sandbox already marked for deletion; skipping further reconciliation")
+		return ctrl.Result{}, nil
 	}
 
 	sandboxPod, err := r.getSandboxPod(ctx, sandbox)
@@ -706,8 +686,16 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	if optionalTimeoutAt != nil && time.Now().After(optionalTimeoutAt.Time) {
 		log.Info("Sandbox timed out")
+		cleanupResult, cleanupDone, err := r.cleanupTimedOutSandbox(ctx, sandbox, baseSandbox, template, sandboxPod, optionalTimeoutAt.Time)
+		if err != nil {
+			return cleanupResult, err
+		}
+		if !cleanupDone {
+			return cleanupResult, nil
+		}
+
 		if err := r.Delete(ctx, sandbox); err != nil {
-			log.Error(err, "Failed to delete sandbox")
+			log.Error(err, "Failed to delete sandbox after cleanup")
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -738,81 +726,205 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
+func (r *SandboxReconciler) cleanupTimedOutSandbox(
+	ctx context.Context,
+	sandbox *sandboxv1alpha1.Sandbox,
+	baseSandbox *sandboxv1alpha1.Sandbox,
+	template *sandboxv1alpha1.SandboxTemplate,
+	sandboxPod *corev1.Pod,
+	timeoutAt time.Time,
+) (ctrl.Result, bool, error) {
+	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+
+	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+		{
+			Type:               SandboxReadyCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             CondReasonSnapshottingInProgress,
+			Message:            "Sandbox timed out; executing shutdown policy",
+			ObservedGeneration: sandbox.Generation,
+		},
+	}); err != nil {
+		return ctrl.Result{}, false, err
+	}
+
+	if template.Spec.ShutdownPolicy == nil || template.Spec.ShutdownPolicy.Policy == sandboxv1alpha1.ShutdownPolicyDelete {
+		return ctrl.Result{}, true, nil
+	}
+
+	switch template.Spec.ShutdownPolicy.Policy {
+	case sandboxv1alpha1.ShutdownPolicySnapshotFilesystem:
+		snapshotTimeoutSeconds := defaultSnapshotTimeoutSeconds
+		if template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds != nil {
+			snapshotTimeoutSeconds = *template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds
+		}
+		deadline := timeoutAt.Add(time.Duration(snapshotTimeoutSeconds) * time.Second)
+		return r.handleFilesystemSnapshot(ctx, sandbox, baseSandbox, sandboxPod, deadline)
+	default:
+		log.Info("Unknown shutdown policy; proceeding with deletion", "policy", template.Spec.ShutdownPolicy.Policy)
+		return ctrl.Result{}, true, nil
+	}
+}
+
 func (r *SandboxReconciler) handleFilesystemSnapshot(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	sandboxPod *corev1.Pod,
-) (ctrl.Result, error) {
+	snapshotDeadline time.Time,
+) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+
+	now := time.Now()
+	if now.After(snapshotDeadline) {
+		log.Info("Filesystem snapshot timed out", "deadline", snapshotDeadline)
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSnapshotTimeout,
+				Message:            "Filesystem snapshot did not complete before deadline",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	}
+
+	if sandboxPod == nil {
+		log.Info("Skipping filesystem snapshot because sandbox pod is missing")
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             ReasonFSSnapshotPodDoesNotExist,
+				Message:            "Sandbox pod no longer exists; snapshot skipped",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	}
 
 	reason, err := r.verifySnapshottingCapability(ctx, sandbox, sandboxPod)
 	if err != nil {
 		log.Error(err, "Failed to validate snapshotting support")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, false, err
 	}
 
-	if reason == ReasonFSSnapshotSupported {
-		snapshotterPod, err := r.getFilesystemSnapshotterPod(ctx, sandbox)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				// todo benl: if snapshotter pod is deleted, we'll recreate it. Is it always the correct behavior? (e.g. it's done snapshotting!)
-				// currently we only snapshot on cleanup (and then deletion) of parent sandbox
-				return r.CreateSnapshotterPod(ctx, sandbox, baseSandbox, sandboxPod)
+	if reason != ReasonFSSnapshotSupported {
+		if reason == ReasonFSSnapshotPodNotReady {
+			if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+				{
+					Type:               SandboxFilesystemSnapshotCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonSnapshottingInProgress,
+					Message:            "Waiting for sandbox pod to become ready for snapshotting",
+					ObservedGeneration: sandbox.Generation,
+				},
+			}); err != nil {
+				return ctrl.Result{}, false, err
 			}
-			return ctrl.Result{}, err
+			return ctrl.Result{RequeueAfter: time.Second}, false, nil
 		}
-		// todo benl: this is not a good way probably (pod might have been GCed) - temp solution to resolve finalizer. Should probably have a state machine in the sandbox resource status
-		isSnapshotterPodTerminated := isPodTerminated(snapshotterPod)
-		if isSnapshotterPodTerminated {
-			controllerutil.RemoveFinalizer(sandbox, SandboxFinalizer)
-			return ctrl.Result{}, r.Update(ctx, sandbox)
-		}
-		return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
-	} else {
-		log.Info("unable to perform filesystem snapshot", "reason", reason)
+
+		log.Info("Unable to perform filesystem snapshot", "reason", reason)
 		r.Recorder.Event(sandbox, corev1.EventTypeWarning, reason, "Unable to perform filesystem snapshot")
 
-		// best-effort condition update
-		_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
-			Type:               SandboxFilesystemSnapshotCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             reason,
-			Message:            "Unable to perform filesystem snapshot",
-			ObservedGeneration: sandbox.Generation,
-		},
-	})
-		// todo benl: this removes finalizer even though finalizeSandbox might have other finalization operations in the future...
-		controllerutil.RemoveFinalizer(sandbox, SandboxFinalizer)
-		return ctrl.Result{}, r.Update(ctx, sandbox)
-	}
-}
-
-// sandboxPod may be nil if we had to finalize before pod was created
-func (r *SandboxReconciler) finalizeSandbox(
-	ctx context.Context,
-	template *sandboxv1alpha1.SandboxTemplate,
-	sandbox *sandboxv1alpha1.Sandbox,
-	baseSandbox *sandboxv1alpha1.Sandbox,
-	sandboxPod *corev1.Pod,
-) (ctrl.Result, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
-	hasNonTrivialCleanup := template.Spec.ShutdownPolicy != nil && template.Spec.ShutdownPolicy.Policy != sandboxv1alpha1.ShutdownPolicyDelete
-
-	if hasNonTrivialCleanup && sandboxPod == nil {
-		log.Info(fmt.Sprintf("Even though sandbox has a non-trivial shutdown policy of %s, the sandbox pod did not start yet and thus it is skipped", template.Spec.ShutdownPolicy.Policy))
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "ShutdownPolicySkipped", "Sandbox pod did not start by the time the sandbox was deleted")
-		controllerutil.RemoveFinalizer(sandbox, SandboxFinalizer)
-		return ctrl.Result{}, r.Update(ctx, sandbox)
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             reason,
+				Message:            "Unable to perform filesystem snapshot",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
 	}
 
-	if hasNonTrivialCleanup {
-		// currently FilesystemSnapshot is the only non-trivial shutdown policy of a sandbox
-		return r.handleFilesystemSnapshot(ctx, sandbox, baseSandbox, sandboxPod)
+	snapshotterPod, err := r.getFilesystemSnapshotterPod(ctx, sandbox)
+	if err != nil {
+		return ctrl.Result{}, false, err
+	}
+	if snapshotterPod == nil {
+		res, createErr := r.CreateSnapshotterPod(ctx, sandbox, baseSandbox, sandboxPod)
+		if res.RequeueAfter == 0 {
+			res.RequeueAfter = time.Second
+		}
+		return res, false, createErr
 	}
 
-	return ctrl.Result{}, nil
+	// Avoid waiting forever if we are close to the deadline.
+	if time.Now().After(snapshotDeadline) {
+		log.Info("Filesystem snapshot timed out before completion", "deadline", snapshotDeadline)
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSnapshotTimeout,
+				Message:            "Filesystem snapshot did not complete before deadline",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	}
+
+	switch snapshotterPod.Status.Phase {
+	case corev1.PodSucceeded:
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionTrue,
+				Reason:             CondReasonSnapshotComplete,
+				Message:            "Filesystem snapshot completed",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	case corev1.PodFailed:
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSnapshotFailed,
+				Message:            "Filesystem snapshot pod failed",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	default:
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSnapshottingInProgress,
+				Message:            "Filesystem snapshotter pod is running",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+
+		requeueAfter := time.Until(snapshotDeadline)
+		if requeueAfter <= 0 {
+			requeueAfter = time.Second
+		} else if requeueAfter > 5*time.Second {
+			requeueAfter = 5 * time.Second
+		}
+
+		return ctrl.Result{RequeueAfter: requeueAfter}, false, nil
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
