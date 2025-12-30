@@ -23,7 +23,6 @@ const (
 )
 
 func main() {
-	// Configure host and port from environment
 	host := os.Getenv(EnvHTTPHost)
 	if host == "" {
 		host = DefaultHTTPHost
@@ -45,17 +44,13 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// Create Gin router
 	r := gin.New()
 
 	// Add middleware
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
-
-	// Register routes
 	handler.RegisterRoutes(r)
 
-	// Start server
 	addr := fmt.Sprintf("%s:%s", host, port)
 	log.Printf("Starting isola-agent server on %s", addr)
 
