@@ -14,30 +14,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Environment variable keys
-const (
-	EnvSandboxDataPath = "SANDBOX_DATA_PATH"
-)
-
 // Default values
 const (
-	DefaultSandboxDataPath = "/sandbox-data"
 	DownloadTimeoutSeconds = 300
 )
 
 type Handler struct {
-	sandboxDataPath string
+	procFS *ProcFS
 }
 
-
 func NewHandler() (*Handler, error) {
-	sandboxDataPath := os.Getenv(EnvSandboxDataPath)
-	if sandboxDataPath == "" {
-		sandboxDataPath = DefaultSandboxDataPath
-	}
-
 	return &Handler{
-		sandboxDataPath: sandboxDataPath,
+		procFS: NewProcFS(),
 	}, nil
 }
 
@@ -82,7 +70,7 @@ func (h *Handler) Upload(c *gin.Context) {
 	}
 
 	// Sanitize path to prevent directory traversal
-	cleanPath, err := h.sanitizePath(targetPath)
+	cleanPath, err := sanitizePath(targetPath)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
@@ -102,8 +90,13 @@ func (h *Handler) Upload(c *gin.Context) {
 	}
 	defer src.Close()
 
-	// Construct full target path
-	fullPath := filepath.Join(h.sandboxDataPath, cleanPath)
+	// Resolve path via /proc/<pid>/root to access main container's filesystem
+	fullPath, err := h.procFS.ResolvePath(cleanPath)
+	if err != nil {
+		log.Printf("Failed to resolve path via procfs: %v", err)
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to resolve path: " + err.Error()})
+		return
+	}
 
 	// Ensure parent directories exist
 	parentDir := filepath.Dir(fullPath)
@@ -138,13 +131,13 @@ func (h *Handler) Upload(c *gin.Context) {
 
 	c.JSON(http.StatusOK, UploadResponse{
 		Success: true,
-		Path:    fullPath,
+		Path:    targetPath,
 		Size:    written,
 	})
 }
 
 // Download handles POST /download requests.
-// Downloads a file from a presigned S3 URL to the sandbox shared volume.
+// Downloads a file from a presigned S3 URL to the main container's filesystem.
 func (h *Handler) Download(c *gin.Context) {
 	var req DownloadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -153,14 +146,19 @@ func (h *Handler) Download(c *gin.Context) {
 	}
 
 	// Sanitize path to prevent directory traversal
-	cleanPath, err := h.sanitizePath(req.Path)
+	cleanPath, err := sanitizePath(req.Path)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Construct full target path
-	fullPath := filepath.Join(h.sandboxDataPath, cleanPath)
+	// Resolve path via /proc/<pid>/root to access main container's filesystem
+	fullPath, err := h.procFS.ResolvePath(cleanPath)
+	if err != nil {
+		log.Printf("Failed to resolve path via procfs: %v", err)
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to resolve path: " + err.Error()})
+		return
+	}
 
 	// Ensure parent directories exist
 	parentDir := filepath.Dir(fullPath)
@@ -227,26 +225,29 @@ func (h *Handler) Download(c *gin.Context) {
 
 	c.JSON(http.StatusOK, DownloadResponse{
 		Success: true,
-		Path:    fullPath,
+		Path:    req.Path,
 		Size:    written,
 	})
 }
 
 // sanitizePath validates and cleans a file path to prevent directory traversal.
-func (h *Handler) sanitizePath(path string) (string, error) {
-	// Remove leading slashes and normalize
-	cleanPath := strings.TrimLeft(path, "/")
-
-	// Check for directory traversal attempts
-	if strings.Contains(cleanPath, "..") {
+// Returns an absolute path suitable for use with ProcFS.ResolvePath().
+func sanitizePath(path string) (string, error) {
+	// Check for directory traversal attempts before cleaning
+	if strings.Contains(path, "..") {
 		return "", &pathError{msg: "invalid path: directory traversal not allowed"}
 	}
 
+	// Ensure the path is absolute (prepend / if not)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
 	// Clean the path to normalize any redundant separators
-	cleanPath = filepath.Clean(cleanPath)
+	cleanPath := filepath.Clean(path)
 
 	// After cleaning, check again for any remaining ".." components
-	if strings.HasPrefix(cleanPath, "..") || strings.Contains(cleanPath, "/..") {
+	if strings.Contains(cleanPath, "..") {
 		return "", &pathError{msg: "invalid path: directory traversal not allowed"}
 	}
 
