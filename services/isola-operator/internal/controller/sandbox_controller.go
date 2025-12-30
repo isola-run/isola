@@ -69,8 +69,78 @@ const defaultSnapshotTimeoutSeconds int64 = 300
 // SandboxReconciler reconciles a Sandbox object
 type SandboxReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Scheme               *runtime.Scheme
+	Recorder             record.EventRecorder
+	AgentImage           string
+	SharedVolumeMountPath string
+}
+
+const (
+	// Shared volume name for communication between sandbox container and agent sidecar
+	sharedVolumeName = "sandbox-shared"
+	// Default mount path for shared volume
+	defaultSharedVolumeMountPath = "/sandbox-shared"
+)
+
+// buildAgentContainer creates the agent sidecar container spec
+func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Container {
+	mountPath := r.SharedVolumeMountPath
+	if mountPath == "" {
+		mountPath = defaultSharedVolumeMountPath
+	}
+
+	return corev1.Container{
+		Name:  "isola-agent",
+		Image: r.AgentImage,
+		Env: []corev1.EnvVar{
+			{
+				Name:  "SANDBOX_ID",
+				Value: sandboxID,
+			},
+			{
+				Name:  "SHARED_DIR",
+				Value: mountPath,
+			},
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      sharedVolumeName,
+				MountPath: mountPath,
+			},
+		},
+	}
+}
+
+// injectSidecar injects the agent sidecar container and shared volume into the pod spec
+func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod, sandboxID string) {
+	mountPath := r.SharedVolumeMountPath
+	if mountPath == "" {
+		mountPath = defaultSharedVolumeMountPath
+	}
+
+	// Add shared volume to pod
+	sharedVolume := corev1.Volume{
+		Name: sharedVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	}
+	pod.Spec.Volumes = append(pod.Spec.Volumes, sharedVolume)
+
+	// Add shared volume mount to all existing containers
+	for i := range pod.Spec.Containers {
+		pod.Spec.Containers[i].VolumeMounts = append(
+			pod.Spec.Containers[i].VolumeMounts,
+			corev1.VolumeMount{
+				Name:      sharedVolumeName,
+				MountPath: mountPath,
+			},
+		)
+	}
+
+	// Add agent sidecar container
+	agentContainer := r.buildAgentContainer(sandboxID)
+	pod.Spec.Containers = append(pod.Spec.Containers, agentContainer)
 }
 
 func isPodReady(pod *corev1.Pod) bool {
@@ -189,12 +259,32 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// todo benl reduce verbose logging
 	log.Info("Creating Pod")
 
+	labels := map[string]string{
+		"app":                       "isola-sandbox",
+		"sandbox.isola.run/id":      sandbox.Name,
+		"app.kubernetes.io/managed-by": "isola-operator",
+	}
+
+	// todo benl: why this exists? ("sandbox-id")
+	if sandbox.Labels != nil {
+		if sandboxID, exists := sandbox.Labels["sandbox-id"]; exists {
+			labels["sandbox-id"] = sandboxID
+		}
+	}
+
+	if template.Spec.PodTemplate.Labels != nil {
+		for k, v := range template.Spec.PodTemplate.Labels {
+			labels[k] = v
+		}
+	}
+
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getSandboxPodName(sandbox),
 			Namespace: sandbox.Namespace,
+			Labels: labels,
 		},
-		// todo benl: copy labels, annotations as well?
+		// todo benl: copy annotations as well?
 		Spec: template.Spec.PodTemplate.Spec,
 	}
 	// todo benl: implement api to restore pod from snapshot (make sure they are compatible)
@@ -203,6 +293,9 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// }
 
 	// sandboxPod.Annotations["dev.gvisor.tar.rootfs.upper.todobenl"] = "/tmp/rootfs-sandbox-870e5846-1766869560.tar"
+
+	// Inject agent sidecar and shared volume
+	r.injectSidecar(sandboxPod, sandbox.Name)
 
 	// Set Pod's object owner reference to the Sandbox object
 	if err := controllerutil.SetControllerReference(sandbox, sandboxPod, r.Scheme); err != nil {

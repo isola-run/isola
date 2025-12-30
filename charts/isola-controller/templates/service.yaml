@@ -1,18 +1,16 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "isola-controller.fullname" . }}
+  name: isola-controller
   labels:
-    {{- include "isola-controller.labels" . | nindent 4 }}
+    app: isola-controller
 spec:
-  type: {{ .Values.service.type }}
+  type: ClusterIP
   ports:
-    {{- range $name, $port := .Values.service.ports }}
-    - port: {{ $port.port }}
-      targetPort: {{ $port.targetPort }}
-      protocol: {{ $port.protocol }}
-      name: {{ $name }}
-    {{- end }}
+  - port: 30080
+    targetPort: http
+    protocol: TCP
+    name: http
   selector:
     {{- include "isola-controller.selectorLabels" . | nindent 4 }}
 ---
@@ -20,18 +18,16 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "isola-controller.fullname" . }}-nodeport
+  name: isola-controller-nodeport
   labels:
-    {{- include "isola-controller.labels" . | nindent 4 }}
+    app: isola-controller
 spec:
-  type: {{ .Values.nodePort.type }}
+  type: NodePort
   ports:
-    {{- range $name, $port := .Values.nodePort.ports }}
-    - port: {{ $port.port }}
-      targetPort: {{ $port.targetPort }}
-      nodePort: {{ $port.nodePort }}
-      name: {{ $name }}
-    {{- end }}
+  - port: 30080
+    targetPort: 30080
+    nodePort: 30080
+    name: http
   selector:
     {{- include "isola-controller.selectorLabels" . | nindent 4 }}
 {{- end }}

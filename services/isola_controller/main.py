@@ -1,7 +1,6 @@
 import logging
 import os
 import asyncio
-from services.isola_controller.agent_manager import AgentManager
 import sys
 
 logger = logging.getLogger()
@@ -18,13 +17,12 @@ formatter = logging.Formatter(
 handler.setFormatter(formatter)
 
 logger.addHandler(handler)
-
-agent_manager = AgentManager()
+logger.info(f"Log level set to: {log_level}")
 
 async def main():
     logger.info("Starting Isola Control Plane...")
-    
-    await agent_manager.start()
+    # Note: This file is not currently used - the controller is started via uvicorn in the Dockerfile
+    # which runs: uvicorn services.isola_controller.client_gateway:app
     await asyncio.Event().wait()  # Block forever
     
 

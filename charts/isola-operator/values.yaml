@@ -1,0 +1,8 @@
+# isola-operator values
+
+image:
+  repository: isola-operator
+  tag: "latest"
+
+# Agent sidecar image injected into sandbox pods
+agentImage: isola-agent:latest

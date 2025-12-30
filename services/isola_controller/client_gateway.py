@@ -28,7 +28,6 @@ from common.models.sandbox import (
     UploadUrlResponse,
     ConfirmUploadRequest,
 )
-from services.isola_controller.agent_manager import AgentManager
 from services.isola_controller.kubernetes_control.sandboxes import KubernetesManager
 from common.storage import create_storage
 from common.storage.base import ObjectStorage
@@ -49,7 +48,6 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-agent_manager = AgentManager()
 SANDBOX_BACKENDS = {"agent", "kubernetes"}
 SANDBOX_BACKEND = os.getenv("SANDBOX_BACKEND", "agent").lower()
 SANDBOX_BACKEND = "kubernetes"
@@ -84,13 +82,12 @@ except Exception as e:
 # todo benl: move this logic to somewhere more appropriate (if we keep)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await agent_manager.start()     # spawns uvicorn WS server in the background
     if SANDBOX_BACKEND == "kubernetes":
         await kubernetes_manager.initialize()
     try:
         yield
     finally:
-        await agent_manager.shutdown()
+        pass
             
 app = FastAPI(
     title="Isola Sandbox Infrastructure API",
@@ -182,18 +179,9 @@ async def health_check():
         "timestamp": datetime.utcnow().isoformat(),
         "components": {
             "api": "healthy",
-            "agent_manager": "healthy" if agent_manager else "unhealthy",
-            "websocket_server": "healthy"  # Assuming it's healthy if the app is running
         },
         "version": "1.0.0"
     }
-    
-    # Check if we have any active agents
-    try:
-        agent_count = len(agent_manager._active_agents) if hasattr(agent_manager, '_active_agents') else 0
-        health_status["agent_count"] = agent_count
-    except:
-        health_status["agent_count"] = 0
     
     return health_status
 
@@ -317,7 +305,7 @@ async def create_sandbox(
     # Send request to backend
     # Run async communication in background
     asyncio.create_task(_handle_sandbox_creation(
-        tenant_id, sandbox_id, agent_request, agent_manager, req.autoStart
+        tenant_id, sandbox_id, agent_request, req.autoStart
     ))
     
     logger.info(f"Sandbox request created: {sandbox}")
@@ -328,7 +316,6 @@ async def _handle_sandbox_creation(
     tenant_id: str,
     sandbox_id: str, 
     request: CreateSandboxRequest,
-    agent_manager,
     auto_start: bool,
 ):
     """Handle sandbox creation asynchronously using the configured backend"""
@@ -337,31 +324,8 @@ async def _handle_sandbox_creation(
             tenant_id, sandbox_id, request, auto_start
         )
         return
-    
-    await _handle_agent_sandbox_creation(
-        tenant_id, sandbox_id, request, agent_manager
-    )
-
-
-async def _handle_agent_sandbox_creation(
-    tenant_id: str,
-    sandbox_id: str,
-    request: CreateSandboxRequest,
-    agent_manager: AgentManager,
-):
-    """Delegate sandbox creation to an Isola agent over WebSocket"""
-    try:
-        logger.info("Sending sandbox creation request to agent: %s", request)
-        response = await agent_manager.send_create_sandbox_request(request)
-        logger.info("Sandbox creation response: %s", response)
-        
-        if response and response.success:
-            logger.info(f"Sandbox {sandbox_id} created successfully")
-        else:
-            error_reason = response.error_reason if response else "No agent available"
-            logger.error(f"Sandbox {sandbox_id} creation failed: {error_reason}")
-    except Exception as e:
-        logger.error(f"Error creating sandbox {sandbox_id}: {e}")
+    else:
+        logger.error(f"Sandbox {sandbox_id} creation failed: Agent backend is not available")
 
 
 async def _handle_kubernetes_sandbox_creation(
