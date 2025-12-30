@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"os"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -87,39 +86,6 @@ func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Contain
 			Name:  "SANDBOX_DATA_PATH",
 			Value: mountPath,
 		},
-	}
-
-	// Pass through S3 configuration from operator's environment to agent sidecar
-	// These are optional - agent will work without them but S3 delete functionality will be disabled
-	if bucketName := os.Getenv("BUCKET_NAME"); bucketName != "" {
-		env = append(env, corev1.EnvVar{
-			Name:  "BUCKET_NAME",
-			Value: bucketName,
-		})
-	}
-	if endpointURL := os.Getenv("ENDPOINT_URL"); endpointURL != "" {
-		env = append(env, corev1.EnvVar{
-			Name:  "ENDPOINT_URL",
-			Value: endpointURL,
-		})
-	}
-	if region := os.Getenv("REGION"); region != "" {
-		env = append(env, corev1.EnvVar{
-			Name:  "REGION",
-			Value: region,
-		})
-	}
-	if awsAccessKey := os.Getenv("AWS_ACCESS_KEY_ID"); awsAccessKey != "" {
-		env = append(env, corev1.EnvVar{
-			Name:  "AWS_ACCESS_KEY_ID",
-			Value: awsAccessKey,
-		})
-	}
-	if awsSecretKey := os.Getenv("AWS_SECRET_ACCESS_KEY"); awsSecretKey != "" {
-		env = append(env, corev1.EnvVar{
-			Name:  "AWS_SECRET_ACCESS_KEY",
-			Value: awsSecretKey,
-		})
 	}
 
 	return corev1.Container{
