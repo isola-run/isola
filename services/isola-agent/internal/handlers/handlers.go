@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/omereli/dev-isola/services/isola-agent/internal/storage"
 )
 
 // Environment variable keys
@@ -29,28 +28,18 @@ const (
 // Handler holds dependencies for HTTP handlers.
 type Handler struct {
 	sandboxDataPath string
-	storage         *storage.BlobStorage
 }
 
 // NewHandler creates a new Handler instance.
-// It reads configuration from environment variables and initializes storage.
+// It reads configuration from environment variables.
 func NewHandler() (*Handler, error) {
 	sandboxDataPath := os.Getenv(EnvSandboxDataPath)
 	if sandboxDataPath == "" {
 		sandboxDataPath = DefaultSandboxDataPath
 	}
 
-	// Storage is optional - only needed for s3 functionality
-	blobStorage, err := storage.GetStorage()
-	if err != nil {
-		log.Printf("Warning: blob storage not initialized: %v", err)
-		log.Printf("S3 functionality will be disabled")
-		blobStorage = nil
-	}
-
 	return &Handler{
 		sandboxDataPath: sandboxDataPath,
-		storage:         blobStorage,
 	}, nil
 }
 
@@ -70,16 +59,13 @@ type UploadResponse struct {
 type DownloadRequest struct {
 	DownloadURL string `json:"download_url" binding:"required"`
 	Path        string `json:"path" binding:"required"`
-	S3Key       string `json:"s3_key,omitempty"`
-	DeleteAfter bool   `json:"delete_after,omitempty"`
 }
 
 // DownloadResponse is the response for the download endpoint.
 type DownloadResponse struct {
-	Success       bool   `json:"success"`
-	Path          string `json:"path"`
-	Size          int64  `json:"size"`
-	DeletedFromS3 bool   `json:"deleted_from_s3"`
+	Success bool   `json:"success"`
+	Path    string `json:"path"`
+	Size    int64  `json:"size"`
 }
 
 // ErrorResponse is the response for error cases.
@@ -249,32 +235,10 @@ func (h *Handler) Download(c *gin.Context) {
 
 	log.Printf("Successfully downloaded file to %s (size: %d bytes)", fullPath, written)
 
-	// Delete from S3 if requested
-	deletedFromS3 := false
-	if req.DeleteAfter {
-		if req.S3Key == "" {
-			log.Printf("delete_after=true but no s3_key provided, skipping S3 deletion")
-		} else if h.storage == nil {
-			log.Printf("delete_after=true but storage not configured, skipping S3 deletion")
-		} else {
-			deleted, err := h.storage.Delete(c.Request.Context(), req.S3Key)
-			if err != nil {
-				// Log but don't fail - the file was already written
-				log.Printf("Error deleting S3 object %s: %v", req.S3Key, err)
-			} else if deleted {
-				log.Printf("Deleted S3 object: %s", req.S3Key)
-				deletedFromS3 = true
-			} else {
-				log.Printf("Failed to delete S3 object: %s", req.S3Key)
-			}
-		}
-	}
-
 	c.JSON(http.StatusOK, DownloadResponse{
-		Success:       true,
-		Path:          fullPath,
-		Size:          written,
-		DeletedFromS3: deletedFromS3,
+		Success: true,
+		Path:    fullPath,
+		Size:    written,
 	})
 }
 
