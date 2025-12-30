@@ -89,9 +89,11 @@ func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Contain
 		mountPath = defaultSharedVolumeMountPath
 	}
 
+	rp := corev1.ContainerRestartPolicyAlways
 	return corev1.Container{
 		Name:  "isola-agent",
 		Image: r.AgentImage,
+		RestartPolicy: &rp,
 		Env: []corev1.EnvVar{
 			{
 				Name:  "SANDBOX_ID",
@@ -111,14 +113,12 @@ func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Contain
 	}
 }
 
-// injectSidecar injects the agent sidecar container and shared volume into the pod spec
 func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod, sandboxID string) {
 	mountPath := r.SharedVolumeMountPath
 	if mountPath == "" {
 		mountPath = defaultSharedVolumeMountPath
 	}
 
-	// Add shared volume to pod
 	sharedVolume := corev1.Volume{
 		Name: sharedVolumeName,
 		VolumeSource: corev1.VolumeSource{
@@ -127,7 +127,6 @@ func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod, sandboxID string) {
 	}
 	pod.Spec.Volumes = append(pod.Spec.Volumes, sharedVolume)
 
-	// Add shared volume mount to all existing containers
 	for i := range pod.Spec.Containers {
 		pod.Spec.Containers[i].VolumeMounts = append(
 			pod.Spec.Containers[i].VolumeMounts,
@@ -138,9 +137,8 @@ func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod, sandboxID string) {
 		)
 	}
 
-	// Add agent sidecar container
 	agentContainer := r.buildAgentContainer(sandboxID)
-	pod.Spec.Containers = append(pod.Spec.Containers, agentContainer)
+	pod.Spec.InitContainers = []corev1.Container{agentContainer} 
 }
 
 func isPodReady(pod *corev1.Pod) bool {
