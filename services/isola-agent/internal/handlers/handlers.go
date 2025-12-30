@@ -25,13 +25,11 @@ const (
 	DownloadTimeoutSeconds = 300
 )
 
-// Handler holds dependencies for HTTP handlers.
 type Handler struct {
 	sandboxDataPath string
 }
 
-// NewHandler creates a new Handler instance.
-// It reads configuration from environment variables.
+
 func NewHandler() (*Handler, error) {
 	sandboxDataPath := os.Getenv(EnvSandboxDataPath)
 	if sandboxDataPath == "" {
@@ -43,32 +41,27 @@ func NewHandler() (*Handler, error) {
 	}, nil
 }
 
-// HealthResponse is the response for the health check endpoint.
 type HealthResponse struct {
 	Status string `json:"status"`
 }
 
-// UploadResponse is the response for the upload endpoint.
 type UploadResponse struct {
 	Success bool   `json:"success"`
 	Path    string `json:"path"`
 	Size    int64  `json:"size"`
 }
 
-// DownloadRequest is the request body for the download endpoint.
 type DownloadRequest struct {
 	DownloadURL string `json:"download_url" binding:"required"`
 	Path        string `json:"path" binding:"required"`
 }
 
-// DownloadResponse is the response for the download endpoint.
 type DownloadResponse struct {
 	Success bool   `json:"success"`
 	Path    string `json:"path"`
 	Size    int64  `json:"size"`
 }
 
-// ErrorResponse is the response for error cases.
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
@@ -95,14 +88,12 @@ func (h *Handler) Upload(c *gin.Context) {
 		return
 	}
 
-	// Get the file from form data
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "file is required"})
 		return
 	}
 
-	// Open the uploaded file
 	src, err := file.Open()
 	if err != nil {
 		log.Printf("Failed to open uploaded file: %v", err)
@@ -136,7 +127,6 @@ func (h *Handler) Upload(c *gin.Context) {
 	}
 	defer dst.Close()
 
-	// Copy file content
 	written, err := io.Copy(dst, src)
 	if err != nil {
 		log.Printf("Failed to write file content to %s: %v", fullPath, err)
