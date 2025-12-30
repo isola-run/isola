@@ -65,4 +65,4 @@ python3 -m pip install pytest requests --quiet --break-system-packages
 # Run the test
 export GATEWAY_URL="$GATEWAY_URL"
 cd "$TEST_dir"
-python3 -m pytest test_sandbox_e2e.py -v
+python3 -m pytest test_sandbox_e2e.py -v -s

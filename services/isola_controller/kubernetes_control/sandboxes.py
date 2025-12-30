@@ -212,8 +212,10 @@ class KubernetesManager:
                     ]
                 }
             },
-            "timeoutSeconds": 600,
-            "shutdownPolicy": "Delete"
+            "timeoutSeconds": 60,
+            "shutdownPolicy": {
+                "policy": "SnapshotFilesystem",
+            },
         }
 
         await self._create_sandbox_template_cr(
