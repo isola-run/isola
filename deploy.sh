@@ -72,20 +72,19 @@ echo "Deploying LocalStack..."
 "${KUBECTL_BIN}" create namespace localstack --dry-run=client -o yaml | "${KUBECTL_BIN}" apply -f -
 "${HELM_BIN}" repo add localstack https://localstack.github.io/helm-charts --force-update
 "${HELM_BIN}" upgrade --install localstack localstack/localstack -n localstack --create-namespace --wait
+"${KUBECTL_BIN}" rollout status deployment/localstack -n localstack --timeout=180s
 
 echo "Creating S3 bucket (if missing)..."
-# Create bucket (ignore error if it already exists)
-"${KUBECTL_BIN}" run aws-cli --rm -i --restart=Never -n localstack \
-  --image=amazon/aws-cli \
-  --env="AWS_ACCESS_KEY_ID=test" \
-  --env="AWS_SECRET_ACCESS_KEY=test" \
-  --env="AWS_DEFAULT_REGION=us-east-1" \
-  --override-type=json \
-  --overrides='{"spec":{"containers":[{"name":"aws-cli","command":["/bin/sh","-c","aws --no-cli-pager --endpoint-url http://localstack:4566 s3api create-bucket --bucket isola-uploads || true"]}]}}' || true
+# Use the LocalStack pod to create the bucket (ignore error if it already exists)
+"${KUBECTL_BIN}" -n localstack exec deploy/localstack -- \
+  awslocal s3api create-bucket --bucket isola-uploads >/dev/null 2>&1 || true
 
 # Deploy with Helm
 # Deploy isola-operator first (installs CRDs + operator)
 echo "Deploying isola-operator with Helm..."
+# todo: we should find a proper solution to that:
+echo "Helm doesn't override existing CRDs. For dev, manually delete isola CRDs..."
+"${KUBECTL_BIN}" delete crd sandboxes.sandbox.isola.run sandboxtemplates.sandbox.isola.run >/dev/null 2>&1 || true
 "${HELM_BIN}" upgrade --install isola-operator charts/isola-operator \
   -f charts/isola-operator/values-dev.yaml \
   -n isola-control-plane \
