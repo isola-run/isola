@@ -61,18 +61,10 @@ type SandboxReconciler struct {
 
 
 // buildAgentContainer creates the agent sidecar container spec
-func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Container {
-	env := []corev1.EnvVar{
-		{
-			Name:  "SANDBOX_ID",
-			Value: sandboxID,
-		},
-	}
-
+func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
 	return corev1.Container{
 		Name:  "isola-agent",
 		Image: r.AgentImage,
-		Env:   env,
 		// SYS_PTRACE capability is required to access main container's filesystem
 		// via /proc/<pid>/root when using shared PID namespace.
 		// RunAsUser 0 (root) is needed to read /proc/<pid>/environ of other users' processes.
@@ -86,7 +78,7 @@ func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Contain
 }
 
 // injectSidecar injects the agent sidecar container into the pod spec
-func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod, sandboxID string) {
+func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod) {
 	// Enable shared PID namespace so the agent can access main container's filesystem via /proc/<pid>/root
 	pod.Spec.ShareProcessNamespace = ptr.To(true)
 
@@ -100,7 +92,7 @@ func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod, sandboxID string) {
 	}
 
 	// Add agent sidecar container
-	agentContainer := r.buildAgentContainer(sandboxID)
+	agentContainer := r.buildAgentContainer()
 	pod.Spec.Containers = append(pod.Spec.Containers, agentContainer)
 }
 
@@ -172,8 +164,8 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		Spec: template.Spec.PodTemplate.Spec,
 	}
 
-	// Inject agent sidecar and shared volume
-	r.injectSidecar(pod, sandbox.Name)
+	// Inject agent sidecar
+	r.injectSidecar(pod)
 
 	// Set Pod's object owner reference to the Sandbox object
 	if err := controllerutil.SetControllerReference(sandbox, pod, r.Scheme); err != nil {
