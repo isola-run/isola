@@ -60,6 +60,7 @@ const (
 	CondReasonPodFailed       = "PodFailed"
 	CondReasonPodSucceeded    = "PodSucceeded"
 	CondReasonSandboxTimedOut = "TimedOut"
+	CondReasonDeleting        = "Deleting"
 
 	// Snapshot-related reasons
 	CondReasonSnapshottingInProgress = "SnapshottingInProgress"
@@ -71,7 +72,15 @@ const (
 
 const defaultSnapshotTimeoutSeconds int64 = 300
 
-// SandboxReconciler reconciles a Sandbox object
+const SandboxFinalizer = "sandbox.isola.run/cleanup"
+
+type CleanupTrigger string
+
+const (
+	CleanupTriggerTimeout  CleanupTrigger = "Timeout"
+	CleanupTriggerDeletion CleanupTrigger = "Deletion"
+)
+
 type SandboxReconciler struct {
 	client.Client
 	Scheme                *runtime.Scheme
@@ -613,13 +622,18 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 		return nil, ctrl.Result{}, err
 	}
 
-	meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-		Type:               SandboxTemplateReadyCondition,
-		Status:             metav1.ConditionTrue,
-		Reason:             "TemplateOK",
-		Message:            "Template resolved",
-		ObservedGeneration: sandbox.Generation,
-	})
+	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+		{
+			Type:               SandboxTemplateReadyCondition,
+			Status:             metav1.ConditionTrue,
+			Reason:             "TemplateResolved",
+			Message:            "Template resolved",
+			ObservedGeneration: sandbox.Generation,
+		},
+	}); err != nil {
+		log.Error(err, "Failed to update Sandbox status")
+		return nil, ctrl.Result{}, err
+	}
 
 	return template, ctrl.Result{}, nil
 }
@@ -809,17 +823,49 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		sandbox.Status.Conditions = []metav1.Condition{}
 	}
 
-	// todo benl: this will make the object never disappear if template doesn't exist (we can't even have a sandbox timeout without the template)
+	sandboxDeleted := !sandbox.DeletionTimestamp.IsZero()
+	noFinalizer := !controllerutil.ContainsFinalizer(sandbox, SandboxFinalizer)
+
+	if sandboxDeleted && noFinalizer {
+		return ctrl.Result{}, nil
+	}
+
+	// Add finalizer first, before any other operations
+	if !sandboxDeleted && noFinalizer {
+		log.Info("Adding finalizer to sandbox")
+		controllerutil.AddFinalizer(sandbox, SandboxFinalizer)
+		if err := r.Update(ctx, sandbox); err != nil {
+			log.Error(err, "Failed to add finalizer")
+			return ctrl.Result{}, err
+		}
+		// Update baseSandbox to reflect the finalizer change for subsequent patches
+		baseSandbox = sandbox.DeepCopy()
+	}
+
 	template, result, err := r.EnsureTemplate(ctx, sandbox, baseSandbox)
 	if err != nil {
 		return result, err
 	}
-	if template == nil {
-		return ctrl.Result{}, nil
+
+	if sandboxDeleted && !noFinalizer {
+		if template == nil {
+			// Template not found during deletion - can't determine shutdown policy
+			// Remove finalizer and allow deletion to proceed
+			log.Info("Template not found during deletion; removing finalizer without executing shutdown policy")
+			controllerutil.RemoveFinalizer(sandbox, SandboxFinalizer)
+			if err := r.Update(ctx, sandbox); err != nil {
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{}, nil
+		}
+
+		res, _, err := r.finalizeSandbox(ctx, sandbox, baseSandbox, template)
+		return res, err
 	}
 
-	if !sandbox.DeletionTimestamp.IsZero() {
-		log.Info("Sandbox already marked for deletion; skipping further reconciliation")
+	// if no template - we'll wait for the right template resource to be created
+	// and then we'll reconcile the sandbox
+	if template == nil {
 		return ctrl.Result{}, nil
 	}
 
@@ -835,19 +881,20 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	if optionalTimeoutAt != nil && r.clock().Now().After(optionalTimeoutAt.Time) {
 		log.Info("Sandbox timed out")
-		cleanupResult, cleanupDone, err := r.cleanupTimedOutSandbox(ctx, sandbox, baseSandbox, template, sandboxPod, optionalTimeoutAt.Time)
+
+		res, cleanupDone, err := r.finalizeSandbox(ctx, sandbox, baseSandbox, template)
 		if err != nil {
-			return cleanupResult, err
-		}
-		if !cleanupDone {
-			return cleanupResult, nil
+			return res, err
 		}
 
-		if err := r.Delete(ctx, sandbox); err != nil {
-			log.Error(err, "Failed to delete sandbox after cleanup")
-			return ctrl.Result{}, err
+		if cleanupDone {
+			if err := r.Delete(ctx, sandbox); err != nil {
+				log.Error(err, "Failed to delete sandbox after cleanup")
+				return ctrl.Result{}, err
+			}
 		}
-		return ctrl.Result{}, nil
+		// if cleanUp is not done, return res that might ask for a requeue in the future
+		return res, nil
 	}
 
 	var requeueAfter time.Duration
@@ -875,23 +922,78 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
-func (r *SandboxReconciler) cleanupTimedOutSandbox(
+// finalize the sandbox according to the shutdown policy and have it ready to be deleted.
+// Returns:
+// ctrl.Result: a result object that might ask for a requeue if another reconciliation would be required.
+// bool: whether the cleanup was fully completed (and thus the sandbox can be deleted) or not.
+// an error if something went wrong.
+func (r *SandboxReconciler) finalizeSandbox(
+	ctx context.Context,
+	sandbox *sandboxv1alpha1.Sandbox,
+	baseSandbox *sandboxv1alpha1.Sandbox,
+	template *sandboxv1alpha1.SandboxTemplate,
+) (ctrl.Result, bool, error) {
+	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+
+	log.Info("Executing shutdown policy for deletion")
+
+	sandboxPod, err := r.getSandboxPod(ctx, sandbox)
+	if err != nil {
+		return ctrl.Result{}, false, err
+	}
+
+	snapshotDeadline := r.calculateSnapshotDeadline(template)
+
+	result, cleanupDone, err := r.executeShutdownPolicy(
+		ctx, sandbox, baseSandbox, template, sandboxPod, snapshotDeadline, CleanupTriggerDeletion,
+	)
+	if err != nil {
+		return result, false, err
+	}
+	if !cleanupDone {
+		return result, cleanupDone, nil
+	}
+
+	controllerutil.RemoveFinalizer(sandbox, SandboxFinalizer)
+	if err := r.Update(ctx, sandbox); err != nil {
+		log.Error(err, "Failed to remove finalizer")
+		return ctrl.Result{}, false, err
+	}
+
+	return ctrl.Result{}, true, nil
+}
+
+// executeShutdownPolicy executes the shutdown policy for a sandbox being cleaned up.
+// trigger indicates whether this is due to timeout or user-initiated deletion.
+// snapshotDeadline is the deadline by which snapshotting must complete.
+func (r *SandboxReconciler) executeShutdownPolicy(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	template *sandboxv1alpha1.SandboxTemplate,
 	sandboxPod *corev1.Pod,
-	timeoutAt time.Time,
+	snapshotDeadline time.Time,
+	trigger CleanupTrigger,
 ) (ctrl.Result, bool, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace, "trigger", trigger)
+
+	// Determine reason and message based on trigger
+	var reason, message string
+	if trigger == CleanupTriggerTimeout {
+		reason = CondReasonSandboxTimedOut
+		message = "Sandbox timed out"
+	} else {
+		reason = CondReasonDeleting
+		message = "Sandbox being deleted"
+	}
 
 	if template.Spec.ShutdownPolicy == nil || template.Spec.ShutdownPolicy.Policy == sandboxv1alpha1.ShutdownPolicyDelete {
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxReadyCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSandboxTimedOut,
-				Message:            "Sandbox timed out; deleting",
+				Reason:             reason,
+				Message:            message + "; deleting",
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
@@ -905,7 +1007,7 @@ func (r *SandboxReconciler) cleanupTimedOutSandbox(
 			Type:               SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonSnapshottingInProgress,
-			Message:            "Sandbox timed out; executing shutdown policy",
+			Message:            message + "; executing shutdown policy",
 			ObservedGeneration: sandbox.Generation,
 		},
 	}); err != nil {
@@ -914,16 +1016,19 @@ func (r *SandboxReconciler) cleanupTimedOutSandbox(
 
 	switch template.Spec.ShutdownPolicy.Policy {
 	case sandboxv1alpha1.ShutdownPolicySnapshotFilesystem:
-		snapshotTimeoutSeconds := defaultSnapshotTimeoutSeconds
-		if template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds != nil {
-			snapshotTimeoutSeconds = *template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds
-		}
-		deadline := timeoutAt.Add(time.Duration(snapshotTimeoutSeconds) * time.Second)
-		return r.handleFilesystemSnapshot(ctx, sandbox, baseSandbox, sandboxPod, deadline)
+		return r.handleFilesystemSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline)
 	default:
 		log.Info("Unknown shutdown policy; proceeding with deletion", "policy", template.Spec.ShutdownPolicy.Policy)
 		return ctrl.Result{}, true, nil
 	}
+}
+
+func (r *SandboxReconciler) calculateSnapshotDeadline(template *sandboxv1alpha1.SandboxTemplate) time.Time {
+	snapshotTimeoutSeconds := defaultSnapshotTimeoutSeconds
+	if template != nil && template.Spec.ShutdownPolicy != nil && template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds != nil {
+		snapshotTimeoutSeconds = *template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds
+	}
+	return r.clock().Now().Add(time.Duration(snapshotTimeoutSeconds) * time.Second)
 }
 
 func (r *SandboxReconciler) handleFilesystemSnapshot(
