@@ -27,7 +27,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// HaveCondition returns a matcher that checks if an object has a condition with the given type and status
 func HaveCondition(condType string, status metav1.ConditionStatus) types.GomegaMatcher {
 	return &conditionMatcher{
 		condType:    condType,
@@ -36,7 +35,6 @@ func HaveCondition(condType string, status metav1.ConditionStatus) types.GomegaM
 	}
 }
 
-// HaveConditionWithReason returns a matcher that checks condition type, status, and reason
 func HaveConditionWithReason(condType string, status metav1.ConditionStatus, reason string) types.GomegaMatcher {
 	return &conditionMatcher{
 		condType:    condType,
@@ -91,7 +89,6 @@ func (m *conditionMatcher) NegatedFailureMessage(actual interface{}) string {
 	return fmt.Sprintf("Expected condition %q NOT to have status %q", m.condType, m.status)
 }
 
-// ConditionsGetter is an interface for objects that have conditions
 type ConditionsGetter interface {
 	GetConditions() []metav1.Condition
 }
@@ -110,7 +107,6 @@ func extractConditions(actual interface{}) ([]metav1.Condition, error) {
 	}
 }
 
-// HaveOwnerReference returns a matcher that checks if an object has an owner reference to the given object
 func HaveOwnerReference(owner client.Object) types.GomegaMatcher {
 	return &ownerReferenceMatcher{
 		ownerName: owner.GetName(),
@@ -148,7 +144,6 @@ func (m *ownerReferenceMatcher) NegatedFailureMessage(actual interface{}) string
 		m.ownerName, m.ownerUID)
 }
 
-// HaveLabel returns a matcher that checks if an object has a specific label with a value
 func HaveLabel(key, value string) types.GomegaMatcher {
 	return &labelMatcher{key: key, value: value}
 }
@@ -182,7 +177,6 @@ func (m *labelMatcher) NegatedFailureMessage(actual interface{}) string {
 	return fmt.Sprintf("Expected NOT to have label %q=%q", m.key, m.value)
 }
 
-// HaveInitContainer returns a matcher that checks if a pod has an init container with the given name
 func HaveInitContainer(name string) types.GomegaMatcher {
 	return &initContainerMatcher{name: name}
 }
@@ -218,41 +212,10 @@ func (m *initContainerMatcher) NegatedFailureMessage(actual interface{}) string 
 	return fmt.Sprintf("Expected NOT to have init container %q", m.name)
 }
 
-// PodSpecGetter is an interface for objects that have a PodSpec
 type PodSpecGetter interface {
 	GetPodSpec() corev1.PodSpec
 }
 
-// HaveVolume returns a matcher that checks if a pod has a volume with the given name
-func HaveVolume(name string) types.GomegaMatcher {
-	return &volumeMatcher{name: name}
-}
-
-type volumeMatcher struct {
-	name string
-}
-
-func (m *volumeMatcher) Match(actual interface{}) (bool, error) {
-	pod, ok := actual.(PodSpecGetter)
-	if !ok {
-		return false, fmt.Errorf("expected object with PodSpec, got %T", actual)
-	}
-
-	spec := pod.GetPodSpec()
-	// This is a simplified matcher - in practice we'd need to handle different types
-	_ = spec
-	return false, fmt.Errorf("volumeMatcher not fully implemented - use pod.Spec.Volumes directly")
-}
-
-func (m *volumeMatcher) FailureMessage(actual interface{}) string {
-	return fmt.Sprintf("Expected volume %q", m.name)
-}
-
-func (m *volumeMatcher) NegatedFailureMessage(actual interface{}) string {
-	return fmt.Sprintf("Expected NOT to have volume %q", m.name)
-}
-
-// ContainEvent returns a matcher that checks if an event channel contains an event with the given reason
 func ContainEvent(reason string) types.GomegaMatcher {
 	return &eventMatcher{reason: reason}
 }
