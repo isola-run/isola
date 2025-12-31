@@ -34,7 +34,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
 	"k8s.io/client-go/tools/record"
@@ -53,8 +55,11 @@ const (
 const (
 	CondReasonTemplateNotFound = "TemplateNotFound"
 
-	CondReasonPodPending = "PodPending"
-	CondReasonPodRunning = "PodRunning"
+	CondReasonPodPending      = "PodPending"
+	CondReasonPodRunning      = "PodRunning"
+	CondReasonPodFailed       = "PodFailed"
+	CondReasonPodSucceeded    = "PodSucceeded"
+	CondReasonSandboxTimedOut = "TimedOut"
 
 	// Snapshot-related reasons
 	CondReasonSnapshottingInProgress = "SnapshottingInProgress"
@@ -82,6 +87,9 @@ const (
 	// Default mount path for shared volume
 	defaultSharedVolumeMountPath = "/sandbox-shared"
 	agentContainerName           = "isola-agent"
+
+	// Field index for efficient lookup of sandboxes by templateRef
+	sandboxTemplateRefField = ".spec.templateRef.name"
 )
 
 // clock returns the reconciler's Clock, defaulting to RealClock if not set
@@ -148,7 +156,7 @@ func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod, sandboxID string) {
 	}
 
 	agentContainer := r.buildAgentContainer(sandboxID)
-	pod.Spec.InitContainers = []corev1.Container{agentContainer}
+	pod.Spec.InitContainers = append(pod.Spec.InitContainers, agentContainer)
 }
 
 func isPodReady(pod *corev1.Pod) bool {
@@ -663,48 +671,69 @@ func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv
 }
 
 func (r *SandboxReconciler) reconcileSandboxStatus(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) error {
-	podReady := isPodReady(sandboxPod)
-
 	var lastError error
+	var conditions []metav1.Condition
 
-	if podReady {
-		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+	if isPodReady(sandboxPod) {
+		conditions = []metav1.Condition{
 			{
 				Type:               SandboxPodReadyCondition,
 				Status:             metav1.ConditionTrue,
-				Reason:             "PodRunning",
+				Reason:             CondReasonPodRunning,
 				Message:            "Pod is running",
 				ObservedGeneration: sandbox.Generation,
 			},
 			{
 				Type:               SandboxReadyCondition,
 				Status:             metav1.ConditionTrue,
-				Reason:             "PodRunning",
+				Reason:             CondReasonPodRunning,
 				Message:            "Pod is running",
 				ObservedGeneration: sandbox.Generation,
 			},
-		}); err != nil {
-			lastError = err
+		}
+	} else if isPodTerminated(sandboxPod) {
+		reason := CondReasonPodFailed
+		if sandboxPod.Status.Phase == corev1.PodSucceeded {
+			reason = CondReasonPodSucceeded
+		}
+		message := describePodContainerState(sandboxPod)
+		conditions = []metav1.Condition{
+			{
+				Type:               SandboxPodReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             reason,
+				Message:            message,
+				ObservedGeneration: sandbox.Generation,
+			},
+			{
+				Type:               SandboxReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             reason,
+				Message:            message,
+				ObservedGeneration: sandbox.Generation,
+			},
 		}
 	} else {
-		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+		conditions = []metav1.Condition{
 			{
 				Type:               SandboxPodReadyCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             "PodPending",
+				Reason:             CondReasonPodPending,
 				Message:            "Pod is not ready yet",
 				ObservedGeneration: sandbox.Generation,
 			},
 			{
 				Type:               SandboxReadyCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             "PodPending",
+				Reason:             CondReasonPodPending,
 				Message:            "Pod is not ready yet",
 				ObservedGeneration: sandbox.Generation,
 			},
-		}); err != nil {
-			lastError = err
 		}
+	}
+
+	if err := r.patchStatus(ctx, baseSandbox, sandbox, conditions); err != nil {
+		lastError = err
 	}
 
 	snapshotterPod, err := r.getFilesystemSnapshotterPod(ctx, sandbox)
@@ -856,6 +885,21 @@ func (r *SandboxReconciler) cleanupTimedOutSandbox(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 
+	if template.Spec.ShutdownPolicy == nil || template.Spec.ShutdownPolicy.Policy == sandboxv1alpha1.ShutdownPolicyDelete {
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSandboxTimedOut,
+				Message:            "Sandbox timed out; deleting",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	}
+
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               SandboxReadyCondition,
@@ -866,10 +910,6 @@ func (r *SandboxReconciler) cleanupTimedOutSandbox(
 		},
 	}); err != nil {
 		return ctrl.Result{}, false, err
-	}
-
-	if template.Spec.ShutdownPolicy == nil || template.Spec.ShutdownPolicy.Policy == sandboxv1alpha1.ShutdownPolicyDelete {
-		return ctrl.Result{}, true, nil
 	}
 
 	switch template.Spec.ShutdownPolicy.Policy {
@@ -1056,10 +1096,52 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 // SetupWithManager sets up the controller with the Manager.
 func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Recorder = mgr.GetEventRecorderFor("sandbox-controller")
+
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&sandboxv1alpha1.Sandbox{},
+		sandboxTemplateRefField,
+		extractTemplateRefName,
+	); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.Sandbox{}).
-		// Pod owned by Sandbox via SetControllerReference will trigger sandbox_controller re-reconcile on pod changes:
 		Owns(&corev1.Pod{}).
+		Watches(
+			&sandboxv1alpha1.SandboxTemplate{},
+			handler.EnqueueRequestsFromMapFunc(r.findSandboxesForTemplate),
+		).
 		Named("sandbox").
 		Complete(r)
+}
+
+func extractTemplateRefName(obj client.Object) []string {
+	sandbox, ok := obj.(*sandboxv1alpha1.Sandbox)
+	if !ok || sandbox.Spec.TemplateRef == nil || sandbox.Spec.TemplateRef.Name == "" {
+		return nil
+	}
+	return []string{sandbox.Spec.TemplateRef.Name}
+}
+
+func (r *SandboxReconciler) findSandboxesForTemplate(ctx context.Context, template client.Object) []reconcile.Request {
+	sandboxList := &sandboxv1alpha1.SandboxList{}
+	if err := r.List(ctx, sandboxList,
+		client.InNamespace(template.GetNamespace()),
+		client.MatchingFields{sandboxTemplateRefField: template.GetName()},
+	); err != nil {
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0, len(sandboxList.Items))
+	for _, sandbox := range sandboxList.Items {
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      sandbox.Name,
+				Namespace: sandbox.Namespace,
+			},
+		})
+	}
+	return requests
 }
