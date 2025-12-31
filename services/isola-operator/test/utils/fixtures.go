@@ -27,14 +27,12 @@ import (
 // TemplateOption is a functional option for configuring SandboxTemplate
 type TemplateOption func(*sandboxv1alpha1.SandboxTemplate)
 
-// WithTimeout sets the timeout in seconds for the template
 func WithTimeout(seconds int64) TemplateOption {
 	return func(t *sandboxv1alpha1.SandboxTemplate) {
 		t.Spec.TimeoutSeconds = &seconds
 	}
 }
 
-// WithShutdownPolicy sets the shutdown policy for the template
 func WithShutdownPolicy(policy sandboxv1alpha1.SandboxShutdownPolicy) TemplateOption {
 	return func(t *sandboxv1alpha1.SandboxTemplate) {
 		t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
@@ -43,7 +41,6 @@ func WithShutdownPolicy(policy sandboxv1alpha1.SandboxShutdownPolicy) TemplateOp
 	}
 }
 
-// WithSnapshotTimeout sets the snapshot timeout for the template
 func WithSnapshotTimeout(seconds int64) TemplateOption {
 	return func(t *sandboxv1alpha1.SandboxTemplate) {
 		if t.Spec.ShutdownPolicy == nil {
@@ -55,21 +52,18 @@ func WithSnapshotTimeout(seconds int64) TemplateOption {
 	}
 }
 
-// WithPodSpec sets a custom pod spec for the template
 func WithPodSpec(spec corev1.PodSpec) TemplateOption {
 	return func(t *sandboxv1alpha1.SandboxTemplate) {
 		t.Spec.PodTemplate.Spec = spec
 	}
 }
 
-// WithRuntimeClass sets the RuntimeClassName for the template's pod
 func WithRuntimeClass(name string) TemplateOption {
 	return func(t *sandboxv1alpha1.SandboxTemplate) {
 		t.Spec.PodTemplate.Spec.RuntimeClassName = &name
 	}
 }
 
-// WithNetwork sets the network configuration for the template
 func WithNetwork(allowedIncoming, allowedOutgoing []string) TemplateOption {
 	return func(t *sandboxv1alpha1.SandboxTemplate) {
 		t.Spec.Network = &sandboxv1alpha1.NetworkConfig{
@@ -79,7 +73,6 @@ func WithNetwork(allowedIncoming, allowedOutgoing []string) TemplateOption {
 	}
 }
 
-// NewTestSandbox creates a Sandbox with sensible defaults for testing
 func NewTestSandbox(name, namespace, templateRef string) *sandboxv1alpha1.Sandbox {
 	return &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
@@ -94,7 +87,6 @@ func NewTestSandbox(name, namespace, templateRef string) *sandboxv1alpha1.Sandbo
 	}
 }
 
-// NewTestSandboxTemplate creates a SandboxTemplate with configurable options
 func NewTestSandboxTemplate(name, namespace string, opts ...TemplateOption) *sandboxv1alpha1.SandboxTemplate {
 	template := &sandboxv1alpha1.SandboxTemplate{
 		ObjectMeta: metav1.ObjectMeta{
@@ -123,7 +115,6 @@ func NewTestSandboxTemplate(name, namespace string, opts ...TemplateOption) *san
 	return template
 }
 
-// NewTestRuntimeClass creates a RuntimeClass for testing snapshotting
 func NewTestRuntimeClass(name, handler string) *nodev1.RuntimeClass {
 	return &nodev1.RuntimeClass{
 		ObjectMeta: metav1.ObjectMeta{
@@ -133,17 +124,14 @@ func NewTestRuntimeClass(name, handler string) *nodev1.RuntimeClass {
 	}
 }
 
-// PodOption is a functional option for configuring Pod
 type PodOption func(*corev1.Pod)
 
-// WithPodPhase sets the pod phase
 func WithPodPhase(phase corev1.PodPhase) PodOption {
 	return func(p *corev1.Pod) {
 		p.Status.Phase = phase
 	}
 }
 
-// WithPodCondition adds a condition to the pod
 func WithPodCondition(condType corev1.PodConditionType, status corev1.ConditionStatus) PodOption {
 	return func(p *corev1.Pod) {
 		p.Status.Conditions = append(p.Status.Conditions, corev1.PodCondition{
@@ -153,14 +141,12 @@ func WithPodCondition(condType corev1.PodConditionType, status corev1.ConditionS
 	}
 }
 
-// WithPodStartTime sets the pod start time
 func WithPodStartTime(t metav1.Time) PodOption {
 	return func(p *corev1.Pod) {
 		p.Status.StartTime = &t
 	}
 }
 
-// WithContainerStatus adds a container status to the pod
 func WithContainerStatus(name, containerID string, ready bool) PodOption {
 	return func(p *corev1.Pod) {
 		p.Status.ContainerStatuses = append(p.Status.ContainerStatuses, corev1.ContainerStatus{
@@ -174,21 +160,18 @@ func WithContainerStatus(name, containerID string, ready bool) PodOption {
 	}
 }
 
-// WithPodRuntimeClass sets the RuntimeClassName for the pod
 func WithPodRuntimeClass(name string) PodOption {
 	return func(p *corev1.Pod) {
 		p.Spec.RuntimeClassName = &name
 	}
 }
 
-// WithNodeName sets the node name for the pod
 func WithNodeName(nodeName string) PodOption {
 	return func(p *corev1.Pod) {
 		p.Spec.NodeName = nodeName
 	}
 }
 
-// NewTestPod creates a Pod with configurable options
 func NewTestPod(name, namespace string, opts ...PodOption) *corev1.Pod {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -213,7 +196,6 @@ func NewTestPod(name, namespace string, opts ...PodOption) *corev1.Pod {
 	return pod
 }
 
-// MakeTestPodReady configures a pod to appear ready
 func MakeTestPodReady(pod *corev1.Pod) {
 	pod.Status.Phase = corev1.PodRunning
 	pod.Status.Conditions = append(pod.Status.Conditions, corev1.PodCondition{
@@ -222,18 +204,15 @@ func MakeTestPodReady(pod *corev1.Pod) {
 	})
 }
 
-// UniqueNameGenerator generates unique names for test resources
 type UniqueNameGenerator struct {
 	prefix  string
 	counter int
 }
 
-// NewUniqueNameGenerator creates a new name generator with the given prefix
 func NewUniqueNameGenerator(prefix string) *UniqueNameGenerator {
 	return &UniqueNameGenerator{prefix: prefix}
 }
 
-// Next returns the next unique name
 func (g *UniqueNameGenerator) Next() string {
 	g.counter++
 	return g.prefix + "-" + string(rune('a'+g.counter-1))
