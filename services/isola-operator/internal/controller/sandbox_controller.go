@@ -65,14 +65,10 @@ func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
 	return corev1.Container{
 		Name:  "isola-agent",
 		Image: r.AgentImage,
-		// SYS_PTRACE capability is required to access main container's filesystem
-		// via /proc/<pid>/root when using shared PID namespace.
-		// RunAsUser 0 (root) is needed to read /proc/<pid>/environ of other users' processes.
+		// RunAsUser 0 (root) is needed to read /proc/<pid>/environ of other users' processes
+		// and to access /proc/<pid>/root when using shared PID namespace.
 		SecurityContext: &corev1.SecurityContext{
 			RunAsUser: ptr.To(int64(0)),
-			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{"SYS_PTRACE"},
-			},
 		},
 	}
 }
