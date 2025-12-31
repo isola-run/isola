@@ -186,6 +186,13 @@ func makePodReady(ctx context.Context, pod *corev1.Pod, containerID string) {
 	ExpectWithOffset(1, k8sClient.Status().Update(ctx, pod)).To(Succeed())
 }
 
+// doReconcile is a convenience helper that reconciles the sandbox.
+// The controller adds the finalizer and proceeds with work in a single reconcile.
+func doReconcile(ctx context.Context, reconciler *SandboxReconciler, name string) (reconcile.Result, error) {
+	req := reconcile.Request{NamespacedName: types.NamespacedName{Name: name, Namespace: testNamespace}}
+	return reconciler.Reconcile(ctx, req)
+}
+
 var _ = Describe("Sandbox Controller", func() {
 
 	// ============================================
@@ -210,9 +217,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify conditions
@@ -234,9 +239,7 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify template condition is true
@@ -244,7 +247,7 @@ var _ = Describe("Sandbox Controller", func() {
 			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxTemplateReadyCondition)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(cond.Reason).To(Equal("TemplateOK"))
+			Expect(cond.Reason).To(Equal("TemplateResolved"))
 		})
 
 		It("should resolve template when created after sandbox", func() {
@@ -257,9 +260,7 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deletePod(ctx, sandboxName+"-pod")
 
 			// First reconcile - should fail to find template
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			sandbox = getSandbox(ctx, sandboxName)
@@ -269,7 +270,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			// Second reconcile - should find template
+			// Another reconcile - should find template
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
@@ -300,9 +301,8 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(k8sClient.Create(ctx, sandbox)).To(Succeed())
 			defer deleteSandbox(ctx, sandboxName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			// doReconcile: first adds finalizer, second tries to get template
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			// Controller returns error for empty template name
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("resource name may not be empty"))
@@ -387,9 +387,7 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify pod exists and has correct spec
@@ -413,9 +411,7 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify sidecar is injected
@@ -453,9 +449,7 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Refresh sandbox to get UID
@@ -484,9 +478,7 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			pod := getPod(ctx, podName)
@@ -524,9 +516,7 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			pod := getPod(ctx, podName)
@@ -569,9 +559,7 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
@@ -590,11 +578,11 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			// Reconcile creates pod and sets conditions
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
+			// Second reconcile to observe pod status (pod exists but not ready yet)
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
@@ -620,9 +608,7 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			pod := getPod(ctx, podName)
@@ -658,9 +644,7 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			pod := getPod(ctx, podName)
@@ -695,9 +679,7 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			pod := getPod(ctx, podName)
@@ -732,10 +714,8 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			// First reconcile - creates pod
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			// First reconcile - adds finalizer and creates pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Second reconcile (pod exists but not ready)
@@ -815,9 +795,7 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
@@ -840,9 +818,7 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			pod := getPod(ctx, podName)
@@ -882,9 +858,7 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
@@ -911,24 +885,18 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Advance clock past timeout but not too far - we want to catch the condition before deletion
 			fakeClock.Advance(2 * time.Second)
 
-			// Get sandbox before the delete reconcile to verify condition is set correctly
-			// We need to reconcile twice: first sets condition, second deletes
-			// Actually the controller sets condition and deletes in same reconcile,
-			// so we verify sandbox is deleted
+			// Reconcile to trigger timeout handling - removes finalizer and deletes
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Sandbox should be deleted
 			sandbox := &sandboxv1alpha1.Sandbox{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, sandbox)
 			Expect(errors.IsNotFound(err)).To(BeTrue())
@@ -949,9 +917,7 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Store the sandbox UID before timeout
@@ -960,9 +926,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Advance clock past timeout
 			fakeClock.Advance(2 * time.Second)
 
-			// The reconcile will set condition then delete - we can't easily observe the condition
-			// before deletion in a unit test, but we can verify it was set by checking
-			// the sandbox doesn't exist after reconcile (confirms the timeout path was taken)
+			// The reconcile will set condition then delete
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
@@ -988,9 +952,8 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			result, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			// Reconcile adds finalizer and creates pod with timeout
+			result, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Should have requeue set
@@ -1036,9 +999,7 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Make pod ready
@@ -1069,10 +1030,8 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Verify event was recorded about skipped snapshot
 			Eventually(recorder.Events).Should(Receive(ContainSubstring(ReasonFSSnapshotRuntimeClassMissing)))
 
-			// Sandbox should be deleted (snapshot was skipped, so proceed to delete)
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
@@ -1105,9 +1064,7 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Make pod ready
@@ -1172,9 +1129,7 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deletePod(ctx, podName)
 			defer deletePod(ctx, snapshotterPodName)
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Delete the pod created by reconciler and create our own with NodeName set
@@ -1489,6 +1444,98 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("RuntimeClass"))
 		})
+
+		It("should create snapshotter pod exactly once even if reconciled multiple times", func() {
+			sandboxName := "sandbox-snapshot-idempotent"
+			templateName := "template-snapshot-idempotent"
+			runtimeClassName := "gvisor-idempotent"
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			timeout := int64(1)
+			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
+				t.Spec.TimeoutSeconds = &timeout
+				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+				}
+				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
+			})
+			defer deleteTemplate(ctx, templateName)
+
+			createSandbox(ctx, sandboxName, templateName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			snapshotterPodName := sandboxName + "-fssnapshotter"
+			defer deletePod(ctx, podName)
+			defer deletePod(ctx, snapshotterPodName)
+
+			// Reconcile to create sandbox pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Replace pod with one that has NodeName set
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			labels := pod.Labels
+			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
+
+			newPod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace, Labels: labels},
+				Spec: corev1.PodSpec{
+					RuntimeClassName: &runtimeClassName,
+					NodeName:         "test-node",
+					Containers:       []corev1.Container{{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
+			newPod.Status.Phase = corev1.PodRunning
+			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, newPod)).To(Succeed())
+
+			// Advance past timeout
+			fakeClock.Advance(2 * time.Second)
+
+			// First reconcile after timeout - should create snapshotter pod
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify snapshotter pod was created
+			snapshotterPod := &corev1.Pod{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterPodName, Namespace: testNamespace}, snapshotterPod)
+			Expect(err).NotTo(HaveOccurred())
+			originalUID := snapshotterPod.UID
+
+			// Second reconcile while snapshotter is still running - should NOT error or create duplicate
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify it's still the same snapshotter pod (not recreated)
+			snapshotterPod = &corev1.Pod{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterPodName, Namespace: testNamespace}, snapshotterPod)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(snapshotterPod.UID).To(Equal(originalUID), "Snapshotter pod should not be recreated")
+
+			// Third reconcile - still should be idempotent
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Still the same pod
+			snapshotterPod = &corev1.Pod{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterPodName, Namespace: testNamespace}, snapshotterPod)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(snapshotterPod.UID).To(Equal(originalUID), "Snapshotter pod should not be recreated on third reconcile")
+		})
 	})
 
 	// ============================================
@@ -1798,6 +1845,239 @@ var _ = Describe("Sandbox Controller", func() {
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	// ============================================
+	// Category G: Finalizer Behavior Tests
+	// ============================================
+	Context("Finalizer Behavior", func() {
+		var (
+			reconciler *SandboxReconciler
+			fakeClock  *FakeClock
+		)
+
+		BeforeEach(func() {
+			fakeClock = NewFakeClock(time.Now())
+			reconciler = newTestReconciler(fakeClock)
+		})
+
+		It("should add finalizer after template validation", func() {
+			sandboxName := "sandbox-finalizer-add"
+			templateName := "template-finalizer-add"
+
+			createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
+
+			createSandbox(ctx, sandboxName, templateName)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify finalizer is present
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox.Finalizers).To(ContainElement(SandboxFinalizer))
+		})
+
+		It("should preserve all conditions after finalizer is added", func() {
+			sandboxName := "sandbox-conditions-preserved"
+			templateName := "template-conditions-preserved"
+
+			createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
+
+			createSandbox(ctx, sandboxName, templateName)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify ALL expected conditions are present (not just finalizer)
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox.Finalizers).To(ContainElement(SandboxFinalizer))
+
+			// TemplateReady should be persisted (set by EnsureTemplate before finalizer was added)
+			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxTemplateReadyCondition)
+			Expect(cond).NotTo(BeNil(), "TemplateReady condition should be preserved")
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+
+			// PodReady should be set (set by CreateSandboxPod after finalizer was added)
+			cond = meta.FindStatusCondition(sandbox.Status.Conditions, SandboxPodReadyCondition)
+			Expect(cond).NotTo(BeNil(), "PodReady condition should be set")
+
+			// Ready should be set
+			cond = meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+			Expect(cond).NotTo(BeNil(), "Ready condition should be set")
+		})
+
+		It("should execute Delete policy and remove finalizer on deletion", func() {
+			sandboxName := "sandbox-delete-policy"
+			templateName := "template-delete-policy"
+
+			// Create template with Delete policy (default)
+			createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
+
+			createSandbox(ctx, sandboxName, templateName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			// First reconcile - creates pod and adds finalizer
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify finalizer is present
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox.Finalizers).To(ContainElement(SandboxFinalizer))
+
+			// Delete the sandbox
+			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
+
+			// Reconcile again - should handle deletion
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Sandbox should be gone (finalizer removed, deletion proceeded)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("should remove finalizer if template not found during deletion", func() {
+			sandboxName := "sandbox-no-template-delete"
+			templateName := "template-no-template-delete"
+
+			createTemplate(ctx, templateName)
+			createSandbox(ctx, sandboxName, templateName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			// First reconcile - adds finalizer
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify finalizer is present
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox.Finalizers).To(ContainElement(SandboxFinalizer))
+
+			// Delete the template
+			deleteTemplate(ctx, templateName)
+
+			// Delete the sandbox
+			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
+
+			// Reconcile - should handle deletion even without template
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Sandbox should be gone
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("should execute SnapshotFilesystem policy on deletion", func() {
+			sandboxName := "sandbox-snapshot-delete"
+			templateName := "template-snapshot-delete"
+			runtimeClassName := "gvisor-delete"
+
+			recorder := record.NewFakeRecorder(10)
+			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
+				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+				}
+				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
+			})
+			defer deleteTemplate(ctx, templateName)
+
+			createSandbox(ctx, sandboxName, templateName)
+
+			podName := sandboxName + "-pod"
+			snapshotterPodName := sandboxName + "-fssnapshotter"
+			defer deletePod(ctx, podName)
+			defer deletePod(ctx, snapshotterPodName)
+
+			// First reconcile - creates pod and adds finalizer
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Recreate pod with NodeName set (required for snapshotting)
+			pod := getPod(ctx, podName)
+			labels := pod.Labels
+			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
+
+			newPod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace, Labels: labels},
+				Spec: corev1.PodSpec{
+					RuntimeClassName: &runtimeClassName,
+					NodeName:         "test-node",
+					Containers:       []corev1.Container{{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
+			newPod.Status.Phase = corev1.PodRunning
+			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, newPod)).To(Succeed())
+
+			// Reconcile to update status
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Delete the sandbox
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
+
+			// Reconcile - should create snapshotter pod
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify snapshotter pod was created
+			snapshotterPod := &corev1.Pod{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterPodName, Namespace: testNamespace}, snapshotterPod)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(snapshotterPod.Spec.Containers[0].Name).To(Equal("snapshotter"))
+
+			// Mark snapshotter pod as succeeded
+			snapshotterPod.Status.Phase = corev1.PodSucceeded
+			snapshotterPod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "snapshotter", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0, Reason: "Completed"}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, snapshotterPod)).To(Succeed())
+
+			// Reconcile - should complete deletion
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Sandbox should be gone
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
+			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 	})
 })

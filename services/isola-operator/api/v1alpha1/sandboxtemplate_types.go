@@ -58,7 +58,7 @@ type ShutdownPolicy struct {
 
 	// SnapshotTimeoutSeconds sets how long to wait for filesystem snapshotting to finish
 	// before giving up. Only used when Policy is SnapshotFilesystem.
-	// +optional
+	// +required
 	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=1
 	SnapshotTimeoutSeconds *int64 `json:"snapshotTimeoutSeconds,omitempty"`
