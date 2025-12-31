@@ -6,12 +6,3 @@ image:
 
 # Agent sidecar image injected into sandbox pods
 agentImage: isola-agent:latest
-
-# S3 configuration passed to agent sidecar containers
-# These are optional - agent will work without them but S3 delete functionality will be disabled
-s3:
-  bucket: ""
-  endpointUrl: ""
-  region: ""
-  accessKeyId: ""
-  secretAccessKey: ""
