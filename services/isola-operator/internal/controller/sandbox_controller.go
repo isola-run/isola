@@ -73,6 +73,7 @@ type SandboxReconciler struct {
 	Recorder              record.EventRecorder
 	AgentImage            string
 	SharedVolumeMountPath string
+	Clock                 Clock // Clock interface for time operations, allows mocking in tests
 }
 
 const (
@@ -82,6 +83,14 @@ const (
 	defaultSharedVolumeMountPath = "/sandbox-shared"
 	agentContainerName           = "isola-agent"
 )
+
+// clock returns the reconciler's Clock, defaulting to RealClock if not set
+func (r *SandboxReconciler) clock() Clock {
+	if r.Clock != nil {
+		return r.Clock
+	}
+	return RealClock{}
+}
 
 // buildAgentContainer creates the agent sidecar container spec
 func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Container {
@@ -385,7 +394,7 @@ func (r *SandboxReconciler) CreateSnapshotterPod(
 
 	snapshotterPodName := getFilesystemSnapshotterPodName(sandbox)
 	nodeName := sandboxPod.Spec.NodeName
-	timestamp := time.Now().Unix()
+	timestamp := r.clock().Now().Unix()
 	snapshotPath := fmt.Sprintf("/tmp/rootfs-%s-%d.tar", sandbox.Name, timestamp)
 
 	containerID, err := extractContainerID(sandboxPod)
@@ -625,7 +634,6 @@ func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandb
 		startTime = sandbox.ObjectMeta.CreationTimestamp.Time
 	}
 
-	// todo benl: inject clock for testability instead of using .Until that uses .Now() internally
 	timeoutAt := startTime.Add(time.Duration(*template.Spec.TimeoutSeconds) * time.Second)
 
 	log.Info("calculated sandbox timeout", "timeoutAt", timeoutAt)
@@ -796,7 +804,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	if optionalTimeoutAt != nil && time.Now().After(optionalTimeoutAt.Time) {
+	if optionalTimeoutAt != nil && r.clock().Now().After(optionalTimeoutAt.Time) {
 		log.Info("Sandbox timed out")
 		cleanupResult, cleanupDone, err := r.cleanupTimedOutSandbox(ctx, sandbox, baseSandbox, template, sandboxPod, optionalTimeoutAt.Time)
 		if err != nil {
@@ -815,7 +823,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	var requeueAfter time.Duration
 	if optionalTimeoutAt != nil {
-		requeueAfter = time.Until(optionalTimeoutAt.Time)
+		requeueAfter = r.clock().Until(optionalTimeoutAt.Time)
 		if requeueAfter <= 0 {
 			// in case of some very bad luck where the timeout shifted right after we checked for it
 			requeueAfter = time.Second
@@ -887,7 +895,7 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 
-	now := time.Now()
+	now := r.clock().Now()
 	if now.After(snapshotDeadline) {
 		log.Info("Filesystem snapshot timed out", "deadline", snapshotDeadline)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -972,7 +980,7 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 	}
 
 	// Avoid waiting forever if we are close to the deadline.
-	if time.Now().After(snapshotDeadline) {
+	if r.clock().Now().After(snapshotDeadline) {
 		log.Info("Filesystem snapshot timed out before completion", "deadline", snapshotDeadline)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
@@ -1034,7 +1042,7 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 			return ctrl.Result{}, false, err
 		}
 
-		requeueAfter := time.Until(snapshotDeadline)
+		requeueAfter := r.clock().Until(snapshotDeadline)
 		if requeueAfter <= 0 {
 			requeueAfter = time.Second
 		} else if requeueAfter > 5*time.Second {
