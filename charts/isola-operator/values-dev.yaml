@@ -6,11 +6,3 @@ image:
 
 # Agent sidecar image for development
 agentImage: isola-agent:dev
-
-# S3 configuration for development (LocalStack)
-s3:
-  bucket: "isola-uploads"
-  endpointUrl: "http://localstack:4566"
-  region: "us-east-1"
-  accessKeyId: "test"
-  secretAccessKey: "test"
