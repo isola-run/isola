@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -69,13 +68,6 @@ func (h *Handler) Upload(c *gin.Context) {
 		return
 	}
 
-	// Sanitize path to prevent directory traversal
-	cleanPath, err := sanitizePath(targetPath)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "file is required"})
@@ -91,7 +83,7 @@ func (h *Handler) Upload(c *gin.Context) {
 	defer src.Close()
 
 	// Resolve path via /proc/<pid>/root to access main container's filesystem
-	fullPath, err := h.procFS.ResolvePath(cleanPath)
+	fullPath, err := h.procFS.ResolvePath(targetPath)
 	if err != nil {
 		log.Printf("Failed to resolve path via procfs: %v", err)
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to resolve path: " + err.Error()})
@@ -145,15 +137,8 @@ func (h *Handler) Download(c *gin.Context) {
 		return
 	}
 
-	// Sanitize path to prevent directory traversal
-	cleanPath, err := sanitizePath(req.Path)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-		return
-	}
-
 	// Resolve path via /proc/<pid>/root to access main container's filesystem
-	fullPath, err := h.procFS.ResolvePath(cleanPath)
+	fullPath, err := h.procFS.ResolvePath(req.Path)
 	if err != nil {
 		log.Printf("Failed to resolve path via procfs: %v", err)
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to resolve path: " + err.Error()})
@@ -228,38 +213,6 @@ func (h *Handler) Download(c *gin.Context) {
 		Path:    req.Path,
 		Size:    written,
 	})
-}
-
-// sanitizePath validates and cleans a file path to prevent directory traversal.
-// Returns an absolute path suitable for use with ProcFS.ResolvePath().
-func sanitizePath(path string) (string, error) {
-	// Check for directory traversal attempts before cleaning
-	if strings.Contains(path, "..") {
-		return "", &pathError{msg: "invalid path: directory traversal not allowed"}
-	}
-
-	// Ensure the path is absolute (prepend / if not)
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-
-	// Clean the path to normalize any redundant separators
-	cleanPath := filepath.Clean(path)
-
-	// After cleaning, check again for any remaining ".." components
-	if strings.Contains(cleanPath, "..") {
-		return "", &pathError{msg: "invalid path: directory traversal not allowed"}
-	}
-
-	return cleanPath, nil
-}
-
-type pathError struct {
-	msg string
-}
-
-func (e *pathError) Error() string {
-	return e.msg
 }
 
 // RegisterRoutes registers all HTTP routes on the given Gin engine.
