@@ -39,6 +39,13 @@ func (p *ProcFS) DiscoverMainContainerPID() (int, error) {
 		p.mainContainerPID, p.discoverErr = p.findMarkedProcess()
 	})
 
+	// handles container restarts and PID reuse
+	if p.mainContainerPID != 0 && p.discoverErr == nil {
+		if !p.hasMainContainerMarker(p.mainContainerPID) {
+			p.mainContainerPID, p.discoverErr = p.findMarkedProcess()
+		}
+	}
+
 	return p.mainContainerPID, p.discoverErr
 }
 
