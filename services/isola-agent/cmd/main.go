@@ -12,8 +12,8 @@ import (
 
 // Environment variable keys
 const (
-	EnvHTTPHost = "HTTP_HOST"
-	EnvHTTPPort = "HTTP_PORT"
+	EnvHTTPHost = "ISOLA_HTTP_HOST"
+	EnvHTTPPort = "ISOLA_HTTP_PORT"
 )
 
 // Default values
