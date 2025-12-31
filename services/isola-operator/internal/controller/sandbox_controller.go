@@ -77,15 +77,17 @@ func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
 func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod) {
 	// Enable shared PID namespace so the agent can access main container's filesystem via /proc/<pid>/root
 	pod.Spec.ShareProcessNamespace = ptr.To(true)
-
-	// Mark all existing containers as main containers so the agent can discover them
-	// via /proc/<pid>/environ
-	for i := range pod.Spec.Containers {
-		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, corev1.EnvVar{
-			Name:  "ISOLA_MAIN_CONTAINER",
-			Value: "true",
-		})
+	
+	if len(pod.Spec.Containers) == 0 {
+		return
 	}
+
+	// Mark the first container as the main container so the agent can discover it via /proc/<pid>/environ.
+	// Note: a single main container is supported. The agent's findMarkedProcess() returns the first PID it finds with the ISOLA_MAIN_CONTAINER marker.
+	pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, corev1.EnvVar{
+		Name:  "ISOLA_MAIN_CONTAINER",
+		Value: "true",
+	})
 
 	// Add agent sidecar container
 	agentContainer := r.buildAgentContainer()
