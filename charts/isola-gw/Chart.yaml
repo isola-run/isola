@@ -1,0 +1,14 @@
+apiVersion: v1
+name: isola-gw
+description: Isola Gateway - Control plane gateway for sandbox orchestration
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - isola
+  - gateway
+  - sandbox
+home: https://github.com/omereli/dev-isola
+sources:
+  - https://github.com/omereli/dev-isola
+icon: https://example.com/icon.png
+

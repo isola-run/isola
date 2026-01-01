@@ -1,5 +1,5 @@
 #!/bin/bash
-SANDBOX_ID="57ea2252-7fa8-449a-816f-d201f4b7a101"
+SANDBOX_ID="1ca20a07-fa62-4ea0-b275-94259bc61d6d"
 API_KEY="iso_sk_demo"
 BASE_URL="http://localhost:30080"
 FILE_PATH="/tmp/largefile.bin"  

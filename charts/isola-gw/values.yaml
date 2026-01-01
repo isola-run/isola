@@ -1,0 +1,23 @@
+# isola-gw values
+image:
+  repository: isola-gw
+  tag: "latest"
+
+logLevel: info
+
+nodePort:
+  enabled: false
+
+kubernetes:
+  namespace: "isola-sandboxes"
+  runtimeClassName: ""
+
+storage:
+  enabled: false
+  backend: "s3"  # s3 or localstack
+  bucket: ""
+  endpointUrl: ""
+  region: "us-east-1"
+  accessKeyId: ""
+  secretAccessKey: ""
+

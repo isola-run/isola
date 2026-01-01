@@ -1,0 +1,16 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: isola-gw
+  namespace: {{ .Values.kubernetes.namespace }}
+  labels:
+    app: isola-gw
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: isola-gw
+subjects:
+- kind: ServiceAccount
+  name: isola-gw
+  namespace: {{ .Release.Namespace }}
+
