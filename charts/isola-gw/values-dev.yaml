@@ -1,0 +1,24 @@
+# Development environment values
+image:
+  repository: isola-gw
+  tag: "dev"
+
+logLevel: debug
+
+nodePort:
+  enabled: true
+
+kubernetes:
+  namespace: "isola-sandboxes"
+  runtimeClassName: ""
+
+# LocalStack configuration
+storage:
+  enabled: true
+  backend: "localstack"
+  bucket: "isola-uploads"
+  endpointUrl: "http://localstack.localstack.svc.cluster.local:4566"
+  region: "us-east-1"
+  accessKeyId: "test"
+  secretAccessKey: "test"
+

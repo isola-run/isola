@@ -1,0 +1,9 @@
+# Namespace for sandbox pods
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.kubernetes.namespace }}
+  labels:
+    app: isola-gw
+    component: sandbox-environment
+
