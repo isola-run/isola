@@ -65,7 +65,7 @@ build_and_verify_image() {
 echo "building images..."
 cd "${SCRIPT_DIR}/.."
 build_and_verify_image "isola-controller:dev" "services/isola_controller/Dockerfile" "."
-build_and_verify_image "isola-agent:dev" "services/isola_agent/Dockerfile" "."
+build_and_verify_image "isola-agent:dev" "services/isola-agent/Dockerfile" "services/isola-agent"
 build_and_verify_image "isola-operator:dev" "services/isola-operator/Dockerfile" "services/isola-operator"
 
 echo "applying manifests in correct order..."

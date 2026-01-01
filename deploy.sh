@@ -6,7 +6,7 @@ set -euo pipefail
 # Build the Docker images
 echo "Building images in parallel..."
 minikube image build -t isola-controller:dev -f services/isola_controller/Dockerfile . & pid1=$!
-minikube image build -t isola-agent:dev -f services/isola_agent/Dockerfile . & pid2=$!
+( cd services/isola-agent && minikube image build -t isola-agent:dev . ) & pid2=$!
 ( cd services/isola-operator && minikube image build -t isola-operator:dev . ) & pid3=$!
 wait $pid1 $pid2 $pid3
 
