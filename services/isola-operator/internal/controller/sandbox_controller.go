@@ -18,11 +18,16 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	nodev1 "k8s.io/api/node/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -42,6 +47,8 @@ const (
 
 	SandboxTemplateReadyCondition = "TemplateReady"
 	SandboxPodReadyCondition      = "PodReady"
+	// todo benl: maybe keep just sandbox.Status.Snapshot and no snapshotting condition on sandbox (consider custom CRD for snapshotting)
+	SandboxFilesystemSnapshotCondition = "FilesystemSnapshot"
 )
 
 const (
@@ -49,9 +56,17 @@ const (
 
 	CondReasonPodPending = "PodPending"
 	CondReasonPodRunning = "PodRunning"
+
+	// Snapshot-related reasons
+	CondReasonSnapshottingInProgress = "SnapshottingInProgress"
+	CondReasonSnapshotComplete       = "SnapshotComplete"
+	CondReasonSnapshotFailed         = "SnapshotFailed"
+	CondReasonSnapshotTimeout        = "SnapshotTimeout"
+	CondReasonInvalidRuntime         = "InvalidRuntime"
 )
 
-// SandboxReconciler reconciles a Sandbox object
+const defaultSnapshotTimeoutSeconds int64 = 300
+
 type SandboxReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
@@ -60,7 +75,6 @@ type SandboxReconciler struct {
 }
 
 
-// buildAgentContainer creates the agent sidecar container spec
 func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
 	return corev1.Container{
 		Name:  "isola-agent",
@@ -73,25 +87,24 @@ func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
 	}
 }
 
-// injectSidecar injects the agent sidecar container into the pod spec
-func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod) {
-	// Enable shared PID namespace so the agent can access main container's filesystem via /proc/<pid>/root
-	pod.Spec.ShareProcessNamespace = ptr.To(true)
-	
-	if len(pod.Spec.Containers) == 0 {
-		return
+func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
+	if len(sandboxPod.Spec.Containers) != 0 {
+		// todo: remove this assumption
+		return fmt.Errorf("Sandbox pod must have exactly one container")
 	}
 
 	// Mark the first container as the main container so the agent can discover it via /proc/<pid>/environ.
 	// Note: a single main container is supported. The agent's findMarkedProcess() returns the first PID it finds with the ISOLA_MAIN_CONTAINER marker.
-	pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, corev1.EnvVar{
+	sandboxPod.Spec.Containers[0].Env = append(sandboxPod.Spec.Containers[0].Env, corev1.EnvVar{
 		Name:  "ISOLA_MAIN_CONTAINER",
 		Value: "true",
 	})
 
 	// Add agent sidecar container
 	agentContainer := r.buildAgentContainer()
-	pod.Spec.Containers = append(pod.Spec.Containers, agentContainer)
+	sandboxPod.Spec.Containers = append(sandboxPod.Spec.Containers, agentContainer)
+
+	return nil
 }
 
 func isPodReady(pod *corev1.Pod) bool {
@@ -108,6 +121,104 @@ func isPodReady(pod *corev1.Pod) bool {
 		}
 	}
 	return false
+}
+
+func isPodTerminated(pod *corev1.Pod) bool {
+	if pod == nil {
+		return false
+	}
+	return pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed
+}
+
+func describePodContainerState(pod *corev1.Pod) string {
+	if pod == nil || len(pod.Status.ContainerStatuses) == 0 {
+		return "container status unavailable"
+	}
+
+	cs := pod.Status.ContainerStatuses[0]
+	if cs.State.Terminated != nil {
+		term := cs.State.Terminated
+		return fmt.Sprintf("terminated: reason=%s exitCode=%d message=%s", term.Reason, term.ExitCode, term.Message)
+	}
+	if cs.State.Waiting != nil {
+		wait := cs.State.Waiting
+		return fmt.Sprintf("waiting: reason=%s message=%s", wait.Reason, wait.Message)
+	}
+	if cs.State.Running != nil {
+		return "running"
+	}
+	return "unknown container state"
+}
+
+// extractContainerID extracts the container ID from a pod's container status
+// Returns the raw ID without the containerd:// prefix
+func extractContainerID(sandboxPod *corev1.Pod) (string, error) {
+	if sandboxPod == nil {
+		return "", fmt.Errorf("pod is nil")
+	}
+	if sandboxPod.Status.ContainerStatuses == nil {
+		return "", fmt.Errorf("pod has no container statuses")
+	}
+	// todo benl: currently we only allow and assume a single application container in the pod
+	if len(sandboxPod.Status.ContainerStatuses) != 1 {
+		return "", fmt.Errorf("pod has %d container statuses, expected 1", len(sandboxPod.Status.ContainerStatuses))
+	}
+	cs := sandboxPod.Status.ContainerStatuses[0]
+	// containerID format: containerd://abc123...
+	if cs.ContainerID == "" {
+		return "", fmt.Errorf("container has no containerID yet")
+	}
+	parts := strings.SplitN(cs.ContainerID, "://", 2)
+	if len(parts) != 2 {
+		return "", fmt.Errorf("unexpected containerID format: %s", cs.ContainerID)
+	}
+	return parts[1], nil
+}
+
+var (
+	ErrSandboxPodNotFound  = errors.New("sandbox pod not found")
+	ErrSandboxPodNotReady  = errors.New("sandbox pod is not ready")
+	ErrRuntimeClassMissing = errors.New("runtimeClassName is not set")
+	ErrRuntimeUnsupported  = errors.New("runtime class does not support snapshotting")
+)
+
+const (
+	ReasonFSSnapshotSupported           = "SnapshotSupported"
+	ReasonFSSnapshotPodDoesNotExist     = "PodDoesNotExist"
+	ReasonFSSnapshotRuntimeClassMissing = "RuntimeClassMissing"
+	ReasonFSSnapshotRuntimeUnsupported  = "RuntimeUnsupported"
+	ReasonFSSnapshotTargetNotFound      = "TargetNotFound"
+	ReasonFSSnapshotPodNotReady         = "SnapshotPodNotReady"
+	ReasonFSSnapshotSnapshotting        = "Snapshotting"
+)
+
+func (r *SandboxReconciler) verifySnapshottingCapability(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (string, error) {
+	if sandboxPod == nil {
+		// can't snapshot if pod doesn't exist
+		return ReasonFSSnapshotPodDoesNotExist, nil
+	}
+	if !isPodReady(sandboxPod) {
+		// can't snapshot if pod is not ready
+		return ReasonFSSnapshotPodNotReady, nil
+	}
+
+	runtimeClassName := sandboxPod.Spec.RuntimeClassName
+	if runtimeClassName == nil || *runtimeClassName == "" {
+		// default runtime class (can't assume it's snapshottable)
+		return ReasonFSSnapshotRuntimeClassMissing, nil
+	}
+
+	// 3. Resolve the RuntimeClass to check the actual Handler
+	runtimeClass := &nodev1.RuntimeClass{}
+	if err := r.Get(ctx, types.NamespacedName{Name: *runtimeClassName}, runtimeClass); err != nil {
+		return ReasonFSSnapshotTargetNotFound, err
+	}
+
+	if runtimeClass.Handler == "runsc" || runtimeClass.Handler == "gvisor" {
+		return ReasonFSSnapshotSupported, nil
+	}
+
+	return ReasonFSSnapshotRuntimeUnsupported, nil
 }
 
 func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandboxv1alpha1.Sandbox, newSandbox *sandboxv1alpha1.Sandbox, newConditions []metav1.Condition) error {
@@ -127,51 +238,62 @@ func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandbo
 }
 
 // todo benl: get sandbox if create failed with already exists?
-func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, podName string, podNamespace string) (ctrl.Result, error) {
+func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate) error {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	// todo benl reduce verbose logging
 	log.Info("Creating Pod")
 
-	// Create labels for the pod
 	labels := map[string]string{
-		"app":                       "isola-sandbox",
-		"sandbox.isola.run/id":      sandbox.Name,
+		"app":                          "isola-sandbox",
+		"sandbox.isola.run/id":         sandbox.Name,
 		"app.kubernetes.io/managed-by": "isola-operator",
 	}
 
-	// Copy sandbox-id label from Sandbox CR to pod if it exists
+	// todo benl: why this exists? ("sandbox-id")
 	if sandbox.Labels != nil {
 		if sandboxID, exists := sandbox.Labels["sandbox-id"]; exists {
 			labels["sandbox-id"] = sandboxID
 		}
 	}
 
-	// Merge with template labels if any
 	if template.Spec.PodTemplate.Labels != nil {
 		for k, v := range template.Spec.PodTemplate.Labels {
 			labels[k] = v
 		}
 	}
-
-	pod := &corev1.Pod{
+	
+	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      podName,
-			Namespace: podNamespace,
+			Name:      getSandboxPodName(sandbox),
+			Namespace: sandbox.Namespace,
 			Labels:    labels,
 		},
 		// todo benl: copy annotations as well?
 		Spec: template.Spec.PodTemplate.Spec,
 	}
 
-	// Inject agent sidecar
-	r.injectSidecar(pod)
+	// Enable shared PID namespace so the isola agent can locate the main container and access it's filesystem via /proc/<pid>/root
+	sandboxPod.Spec.ShareProcessNamespace = ptr.To(true)
 
-	// Set Pod's object owner reference to the Sandbox object
-	if err := controllerutil.SetControllerReference(sandbox, pod, r.Scheme); err != nil {
-		log.Error(err, "Failed to set controller reference")
-		return ctrl.Result{}, err
+	// todo benl: implement api to restore pod from snapshot (make sure they are compatible)
+	// if sandboxPod.Annotations == nil {
+	// 	sandboxPod.Annotations = map[string]string{}
+	// }
+
+	// sandboxPod.Annotations["dev.gvisor.tar.rootfs.upper.todobenl"] = "/tmp/rootfs-sandbox-870e5846-1766869560.tar"
+
+	if err := r.injectSidecar(sandboxPod); err != nil {
+		log.Error(err, "Failed to inject sidecar")
+		return err
 	}
 
-	if err := r.Create(ctx, pod); err != nil {
+	// Set Pod's object owner reference to the Sandbox object
+	if err := controllerutil.SetControllerReference(sandbox, sandboxPod, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference")
+		return err
+	}
+
+	if err := r.Create(ctx, sandboxPod); err != nil {
 		log.Error(err, "Failed creating Pod")
 
 		// not checking err here, best effort status patch and return the create error
@@ -191,7 +313,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 				ObservedGeneration: sandbox.Generation,
 			},
 		})
-		return ctrl.Result{}, err
+		return err
 	}
 
 	log.Info("Pod created")
@@ -216,10 +338,193 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		},
 	}); err != nil {
 		log.Error(err, "Failed to update Sandbox status")
+		return err
+	}
+
+	return nil
+}
+
+// CreateSnapshotterPod creates a privileged pod to snapshot the sandbox container's filesystem
+func (r *SandboxReconciler) CreateSnapshotterPod(
+	ctx context.Context,
+	sandbox *sandboxv1alpha1.Sandbox,
+	baseSandbox *sandboxv1alpha1.Sandbox,
+	sandboxPod *corev1.Pod,
+) (ctrl.Result, error) {
+	// todo benl: reduce linux capabilities of snapshot pod to only what is needed
+	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+
+	snapshotterPodName := getFilesystemSnapshotterPodName(sandbox)
+	nodeName := sandboxPod.Spec.NodeName
+	timestamp := time.Now().Unix()
+	snapshotPath := fmt.Sprintf("/tmp/rootfs-%s-%d.tar", sandbox.Name, timestamp)
+
+	containerID, err := extractContainerID(sandboxPod)
+	if err != nil {
+		log.Error(err, "Failed to extract container ID")
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Creating filesystem snapshotter pod", "pod", snapshotterPodName, "node", nodeName)
+
+	privileged := false
+	hostPathDirectory := corev1.HostPathDirectory
+	hostPathFile := corev1.HostPathFile
+
+	// todo benl: add labels / annotations
+	// todo benl: create a minimal image (possibly with runsc backed in with a fixed version)
+	snapshotPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      snapshotterPodName,
+			Namespace: sandbox.Namespace,
+		},
+		Spec: corev1.PodSpec{
+			NodeSelector: map[string]string{
+				"kubernetes.io/hostname": nodeName,
+			},
+			RestartPolicy: corev1.RestartPolicyNever,
+			Containers: []corev1.Container{
+				{
+					Name:    "snapshotter",
+					Image:   "debian:stable-slim",
+					Command: []string{"/usr/local/bin/runsc"},
+					Args:    []string{"--root=/run/containerd/runsc/k8s.io", "tar", "rootfs-upper", "--file", snapshotPath, containerID},
+					SecurityContext: &corev1.SecurityContext{
+						Privileged: &privileged,
+					},
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							Name:      "runsc-bin",
+							MountPath: "/usr/local/bin/runsc",
+							ReadOnly:  true,
+						},
+						{
+							Name:      "runsc-state",
+							MountPath: "/run/containerd/runsc/k8s.io",
+							ReadOnly:  true,
+						},
+						// todo benl: upload to bucket instead
+						{
+							Name:      "tmp-output",
+							MountPath: "/tmp",
+						},
+					},
+					// todo benl: adjust resources. Large files might lead to OOM since gvisor loads them to memory?
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("100m"),
+							corev1.ResourceMemory: resource.MustParse("64Mi"),
+						},
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("500m"),
+							corev1.ResourceMemory: resource.MustParse("256Mi"),
+						},
+					},
+				},
+			},
+			Volumes: []corev1.Volume{
+				{
+					Name: "runsc-bin",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/usr/bin/runsc",
+							Type: &hostPathFile,
+						},
+					},
+				},
+				{
+					Name: "runsc-state",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/run/containerd/runsc/k8s.io",
+							Type: &hostPathDirectory,
+						},
+					},
+				},
+				{
+					Name: "tmp-output",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/tmp",
+							Type: &hostPathDirectory,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Set owner reference to sandbox for cleanup
+	if err := controllerutil.SetControllerReference(sandbox, snapshotPod, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference for snapshot pod")
+		return ctrl.Result{}, err
+	}
+
+	if err := r.Create(ctx, snapshotPod); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			log.Info("Snapshotter pod already exists")
+			return ctrl.Result{}, nil
+		}
+		log.Error(err, "Failed to create snapshotter pod")
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Snapshotter pod created", "snapshotPod", snapshotterPodName)
+
+	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshottingStarted", "Snapshotter pod created")
+
+	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+		{
+			Type:               SandboxFilesystemSnapshotCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             CondReasonSnapshottingInProgress,
+			Message:            "Filesystem snapshotter in progress",
+			ObservedGeneration: sandbox.Generation,
+		},
+	}); err != nil {
+		log.Error(err, "Failed to update Sandbox status for snapshotting")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func getSandboxPodName(sandbox *sandboxv1alpha1.Sandbox) string {
+	return sandbox.Name + "-pod"
+}
+
+func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*corev1.Pod, error) {
+	podName := getSandboxPodName(sandbox)
+	podNamespace := sandbox.Namespace
+
+	sandboxPod := &corev1.Pod{}
+	if err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: podNamespace}, sandboxPod); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return sandboxPod, nil
+}
+
+func getFilesystemSnapshotterPodName(sandbox *sandboxv1alpha1.Sandbox) string {
+	return sandbox.Name + "-fssnapshotter"
+}
+
+func (r *SandboxReconciler) getFilesystemSnapshotterPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*corev1.Pod, error) {
+	podName := getFilesystemSnapshotterPodName(sandbox)
+	podNamespace := sandbox.Namespace
+
+	snapshotterPod := &corev1.Pod{}
+	if err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: podNamespace}, snapshotterPod); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return snapshotterPod, nil
 }
 
 func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.SandboxTemplate, ctrl.Result, error) {
@@ -227,7 +532,7 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 	template := &sandboxv1alpha1.SandboxTemplate{}
 
 	if err := r.Get(ctx, types.NamespacedName{Name: sandbox.Spec.TemplateRef.Name, Namespace: sandbox.Namespace}, template); err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 
 			if err := r.patchStatus(
 				ctx,
@@ -273,70 +578,57 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 	return template, ctrl.Result{}, nil
 }
 
-// +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/finalizers,verbs=update
-// +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxtemplates,verbs=get;list;watch
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
+	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	// todo benl: update sandbox condition(s) here?
+	if template == nil || template.Spec.TimeoutSeconds == nil {
+		return nil
+	}
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Sandbox object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.22.4/pkg/reconcile
-func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// todo benl: add r.RecordEvent for events (observability)
-	log := logf.FromContext(ctx).WithValues("sandbox", req.Name, "namespace", req.Namespace)
+	var startTime time.Time
+	if sandboxPod != nil && sandboxPod.Status.StartTime != nil {
+		// sandboxPod.Status.StartTime set once when the pod is first scheduled onto a node (survives pod restarts)
+		// it is probably closer to user intent, so if exists we use that time
+		log.Info("deduced start time from pod", "startTime", sandboxPod.Status.StartTime.Time)
+		startTime = sandboxPod.Status.StartTime.Time
+	} else {
+		log.Info("deduced start time from sandbox", "startTime", sandbox.ObjectMeta.CreationTimestamp.Time)
+		startTime = sandbox.ObjectMeta.CreationTimestamp.Time
+	}
 
-	log.Info("Reconciling Sandbox")
+	// todo benl: inject clock for testability instead of using .Until that uses .Now() internally
+	timeoutAt := startTime.Add(time.Duration(*template.Spec.TimeoutSeconds) * time.Second)
 
-	sandbox := &sandboxv1alpha1.Sandbox{}
-	if err := r.Get(ctx, req.NamespacedName, sandbox); err != nil {
-		if errors.IsNotFound(err) {
-			log.Info("Sandbox not found")
-			return ctrl.Result{}, nil
+	log.Info("calculated sandbox timeout", "timeoutAt", timeoutAt)
+	return &metav1.Time{Time: timeoutAt}
+}
+
+func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time, err error) {
+	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	optionalTimeoutAt = r.calculateTimeout(ctx, sandbox, template, sandboxPod)
+	if optionalTimeoutAt == nil {
+		// no timeout is configured
+		return nil, nil
+	}
+
+	// once the sandboxPod is created, timeout might change compared to the one calculated based on sandbox creation time
+	if sandbox.Status.TimeoutAt == nil || sandbox.Status.TimeoutAt.Time.Before(optionalTimeoutAt.Time) {
+		sandbox.Status.TimeoutAt = optionalTimeoutAt
+
+		if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
+			log.Error(err, "Failed to patch sandbox TimeoutAt")
+			return optionalTimeoutAt, err
 		}
-		log.Error(err, "Failed to get Sandbox")
-		return ctrl.Result{}, err
+		log.Info("persisted timeoutAt", "timeoutAt", optionalTimeoutAt)
 	}
 
-	log.Info("Sandbox found")
+	return optionalTimeoutAt, nil
+}
 
-	// todo benl: if we set finalizers, k8s will set sandbox.ObjectMeta.DeletionTimestamp for us to cleanup with finalizers. currently no finalizers
-	// relying on sandbox resource owning other objects like pods
+func (r *SandboxReconciler) reconcileSandboxStatus(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) error {
+	podReady := isPodReady(sandboxPod)
 
-	// DeepCopy to allow patching only the diff between the new sandbox and the old one
-	baseSandbox := sandbox.DeepCopy()
-
-	if sandbox.Status.Conditions == nil {
-		sandbox.Status.Conditions = []metav1.Condition{}
-	}
-
-	template, result, err := r.EnsureTemplate(ctx, sandbox, baseSandbox)
-	if err != nil {
-		return result, err
-	}
-	if template == nil {
-		return ctrl.Result{}, nil
-	}
-
-	podName := sandbox.Name + "-pod"
-	podNamespace := sandbox.Namespace
-
-	pod := &corev1.Pod{}
-	if err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: podNamespace}, pod); err != nil {
-		if errors.IsNotFound(err) {
-			return r.CreateSandboxPod(ctx, sandbox, baseSandbox, template, podName, podNamespace)
-		}
-		return ctrl.Result{}, err
-	}
-
-	podReady := isPodReady(pod)
+	var lastError error
 
 	if podReady {
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -355,8 +647,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
-			log.Error(err, "Failed to update Sandbox status")
-			return ctrl.Result{}, err
+			lastError = err
 		}
 	} else {
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -375,43 +666,354 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
-			log.Error(err, "Failed to update Sandbox status")
+			lastError = err
+		}
+	}
+
+	snapshotterPod, err := r.getFilesystemSnapshotterPod(ctx, sandbox)
+	if err != nil {
+		lastError = err
+	}
+
+	if snapshotterPod == nil {
+		return lastError
+	}
+
+	isSnapshotterPodReady := isPodReady(snapshotterPod)
+
+	if isSnapshotterPodReady {
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionTrue,
+				Reason:             ReasonFSSnapshotSnapshotting,
+				Message:            "Filesystem snapshot is being taken",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			lastError = err
+		}
+	} else {
+		// todo benl: use isPodTerminated(snapshotterPod)
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             ReasonFSSnapshotPodNotReady,
+				Message:            "Filesystem snapshotter pod is not ready yet",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			lastError = err
+		}
+	}
+
+	return lastError
+}
+
+// +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxtemplates,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=node.k8s.io,resources=runtimeclasses,verbs=get;list;watch
+func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	//todo benl: pass params by value sometimes, to avoid dereferencing nils by accident
+	// todo benl: add r.RecordEvent for events (observability)
+	log := logf.FromContext(ctx).WithValues("sandbox", req.Name, "namespace", req.Namespace)
+
+	log.Info("Reconciling Sandbox")
+
+	sandbox := &sandboxv1alpha1.Sandbox{}
+	if err := r.Get(ctx, req.NamespacedName, sandbox); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Sandbox not found")
+			return ctrl.Result{}, nil
+		}
+		log.Error(err, "Failed to get Sandbox")
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Sandbox found")
+
+	// DeepCopy to allow patching only the diff between the new sandbox and the old one
+	baseSandbox := sandbox.DeepCopy()
+
+	if sandbox.Status.Conditions == nil {
+		sandbox.Status.Conditions = []metav1.Condition{}
+	}
+
+	// todo benl: this will make the object never disappear if template doesn't exist (we can't even have a sandbox timeout without the template)
+	template, result, err := r.EnsureTemplate(ctx, sandbox, baseSandbox)
+	if err != nil {
+		return result, err
+	}
+	if template == nil {
+		return ctrl.Result{}, nil
+	}
+
+	if !sandbox.DeletionTimestamp.IsZero() {
+		log.Info("Sandbox already marked for deletion; skipping further reconciliation")
+		return ctrl.Result{}, nil
+	}
+
+	sandboxPod, err := r.getSandboxPod(ctx, sandbox)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// whether we created the pod or not, check for sandbox timeout before proceeding:
+	optionalTimeoutAt, err := r.ensureTimeout(ctx, sandbox, baseSandbox, template, sandboxPod)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if optionalTimeoutAt != nil && time.Now().After(optionalTimeoutAt.Time) {
+		log.Info("Sandbox timed out")
+		cleanupResult, cleanupDone, err := r.cleanupTimedOutSandbox(ctx, sandbox, baseSandbox, template, sandboxPod, optionalTimeoutAt.Time)
+		if err != nil {
+			return cleanupResult, err
+		}
+		if !cleanupDone {
+			return cleanupResult, nil
+		}
+
+		if err := r.Delete(ctx, sandbox); err != nil {
+			log.Error(err, "Failed to delete sandbox after cleanup")
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{}, nil
 	}
 
-	// check timeout
-	hasTimeout := template.Spec.TimeoutSeconds != nil
-	if hasTimeout {
-
-		var startTime time.Time
-		if pod.Status.StartTime != nil {
-			// pod.Status.StartTime set once when the pod is first scheduled onto a node (survives pod restarts)
-			// it is probably closer to user intent, so if exists we use that time
-			log.Info("deduced start time from pod", "startTime", pod.Status.StartTime.Time)
-			startTime = pod.Status.StartTime.Time
-		} else {
-			log.Info("deduced start time from sandbox", "startTime", sandbox.ObjectMeta.CreationTimestamp.Time)
-			startTime = sandbox.ObjectMeta.CreationTimestamp.Time
+	var requeueAfter time.Duration
+	if optionalTimeoutAt != nil {
+		requeueAfter = time.Until(optionalTimeoutAt.Time)
+		if requeueAfter <= 0 {
+			// in case of some very bad luck where the timeout shifted right after we checked for it
+			requeueAfter = time.Second
 		}
-		// todo benl: inject clock for testability instead of using .Until that uses .Now() internally
-		timeoutTimestamp := startTime.Add(time.Duration(*template.Spec.TimeoutSeconds) * time.Second)
-		timeLeft := time.Until(timeoutTimestamp)
+	} else {
+		requeueAfter = 0 // ctrl.Result{0} is effectively ctrl.Result{} (no scheduled requeue)
+	}
 
-		if timeLeft <= 0 {
-			log.Info("sandbox timed out")
-			if err := r.Delete(ctx, sandbox); err != nil {
-				log.Error(err, "Failed to delete sandbox")
-				return ctrl.Result{}, err
+	if sandboxPod == nil {
+		// we'll reconcile again once the pod is up
+		if err := r.CreateSandboxPod(ctx, sandbox, baseSandbox, template); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
+	}
+
+	if err := r.reconcileSandboxStatus(ctx, sandbox, baseSandbox, sandboxPod); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{RequeueAfter: requeueAfter}, nil
+}
+
+func (r *SandboxReconciler) cleanupTimedOutSandbox(
+	ctx context.Context,
+	sandbox *sandboxv1alpha1.Sandbox,
+	baseSandbox *sandboxv1alpha1.Sandbox,
+	template *sandboxv1alpha1.SandboxTemplate,
+	sandboxPod *corev1.Pod,
+	timeoutAt time.Time,
+) (ctrl.Result, bool, error) {
+	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+
+	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+		{
+			Type:               SandboxReadyCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             CondReasonSnapshottingInProgress,
+			Message:            "Sandbox timed out; executing shutdown policy",
+			ObservedGeneration: sandbox.Generation,
+		},
+	}); err != nil {
+		return ctrl.Result{}, false, err
+	}
+
+	if template.Spec.ShutdownPolicy == nil || template.Spec.ShutdownPolicy.Policy == sandboxv1alpha1.ShutdownPolicyDelete {
+		return ctrl.Result{}, true, nil
+	}
+
+	switch template.Spec.ShutdownPolicy.Policy {
+	case sandboxv1alpha1.ShutdownPolicySnapshotFilesystem:
+		snapshotTimeoutSeconds := defaultSnapshotTimeoutSeconds
+		if template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds != nil {
+			snapshotTimeoutSeconds = *template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds
+		}
+		deadline := timeoutAt.Add(time.Duration(snapshotTimeoutSeconds) * time.Second)
+		return r.handleFilesystemSnapshot(ctx, sandbox, baseSandbox, sandboxPod, deadline)
+	default:
+		log.Info("Unknown shutdown policy; proceeding with deletion", "policy", template.Spec.ShutdownPolicy.Policy)
+		return ctrl.Result{}, true, nil
+	}
+}
+
+func (r *SandboxReconciler) handleFilesystemSnapshot(
+	ctx context.Context,
+	sandbox *sandboxv1alpha1.Sandbox,
+	baseSandbox *sandboxv1alpha1.Sandbox,
+	sandboxPod *corev1.Pod,
+	snapshotDeadline time.Time,
+) (ctrl.Result, bool, error) {
+	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+
+	now := time.Now()
+	if now.After(snapshotDeadline) {
+		log.Info("Filesystem snapshot timed out", "deadline", snapshotDeadline)
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSnapshotTimeout,
+				Message:            "Filesystem snapshot did not complete before deadline",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	}
+
+	if sandboxPod == nil {
+		log.Info("Skipping filesystem snapshot because sandbox pod is missing")
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             ReasonFSSnapshotPodDoesNotExist,
+				Message:            "Sandbox pod no longer exists; snapshot skipped",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	}
+
+	reason, err := r.verifySnapshottingCapability(ctx, sandbox, sandboxPod)
+	if err != nil {
+		log.Error(err, "Failed to validate snapshotting support")
+		return ctrl.Result{}, false, err
+	}
+
+	if reason != ReasonFSSnapshotSupported {
+		if reason == ReasonFSSnapshotPodNotReady {
+			if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+				{
+					Type:               SandboxFilesystemSnapshotCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonSnapshottingInProgress,
+					Message:            "Waiting for sandbox pod to become ready for snapshotting",
+					ObservedGeneration: sandbox.Generation,
+				},
+			}); err != nil {
+				return ctrl.Result{}, false, err
 			}
-			return ctrl.Result{}, nil
-		} else {
-			log.Info("sandbox will time out in", "timeLeft", timeLeft)
-			return ctrl.Result{RequeueAfter: timeLeft}, nil
+			return ctrl.Result{RequeueAfter: time.Second}, false, nil
 		}
+
+		log.Info("Unable to perform filesystem snapshot", "reason", reason)
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, reason, "Unable to perform filesystem snapshot")
+
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             reason,
+				Message:            "Unable to perform filesystem snapshot",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
 	}
 
-	return ctrl.Result{}, nil
+	snapshotterPod, err := r.getFilesystemSnapshotterPod(ctx, sandbox)
+	if err != nil {
+		return ctrl.Result{}, false, err
+	}
+	if snapshotterPod == nil {
+		res, createErr := r.CreateSnapshotterPod(ctx, sandbox, baseSandbox, sandboxPod)
+		if res.RequeueAfter == 0 {
+			res.RequeueAfter = time.Second
+		}
+		return res, false, createErr
+	}
+
+	// Avoid waiting forever if we are close to the deadline.
+	if time.Now().After(snapshotDeadline) {
+		log.Info("Filesystem snapshot timed out before completion", "deadline", snapshotDeadline)
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSnapshotTimeout,
+				Message:            "Filesystem snapshot did not complete before deadline",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	}
+
+	switch snapshotterPod.Status.Phase {
+	case corev1.PodSucceeded:
+		stateDesc := describePodContainerState(snapshotterPod)
+		log.Info("Filesystem snapshot pod succeeded", "state", stateDesc)
+		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", stateDesc)
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionTrue,
+				Reason:             CondReasonSnapshotComplete,
+				Message:            fmt.Sprintf("Filesystem snapshot completed (%s)", stateDesc),
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	case corev1.PodFailed:
+		stateDesc := describePodContainerState(snapshotterPod)
+		log.Info("Filesystem snapshot pod failed", "state", stateDesc)
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", stateDesc)
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSnapshotFailed,
+				Message:            fmt.Sprintf("Filesystem snapshot pod failed (%s)", stateDesc),
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	default:
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxFilesystemSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSnapshottingInProgress,
+				Message:            "Filesystem snapshotter pod is running",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+
+		requeueAfter := time.Until(snapshotDeadline)
+		if requeueAfter <= 0 {
+			requeueAfter = time.Second
+		} else if requeueAfter > 5*time.Second {
+			requeueAfter = 5 * time.Second
+		}
+
+		return ctrl.Result{RequeueAfter: requeueAfter}, false, nil
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.

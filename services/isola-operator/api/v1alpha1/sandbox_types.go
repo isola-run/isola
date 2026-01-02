@@ -35,19 +35,11 @@ const (
 	// set when sandbox is past its timeout
 	// todo benl: necessary? helpful?
 	SandboxTimedOut SandboxConditionType = "TimedOut"
+	// Filesystem snapshotting is in progress
+	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
 )
 
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-// SandboxShutdownPolicy defines the policy for handling sandbox termination
-// +kubebuilder:validation:Enum=Delete;SnapshotFilesystem;SnapshotMemory
-type SandboxShutdownPolicy string
-
-const (
-	ShutdownPolicyDelete             SandboxShutdownPolicy = "Delete"
-	ShutdownPolicySnapshotFilesystem SandboxShutdownPolicy = "SnapshotFilesystem"
-	ShutdownPolicySnapshotMemory     SandboxShutdownPolicy = "SnapshotMemory"
-)
 
 // SandboxSpec defines the desired state of Sandbox
 type SandboxSpec struct {
@@ -58,27 +50,20 @@ type SandboxSpec struct {
 	//todo benl: figure out the best way to expose overrides in a user and etcd friendly way (I don't think that duplicating spec fields is intuitive, see what other projects do)
 }
 
+// todo benl: for now, not storing sandbox pod or snapshotter pod info anywhere in the sandbox CRD
 // SandboxStatus defines the observed state of Sandbox.
 type SandboxStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
-	// conditions represent the current state of the Sandbox resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
 	// +listType=map
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// TimeoutAt is the absolute time at which the sandbox should be considered timed out.
+	// It is set by the controller (derived from template timeout + chosen start time).
+	// +optional
+	TimeoutAt *metav1.Time `json:"timeoutAt,omitempty"`
 }
 
 // +kubebuilder:object:root=true

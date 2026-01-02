@@ -23,4 +23,5 @@ spec:
             cpu: "500m"
             memory: "256Mi"
   timeoutSeconds: 300
-  shutdownPolicy: Delete
+  shutdownPolicy:
+    policy: Delete

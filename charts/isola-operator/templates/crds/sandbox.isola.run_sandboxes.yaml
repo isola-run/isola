@@ -1,11 +1,10 @@
+---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
   name: sandboxes.sandbox.isola.run
-  labels:
-    app: isola-operator
 spec:
   group: sandbox.isola.run
   names:
@@ -75,16 +74,6 @@ spec:
             description: status defines the observed state of Sandbox
             properties:
               conditions:
-                description: |-
-                  conditions represent the current state of the Sandbox resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -143,6 +132,12 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              timeoutAt:
+                description: |-
+                  TimeoutAt is the absolute time at which the sandbox should be considered timed out.
+                  It is set by the controller (derived from template timeout + chosen start time).
+                format: date-time
+                type: string
             type: object
         required:
         - spec
