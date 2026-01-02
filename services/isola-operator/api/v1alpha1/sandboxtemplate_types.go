@@ -64,7 +64,6 @@ type ShutdownPolicy struct {
 	SnapshotTimeoutSeconds *int64 `json:"snapshotTimeoutSeconds,omitempty"`
 }
 
-
 // SandboxTemplateSpec defines the desired state of SandboxTemplate
 type SandboxTemplateSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
