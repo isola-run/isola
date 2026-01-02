@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -66,80 +67,44 @@ const (
 
 const defaultSnapshotTimeoutSeconds int64 = 300
 
-// SandboxReconciler reconciles a Sandbox object
 type SandboxReconciler struct {
 	client.Client
-	Scheme                *runtime.Scheme
-	Recorder              record.EventRecorder
-	AgentImage            string
-	SharedVolumeMountPath string
+	Scheme     *runtime.Scheme
+	Recorder   record.EventRecorder
+	AgentImage string
 }
 
-const (
-	// Shared volume name for communication between sandbox container and agent sidecar
-	sharedVolumeName = "sandbox-shared"
-	// Default mount path for shared volume
-	defaultSharedVolumeMountPath = "/sandbox-shared"
-	agentContainerName           = "isola-agent"
-)
 
-// buildAgentContainer creates the agent sidecar container spec
-func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Container {
-	mountPath := r.SharedVolumeMountPath
-	if mountPath == "" {
-		mountPath = defaultSharedVolumeMountPath
-	}
-
-	rp := corev1.ContainerRestartPolicyAlways
+func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
 	return corev1.Container{
-		Name:          "isola-agent",
-		Image:         r.AgentImage,
-		RestartPolicy: &rp,
-		Env: []corev1.EnvVar{
-			{
-				Name:  "SANDBOX_ID",
-				Value: sandboxID,
-			},
-			{
-				Name:  "SHARED_DIR",
-				Value: mountPath,
-			},
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      sharedVolumeName,
-				MountPath: mountPath,
-			},
+		Name:  "isola-agent",
+		Image: r.AgentImage,
+		// RunAsUser 0 (root) is needed to read /proc/<pid>/environ of other users' processes
+		// and to access /proc/<pid>/root when using shared PID namespace.
+		SecurityContext: &corev1.SecurityContext{
+			RunAsUser: ptr.To(int64(0)),
 		},
 	}
 }
 
-func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod, sandboxID string) {
-	mountPath := r.SharedVolumeMountPath
-	if mountPath == "" {
-		mountPath = defaultSharedVolumeMountPath
+func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
+	if len(sandboxPod.Spec.Containers) != 0 {
+		// todo: remove this assumption
+		return fmt.Errorf("Sandbox pod must have exactly one container")
 	}
 
-	sharedVolume := corev1.Volume{
-		Name: sharedVolumeName,
-		VolumeSource: corev1.VolumeSource{
-			EmptyDir: &corev1.EmptyDirVolumeSource{},
-		},
-	}
-	pod.Spec.Volumes = append(pod.Spec.Volumes, sharedVolume)
+	// Mark the first container as the main container so the agent can discover it via /proc/<pid>/environ.
+	// Note: a single main container is supported. The agent's findMarkedProcess() returns the first PID it finds with the ISOLA_MAIN_CONTAINER marker.
+	sandboxPod.Spec.Containers[0].Env = append(sandboxPod.Spec.Containers[0].Env, corev1.EnvVar{
+		Name:  "ISOLA_MAIN_CONTAINER",
+		Value: "true",
+	})
 
-	for i := range pod.Spec.Containers {
-		pod.Spec.Containers[i].VolumeMounts = append(
-			pod.Spec.Containers[i].VolumeMounts,
-			corev1.VolumeMount{
-				Name:      sharedVolumeName,
-				MountPath: mountPath,
-			},
-		)
-	}
+	// Add agent sidecar container
+	agentContainer := r.buildAgentContainer()
+	sandboxPod.Spec.Containers = append(sandboxPod.Spec.Containers, agentContainer)
 
-	agentContainer := r.buildAgentContainer(sandboxID)
-	pod.Spec.InitContainers = []corev1.Container{agentContainer}
+	return nil
 }
 
 func isPodReady(pod *corev1.Pod) bool {
@@ -296,7 +261,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			labels[k] = v
 		}
 	}
-
+	
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getSandboxPodName(sandbox),
@@ -306,6 +271,10 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		// todo benl: copy annotations as well?
 		Spec: template.Spec.PodTemplate.Spec,
 	}
+
+	// Enable shared PID namespace so the isola agent can locate the main container and access it's filesystem via /proc/<pid>/root
+	sandboxPod.Spec.ShareProcessNamespace = ptr.To(true)
+
 	// todo benl: implement api to restore pod from snapshot (make sure they are compatible)
 	// if sandboxPod.Annotations == nil {
 	// 	sandboxPod.Annotations = map[string]string{}
@@ -313,8 +282,10 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	// sandboxPod.Annotations["dev.gvisor.tar.rootfs.upper.todobenl"] = "/tmp/rootfs-sandbox-870e5846-1766869560.tar"
 
-	// Inject agent sidecar and shared volume
-	r.injectSidecar(sandboxPod, sandbox.Name)
+	if err := r.injectSidecar(sandboxPod); err != nil {
+		log.Error(err, "Failed to inject sidecar")
+		return err
+	}
 
 	// Set Pod's object owner reference to the Sandbox object
 	if err := controllerutil.SetControllerReference(sandbox, sandboxPod, r.Scheme); err != nil {
