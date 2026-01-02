@@ -13,9 +13,9 @@ def create_storage() -> ObjectStorage:
     
     Environment variables:
         STORAGE_BACKEND: "s3" or "localstack" (default: "s3")
-        S3_BUCKET: Bucket name for file uploads (required)
-        S3_ENDPOINT_URL: LocalStack endpoint URL (optional, for dev)
-        S3_REGION: AWS region (default: "us-east-1")
+        BUCKET_NAME: Bucket name for file uploads (required)
+        ENDPOINT_URL: LocalStack endpoint URL (optional, for dev)
+        REGION: AWS region (default: "us-east-1")
         AWS_ACCESS_KEY_ID: AWS access key (optional, uses default credentials if not set)
         AWS_SECRET_ACCESS_KEY: AWS secret key (optional, uses default credentials if not set)
     
@@ -23,13 +23,13 @@ def create_storage() -> ObjectStorage:
         ObjectStorage: An instance of the configured storage type
         
     Raises:
-        ValueError: If S3_BUCKET is not set or STORAGE_BACKEND is unsupported
+        ValueError: If BUCKET_NAME is not set or STORAGE_BACKEND is unsupported
     """
     storage_type_str = os.getenv("STORAGE_BACKEND", StorageType.S3.value).lower()
-    bucket = os.getenv("S3_BUCKET")
+    bucket = os.getenv("BUCKET_NAME")
     
     if not bucket:
-        raise ValueError("S3_BUCKET environment variable is required")
+        raise ValueError("BUCKET_NAME environment variable is required")
     
     try:
         storage_type = StorageType(storage_type_str)
@@ -41,8 +41,8 @@ def create_storage() -> ObjectStorage:
         )
     
     if storage_type in (StorageType.S3, StorageType.LOCALSTACK):
-        endpoint_url: Optional[str] = os.getenv("S3_ENDPOINT_URL")
-        region = os.getenv("S3_REGION", "us-east-1")
+        endpoint_url: Optional[str] = os.getenv("ENDPOINT_URL")
+        region = os.getenv("REGION", "us-east-1")
         access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
         secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
         
