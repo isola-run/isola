@@ -103,9 +103,9 @@ func (r *SandboxReconciler) clock() Clock {
 func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
 	rp := corev1.ContainerRestartPolicyAlways
 	return corev1.Container{
-		Name:  "isola-agent",
-		Image: r.AgentImage,
-		RestartPolicy: rp,
+		Name:          "isola-agent",
+		Image:         r.AgentImage,
+		RestartPolicy: &rp,
 		// RunAsUser 0 (root) is needed to read /proc/<pid>/environ of other users' processes
 		// and to access /proc/<pid>/root when using shared PID namespace.
 		SecurityContext: &corev1.SecurityContext{
@@ -287,7 +287,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			labels[k] = v
 		}
 	}
-	
+
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getSandboxPodName(sandbox),
