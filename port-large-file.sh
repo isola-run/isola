@@ -1,8 +1,8 @@
 #!/bin/bash
-SANDBOX_ID="c2acc2b4-8d18-43b0-93bb-35de2ea70cac"
+SANDBOX_ID="57ea2252-7fa8-449a-816f-d201f4b7a101"
 API_KEY="iso_sk_demo"
 BASE_URL="http://localhost:30080"
-FILE_PATH="/tmp/largefile.bin"
+FILE_PATH="/tmp/largefile.bin"  
 FILENAME="largefile.bin"
 TARGET_PATH="myfile.txt"
 

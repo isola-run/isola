@@ -791,13 +791,12 @@ async def confirm_upload(
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             # Send download request to agent
-            # The agent will download from S3, write to shared volume, and delete from S3
+            # The agent will download from S3 and write to shared volume
             response = await client.post(
                 agent_url,
                 json={
                     "download_url": download_url,
                     "path": target_path,
-                    "delete_after": True,
                 }
             )
             
@@ -812,6 +811,14 @@ async def confirm_upload(
             
             agent_response = response.json()
             logger.info(f"[CONFIRM] Successfully triggered download for sandbox {sandbox_id}: {agent_response}")
+            
+            # Delete the file from S3 after successful download
+            try:
+                await storage.delete_object(s3_key)
+                logger.info(f"[CONFIRM] Deleted S3 object: {s3_key}")
+            except Exception as e:
+                # Log the error but don't fail the request - file was successfully delivered
+                logger.warning(f"[CONFIRM] Failed to delete S3 object {s3_key}: {e}")
             
             return {
                 "success": True,
