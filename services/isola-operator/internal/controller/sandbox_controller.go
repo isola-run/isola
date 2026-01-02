@@ -82,10 +82,6 @@ type SandboxReconciler struct {
 }
 
 const (
-	// Shared volume name for communication between sandbox container and agent sidecar
-	sharedVolumeName = "sandbox-shared"
-	// Default mount path for shared volume
-	defaultSharedVolumeMountPath = "/sandbox-shared"
 	agentContainerName           = "isola-agent"
 
 	// Field index for efficient lookup of sandboxes by templateRef
@@ -103,7 +99,7 @@ func (r *SandboxReconciler) clock() Clock {
 func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
 	rp := corev1.ContainerRestartPolicyAlways
 	return corev1.Container{
-		Name:          "isola-agent",
+		Name:          agentContainerName,
 		Image:         r.AgentImage,
 		RestartPolicy: &rp,
 		// RunAsUser 0 (root) is needed to read /proc/<pid>/environ of other users' processes
@@ -115,7 +111,7 @@ func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
 }
 
 func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
-	if len(sandboxPod.Spec.Containers) != 0 {
+	if len(sandboxPod.Spec.Containers) != 1 {
 		// todo: remove this assumption
 		return fmt.Errorf("Sandbox pod must have exactly one container")
 	}
@@ -127,9 +123,9 @@ func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
 		Value: "true",
 	})
 
-	// Add agent sidecar container
+	// Add agent sidecar container as an init container
 	agentContainer := r.buildAgentContainer()
-	sandboxPod.Spec.Containers = append(sandboxPod.Spec.InitContainers, agentContainer)
+	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, agentContainer)
 	return nil
 }
 
