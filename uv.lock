@@ -372,7 +372,6 @@ dependencies = [
     { name = "kubernetes" },
     { name = "pydantic" },
     { name = "pytest-asyncio" },
-    { name = "websockets" },
 ]
 
 [package.dev-dependencies]
@@ -393,7 +392,6 @@ requires-dist = [
     { name = "kubernetes", specifier = ">=34.1.0" },
     { name = "pydantic", specifier = ">=2.12.3" },
     { name = "pytest-asyncio", specifier = ">=1.2.0" },
-    { name = "websockets", specifier = ">=15.0.1" },
 ]
 
 [package.metadata.requires-dev]
