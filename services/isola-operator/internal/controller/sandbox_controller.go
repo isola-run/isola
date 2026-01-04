@@ -26,6 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/utils/ptr"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -386,11 +387,19 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	if networkTemplate != nil {
 		sandboxPod.Spec.DNSPolicy = corev1.DNSNone
 		nameservers := networkTemplate.Spec.DNSServers
-		if len(nameservers) == 0 { // nameservers must be at least 1 https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/?utm_source=chatgpt.com#pod-dns-config
+		var dnsOptions []corev1.PodDNSConfigOption
+		if len(nameservers) == 0 { // nameservers must be at least 1 https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-dns-config
 			nameservers = []string{"127.0.0.1"} // Sink - DNS queries will fail
+			// Fast-fail options: minimize time wasted on DNS queries that will never succeed
+			dnsOptions = []corev1.PodDNSConfigOption{
+				{Name: "timeout", Value: ptr.To("1")},
+				{Name: "attempts", Value: ptr.To("1")},
+				{Name: "ndots", Value: ptr.To("1")},
+			}
 		}
 		sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{
 			Nameservers: nameservers,
+			Options:     dnsOptions,
 		}
 	}
 
