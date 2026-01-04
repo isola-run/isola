@@ -131,7 +131,7 @@ var _ = Describe("NetworkTemplate Controller", func() {
 			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
 		})
 
-		It("should set Ready=False for invalid CIDR", func() {
+		It("should reject invalid CIDR at API admission", func() {
 			name := "nt-invalid-cidr"
 
 			nt := &sandboxv1alpha1.NetworkTemplate{
@@ -140,21 +140,10 @@ var _ = Describe("NetworkTemplate Controller", func() {
 					AllowedEgress: []string{"not-a-valid-cidr"},
 				},
 			}
-			Expect(k8sClient.Create(ctx, nt)).To(Succeed())
-			defer deleteNetworkTemplate(name)
-
-			Eventually(func() error {
-				return k8sCache.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, &sandboxv1alpha1.NetworkTemplate{})
-			}, "5s", "100ms").Should(Succeed())
-
-			_, err := doReconcile(name)
-			Expect(err).NotTo(HaveOccurred())
-
-			nt = getNetworkTemplate(name)
-			readyCond := meta.FindStatusCondition(nt.Status.Conditions, string(sandboxv1alpha1.NetworkTemplateReady))
-			Expect(readyCond).NotTo(BeNil())
-			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(readyCond.Reason).To(Equal(CondReasonNetworkTemplateInvalid))
+			// CRD validation rejects invalid CIDRs at admission
+			err := k8sClient.Create(ctx, nt)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Invalid value"))
 		})
 
 		It("should be idempotent across multiple reconciles", func() {

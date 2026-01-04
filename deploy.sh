@@ -7,12 +7,11 @@ ROOT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 MINIKUBE_BIN=${MINIKUBE_BIN:-minikube}
 KUBECTL_BIN=${KUBECTL_BIN:-kubectl}
 HELM_BIN=${HELM_BIN:-helm}
-NAMESPACE="${NAMESPACE:-isola-sandboxes}"
+NAMESPACE="${NAMESPACE:-isola-system}"
 SANDBOX_NAMESPACE="${SANDBOX_NAMESPACE:-isola-sandboxes}"
 
-if [[ "${NAMESPACE}" != "${SANDBOX_NAMESPACE}" ]]; then
-  echo "warning: NAMESPACE=${NAMESPACE} installs controller/operator there; sandbox resources go to SANDBOX_NAMESPACE=${SANDBOX_NAMESPACE}." >&2
-fi
+echo "Deploying control plane to: ${NAMESPACE}"
+echo "Sandbox pods will run in: ${SANDBOX_NAMESPACE}"
 
 require_cmd() {
   local bin="$1"

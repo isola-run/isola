@@ -101,16 +101,9 @@ const (
 
 	NetworkTemplateLabelKey = "sandbox.isola.run/network-template"
 
-	defaultDNSNamespace = "kube-system"
-
 	// the port used by the isola-agent sidecar
 	isolaAgentIngressPort = 8080
 )
-
-// defaultDNSPodLabels are the default labels to match cluster DNS pods
-var defaultDNSPodLabels = map[string]string{
-	"k8s-app": "kube-dns",
-}
 
 func GetNetworkPolicyName(templateName string) string {
 	return templateName + NetworkPolicySuffix
@@ -174,6 +167,15 @@ func BuildNetworkPolicy(
 		egressCIDRs = append(egressCIDRs, egressCIDR{Prefix: prefix, Except: except})
 	}
 
+	var dnsAddrs []netip.Addr
+	for _, ipStr := range spec.DNSServers {
+		addr, err := cidr.ParseDNSServerIP(ipStr)
+		if err != nil {
+			return nil, err
+		}
+		dnsAddrs = append(dnsAddrs, addr)
+	}
+
 	np := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      GetNetworkPolicyName(template.Name),
@@ -198,9 +200,7 @@ func BuildNetworkPolicy(
 	}
 
 	np.Spec.Ingress = buildIngressRules(ingressPrefixes, isolaGatewayNamespace, isolaGatewayLabels)
-
-	allowClusterDNS := spec.AllowClusterDNS != nil && *spec.AllowClusterDNS
-	np.Spec.Egress = buildEgressRules(egressCIDRs, allowClusterDNS, spec.DNSSelector)
+	np.Spec.Egress = buildEgressRules(egressCIDRs, dnsAddrs)
 
 	return np, nil
 }
@@ -259,17 +259,16 @@ func buildAllowIsolaGatewayIngressRule(controllerNamespace string, controllerLab
 }
 
 // buildEgressRules creates NetworkPolicy egress rules from pre-computed CIDRs.
-// If allowClusterDNS is true, adds a rule to allow DNS traffic to cluster DNS.
+// If dnsServers is non-empty, adds a rule to allow DNS traffic to those IPs.
 // Accepts fully validated and computed egressCIDRs from BuildNetworkPolicy.
 func buildEgressRules(
 	egressCIDRs []egressCIDR,
-	allowClusterDNS bool,
-	dnsSelector *sandboxv1alpha1.DNSSelector,
+	dnsServers []netip.Addr,
 ) []networkingv1.NetworkPolicyEgressRule {
 	var rules []networkingv1.NetworkPolicyEgressRule
 
-	if allowClusterDNS {
-		rules = append(rules, buildAllowClusterDNSEgressRule(dnsSelector))
+	if len(dnsServers) > 0 {
+		rules = append(rules, buildDNSServerEgressRule(dnsServers))
 	}
 
 	for _, ecidr := range egressCIDRs {
@@ -292,36 +291,29 @@ func buildEgressRules(
 	return rules
 }
 
-func buildAllowClusterDNSEgressRule(dnsSelector *sandboxv1alpha1.DNSSelector) networkingv1.NetworkPolicyEgressRule {
-	namespace := defaultDNSNamespace
-	podLabels := defaultDNSPodLabels
-
-	if dnsSelector != nil {
-		if dnsSelector.Namespace != "" {
-			namespace = dnsSelector.Namespace
-		}
-		if len(dnsSelector.PodLabels) > 0 {
-			podLabels = dnsSelector.PodLabels
-		}
-	}
-
+// buildDNSServerEgressRule creates an egress rule allowing traffic to DNS server IPs on port 53.
+func buildDNSServerEgressRule(dnsServers []netip.Addr) networkingv1.NetworkPolicyEgressRule {
 	udpProtocol := corev1.ProtocolUDP
 	tcpProtocol := corev1.ProtocolTCP
 	port53 := intstr.FromInt(53)
 
-	return networkingv1.NetworkPolicyEgressRule{
-		To: []networkingv1.NetworkPolicyPeer{
-			{
-				NamespaceSelector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"kubernetes.io/metadata.name": namespace,
-					},
-				},
-				PodSelector: &metav1.LabelSelector{
-					MatchLabels: podLabels,
-				},
+	var peers []networkingv1.NetworkPolicyPeer
+	for _, addr := range dnsServers {
+		// Convert IP to /32 (IPv4) or /128 (IPv6) CIDR
+		bits := 32
+		if addr.Is6() {
+			bits = 128
+		}
+		prefix := netip.PrefixFrom(addr, bits)
+		peers = append(peers, networkingv1.NetworkPolicyPeer{
+			IPBlock: &networkingv1.IPBlock{
+				CIDR: prefix.String(),
 			},
-		},
+		})
+	}
+
+	return networkingv1.NetworkPolicyEgressRule{
+		To: peers,
 		Ports: []networkingv1.NetworkPolicyPort{
 			{Protocol: &udpProtocol, Port: &port53},
 			{Protocol: &tcpProtocol, Port: &port53},

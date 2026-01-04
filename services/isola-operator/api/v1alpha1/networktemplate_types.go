@@ -39,7 +39,6 @@ type NetworkTemplateSpec struct {
 	// AllowedIngress is a list of CIDRs allowed to connect to the sandbox (inbound traffic).
 	// If empty, all ingress traffic is blocked (default-deny) unless some other NetworkPolicy in the cluster allows traffic.
 	// todo benl: consider removing AllowedIngress
-	// +kubebuilder:validation:UniqueItems=true
 	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$`
 	// +optional
 	AllowedIngress []string `json:"allowedIngress,omitempty"`
@@ -48,35 +47,19 @@ type NetworkTemplateSpec struct {
 	// If empty, all egress traffic is blocked (default-deny) unless some other NetworkPolicy in the cluster allows traffic.
 	// Risky IPs (cloud metadata 169.254.0.0/16, IPv6 link-local fe80::/10) are automatically
 	// blocked when the specified CIDR would otherwise allow them.
-	// +kubebuilder:validation:UniqueItems=true
 	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$`
 	// +optional
 	AllowedEgress []string `json:"allowedEgress,omitempty"`
 
-	// AllowClusterDNS allows the sandbox to resolve DNS names via the cluster DNS server.
-	// When true, egress to the cluster DNS service on port 53 (UDP/TCP) is allowed.
-	// Uses DNSSelector to target DNS pods (defaults to k8s-app=kube-dns in kube-system).
+	// DNSServers is a list of DNS server IP addresses the sandbox can use.
+	// When specified, egress to these IPs on port 53 (UDP/TCP) is allowed,
+	// and the pod is configured with dnsPolicy: None using these as nameservers.
+	// If empty (or not specified), DNS is not available (sandbox is fully isolated from DNS).
+	// MaxItems=3 because k8s allow specifying at most 3 nameservers https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/?utm_source=chatgpt.com#pod-dns-config
+	// +kubebuilder:validation:MaxItems=3
+	// +kubebuilder:validation:XValidation:rule="self.size() == 0 || self.all(s, isIP(s))",message="dnsServers must be valid IPv4/IPv6 addresses"
 	// +optional
-	// +kubebuilder:default=false
-	AllowClusterDNS *bool `json:"allowClusterDNS,omitempty"`
-
-	// DNSSelector specifies how to select DNS pods when AllowClusterDNS is true.
-	// If not specified, defaults to namespace=kube-system with label k8s-app=kube-dns.
-	// +optional
-	DNSSelector *DNSSelector `json:"dnsSelector,omitempty"`
-}
-
-// DNSSelector specifies the namespace and pod labels for cluster DNS.
-type DNSSelector struct {
-	// Namespace is the namespace where DNS pods run.
-	// +kubebuilder:default="kube-system"
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
-
-	// PodLabels are the labels to match DNS pods.
-	// Common values: {"k8s-app": "kube-dns"} or {"app.kubernetes.io/name": "coredns"}
-	// +optional
-	PodLabels map[string]string `json:"podLabels,omitempty"`
+	DNSServers []string `json:"dnsServers,omitempty"`
 }
 
 // NetworkTemplateStatus defines the observed state of NetworkTemplate.

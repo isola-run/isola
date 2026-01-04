@@ -378,6 +378,22 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	// sandboxPod.Annotations["dev.gvisor.tar.rootfs.upper.todobenl"] = "/tmp/rootfs-sandbox-870e5846-1766869560.tar"
 
+	// todo benl: make sure networkTemplate is never nil
+	// Configure DNS for network-isolated sandboxes.
+	// Always set dnsPolicy: None to prevent cluster DNS access.
+	// When DNSServers is empty, use 127.0.0.1 as a sink (DNS won't work - full isolation).
+	// Note: Kubernetes requires at least one nameserver when dnsPolicy is None.
+	if networkTemplate != nil {
+		sandboxPod.Spec.DNSPolicy = corev1.DNSNone
+		nameservers := networkTemplate.Spec.DNSServers
+		if len(nameservers) == 0 { // nameservers must be at least 1 https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/?utm_source=chatgpt.com#pod-dns-config
+			nameservers = []string{"127.0.0.1"} // Sink - DNS queries will fail
+		}
+		sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{
+			Nameservers: nameservers,
+		}
+	}
+
 	// Inject agent sidecar and shared volume
 	r.injectSidecar(sandboxPod, sandbox.Name)
 
