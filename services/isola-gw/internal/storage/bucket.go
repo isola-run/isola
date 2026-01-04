@@ -31,37 +31,52 @@ func NewBucketWrapper(bucket *blob.Bucket, bucketName string) (*BucketWrapper, e
 
 	// Initialize S3 client for presigned URLs
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		// Try to load with custom credentials if provided
-		accessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
-		secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
-		region := os.Getenv("REGION")
-		if region == "" {
-			region = "us-east-1"
-		}
+	
+	// Get configuration from environment
+	accessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
+	secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+	region := os.Getenv("REGION")
+	if region == "" {
+		region = "us-east-1"
+	}
+	endpointURL := os.Getenv("ENDPOINT_URL")
 
-		if accessKeyID != "" && secretAccessKey != "" {
-			cfg = aws.Config{
-				Region: region,
-				Credentials: credentials.NewStaticCredentialsProvider(
-					accessKeyID,
-					secretAccessKey,
-					"",
-				),
-			}
-		} else {
+	var cfg aws.Config
+	var err error
+
+	// If credentials are provided, use them explicitly
+	if accessKeyID != "" && secretAccessKey != "" {
+		cfg = aws.Config{
+			Region: region,
+			Credentials: credentials.NewStaticCredentialsProvider(
+				accessKeyID,
+				secretAccessKey,
+				"",
+			),
+		}
+	} else {
+		// Try to load default config
+		cfg, err = config.LoadDefaultConfig(ctx, config.WithRegion(region))
+		if err != nil {
 			return nil, fmt.Errorf("failed to load AWS config: %w", err)
 		}
 	}
 
-	// Check for custom endpoint (LocalStack)
-	endpointURL := os.Getenv("ENDPOINT_URL")
+	// Set custom endpoint (LocalStack) if provided
 	if endpointURL != "" {
 		cfg.BaseEndpoint = aws.String(endpointURL)
 	}
 
-	wrapper.s3Client = s3.NewFromConfig(cfg)
+	// Create S3 client with path-style addressing for LocalStack
+	var s3Options []func(*s3.Options)
+	if endpointURL != "" {
+		// Force path-style addressing for LocalStack (required for custom endpoints)
+		s3Options = append(s3Options, func(o *s3.Options) {
+			o.UsePathStyle = true
+		})
+	}
+
+	wrapper.s3Client = s3.NewFromConfig(cfg, s3Options...)
 
 	return wrapper, nil
 }
