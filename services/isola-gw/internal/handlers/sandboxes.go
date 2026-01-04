@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/models"
 )
 
@@ -28,10 +29,10 @@ func (h *Handler) ListSandboxes(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// List pods from Kubernetes
-	pods, err := h.k8sManager.ListPods(ctx, nil)
+	// Get all sandboxes
+	allSandboxes, err := h.listAllSandboxes(ctx)
 	if err != nil {
-		log.Printf("Failed to list pods: %v", err)
+		log.Printf("Failed to list sandboxes: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "InternalServerError",
 			Message: "Failed to list sandboxes",
@@ -39,33 +40,18 @@ func (h *Handler) ListSandboxes(c *gin.Context) {
 		return
 	}
 
-	// Convert pods to sandboxes
-	items := make([]models.Sandbox, 0)
-	for _, podData := range pods {
-		sandboxID, ok := podData["sandbox_id"].(string)
-		if !ok || sandboxID == "" {
-			continue
-		}
-
-		sandbox, err := h.getSandboxFromK8s(ctx, sandboxID)
-		if err != nil {
-			log.Printf("Failed to get sandbox %s: %v", sandboxID, err)
-			continue
-		}
-
-		if sandbox == nil {
-			continue
-		}
-
-		// Filter by state if specified
+	// Filter by state if specified
+	// TODO: __OMER__ add filter to list function to avoid second iteration
+	items := make([]models.Sandbox, 0, len(allSandboxes))
+	for _, sandbox := range allSandboxes {
 		if params.State != nil && sandbox.State != *params.State {
 			continue
 		}
-
-		items = append(items, *sandbox)
+		items = append(items, sandbox)
 	}
 
 	// Apply pagination
+	// TODO: __OMER__
 	total := len(items)
 	start := params.Offset
 	if start > total {
@@ -144,7 +130,7 @@ func (h *Handler) GetSandbox(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	sandbox, err := h.getSandboxFromK8s(ctx, sandboxID)
+	sandbox, err := h.getSandbox(ctx, sandboxID)
 	if err != nil {
 		log.Printf("Failed to get sandbox %s: %v", sandboxID, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
@@ -196,36 +182,108 @@ func (h *Handler) TerminateSandbox(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// getSandboxFromK8s fetches sandbox details from Kubernetes-api
-// TODO: __OMER__ use informer
-func (h *Handler) getSandboxFromK8s(ctx context.Context, sandboxID string) (*models.Sandbox, error) {
-	state, _, errorReason, name := h.k8sManager.GetSandboxCRStatus(ctx, sandboxID)
-	if errorReason != nil && *errorReason == "Sandbox not found" {
-		return nil, nil
+// sandboxCRToModel converts a Sandbox CR (unstructured) to a Sandbox model
+func (h *Handler) sandboxCRToModel(cr *unstructured.Unstructured) *models.Sandbox {
+	metadata, found, _ := unstructured.NestedMap(cr.Object, "metadata")
+	if !found {
+		return nil
 	}
 
-	if state == nil {
-		return nil, nil
+	// Get sandbox ID from labels
+	labels, _ := metadata["labels"].(map[string]interface{})
+	sandboxID, ok := labels["sandbox-id"].(string)
+	if !ok || sandboxID == "" {
+		return nil
 	}
 
-	sandboxName := sandboxID[:min(8, len(sandboxID))]
-	if name != nil {
-		sandboxName = *name
-	} else {
-		sandboxName = "sandbox-" + sandboxName
+	// Get name from annotation or fallback to CR name
+	var sandboxName string
+	annotations, _ := metadata["annotations"].(map[string]interface{})
+	if annotations != nil {
+		if nameVal, ok := annotations["isola.run/sandbox-name"].(string); ok {
+			sandboxName = nameVal
+		}
+	}
+	if sandboxName == "" {
+		if nameVal, ok := metadata["name"].(string); ok {
+			sandboxName = nameVal
+		} else {
+			sandboxName = "sandbox-" + sandboxID[:min(8, len(sandboxID))]
+		}
 	}
 
-	desiredState := models.SandboxState(*state)
+	status, found, _ := unstructured.NestedMap(cr.Object, "status")
+	state := models.SandboxStatePending
+	var errorReason *string
+
+	if found {
+		// Check conditions for state
+		conditions, found, _ := unstructured.NestedSlice(status, "conditions")
+		if found {
+			for _, cond := range conditions {
+				condMap, ok := cond.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				condType, _ := condMap["type"].(string)
+				condStatus, _ := condMap["status"].(string)
+				if condType == "Ready" {
+					if condStatus == "True" {
+						state = models.SandboxStateRunning
+					}
+					break
+				}
+				if condType == "TimedOut" && condStatus == "True" {
+					state = models.SandboxStateStopped
+					break
+				}
+			}
+		}
+	}
+
+	desiredState := state
 	return &models.Sandbox{
 		ID:           sandboxID,
 		Name:         sandboxName,
-		State:        models.SandboxState(*state),
+		State:        state,
 		DesiredState: &desiredState,
 		Env:          make(map[string]string),
 		Labels:       make(map[string]string),
 		ErrorReason:  errorReason,
 		CreatedAt:    time.Now().UTC(), // TODO: get actual creation time from CR
-	}, nil
+	}
+}
+
+// getSandbox gets a single sandbox by ID
+func (h *Handler) getSandbox(ctx context.Context, sandboxID string) (*models.Sandbox, error) {
+	cr, err := h.k8sManager.GetSandboxCR(ctx, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+
+	if cr == nil {
+		return nil, nil
+	}
+
+	return h.sandboxCRToModel(cr), nil
+}
+
+// listAllSandboxes lists all sandboxes
+func (h *Handler) listAllSandboxes(ctx context.Context) ([]models.Sandbox, error) {
+	sandboxCRs, err := h.k8sManager.ListSandboxCRs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	sandboxes := make([]models.Sandbox, 0, len(sandboxCRs))
+	for _, cr := range sandboxCRs {
+		sandbox := h.sandboxCRToModel(cr)
+		if sandbox != nil {
+			sandboxes = append(sandboxes, *sandbox)
+		}
+	}
+
+	return sandboxes, nil
 }
 
 func (h *Handler) handleSandboxCreation(ctx context.Context, tenantID, sandboxID string, req models.CreateSandboxRequest, autoStart bool) {
