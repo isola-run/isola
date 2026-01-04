@@ -33,8 +33,8 @@ func NewBucketWrapper(bucket *blob.Bucket, bucketName string) (*BucketWrapper, e
 	ctx := context.Background()
 	
 	// Get configuration from environment
-	accessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
-	secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+	accessKeyID := os.Getenv("ACCESS_KEY_ID")
+	secretAccessKey := os.Getenv("SECRET_KEY_ID")
 	region := os.Getenv("REGION")
 	if region == "" {
 		region = "us-east-1"

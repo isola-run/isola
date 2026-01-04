@@ -77,11 +77,11 @@ spec:
           value: {{ .Values.storage.endpointUrl | quote }}
         {{- end }}
         {{- if .Values.storage.accessKeyId }}
-        - name: AWS_ACCESS_KEY_ID
+        - name: ACCESS_KEY_ID
           value: {{ .Values.storage.accessKeyId | quote }}
         {{- end }}
         {{- if .Values.storage.secretAccessKey }}
-        - name: AWS_SECRET_ACCESS_KEY
+        - name: SECRET_KEY_ID
           value: {{ .Values.storage.secretAccessKey | quote }}
         {{- end }}
         {{- end }}
