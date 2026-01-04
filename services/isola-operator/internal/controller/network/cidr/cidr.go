@@ -23,16 +23,16 @@ import (
 
 // BlockedV4 are IPv4 prefixes that sandboxes should never reach via CIDR-based rules.
 var BlockedV4 = []netip.Prefix{
-	netip.MustParsePrefix("10.0.0.0/8"),
-	netip.MustParsePrefix("172.16.0.0/12"),
-	netip.MustParsePrefix("192.168.0.0/16"),
-	netip.MustParsePrefix("169.254.0.0/16"), // Link-local (includes cloud metadata 169.254.169.254)
+	netip.MustParsePrefix("10.0.0.0/8"),      // RFC 1918: 10.0.0.0 - 10.255.255.255 (Class A private)
+	netip.MustParsePrefix("172.16.0.0/12"),   // RFC 1918: 172.16.0.0 - 172.31.255.255 (Class B private)
+	netip.MustParsePrefix("192.168.0.0/16"),  // RFC 1918: 192.168.0.0 - 192.168.255.255 (Class C private)
+	netip.MustParsePrefix("169.254.0.0/16"),  // RFC 3927: Link-local (includes cloud metadata 169.254.169.254)
 }
 
 // BlockedV6 are IPv6 prefixes that sandboxes should never reach via CIDR-based rules.
 var BlockedV6 = []netip.Prefix{
-	netip.MustParsePrefix("fc00::/7"),  // Unique Local Address (ULA)
-	netip.MustParsePrefix("fe80::/10"), // Link-local
+	netip.MustParsePrefix("fc00::/7"),  // RFC 4193: Unique Local Address (ULA) - IPv6 equivalent of RFC 1918
+	netip.MustParsePrefix("fe80::/10"), // RFC 4291: Link-local - auto-configured addresses for local network
 }
 
 // ComputeExcept returns the list of blocked CIDRs to exclude from allowed in a NetworkPolicy.
