@@ -39,24 +39,6 @@ spec:
           spec:
             description: spec defines the desired state of SandboxTemplate
             properties:
-              network:
-                description: |-
-                  todo benl: is this the right place for it? should we allow / ready to change this policy at runtime?
-                  Network configures network isolation and limits
-                properties:
-                  allowedIncoming:
-                    description: AllowedIncoming is a list of CIDRs allowed to connect
-                      to the sandbox
-                    items:
-                      type: string
-                    type: array
-                  allowedOutgoing:
-                    description: AllowedOutgoing is a list of CIDRs the sandbox is
-                      allowed to connect to
-                    items:
-                      type: string
-                    type: array
-                type: object
               podTemplate:
                 description: |-
                   PodTemplate describes the pod that will be created to run the sandbox.
@@ -94,9 +76,6 @@ spec:
                     format: int64
                     minimum: 1
                     type: integer
-                required:
-                - policy
-                - snapshotTimeoutSeconds
                 type: object
               timeoutSeconds:
                 description: TimeoutSeconds defines how long the sandbox runs before

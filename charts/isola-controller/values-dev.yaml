@@ -6,6 +6,9 @@ image:
 
 logLevel: debug
 
+# Namespace for sandbox pods
+sandboxNamespace: isola-sandboxes
+
 nodePort:
   enabled: true
 

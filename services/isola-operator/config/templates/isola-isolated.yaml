@@ -1,0 +1,18 @@
+# todo benl: fix
+
+# isola-isolated NetworkTemplate
+# Default secure template that denies all external traffic.
+# Controller ingress on port 8080 is always allowed by the NetworkPolicy builder.
+# This template is required for secure-by-default behavior - sandboxes without
+# an explicit network config reference this template.
+apiVersion: sandbox.isola.run/v1alpha1
+kind: NetworkTemplate
+metadata:
+  name: isola-isolated
+  labels:
+    app.kubernetes.io/managed-by: isola-operator
+    app.kubernetes.io/component: network-template
+    isola.run/builtin: "true"
+spec: {}
+  # Empty spec = deny all traffic (secure default)
+  # The NetworkPolicy builder always adds controller ingress on port 8080

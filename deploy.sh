@@ -7,6 +7,12 @@ ROOT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 MINIKUBE_BIN=${MINIKUBE_BIN:-minikube}
 KUBECTL_BIN=${KUBECTL_BIN:-kubectl}
 HELM_BIN=${HELM_BIN:-helm}
+NAMESPACE="${NAMESPACE:-isola-sandboxes}"
+SANDBOX_NAMESPACE="${SANDBOX_NAMESPACE:-isola-sandboxes}"
+
+if [[ "${NAMESPACE}" != "${SANDBOX_NAMESPACE}" ]]; then
+  echo "warning: NAMESPACE=${NAMESPACE} installs controller/operator there; sandbox resources go to SANDBOX_NAMESPACE=${SANDBOX_NAMESPACE}." >&2
+fi
 
 require_cmd() {
   local bin="$1"
@@ -84,10 +90,10 @@ echo "Creating S3 bucket (if missing)..."
 echo "Deploying isola-operator with Helm..."
 # todo: we should find a proper solution to that:
 echo "Helm doesn't override existing CRDs. For dev, manually delete isola CRDs..."
-"${KUBECTL_BIN}" delete crd sandboxes.sandbox.isola.run sandboxtemplates.sandbox.isola.run >/dev/null 2>&1 || true
+"${KUBECTL_BIN}" delete crd sandboxes.sandbox.isola.run sandboxtemplates.sandbox.isola.run networktemplates.sandbox.isola.run >/dev/null 2>&1 || true
 "${HELM_BIN}" upgrade --install isola-operator charts/isola-operator \
   -f charts/isola-operator/values-dev.yaml \
-  -n isola-control-plane \
+  -n "${NAMESPACE}" \
   --create-namespace \
   --wait
 "${KUBECTL_BIN}" wait --for=condition=Established --timeout=90s crd/sandboxes.sandbox.isola.run crd/sandboxtemplates.sandbox.isola.run
@@ -95,16 +101,17 @@ echo "Helm doesn't override existing CRDs. For dev, manually delete isola CRDs..
 echo "Deploying isola-controller with Helm..."
 "${HELM_BIN}" upgrade --install isola-controller charts/isola-controller \
   -f charts/isola-controller/values-dev.yaml \
-  -n isola-control-plane \
+  --set sandboxNamespace="${SANDBOX_NAMESPACE}" \
+  -n "${NAMESPACE}" \
   --create-namespace \
   --wait
 
 # Force pod restart to pick up the new images
 echo "Restarting deployments to pick up new images..."
-"${KUBECTL_BIN}" rollout restart deployment/isola-operator -n isola-control-plane
-"${KUBECTL_BIN}" rollout restart deployment/isola-controller -n isola-control-plane
+"${KUBECTL_BIN}" rollout restart deployment/isola-operator -n "${NAMESPACE}"
+"${KUBECTL_BIN}" rollout restart deployment/isola-controller -n "${NAMESPACE}"
 
 # Wait for deployments
 echo "Waiting for deployments to be ready..."
-"${KUBECTL_BIN}" rollout status deployment/isola-operator -n isola-control-plane --timeout=180s
-"${KUBECTL_BIN}" rollout status deployment/isola-controller -n isola-control-plane --timeout=180s
+"${KUBECTL_BIN}" rollout status deployment/isola-operator -n "${NAMESPACE}" --timeout=180s
+"${KUBECTL_BIN}" rollout status deployment/isola-controller -n "${NAMESPACE}" --timeout=180s

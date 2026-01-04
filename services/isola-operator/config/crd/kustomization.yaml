@@ -4,6 +4,7 @@
 resources:
 - bases/sandbox.isola.run_sandboxes.yaml
 - bases/sandbox.isola.run_sandboxtemplates.yaml
+- bases/sandbox.isola.run_networktemplates.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

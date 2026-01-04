@@ -180,6 +180,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// SandboxReconciler manages Sandbox resources.
 	if err := (&controller.SandboxReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
@@ -187,6 +188,19 @@ func main() {
 		Clock:      controller.RealClock{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
+		os.Exit(1)
+	}
+
+	// NetworkTemplateReconciler manages the lifecycle for NetworkTemplates.
+	// It creates/updates policies and sets the Ready condition that SandboxReconciler checks.
+	// IsolaGatewayNamespace/IsolaGatewayLabels can be set explicitly for multi-namespace deployments.
+	if err := (&controller.NetworkTemplateReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		// IsolaGatewayNamespace: "", // Defaults to NetworkTemplate's namespace
+		// IsolaGatewayLabels: nil,   // Defaults to {"app.kubernetes.io/name": "isola-controller"}
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "NetworkTemplate")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

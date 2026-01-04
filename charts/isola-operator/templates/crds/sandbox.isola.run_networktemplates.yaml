@@ -1,0 +1,436 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: networktemplates.sandbox.isola.run
+spec:
+  group: sandbox.isola.run
+  names:
+    kind: NetworkTemplate
+    listKind: NetworkTemplateList
+    plural: networktemplates
+    singular: networktemplate
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          NetworkTemplate defines network isolation rules that can be shared across multiple Sandboxes.
+          When a Sandbox references a NetworkTemplate, a Kubernetes NetworkPolicy is created that selects
+          pods with the label sandbox.isola.run/network-template={template-name}.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the network isolation rules
+            properties:
+              allowClusterDNS:
+                default: false
+                description: |-
+                  AllowClusterDNS allows the sandbox to resolve DNS names via the cluster DNS server.
+                  When true, egress to the cluster DNS service on port 53 (UDP/TCP) is allowed.
+                  Uses DNSSelector to target DNS pods (defaults to k8s-app=kube-dns in kube-system).
+                type: boolean
+              allowedEgress:
+                description: |-
+                  AllowedEgress is a list of CIDRs the sandbox is allowed to connect to (outbound traffic).
+                  If empty, all egress traffic is blocked (default-deny).
+                  Risky IPs (cloud metadata 169.254.0.0/16, IPv6 link-local fe80::/10) are automatically
+                  blocked when the specified CIDR would otherwise allow them.
+                items:
+                  type: string
+                type: array
+              allowedEgressPeers:
+                description: |-
+                  AllowedEgressPeers specifies pod-based egress destinations using K8s NetworkPolicyPeer.
+                  These are in addition to any CIDR-based rules in AllowedEgress.
+                  See: https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#networkpolicypeer-v1-networking-k8s-io
+                items:
+                  description: |-
+                    NetworkPolicyPeer describes a peer to allow traffic to/from. Only certain combinations of
+                    fields are allowed
+                  properties:
+                    ipBlock:
+                      description: |-
+                        ipBlock defines policy on a particular IPBlock. If this field is set then
+                        neither of the other fields can be.
+                      properties:
+                        cidr:
+                          description: |-
+                            cidr is a string representing the IPBlock
+                            Valid examples are "192.168.1.0/24" or "2001:db8::/64"
+                          type: string
+                        except:
+                          description: |-
+                            except is a slice of CIDRs that should not be included within an IPBlock
+                            Valid examples are "192.168.1.0/24" or "2001:db8::/64"
+                            Except values will be rejected if they are outside the cidr range
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - cidr
+                      type: object
+                    namespaceSelector:
+                      description: |-
+                        namespaceSelector selects namespaces using cluster-scoped labels. This field follows
+                        standard label selector semantics; if present but empty, it selects all namespaces.
+
+                        If podSelector is also set, then the NetworkPolicyPeer as a whole selects
+                        the pods matching podSelector in the namespaces selected by namespaceSelector.
+                        Otherwise it selects all pods in the namespaces selected by namespaceSelector.
+                      properties:
+                        matchExpressions:
+                          description: matchExpressions is a list of label selector
+                            requirements. The requirements are ANDed.
+                          items:
+                            description: |-
+                              A label selector requirement is a selector that contains values, a key, and an operator that
+                              relates the key and values.
+                            properties:
+                              key:
+                                description: key is the label key that the selector
+                                  applies to.
+                                type: string
+                              operator:
+                                description: |-
+                                  operator represents a key's relationship to a set of values.
+                                  Valid operators are In, NotIn, Exists and DoesNotExist.
+                                type: string
+                              values:
+                                description: |-
+                                  values is an array of string values. If the operator is In or NotIn,
+                                  the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                  the values array must be empty. This array is replaced during a strategic
+                                  merge patch.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - key
+                            - operator
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                            map is equivalent to an element of matchExpressions, whose key field is "key", the
+                            operator is "In", and the values array contains only "value". The requirements are ANDed.
+                          type: object
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    podSelector:
+                      description: |-
+                        podSelector is a label selector which selects pods. This field follows standard label
+                        selector semantics; if present but empty, it selects all pods.
+
+                        If namespaceSelector is also set, then the NetworkPolicyPeer as a whole selects
+                        the pods matching podSelector in the Namespaces selected by NamespaceSelector.
+                        Otherwise it selects the pods matching podSelector in the policy's own namespace.
+                      properties:
+                        matchExpressions:
+                          description: matchExpressions is a list of label selector
+                            requirements. The requirements are ANDed.
+                          items:
+                            description: |-
+                              A label selector requirement is a selector that contains values, a key, and an operator that
+                              relates the key and values.
+                            properties:
+                              key:
+                                description: key is the label key that the selector
+                                  applies to.
+                                type: string
+                              operator:
+                                description: |-
+                                  operator represents a key's relationship to a set of values.
+                                  Valid operators are In, NotIn, Exists and DoesNotExist.
+                                type: string
+                              values:
+                                description: |-
+                                  values is an array of string values. If the operator is In or NotIn,
+                                  the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                  the values array must be empty. This array is replaced during a strategic
+                                  merge patch.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - key
+                            - operator
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                            map is equivalent to an element of matchExpressions, whose key field is "key", the
+                            operator is "In", and the values array contains only "value". The requirements are ANDed.
+                          type: object
+                      type: object
+                      x-kubernetes-map-type: atomic
+                  type: object
+                type: array
+              allowedIngress:
+                description: |-
+                  AllowedIngress is a list of CIDRs allowed to connect to the sandbox (inbound traffic).
+                  If empty, all ingress traffic is blocked (default-deny).
+                items:
+                  type: string
+                type: array
+              allowedIngressPeers:
+                description: |-
+                  AllowedIngressPeers specifies pod-based ingress sources using K8s NetworkPolicyPeer.
+                  These are in addition to any CIDR-based rules in AllowedIngress.
+                  See: https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#networkpolicypeer-v1-networking-k8s-io
+                items:
+                  description: |-
+                    NetworkPolicyPeer describes a peer to allow traffic to/from. Only certain combinations of
+                    fields are allowed
+                  properties:
+                    ipBlock:
+                      description: |-
+                        ipBlock defines policy on a particular IPBlock. If this field is set then
+                        neither of the other fields can be.
+                      properties:
+                        cidr:
+                          description: |-
+                            cidr is a string representing the IPBlock
+                            Valid examples are "192.168.1.0/24" or "2001:db8::/64"
+                          type: string
+                        except:
+                          description: |-
+                            except is a slice of CIDRs that should not be included within an IPBlock
+                            Valid examples are "192.168.1.0/24" or "2001:db8::/64"
+                            Except values will be rejected if they are outside the cidr range
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - cidr
+                      type: object
+                    namespaceSelector:
+                      description: |-
+                        namespaceSelector selects namespaces using cluster-scoped labels. This field follows
+                        standard label selector semantics; if present but empty, it selects all namespaces.
+
+                        If podSelector is also set, then the NetworkPolicyPeer as a whole selects
+                        the pods matching podSelector in the namespaces selected by namespaceSelector.
+                        Otherwise it selects all pods in the namespaces selected by namespaceSelector.
+                      properties:
+                        matchExpressions:
+                          description: matchExpressions is a list of label selector
+                            requirements. The requirements are ANDed.
+                          items:
+                            description: |-
+                              A label selector requirement is a selector that contains values, a key, and an operator that
+                              relates the key and values.
+                            properties:
+                              key:
+                                description: key is the label key that the selector
+                                  applies to.
+                                type: string
+                              operator:
+                                description: |-
+                                  operator represents a key's relationship to a set of values.
+                                  Valid operators are In, NotIn, Exists and DoesNotExist.
+                                type: string
+                              values:
+                                description: |-
+                                  values is an array of string values. If the operator is In or NotIn,
+                                  the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                  the values array must be empty. This array is replaced during a strategic
+                                  merge patch.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - key
+                            - operator
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                            map is equivalent to an element of matchExpressions, whose key field is "key", the
+                            operator is "In", and the values array contains only "value". The requirements are ANDed.
+                          type: object
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    podSelector:
+                      description: |-
+                        podSelector is a label selector which selects pods. This field follows standard label
+                        selector semantics; if present but empty, it selects all pods.
+
+                        If namespaceSelector is also set, then the NetworkPolicyPeer as a whole selects
+                        the pods matching podSelector in the Namespaces selected by NamespaceSelector.
+                        Otherwise it selects the pods matching podSelector in the policy's own namespace.
+                      properties:
+                        matchExpressions:
+                          description: matchExpressions is a list of label selector
+                            requirements. The requirements are ANDed.
+                          items:
+                            description: |-
+                              A label selector requirement is a selector that contains values, a key, and an operator that
+                              relates the key and values.
+                            properties:
+                              key:
+                                description: key is the label key that the selector
+                                  applies to.
+                                type: string
+                              operator:
+                                description: |-
+                                  operator represents a key's relationship to a set of values.
+                                  Valid operators are In, NotIn, Exists and DoesNotExist.
+                                type: string
+                              values:
+                                description: |-
+                                  values is an array of string values. If the operator is In or NotIn,
+                                  the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                  the values array must be empty. This array is replaced during a strategic
+                                  merge patch.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - key
+                            - operator
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                            map is equivalent to an element of matchExpressions, whose key field is "key", the
+                            operator is "In", and the values array contains only "value". The requirements are ANDed.
+                          type: object
+                      type: object
+                      x-kubernetes-map-type: atomic
+                  type: object
+                type: array
+              dnsSelector:
+                description: |-
+                  DNSSelector specifies how to select DNS pods when AllowClusterDNS is true.
+                  If not specified, defaults to namespace=kube-system with label k8s-app=kube-dns.
+                properties:
+                  namespace:
+                    default: kube-system
+                    description: Namespace is the namespace where DNS pods run.
+                    type: string
+                  podLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      PodLabels are the labels to match DNS pods.
+                      Common values: {"k8s-app": "kube-dns"} or {"app.kubernetes.io/name": "coredns"}
+                    type: object
+                type: object
+            type: object
+          status:
+            description: status defines the observed state of NetworkTemplate
+            properties:
+              conditions:
+                description: Conditions represent the current state of the NetworkTemplate.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
