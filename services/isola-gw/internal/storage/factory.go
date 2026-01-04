@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"gocloud.dev/blob"
-	"gocloud.dev/blob/s3blob" // Import the S3 driver
+	"gocloud.dev/blob/s3blob"
 )
 
 func CreateObjectStorage(ctx context.Context) (*blob.Bucket, error) {
@@ -52,16 +52,6 @@ func CreateObjectStorage(ctx context.Context) (*blob.Bucket, error) {
 		bucketURL += "&s3ForcePathStyle=true"
 	}
 
-	// Add credentials if provided
-	accessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
-	secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
-	if accessKeyID != "" && secretAccessKey != "" {
-		bucketURL += fmt.Sprintf("&access_key_id=%s&secret_access_key=%s",
-			url.QueryEscape(accessKeyID),
-			url.QueryEscape(secretAccessKey))
-	}
-
-	// Open bucket using gocloud.dev/blob
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open bucket: %w", err)
