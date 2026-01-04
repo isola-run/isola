@@ -43,15 +43,6 @@ func CreateObjectStorage(ctx context.Context) (*blob.Bucket, error) {
 
 	bucketURL := fmt.Sprintf("%s://%s?region=%s", scheme, bucketName, region)
 
-	// TODO:__OMER__ change this
-	// Add endpoint URL for LocalStack if provided
-	endpointURL := os.Getenv("ENDPOINT_URL")
-	if endpointURL != "" {
-		bucketURL += fmt.Sprintf("&endpoint=%s", url.QueryEscape(endpointURL))
-		// LocalStack requires path-style addressing
-		bucketURL += "&s3ForcePathStyle=true"
-	}
-
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open bucket: %w", err)
