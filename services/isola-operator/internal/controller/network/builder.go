@@ -158,7 +158,7 @@ func BuildNetworkPolicy(
 	egressCIDRs := make([]egressCIDR, 0, len(spec.AllowedEgress))
 	seenEgress := make(map[string]bool)
 	for _, cidrStr := range spec.AllowedEgress {
-		prefix, err := cidr.ParseAndValidate(cidrStr)
+		prefix, err := cidr.ParsePrefix(cidrStr)
 		if err != nil {
 			return nil, err
 		}
@@ -169,8 +169,6 @@ func BuildNetworkPolicy(
 		seenEgress[key] = true
 		except, err := cidr.ComputeExcept(prefix)
 		if err != nil {
-			// should not happen - ParseAndValidate already validated the prefix
-			// but better safe / future-proof than sorry
 			return nil, err
 		}
 		egressCIDRs = append(egressCIDRs, egressCIDR{Prefix: prefix, Except: except})
