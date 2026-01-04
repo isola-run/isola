@@ -25,7 +25,6 @@ func NewHandler(k8sManager *kubernetes.Manager, storageBucket *storage.BucketWra
 	}
 }
 
-// SetupRoutes configures all API routes
 func (h *Handler) SetupRoutes(r *gin.Engine) {
 	// System endpoints
 	r.GET("/health", h.HealthCheck)
@@ -51,7 +50,6 @@ func (h *Handler) SetupRoutes(r *gin.Engine) {
 	}
 }
 
-// APIKeyAuth is middleware to validate API keys
 func (h *Handler) APIKeyAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apiKey := c.GetHeader("X-API-Key")
@@ -71,17 +69,13 @@ func (h *Handler) APIKeyAuth() gin.HandlerFunc {
 	}
 }
 
-// TODO:__OMER__ change this
-// tenantFromAPIKey extracts tenant ID from API key (demo implementation)
 func tenantFromAPIKey(apiKey string) string {
-	// Demo API keys - in production, this would query a database
 	if apiKey == "iso_sk_a1b2c3d4e5f67890a1b2c3d4e5f67890" {
 		return "2280e575-f37d-4329-b033-9de263ce7625"
 	}
 	if apiKey == "iso_sk_demo" {
 		return "e766a1e8-4b0e-4bb7-9612-80b9c1c8cd87"
 	}
-	// Default tenant for demo
 	return "e766a1e8-4b0e-4bb7-9612-80b9c1c8cd87"
 }
 

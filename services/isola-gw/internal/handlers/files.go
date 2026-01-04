@@ -250,7 +250,6 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 
 	log.Printf("[UPLOAD-URL] Request for sandbox %s: path=%s, filename=%s", sandboxID, req.Path, req.Filename)
 
-	// Get tenant ID from context
 	tenantID, _ := c.Get("tenant_id")
 	tenantIDStr := tenantID.(string)
 
@@ -389,7 +388,7 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 		return
 	}
 
-	// Reconstruct object key from upload_id and filename (must match upload-url endpoint)
+	// Reconstruct object key from upload_id and filename
 	objectKey := fmt.Sprintf("uploads/%s/%s/%s/%s", tenantIDStr, sandboxID, req.UploadID, req.Filename)
 	targetPath := req.Path
 
@@ -408,7 +407,6 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 	agentURL := fmt.Sprintf("http://%s:%d/download", *ipAddress, agentSidecarPort)
 	log.Printf("[CONFIRM] Triggering agent download at %s", agentURL)
 
-	// Prepare download request
 	downloadReq := models.DownloadRequest{
 		DownloadURL: downloadURL,
 		Path:        targetPath,
@@ -458,7 +456,6 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 		return
 	}
 
-	// Parse agent response
 	var agentResponse map[string]interface{}
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	if len(bodyBytes) > 0 {

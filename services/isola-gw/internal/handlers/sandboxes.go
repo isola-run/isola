@@ -5,6 +5,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,7 +13,6 @@ import (
 	"github.com/omereli/dev-isola/services/isola-gw/internal/models"
 )
 
-// ListSandboxes handles GET /sandboxes
 func (h *Handler) ListSandboxes(c *gin.Context) {
 	var params models.ListSandboxesParams
 	if err := c.ShouldBindQuery(&params); err != nil {
@@ -23,9 +23,8 @@ func (h *Handler) ListSandboxes(c *gin.Context) {
 		return
 	}
 
-	// Get tenant ID from context
 	tenantID, _ := c.Get("tenant_id")
-	_ = tenantID // TODO: filter by tenant
+	_ = tenantID // TODO: __OMER__ filter by tenant
 
 	ctx := c.Request.Context()
 
@@ -94,7 +93,6 @@ func (h *Handler) ListSandboxes(c *gin.Context) {
 	})
 }
 
-// CreateSandbox handles POST /sandboxes
 func (h *Handler) CreateSandbox(c *gin.Context) {
 	var req models.CreateSandboxRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -107,19 +105,16 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 
 	// Get tenant ID from context
 	tenantID, _ := c.Get("tenant_id")
-	_ = tenantID // TODO: use tenant ID
+	_ = tenantID // TODO: __OMER__ mark sandbox as owned by tenant
 
-	// Generate sandbox ID
 	sandboxID := uuid.New().String()
 	now := time.Now().UTC()
 
-	// Determine desired state
 	desiredState := models.SandboxStateStopped
 	if req.AutoStart {
 		desiredState = models.SandboxStateRunning
 	}
 
-	// Create sandbox object for response
 	sandbox := &models.Sandbox{
 		ID:           sandboxID,
 		Name:         req.Name,
@@ -141,11 +136,9 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 	c.JSON(http.StatusCreated, sandbox)
 }
 
-// GetSandbox handles GET /sandboxes/:id
 func (h *Handler) GetSandbox(c *gin.Context) {
 	sandboxID := c.Param("id")
 
-	// Get tenant ID from context
 	tenantID, _ := c.Get("tenant_id")
 	_ = tenantID // TODO: validate tenant_id belongs to the sandbox
 
@@ -172,28 +165,25 @@ func (h *Handler) GetSandbox(c *gin.Context) {
 	c.JSON(http.StatusOK, sandbox)
 }
 
-// TerminateSandbox handles DELETE /sandboxes/:id
 func (h *Handler) TerminateSandbox(c *gin.Context) {
 	sandboxID := c.Param("id")
 
 	var params models.TerminateSandboxParams
 	if err := c.ShouldBindQuery(&params); err != nil {
-		// Query params are optional, ignore binding errors
 		params.Force = false
 	}
 
-	// Get tenant ID from context
+		// Get tenant ID from context
 	tenantID, _ := c.Get("tenant_id")
 	_ = tenantID // TODO: validate tenant_id belongs to the sandbox
 	_ = params.Force // TODO: implement force termination
 
 	ctx := c.Request.Context()
 
-	// Delete the Sandbox CR
 	success, errorReason := h.k8sManager.DeleteSandboxCR(ctx, sandboxID)
 	if !success {
 		statusCode := http.StatusInternalServerError
-		if errorReason != nil && contains(*errorReason, "not found") {
+		if errorReason != nil && strings.Contains(*errorReason, "not found") {
 			statusCode = http.StatusNotFound
 		}
 		c.JSON(statusCode, models.ErrorResponse{
@@ -206,7 +196,8 @@ func (h *Handler) TerminateSandbox(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// getSandboxFromK8s fetches sandbox details from Kubernetes
+// getSandboxFromK8s fetches sandbox details from Kubernetes-api
+// TODO: __OMER__ use informer
 func (h *Handler) getSandboxFromK8s(ctx context.Context, sandboxID string) (*models.Sandbox, error) {
 	state, _, errorReason, name := h.k8sManager.GetSandboxCRStatus(ctx, sandboxID)
 	if errorReason != nil && *errorReason == "Sandbox not found" {
@@ -237,7 +228,6 @@ func (h *Handler) getSandboxFromK8s(ctx context.Context, sandboxID string) (*mod
 	}, nil
 }
 
-// handleSandboxCreation handles sandbox creation asynchronously
 func (h *Handler) handleSandboxCreation(ctx context.Context, tenantID, sandboxID string, req models.CreateSandboxRequest, autoStart bool) {
 	backend := getSandboxBackend()
 	if backend == "kubernetes" {
@@ -251,28 +241,5 @@ func (h *Handler) handleSandboxCreation(ctx context.Context, tenantID, sandboxID
 	} else {
 		log.Printf("Sandbox %s creation failed: Agent backend is not available", sandboxID)
 	}
-}
-
-// Helper functions
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || 
-		(len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || 
-		indexOf(s, substr) >= 0)))
-}
-
-func indexOf(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
