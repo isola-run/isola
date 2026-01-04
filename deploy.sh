@@ -95,7 +95,10 @@ echo "Helm doesn't override existing CRDs. For dev, manually delete isola CRDs..
   -n "${NAMESPACE}" \
   --create-namespace \
   --wait
-"${KUBECTL_BIN}" wait --for=condition=Established --timeout=90s crd/sandboxes.sandbox.isola.run crd/sandboxtemplates.sandbox.isola.run
+"${KUBECTL_BIN}" wait --for=condition=Established --timeout=90s \
+  crd/sandboxes.sandbox.isola.run \
+  crd/sandboxtemplates.sandbox.isola.run \
+  crd/networktemplates.sandbox.isola.run
 
 echo "Deploying isola-controller with Helm..."
 "${HELM_BIN}" upgrade --install isola-controller charts/isola-controller \
