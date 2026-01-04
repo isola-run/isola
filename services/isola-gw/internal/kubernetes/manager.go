@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"sync"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -191,7 +190,6 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 	return true, nil
 }
 
-// createSandboxTemplateCR creates a SandboxTemplate custom resource
 func (m *Manager) createSandboxTemplateCR(ctx context.Context, templateName string, templateSpec map[string]interface{}) error {
 	log.Printf("Creating SandboxTemplate '%s' in namespace '%s'", templateName, m.namespace)
 
@@ -239,88 +237,6 @@ func (m *Manager) createSandboxTemplateCR(ctx context.Context, templateName stri
 	return nil
 }
 
-// GetSandboxCRStatus gets the status of a Sandbox CR
-func (m *Manager) GetSandboxCRStatus(ctx context.Context, sandboxID string) (*string, *string, *string, *string) {
-	if err := m.Initialize(); err != nil {
-		errorMsg := fmt.Sprintf("Failed to initialize: %v", err)
-		return nil, nil, &errorMsg, nil
-	}
-
-	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
-	gvr := schema.GroupVersionResource{
-		Group:    sandboxGroup,
-		Version:  sandboxVersion,
-		Resource: sandboxPlural,
-	}
-
-	sandbox, err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Get(ctx, sandboxName, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Printf("Sandbox CR '%s' not found in namespace '%s'", sandboxName, m.namespace)
-			errorMsg := "Sandbox not found"
-			return nil, nil, &errorMsg, nil
-		}
-		log.Printf("Failed to get Sandbox CR status for %s: %v", sandboxID, err)
-		errorMsg := fmt.Sprintf("API error: %v", err)
-		state := string(models.SandboxStateError)
-		return &state, nil, &errorMsg, nil
-	}
-
-	// Extract status
-	status, found, _ := unstructured.NestedMap(sandbox.Object, "status")
-	if !found {
-		state := string(models.SandboxStatePending)
-		return &state, nil, nil, nil
-	}
-
-	// Get name from annotation or fallback to CR name
-	metadata, found, _ := unstructured.NestedMap(sandbox.Object, "metadata")
-	var name *string
-	if found {
-		annotations, _ := metadata["annotations"].(map[string]interface{})
-		if annotations != nil {
-			if nameVal, ok := annotations["isola.run/sandbox-name"].(string); ok {
-				name = &nameVal
-			}
-		}
-		if name == nil {
-			if nameVal, ok := metadata["name"].(string); ok {
-				name = &nameVal
-			}
-		}
-	}
-
-	// Check conditions for Ready state
-	conditions, found, _ := unstructured.NestedSlice(status, "conditions")
-	state := string(models.SandboxStatePending)
-	if found {
-		for _, cond := range conditions {
-			condMap, ok := cond.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			condType, _ := condMap["type"].(string)
-			condStatus, _ := condMap["status"].(string)
-			if condType == "Ready" {
-				if condStatus == "True" {
-					state = string(models.SandboxStateRunning)
-				}
-				break
-			}
-			if condType == "TimedOut" && condStatus == "True" {
-				state = string(models.SandboxStateStopped)
-				break
-			}
-		}
-	}
-
-	// Try to get pod IP by looking up the pod
-	_, ipAddress, _ := m.GetPodStatus(ctx, sandboxID)
-
-	return &state, ipAddress, nil, name
-}
-
-// GetSandboxCR gets a single Sandbox CR by sandbox ID
 func (m *Manager) GetSandboxCR(ctx context.Context, sandboxID string) (*unstructured.Unstructured, error) {
 	if err := m.Initialize(); err != nil {
 		return nil, fmt.Errorf("failed to initialize: %w", err)
@@ -344,7 +260,6 @@ func (m *Manager) GetSandboxCR(ctx context.Context, sandboxID string) (*unstruct
 	return sandbox, nil
 }
 
-// ListSandboxCRs lists all Sandbox CRs in the namespace
 func (m *Manager) ListSandboxCRs(ctx context.Context) ([]*unstructured.Unstructured, error) {
 	if err := m.Initialize(); err != nil {
 		return nil, fmt.Errorf("failed to initialize: %w", err)
@@ -370,7 +285,6 @@ func (m *Manager) ListSandboxCRs(ctx context.Context) ([]*unstructured.Unstructu
 	return result, nil
 }
 
-// DeleteSandboxCR deletes a Sandbox custom resource
 func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) (bool, *string) {
 	if err := m.Initialize(); err != nil {
 		errorMsg := fmt.Sprintf("Failed to initialize: %v", err)
@@ -401,7 +315,6 @@ func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) (bool, 
 	return true, nil
 }
 
-// GetPodStatus gets the status of a pod for a sandbox
 func (m *Manager) GetPodStatus(ctx context.Context, sandboxID string) (*models.SandboxState, *string, *string) {
 	if err := m.Initialize(); err != nil {
 		errorMsg := fmt.Sprintf("Failed to initialize: %v", err)
@@ -426,7 +339,8 @@ func (m *Manager) GetPodStatus(ctx context.Context, sandboxID string) (*models.S
 	}
 
 	if len(pods.Items) == 0 {
-		return nil, nil, stringPtr("Pod not found")
+		errorMsg := "Pod not found"
+		return nil, nil, &errorMsg
 	}
 
 	pod := pods.Items[0]
@@ -466,51 +380,13 @@ func (m *Manager) GetPodStatus(ctx context.Context, sandboxID string) (*models.S
 	return &state, ipAddress, errorReason
 }
 
-// ListPods lists all sandbox pods
-func (m *Manager) ListPods(ctx context.Context, labelSelector *string) ([]map[string]interface{}, error) {
-	if err := m.Initialize(); err != nil {
-		return nil, fmt.Errorf("failed to initialize: %w", err)
-	}
-
-	selector := "app=isola-sandbox"
-	if labelSelector != nil {
-		selector = *labelSelector
-	}
-
-	log.Printf("Listing sandbox pods with selector '%s'", selector)
-
-	pods, err := m.clientset.CoreV1().Pods(m.namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: selector,
-	})
-	if err != nil {
-		log.Printf("Failed to list pods: %v", err)
-		return nil, fmt.Errorf("failed to list pods: %w", err)
-	}
-
-	result := make([]map[string]interface{}, 0, len(pods.Items))
-	for _, pod := range pods.Items {
-		item := map[string]interface{}{
-			"name":       pod.Name,
-			"sandbox_id": pod.Labels["sandbox-id"],
-			"phase":      string(pod.Status.Phase),
-			"ip_address": pod.Status.PodIP,
-		}
-		if pod.CreationTimestamp.Time != (time.Time{}) {
-			item["created_at"] = pod.CreationTimestamp.Time.Format(time.RFC3339)
-		}
-		result = append(result, item)
-	}
-
-	return result, nil
-}
-
-// ExecuteCommand executes a command in a pod
+// Executes a command in a pod
+// Will be implemented in the future in the sidecar
 func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command string) (string, string, int, error) {
 	if err := m.Initialize(); err != nil {
 		return "", fmt.Sprintf("Failed to initialize: %v", err), 1, err
 	}
 
-	// Find pod by sandbox ID
 	labelSelector := labels.SelectorFromSet(map[string]string{
 		"sandbox-id": sandboxID,
 	}).String()
@@ -535,7 +411,6 @@ func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command 
 	// Execute command in pod using /bin/sh -c
 	execCommand := []string{"/bin/sh", "-c", command}
 
-	// Create parameter codec for versioned params
 	parameterCodec := runtime.NewParameterCodec(scheme.Scheme)
 
 	req := m.clientset.CoreV1().RESTClient().Post().
@@ -565,10 +440,6 @@ func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command 
 		return stdout.String(), stderr.String(), 1, err
 	}
 
-	// Note: Kubernetes exec doesn't return exit code directly through the stream API
-	// We return 0 on successful execution (no stream error)
-	// In practice, the command's exit code would need to be checked differently
-	// For now, we follow the Python implementation pattern of returning 0 on success
 	exitCode := 0
 
 	log.Printf("Executed command in pod %s: %s... (exit_code=%d)", podName, command[:min(50, len(command))], exitCode)
@@ -576,7 +447,6 @@ func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command 
 }
 
 // Helper functions
-
 func getImage(img *string) string {
 	if img != nil && *img != "" {
 		return *img
@@ -607,16 +477,5 @@ func envToK8sEnv(env map[string]string) []map[string]interface{} {
 		})
 	}
 	return result
-}
-
-func stringPtr(s string) *string {
-	return &s
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
