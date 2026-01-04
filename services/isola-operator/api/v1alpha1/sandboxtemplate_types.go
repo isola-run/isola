@@ -39,6 +39,31 @@ type NetworkConfig struct {
 	AllowedOutgoing []string `json:"allowedOutgoing,omitempty"`
 }
 
+// SandboxShutdownPolicy defines the policy for handling sandbox termination
+// +kubebuilder:validation:Enum=Delete;SnapshotFilesystem
+type SandboxShutdownPolicy string
+
+const (
+	ShutdownPolicyDelete             SandboxShutdownPolicy = "Delete"
+	ShutdownPolicySnapshotFilesystem SandboxShutdownPolicy = "SnapshotFilesystem"
+)
+
+// ShutdownPolicy controls how the sandbox is handled when it ends
+type ShutdownPolicy struct {
+	// Policy determines the action taken when the sandbox shuts down
+	// +required
+	// +kubebuilder:default=Delete
+	// +kubebuilder:validation:Enum=Delete;SnapshotFilesystem
+	Policy SandboxShutdownPolicy `json:"policy"`
+
+	// SnapshotTimeoutSeconds sets how long to wait for filesystem snapshotting to finish
+	// before giving up. Only used when Policy is SnapshotFilesystem.
+	// +optional
+	// +kubebuilder:default=300
+	// +kubebuilder:validation:Minimum=1
+	SnapshotTimeoutSeconds *int64 `json:"snapshotTimeoutSeconds,omitempty"`
+}
+
 // SandboxTemplateSpec defines the desired state of SandboxTemplate
 type SandboxTemplateSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -74,8 +99,7 @@ type SandboxTemplateSpec struct {
 	//todo benl: think on how to implement shutdown policy to allow multiple toggles
 	// ShutdownPolicy defines what to do when the sandbox ends
 	// +optional
-	// +kubebuilder:default=Delete
-	ShutdownPolicy SandboxShutdownPolicy `json:"shutdownPolicy,omitempty"`
+	ShutdownPolicy *ShutdownPolicy `json:"shutdownPolicy,omitempty"`
 
 	//todo benl: add runtime class here? (runc / runsc)
 }

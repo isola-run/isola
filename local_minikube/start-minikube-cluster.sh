@@ -97,11 +97,15 @@ helm upgrade --install isola-gw "${SCRIPT_DIR}/../charts/isola-gw" \
 echo "  → creating/updating deployments..."
 kubectl apply -f "${SCRIPT_DIR}/manifests/isola-agent-deployment.yaml"
 
+echo "  → forcing isola-operator restart to pick up the rebuilt image..."
+kubectl rollout restart deployment/isola-operator-controller-manager -n isola-control-plane
+
 echo "forcing pod restart to pick up new images..."
 kubectl rollout restart deployment/isola-agent -n isola-control-plane
 kubectl rollout restart deployment/isola-gw -n isola-control-plane
 
 echo "waiting for deployments to be ready..."
+kubectl rollout status deployment/isola-operator-controller-manager -n isola-control-plane --timeout=60s
 kubectl rollout status deployment/isola-agent -n isola-control-plane --timeout=60s
 kubectl rollout status deployment/isola-gw -n isola-control-plane --timeout=60s
 
