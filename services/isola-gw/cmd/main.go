@@ -112,7 +112,6 @@ func main() {
 	log.Println("Server exited")
 }
 
-// getEnvOrDefault returns the value of the environment variable or the default value if not set
 func getEnvOrDefault(key, defaultValue string) string {
 	value := os.Getenv(key)
 	if value == "" {
