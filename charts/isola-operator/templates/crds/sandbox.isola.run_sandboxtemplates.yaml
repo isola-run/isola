@@ -1,11 +1,10 @@
+---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
   name: sandboxtemplates.sandbox.isola.run
-  labels:
-    app: isola-operator
 spec:
   group: sandbox.isola.run
   names:
@@ -70,16 +69,34 @@ spec:
                   todo benl: verify total resources make sense, etc
                 x-kubernetes-preserve-unknown-fields: true
               shutdownPolicy:
-                default: Delete
                 description: |-
                   todo benl: utilize TerminationGracePeriodSeconds like RabbitMQ operator to allow shutdown hooks to execute
                   todo benl: think on how to implement shutdown policy to allow multiple toggles
                   ShutdownPolicy defines what to do when the sandbox ends
-                enum:
-                - Delete
-                - SnapshotFilesystem
-                - SnapshotMemory
-                type: string
+                properties:
+                  policy:
+                    allOf:
+                    - enum:
+                      - Delete
+                      - SnapshotFilesystem
+                    - enum:
+                      - Delete
+                      - SnapshotFilesystem
+                    default: Delete
+                    description: Policy determines the action taken when the sandbox
+                      shuts down
+                    type: string
+                  snapshotTimeoutSeconds:
+                    default: 300
+                    description: |-
+                      SnapshotTimeoutSeconds sets how long to wait for filesystem snapshotting to finish
+                      before giving up. Only used when Policy is SnapshotFilesystem.
+                    format: int64
+                    minimum: 1
+                    type: integer
+                required:
+                - policy
+                type: object
               timeoutSeconds:
                 description: TimeoutSeconds defines how long the sandbox runs before
                   being terminated

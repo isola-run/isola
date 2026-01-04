@@ -181,9 +181,10 @@ func main() {
 	}
 
 	if err := (&controller.SandboxReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		AgentImage:      agentImage,
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		AgentImage: agentImage,
+		Clock:      controller.RealClock{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
 		os.Exit(1)
