@@ -320,6 +320,56 @@ func (m *Manager) GetSandboxCRStatus(ctx context.Context, sandboxID string) (*st
 	return &state, ipAddress, nil, name
 }
 
+// GetSandboxCR gets a single Sandbox CR by sandbox ID
+func (m *Manager) GetSandboxCR(ctx context.Context, sandboxID string) (*unstructured.Unstructured, error) {
+	if err := m.Initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize: %w", err)
+	}
+
+	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
+	gvr := schema.GroupVersionResource{
+		Group:    sandboxGroup,
+		Version:  sandboxVersion,
+		Resource: sandboxPlural,
+	}
+
+	sandbox, err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Get(ctx, sandboxName, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get Sandbox CR: %w", err)
+	}
+
+	return sandbox, nil
+}
+
+// ListSandboxCRs lists all Sandbox CRs in the namespace
+func (m *Manager) ListSandboxCRs(ctx context.Context) ([]*unstructured.Unstructured, error) {
+	if err := m.Initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize: %w", err)
+	}
+
+	gvr := schema.GroupVersionResource{
+		Group:    sandboxGroup,
+		Version:  sandboxVersion,
+		Resource: sandboxPlural,
+	}
+
+	sandboxes, err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		log.Printf("Failed to list Sandbox CRs: %v", err)
+		return nil, fmt.Errorf("failed to list Sandbox CRs: %w", err)
+	}
+
+	result := make([]*unstructured.Unstructured, 0, len(sandboxes.Items))
+	for i := range sandboxes.Items {
+		result = append(result, &sandboxes.Items[i])
+	}
+
+	return result, nil
+}
+
 // DeleteSandboxCR deletes a Sandbox custom resource
 func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) (bool, *string) {
 	if err := m.Initialize(); err != nil {
