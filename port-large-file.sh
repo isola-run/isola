@@ -1,5 +1,5 @@
 #!/bin/bash
-SANDBOX_ID="826d7cd3-b2c7-4da2-871d-b1cf8035bc35"
+SANDBOX_ID="0e3f7261-9b09-4a02-8422-1933f006ce05"
 API_KEY="iso_sk_demo"
 BASE_URL="http://localhost:30080"
 FILE_PATH="/tmp/largefile.bin"  
@@ -15,7 +15,7 @@ RESPONSE=$(curl -s -X POST "${BASE_URL}/sandboxes/${SANDBOX_ID}/files/upload-url
     \"path\": \"${TARGET_PATH}\",
     \"filename\": \"${FILENAME}\",
     \"content_type\": \"application/octet-stream\"
-  }")
+  }") 
 
 UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.upload_url')
 UPLOAD_ID=$(echo "$RESPONSE" | jq -r '.upload_id')

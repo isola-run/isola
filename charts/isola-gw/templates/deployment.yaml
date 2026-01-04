@@ -81,7 +81,7 @@ spec:
           value: {{ .Values.storage.accessKeyId | quote }}
         {{- end }}
         {{- if .Values.storage.secretAccessKey }}
-        - name: SECRET_KEY_ID
+        - name: SECRET_ACCESS_KEY
           value: {{ .Values.storage.secretAccessKey | quote }}
         {{- end }}
         {{- end }}

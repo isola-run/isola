@@ -47,8 +47,8 @@ class S3ObjectStorage(ObjectStorage):
         # Build session kwargs
         self.session_kwargs = {}
         if access_key_id and secret_access_key:
-            self.session_kwargs["aws_access_key_id"] = access_key_id
-            self.session_kwargs["aws_secret_access_key"] = secret_access_key
+            self.session_kwargs["ACCESS_KEY_ID"] = access_key_id
+            self.session_kwargs["SECRET_ACCESS_KEY"] = secret_access_key
         if endpoint_url:
             self.session_kwargs["endpoint_url"] = endpoint_url
     
