@@ -126,7 +126,9 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 			},
 		},
 		"timeoutSeconds": defaultTimeout,
-		"shutdownPolicy": defaultShutdown,
+		"shutdownPolicy": map[string]interface{}{
+			"policy": defaultShutdown,
+		},
 	}
 
 	if m.runtimeClassName != nil {
