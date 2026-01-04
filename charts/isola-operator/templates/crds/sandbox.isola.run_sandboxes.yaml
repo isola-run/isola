@@ -53,42 +53,95 @@ spec:
             properties:
               network:
                 description: |-
-                  Network defines network isolation configuration for this sandbox.
-                  If nil, defaults to the pre-shipped "isola-isolated" NetworkTemplate (secure by default).
+                  Network specifies the network isolation configuration for this sandbox.
+                  Can either reference a shared NetworkTemplate or embed network rules directly.
+                  If not specified, no NetworkPolicy is created (unrestricted network access).
+                  When specified, must contain exactly one of templateRef or spec.
                 properties:
+                  spec:
+                    description: |-
+                      Spec embeds network isolation rules directly in the sandbox.
+                      When specified, the controller creates a NetworkTemplate CR
+                      that is owned by this sandbox and garbage-collected
+                      when the sandbox is deleted.
+                      Note: This spec is immutable after sandbox creation - changes are ignored.
+                    properties:
+                      allowClusterDNS:
+                        default: false
+                        description: |-
+                          AllowClusterDNS allows the sandbox to resolve DNS names via the cluster DNS server.
+                          When true, egress to the cluster DNS service on port 53 (UDP/TCP) is allowed.
+                          Uses DNSSelector to target DNS pods (defaults to k8s-app=kube-dns in kube-system).
+                        type: boolean
+                      allowedEgress:
+                        description: |-
+                          AllowedEgress is a list of CIDRs the sandbox is allowed to connect to (outbound traffic).
+                          If empty, all egress traffic is blocked (default-deny).
+                          Risky IPs (cloud metadata 169.254.0.0/16, IPv6 link-local fe80::/10) are automatically
+                          blocked when the specified CIDR would otherwise allow them.
+                        items:
+                          type: string
+                        type: array
+                      allowedIngress:
+                        description: |-
+                          AllowedIngress is a list of CIDRs allowed to connect to the sandbox (inbound traffic).
+                          If empty, all ingress traffic is blocked (default-deny).
+                        items:
+                          type: string
+                        type: array
+                      dnsSelector:
+                        description: |-
+                          DNSSelector specifies how to select DNS pods when AllowClusterDNS is true.
+                          If not specified, defaults to namespace=kube-system with label k8s-app=kube-dns.
+                        properties:
+                          namespace:
+                            default: kube-system
+                            description: Namespace is the namespace where DNS pods
+                              run.
+                            type: string
+                          podLabels:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              PodLabels are the labels to match DNS pods.
+                              Common values: {"k8s-app": "kube-dns"} or {"app.kubernetes.io/name": "coredns"}
+                            type: object
+                        type: object
+                    type: object
                   templateRef:
                     description: |-
-                      TemplateRef references a NetworkTemplate for network isolation rules.
-                      If nil (or the entire Network field is nil), defaults to "isola-isolated" template.
+                      TemplateRef references an existing NetworkTemplate in the same namespace.
+                      The referenced NetworkTemplate is not owned by this sandbox and will persist
+                      independently of sandbox lifecycle.
                     properties:
                       name:
-                        default: ""
                         description: |-
-                          Name of the referent.
-                          This field is effectively required, but due to backwards compatibility is
-                          allowed to be empty. Instances of this type with an empty value here are
-                          almost certainly wrong.
-                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          Name of the NetworkTemplate in the same namespace.
+                          The referenced NetworkTemplate defines the network isolation rules.
+                        minLength: 1
                         type: string
+                    required:
+                    - name
                     type: object
-                    x-kubernetes-map-type: atomic
                 type: object
+                x-kubernetes-validations:
+                - message: At least one of 'templateRef' or 'spec' is required.
+                  rule: has(self.templateRef) || has(self.spec)
               templateRef:
                 description: |-
-                  TemplateRef refers to a SandboxTemplate to inherit the pod structure from.
-                  The lean object reference is used to query the api server for the actual SandboxTemplate object referenced.
+                  TemplateRef references the SandboxTemplate to inherit pod configuration from.
+                  The SandboxTemplate must exist in the same namespace as this Sandbox.
                 properties:
                   name:
-                    default: ""
                     description: |-
-                      Name of the referent.
-                      This field is effectively required, but due to backwards compatibility is
-                      allowed to be empty. Instances of this type with an empty value here are
-                      almost certainly wrong.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      Name of the SandboxTemplate in the same namespace.
+                      The referenced SandboxTemplate provides the pod configuration (containers, initContainers, etc.)
+                      and lifecycle settings (timeout, shutdown policy) for this Sandbox.
+                    minLength: 1
                     type: string
+                required:
+                - name
                 type: object
-                x-kubernetes-map-type: atomic
             required:
             - templateRef
             type: object
