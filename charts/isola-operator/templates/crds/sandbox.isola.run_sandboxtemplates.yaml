@@ -76,9 +76,6 @@ spec:
                     format: int64
                     minimum: 1
                     type: integer
-                required:
-                - policy
-                - snapshotTimeoutSeconds
                 type: object
               timeoutSeconds:
                 description: TimeoutSeconds defines how long the sandbox runs before

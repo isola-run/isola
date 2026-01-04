@@ -38,6 +38,8 @@ const (
 type NetworkTemplateSpec struct {
 	// AllowedIngress is a list of CIDRs allowed to connect to the sandbox (inbound traffic).
 	// If empty, all ingress traffic is blocked (default-deny).
+	// +kubebuilder:validation:UniqueItems=true
+	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$`
 	// +optional
 	AllowedIngress []string `json:"allowedIngress,omitempty"`
 
@@ -45,6 +47,8 @@ type NetworkTemplateSpec struct {
 	// If empty, all egress traffic is blocked (default-deny).
 	// Risky IPs (cloud metadata 169.254.0.0/16, IPv6 link-local fe80::/10) are automatically
 	// blocked when the specified CIDR would otherwise allow them.
+	// +kubebuilder:validation:UniqueItems=true
+	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$`
 	// +optional
 	AllowedEgress []string `json:"allowedEgress,omitempty"`
 
