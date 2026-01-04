@@ -20,7 +20,6 @@ const (
 	fileSizeThresholdBytes = 5 * 1024 * 1024 // 5MB
 )
 
-// UploadFile handles POST /sandboxes/:id/files
 func (h *Handler) UploadFile(c *gin.Context) {
 	sandboxID := c.Param("id")
 
@@ -78,7 +77,6 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	// Get file
 	files := form.File["file"]
 	if len(files) == 0 {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
@@ -99,7 +97,6 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// Get path
 	pathValues := form.Value["path"]
 	if len(pathValues) == 0 {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
@@ -123,7 +120,6 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	fileSize := int64(len(content))
 	log.Printf("[UPLOAD] File size: %d bytes, threshold: %d bytes", fileSize, fileSizeThresholdBytes)
 
-	// Check file size threshold
 	if fileSize >= fileSizeThresholdBytes {
 		log.Printf("[UPLOAD] File too large for direct upload: %d bytes", fileSize)
 		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
@@ -133,7 +129,6 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	// Forward the file to the agent sidecar
 	agentURL := fmt.Sprintf("http://%s:%d/upload", *ipAddress, agentSidecarPort)
 	log.Printf("[UPLOAD] Forwarding to agent at %s", agentURL)
 
@@ -141,7 +136,6 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	formData := &bytes.Buffer{}
 	writer := multipart.NewWriter(formData)
 
-	// Add path field
 	pathField, err := writer.CreateFormField("path")
 	if err != nil {
 		log.Printf("[UPLOAD] Failed to create path field: %v", err)
@@ -153,7 +147,6 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	}
 	pathField.Write([]byte(targetPath))
 
-	// Add file field
 	fileField, err := writer.CreateFormFile("file", fileHeader.Filename)
 	if err != nil {
 		writer.Close()
@@ -243,7 +236,6 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	})
 }
 
-// GenerateUploadUrl handles POST /sandboxes/:id/files/upload-url
 func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 	sandboxID := c.Param("id")
 
@@ -281,7 +273,6 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 		return
 	}
 
-	// Check sandbox exists and is running
 	state, _, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
 	if state == nil {
 		log.Printf("[UPLOAD-URL] Sandbox %s not found", sandboxID)
@@ -301,9 +292,9 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 		return
 	}
 
-	// Generate unique upload ID and S3 key
+	// Generate unique upload ID and object key
 	uploadID := uuid.New().String()
-	s3Key := fmt.Sprintf("uploads/%s/%s/%s/%s", tenantIDStr, sandboxID, uploadID, req.Filename)
+	objectKey := fmt.Sprintf("uploads/%s/%s/%s/%s", tenantIDStr, sandboxID, uploadID, req.Filename)
 
 	// Generate presigned upload URL (15 minutes expiration)
 	expiresIn := 900 // 15 minutes
@@ -312,7 +303,7 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 		contentType = *req.ContentType
 	}
 
-	uploadURL, err := h.storage.GeneratePresignedUploadURL(ctx, s3Key, expiresIn, contentType)
+	uploadURL, err := h.storage.GeneratePresignedUploadURL(ctx, objectKey, expiresIn, contentType)
 	if err != nil {
 		log.Printf("[UPLOAD-URL] Failed to generate presigned URL: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
@@ -322,7 +313,7 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[UPLOAD-URL] Generated presigned URL for upload_id=%s, s3_key=%s", uploadID, s3Key)
+	log.Printf("[UPLOAD-URL] Generated presigned URL for upload_id=%s, objectKey=%s", uploadID, objectKey)
 
 	c.JSON(http.StatusOK, models.UploadUrlResponse{
 		UploadURL: uploadURL,
@@ -398,12 +389,12 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 		return
 	}
 
-	// Reconstruct S3 key from upload_id and filename (must match upload-url endpoint)
-	s3Key := fmt.Sprintf("uploads/%s/%s/%s/%s", tenantIDStr, sandboxID, req.UploadID, req.Filename)
+	// Reconstruct object key from upload_id and filename (must match upload-url endpoint)
+	objectKey := fmt.Sprintf("uploads/%s/%s/%s/%s", tenantIDStr, sandboxID, req.UploadID, req.Filename)
 	targetPath := req.Path
 
 	// Generate presigned download URL for the agent
-	downloadURL, err := h.storage.GeneratePresignedDownloadURL(ctx, s3Key, 900) // 15 minutes
+	downloadURL, err := h.storage.GeneratePresignedDownloadURL(ctx, objectKey, 900) // 15 minutes
 	if err != nil {
 		log.Printf("[CONFIRM] Failed to generate presigned download URL: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
@@ -478,12 +469,12 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 
 	log.Printf("[CONFIRM] Successfully triggered download for sandbox %s", sandboxID)
 
-	// Delete the file from S3 after successful download
-	if err := h.storage.DeleteObject(ctx, s3Key); err != nil {
+	// Delete the file from object storage after successful download
+	if err := h.storage.DeleteObject(ctx, objectKey); err != nil {
 		// Log the error but don't fail the request - file was successfully delivered
-		log.Printf("[CONFIRM] Failed to delete S3 object %s: %v", s3Key, err)
+		log.Printf("[CONFIRM] Failed to delete object %s: %v", objectKey, err)
 	} else {
-		log.Printf("[CONFIRM] Deleted S3 object: %s", s3Key)
+		log.Printf("[CONFIRM] Deleted object: %s", objectKey)
 	}
 
 	path := targetPath
