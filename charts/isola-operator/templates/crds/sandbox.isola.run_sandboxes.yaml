@@ -66,47 +66,39 @@ spec:
                       when the sandbox is deleted.
                       Note: This spec is immutable after sandbox creation - changes are ignored.
                     properties:
-                      allowClusterDNS:
-                        default: false
-                        description: |-
-                          AllowClusterDNS allows the sandbox to resolve DNS names via the cluster DNS server.
-                          When true, egress to the cluster DNS service on port 53 (UDP/TCP) is allowed.
-                          Uses DNSSelector to target DNS pods (defaults to k8s-app=kube-dns in kube-system).
-                        type: boolean
                       allowedEgress:
                         description: |-
                           AllowedEgress is a list of CIDRs the sandbox is allowed to connect to (outbound traffic).
-                          If empty, all egress traffic is blocked (default-deny).
+                          If empty, all egress traffic is blocked (default-deny) unless some other NetworkPolicy in the cluster allows traffic.
                           Risky IPs (cloud metadata 169.254.0.0/16, IPv6 link-local fe80::/10) are automatically
                           blocked when the specified CIDR would otherwise allow them.
                         items:
+                          pattern: ^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$
                           type: string
                         type: array
                       allowedIngress:
                         description: |-
                           AllowedIngress is a list of CIDRs allowed to connect to the sandbox (inbound traffic).
-                          If empty, all ingress traffic is blocked (default-deny).
+                          If empty, all ingress traffic is blocked (default-deny) unless some other NetworkPolicy in the cluster allows traffic.
+                          todo benl: consider removing AllowedIngress
                         items:
+                          pattern: ^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$
                           type: string
                         type: array
-                      dnsSelector:
+                      dnsServers:
                         description: |-
-                          DNSSelector specifies how to select DNS pods when AllowClusterDNS is true.
-                          If not specified, defaults to namespace=kube-system with label k8s-app=kube-dns.
-                        properties:
-                          namespace:
-                            default: kube-system
-                            description: Namespace is the namespace where DNS pods
-                              run.
-                            type: string
-                          podLabels:
-                            additionalProperties:
-                              type: string
-                            description: |-
-                              PodLabels are the labels to match DNS pods.
-                              Common values: {"k8s-app": "kube-dns"} or {"app.kubernetes.io/name": "coredns"}
-                            type: object
-                        type: object
+                          DNSServers is a list of DNS server IP addresses the sandbox can use.
+                          When specified, egress to these IPs on port 53 (UDP/TCP) is allowed,
+                          and the pod is configured with dnsPolicy: None using these as nameservers.
+                          If empty (or not specified), DNS is not available (sandbox is fully isolated from DNS).
+                          MaxItems=3 because k8s allow specifying at most 3 nameservers https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/?utm_source=chatgpt.com#pod-dns-config
+                        items:
+                          type: string
+                        maxItems: 3
+                        type: array
+                        x-kubernetes-validations:
+                        - message: dnsServers must be valid IPv4/IPv6 addresses
+                          rule: self.size() == 0 || self.all(s, isIP(s))
                     type: object
                   templateRef:
                     description: |-

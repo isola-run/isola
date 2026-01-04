@@ -79,11 +79,14 @@ spec:
                   When specified, egress to these IPs on port 53 (UDP/TCP) is allowed,
                   and the pod is configured with dnsPolicy: None using these as nameservers.
                   If empty (or not specified), DNS is not available (sandbox is fully isolated from DNS).
-                  limit to 3 because k8s allow specifying at most 3 nameservers https://kubernetes.io/docs/concepts/services-networking/dns-pod-service
+                  MaxItems=3 because k8s allow specifying at most 3 nameservers https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/?utm_source=chatgpt.com#pod-dns-config
                 items:
                   type: string
                 maxItems: 3
                 type: array
+                x-kubernetes-validations:
+                - message: dnsServers must be valid IPv4/IPv6 addresses
+                  rule: self.size() == 0 || self.all(s, isIP(s))
             type: object
           status:
             description: status defines the observed state of NetworkTemplate
