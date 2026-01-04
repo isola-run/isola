@@ -38,7 +38,7 @@ spec:
           value: "http://localstack:4566"
         - name: REGION
           value: "us-east-1"
-        - name: AWS_ACCESS_KEY_ID
+        - name: ACCESS_KEY_ID
           value: "test"
-        - name: AWS_SECRET_ACCESS_KEY
+        - name: SECRET_ACCESS_KEY
           value: "test"

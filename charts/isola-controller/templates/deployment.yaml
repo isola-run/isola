@@ -64,8 +64,8 @@ spec:
           value: {{ .Values.storage.endpointUrl | quote }}
         - name: REGION
           value: {{ .Values.storage.region | quote }}
-        - name: AWS_ACCESS_KEY_ID
+        - name: ACCESS_KEY_ID
           value: {{ .Values.storage.accessKeyId | quote }}
-        - name: AWS_SECRET_ACCESS_KEY
+        - name: SECRET_ACCESS_KEY
           value: {{ .Values.storage.secretAccessKey | quote }}
       {{- end }}

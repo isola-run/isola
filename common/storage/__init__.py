@@ -15,9 +15,9 @@ def create_storage() -> ObjectStorage:
         STORAGE_BACKEND: "s3" or "localstack" (default: "s3")
         BUCKET_NAME: Bucket name for file uploads (required)
         ENDPOINT_URL: LocalStack endpoint URL (optional, for dev)
-        REGION: AWS region (default: "us-east-1")
-        AWS_ACCESS_KEY_ID: AWS access key (optional, uses default credentials if not set)
-        AWS_SECRET_ACCESS_KEY: AWS secret key (optional, uses default credentials if not set)
+        REGION: region (default: "us-east-1")
+        ACCESS_KEY_ID: Access key
+        SECRET_ACCESS_KEY: Secret key
     
     Returns:
         ObjectStorage: An instance of the configured storage type
@@ -43,8 +43,8 @@ def create_storage() -> ObjectStorage:
     if storage_type in (StorageType.S3, StorageType.LOCALSTACK):
         endpoint_url: Optional[str] = os.getenv("ENDPOINT_URL")
         region = os.getenv("REGION", "us-east-1")
-        access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
-        secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        access_key_id = os.getenv("ACCESS_KEY_ID")
+        secret_access_key = os.getenv("SECRET_ACCESS_KEY")
         
         return S3ObjectStorage(
             bucket=bucket,

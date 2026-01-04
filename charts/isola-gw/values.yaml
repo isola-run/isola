@@ -14,10 +14,11 @@ kubernetes:
 
 storage:
   enabled: false
-  backend: "s3"  # s3 or localstack
+  backend: "s3"  # s3, localstack, gcs, or azure
   bucket: ""
-  endpointUrl: ""
+  endpointUrl: ""  # Custom endpoint for LocalStack/S3-compatible services
   region: "us-east-1"
+  # AWS credentials
   accessKeyId: ""
   secretAccessKey: ""
 
