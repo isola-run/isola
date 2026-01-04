@@ -94,7 +94,7 @@ echo "Helm doesn't override existing CRDs. For dev, manually delete isola CRDs..
 
 echo "Deploying isola-gw with Helm..."
 "${HELM_BIN}" upgrade --install isola-gw charts/isola-gw \
-  -f charts/isola-gw/values-dev.yamll \
+  -f charts/isola-gw/values-dev.yaml \
   -n isola-control-plane \
   --create-namespace \
   --wait

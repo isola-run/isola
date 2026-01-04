@@ -234,7 +234,11 @@ func (h *Handler) handleSandboxCreation(ctx context.Context, tenantID, sandboxID
 		templateName := "sandbox-template-" + sandboxID
 		success, errorReason := h.k8sManager.CreateSandboxCR(ctx, sandboxID, req, templateName)
 		if !success {
-			log.Printf("Sandbox %s CR creation failed: %v", sandboxID, errorReason)
+			if errorReason != nil {
+				log.Printf("Sandbox %s CR creation failed: %s", sandboxID, *errorReason)
+			} else {
+				log.Printf("Sandbox %s CR creation failed: unknown error", sandboxID)
+			}
 		} else {
 			log.Printf("Sandbox %s CR creation result success=%v", sandboxID, success)
 		}
