@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Configuration
-NAMESPACE="isola-control-plane"
+NAMESPACE="${NAMESPACE:-isola-sandboxes}"
 SERVICE_NAME="isola-controller-nodeport"
 TEST_DIR="services/isola_controller"
 READY_TIMEOUT_SECONDS=180

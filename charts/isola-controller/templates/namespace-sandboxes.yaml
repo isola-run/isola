@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: isola-sandboxes
+  name: {{ .Values.sandboxNamespace | quote }}
   labels:
     app: isola-controller
     component: sandbox-environment

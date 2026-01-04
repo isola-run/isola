@@ -1,0 +1,11 @@
+# todo benl: fix
+apiVersion: sandbox.isola.run/v1alpha1
+kind: NetworkTemplate
+metadata:
+  name: isola-isolated
+  labels:
+    app.kubernetes.io/managed-by: isola-operator
+spec:
+  # isola-isolated: Deny all traffic
+  # No allowedIngress or allowedEgress means default-deny
+  # Controller ingress on port 8080 is always allowed by the NetworkPolicy builder

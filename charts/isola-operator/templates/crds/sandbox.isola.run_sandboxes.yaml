@@ -51,10 +51,32 @@ spec:
           spec:
             description: spec defines the desired state of Sandbox
             properties:
+              network:
+                description: |-
+                  Network defines network isolation configuration for this sandbox.
+                  If nil, defaults to the pre-shipped "isola-isolated" NetworkTemplate (secure by default).
+                properties:
+                  templateRef:
+                    description: |-
+                      TemplateRef references a NetworkTemplate for network isolation rules.
+                      If nil (or the entire Network field is nil), defaults to "isola-isolated" template.
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
               templateRef:
-                description: TemplateRef refers to a SandboxTemplate to inherit defaults
-                  from. The lean object reference is used to query the api server
-                  for the actual SandboxTemplate object referenced.
+                description: |-
+                  TemplateRef refers to a SandboxTemplate to inherit the pod structure from.
+                  The lean object reference is used to query the api server for the actual SandboxTemplate object referenced.
                 properties:
                   name:
                     default: ""
