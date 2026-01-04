@@ -7,6 +7,7 @@ logLevel: debug
 
 nodePort:
   enabled: true
+  port: 30080
 
 kubernetes:
   namespace: "isola-sandboxes"

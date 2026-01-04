@@ -26,7 +26,7 @@ spec:
   ports:
   - port: 8080
     targetPort: 8080
-    nodePort: 8080
+    nodePort: {{ .Values.nodePort.port | default 30080 }}
     name: http
   selector:
     {{- include "isola-gw.selectorLabels" . | nindent 4 }}

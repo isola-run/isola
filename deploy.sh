@@ -5,9 +5,9 @@ set -euo pipefail
 
 # Build the Docker images
 echo "Building images in parallel..."
-minikube image build -t isola-controller:dev -f services/isola_controller/Dockerfile . & pid1=$!
-( cd services/isola-agent && minikube image build -t isola-agent:dev . ) & pid2=$!
-( cd services/isola-operator && minikube image build -t isola-operator:dev . ) & pid3=$!
+( cd services/isola-agent && minikube image build -t isola-agent:dev . ) & pid1=$!
+( cd services/isola-operator && minikube image build -t isola-operator:dev . ) & pid2=$!
+( cd services/isola-gw && minikube image build -t isola-gw:dev . ) & pid3=$!
 wait $pid1 $pid2 $pid3
 
   
@@ -40,18 +40,18 @@ helm upgrade --install isola-operator charts/isola-operator \
   -n isola-control-plane \
   --create-namespace
 
-echo "Deploying isola-controller with Helm..."
-helm upgrade --install isola-controller charts/isola-controller \
-  -f charts/isola-controller/values-dev.yaml \
+echo "Deploying isola-gw with Helm..."
+helm upgrade --install isola-gw charts/isola-gw \
+  -f charts/isola-gw/values-dev.yaml \
   -n isola-control-plane \
   --create-namespace
 
 # Force pod restart to pick up the new images
 echo "Restarting deployments to pick up new images..."
 kubectl rollout restart deployment/isola-operator -n isola-control-plane
-kubectl rollout restart deployment/isola-controller -n isola-control-plane
+kubectl rollout restart deployment/isola-gw -n isola-control-plane
 
 # Wait for deployments
 echo "Waiting for deployments to be ready..."
 kubectl rollout status deployment/isola-operator -n isola-control-plane --timeout=60s
-kubectl rollout status deployment/isola-controller -n isola-control-plane --timeout=60s
+kubectl rollout status deployment/isola-gw -n isola-control-plane --timeout=60s
