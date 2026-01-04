@@ -34,25 +34,21 @@ const (
 )
 
 func main() {
-	// Set Gin mode based on environment
 	if os.Getenv(EnvGinMode) == "" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// Get configuration from environment
 	host := getEnvOrDefault(EnvHTTPHost, DefaultHTTPHost)
 	port := getEnvOrDefault(EnvHTTPPort, DefaultHTTPPort)
 	namespace := getEnvOrDefault(EnvKubernetesNamespace, DefaultKubernetesNamespace)
 	runtimeClassName := os.Getenv(EnvRuntimeClassName)
 
-	// Initialize Kubernetes manager
 	var runtimeClassPtr *string
 	if runtimeClassName != "" {
 		runtimeClassPtr = &runtimeClassName
 	}
 	k8sManager := kubernetes.NewManager(namespace, runtimeClassPtr)
 
-	// Initialize storage (optional - can fail gracefully)
 	ctx := context.Background()
 	var storageBucket *storage.BucketWrapper
 	bucket, err := storage.CreateObjectStorage(ctx)
@@ -73,20 +69,16 @@ func main() {
 		}
 	}
 
-	// Create handler
 	handler := handlers.NewHandler(k8sManager, storageBucket)
 
-	// Initialize Gin router
 	r := gin.New()
 
 	// Add middleware
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 
-	// Setup routes
 	handler.SetupRoutes(r)
 
-	// Create HTTP server with timeouts
 	addr := fmt.Sprintf("%s:%s", host, port)
 	srv := &http.Server{
 		Addr:         addr,
@@ -104,13 +96,12 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down server...")
 
-	// Graceful shutdown with timeout
+	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

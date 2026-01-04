@@ -79,8 +79,7 @@ kubectl apply -f "${SCRIPT_DIR}/manifests/isola-sandboxes-namespace.yaml"
 echo "  → creating runtime class..."
 kubectl apply -f "${SCRIPT_DIR}/manifests/gvisor-runtime-class.yaml"
 
-
-echo "  → installing isola-operator CRDs..."
+  echo "  → installing isola-operator CRDs..."
 kubectl apply -f "${SCRIPT_DIR}/../services/isola-operator/config/crd/bases/"
 
 echo "  → deploying isola-operator..."
