@@ -15,14 +15,6 @@ type CreateSandboxRequest struct {
 	AutoStart bool               `json:"autoStart,omitempty"`
 }
 
-func NewCreateSandboxRequest() CreateSandboxRequest {
-	return CreateSandboxRequest{
-		Region:    "default",
-		GPU:       0,
-		AutoStart: true,
-	}
-}
-
 type ExecuteCommandRequest struct {
 	Command string `json:"command" binding:"required"`
 }
