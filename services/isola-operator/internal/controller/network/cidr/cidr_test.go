@@ -283,3 +283,83 @@ func TestIPv6DoesNotGetIPv4Except(t *testing.T) {
 		assert.True(t, p.Addr().Is6(), "IPv6 allowed should not have IPv4 in except: %s", p)
 	}
 }
+
+func TestParseDNSServerIP(t *testing.T) {
+	tests := []struct {
+		name          string
+		ip            string
+		expectError   bool
+		errorContains string
+		expectedIP    string
+	}{
+		{
+			name:        "valid IPv4",
+			ip:          "8.8.8.8",
+			expectError: false,
+			expectedIP:  "8.8.8.8",
+		},
+		{
+			name:        "valid IPv4 - Cloudflare",
+			ip:          "1.1.1.1",
+			expectError: false,
+			expectedIP:  "1.1.1.1",
+		},
+		{
+			name:        "valid IPv6",
+			ip:          "2001:4860:4860::8888",
+			expectError: false,
+			expectedIP:  "2001:4860:4860::8888",
+		},
+		{
+			name:        "valid IPv6 - full form",
+			ip:          "2001:4860:4860:0000:0000:0000:0000:8888",
+			expectError: false,
+			expectedIP:  "2001:4860:4860::8888", // Canonicalized
+		},
+		{
+			name:          "invalid - not an IP",
+			ip:            "not-an-ip",
+			expectError:   true,
+			errorContains: "invalid DNS server IP",
+		},
+		{
+			name:          "invalid - CIDR notation",
+			ip:            "8.8.8.8/32",
+			expectError:   true,
+			errorContains: "invalid DNS server IP",
+		},
+		{
+			name:          "invalid - hostname",
+			ip:            "dns.google.com",
+			expectError:   true,
+			errorContains: "invalid DNS server IP",
+		},
+		{
+			name:          "invalid - IPv4-mapped IPv6",
+			ip:            "::ffff:8.8.8.8",
+			expectError:   true,
+			errorContains: "IPv4-mapped IPv6 not allowed",
+		},
+		{
+			name:          "invalid - empty",
+			ip:            "",
+			expectError:   true,
+			errorContains: "invalid DNS server IP",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addr, err := ParseDNSServerIP(tt.ip)
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedIP, addr.String())
+		})
+	}
+}

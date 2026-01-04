@@ -88,7 +88,7 @@ func prefixContains(outer, inner netip.Prefix) bool {
 }
 
 // ParsePrefix parses a CIDR string and returns the canonicalized prefix.
-// Does NOT validate against blocked ranges.
+// Does NOT validate against blocked ranges - caller should use ComputeExcept for egress CIDRs.
 func ParsePrefix(cidrStr string) (netip.Prefix, error) {
 	p, err := netip.ParsePrefix(cidrStr)
 	if err != nil {
@@ -102,4 +102,17 @@ func ParsePrefix(cidrStr string) (netip.Prefix, error) {
 	}
 
 	return p.Masked(), nil
+}
+
+// ParseDNSServerIP parses and validates a DNS server IP address.
+// Returns the validated address. Rejects IPv4-mapped IPv6.
+func ParseDNSServerIP(ipStr string) (netip.Addr, error) {
+	addr, err := netip.ParseAddr(ipStr)
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("invalid DNS server IP %q: %w", ipStr, err)
+	}
+	if addr.Is4In6() {
+		return netip.Addr{}, fmt.Errorf("invalid DNS server IP %q: IPv4-mapped IPv6 not allowed", ipStr)
+	}
+	return addr, nil
 }

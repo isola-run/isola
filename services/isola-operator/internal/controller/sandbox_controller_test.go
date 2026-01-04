@@ -2188,7 +2188,7 @@ var _ = Describe("Sandbox Controller", func() {
 			))
 		})
 
-		It("should include DNS egress rule when AllowClusterDNS is true", func() {
+		It("should include DNS egress rule when DNSServers is specified", func() {
 			sandboxName := "sandbox-dns-allowed"
 			templateName := "template-dns-allowed"
 			networkTemplateName := "nettemplate-dns-allowed"
@@ -2196,9 +2196,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			allowDNS := true
 			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.AllowClusterDNS = &allowDNS
+				nt.Spec.DNSServers = []string{"8.8.8.8"}
 			})
 			defer deleteNetworkTemplate(ctx, networkTemplateName)
 			defer deleteNetworkPolicyHelper(ctx, networkTemplateName+"-netpol")
@@ -2217,10 +2216,10 @@ var _ = Describe("Sandbox Controller", func() {
 			np := getNetworkPolicy(ctx, networkTemplateName+"-netpol")
 			Expect(np).NotTo(BeNil())
 			Expect(np.Spec.Egress).To(HaveLen(1))
-			// Verify it targets kube-system namespace with kube-dns pod labels
+			// Verify it targets the DNS server IP as /32 CIDR
 			Expect(np.Spec.Egress[0].To).To(HaveLen(1))
-			Expect(np.Spec.Egress[0].To[0].NamespaceSelector.MatchLabels).To(HaveKeyWithValue("kubernetes.io/metadata.name", "kube-system"))
-			Expect(np.Spec.Egress[0].To[0].PodSelector.MatchLabels).To(HaveKeyWithValue("k8s-app", "kube-dns"))
+			Expect(np.Spec.Egress[0].To[0].IPBlock).NotTo(BeNil())
+			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("8.8.8.8/32"))
 			// Verify port 53 UDP and TCP
 			Expect(np.Spec.Egress[0].Ports).To(HaveLen(2))
 		})
@@ -2513,10 +2512,9 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should create owned NetworkTemplate when sandbox has embedded network spec", func() {
 			// Create sandbox with embedded network spec
-			allowDNS := true
 			networkSpec := sandboxv1alpha1.NetworkTemplateSpec{
-				AllowedEgress:   []string{"8.8.8.0/24"},
-				AllowClusterDNS: &allowDNS,
+				AllowedEgress: []string{"8.8.8.0/24"},
+				DNSServers:    []string{"8.8.8.8"},
 			}
 			createSandboxWithNetworkSpec(sandboxName, templateName, networkSpec)
 			defer deleteSandbox(ctx, sandboxName)
@@ -2534,7 +2532,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			// Verify spec matches
 			Expect(nt.Spec.AllowedEgress).To(Equal([]string{"8.8.8.0/24"}))
-			Expect(*nt.Spec.AllowClusterDNS).To(BeTrue())
+			Expect(nt.Spec.DNSServers).To(Equal([]string{"8.8.8.8"}))
 
 			// Verify labels
 			Expect(nt.Labels["sandbox.isola.run/owner"]).To(Equal(sandboxName))

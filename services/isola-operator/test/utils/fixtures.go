@@ -152,20 +152,10 @@ func WithAllowedEgress(cidrs ...string) NetworkTemplateOption {
 	}
 }
 
-// WithAllowClusterDNS enables or disables cluster DNS access
-func WithAllowClusterDNS(allow bool) NetworkTemplateOption {
+// WithDNSServers sets the DNS server IPs for the network template
+func WithDNSServers(servers ...string) NetworkTemplateOption {
 	return func(nt *sandboxv1alpha1.NetworkTemplate) {
-		nt.Spec.AllowClusterDNS = &allow
-	}
-}
-
-// WithDNSSelector sets a custom DNS selector
-func WithDNSSelector(namespace string, podLabels map[string]string) NetworkTemplateOption {
-	return func(nt *sandboxv1alpha1.NetworkTemplate) {
-		nt.Spec.DNSSelector = &sandboxv1alpha1.DNSSelector{
-			Namespace: namespace,
-			PodLabels: podLabels,
-		}
+		nt.Spec.DNSServers = servers
 	}
 }
 
