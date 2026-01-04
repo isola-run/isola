@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package cidr provides CIDR validation and blocking logic for NetworkPolicy generation.
 package cidr
 
 import (
@@ -23,7 +22,6 @@ import (
 )
 
 // BlockedV4 are IPv4 prefixes that sandboxes should never reach via CIDR-based rules.
-// To reach internal services, use AllowedEgressPeers with explicit pod/namespace selectors.
 var BlockedV4 = []netip.Prefix{
 	netip.MustParsePrefix("10.0.0.0/8"),
 	netip.MustParsePrefix("172.16.0.0/12"),
@@ -37,15 +35,15 @@ var BlockedV6 = []netip.Prefix{
 	netip.MustParsePrefix("fe80::/10"), // Link-local
 }
 
-// ComputeExcept returns the list of blocked CIDRs to exclude from allowed.
+// ComputeExcept returns the list of blocked CIDRs to exclude from allowed in a NetworkPolicy.
 // Returns error if allowed is inside or equals any blocked CIDR.
 //
 // Algorithm:
 //
-//	For each blocked CIDR B (same address family):
-//	  If B == A or B contains A → validation error
-//	  Else if A contains B      → add B to except list
-//	  Else                      → ignore (disjoint)
+//	For each blocked CIDR B:
+//	  If B == A or B contains A => validation error
+//	  Else if A contains B      => add B to except list
+//	  Else                      => ignore (disjoint)
 //
 // Order guarantee: The returned slice follows the definition order of BlockedV4/BlockedV6,
 // ensuring deterministic output across invocations (no reconcile churn).
@@ -74,7 +72,6 @@ func ComputeExcept(allowed netip.Prefix) ([]netip.Prefix, error) {
 }
 
 // prefixContains returns true if outer fully contains inner.
-// Masks both sides defensively in case inputs aren't canonical.
 func prefixContains(outer, inner netip.Prefix) bool {
 	outer = outer.Masked()
 	inner = inner.Masked()
@@ -90,31 +87,8 @@ func prefixContains(outer, inner netip.Prefix) bool {
 	return outer.Contains(inner.Addr())
 }
 
-// ParseAndValidate parses a CIDR string and validates it's not blocked.
-// Returns the canonicalized prefix.
-func ParseAndValidate(cidrStr string) (netip.Prefix, error) {
-	p, err := netip.ParsePrefix(cidrStr)
-	if err != nil {
-		return netip.Prefix{}, fmt.Errorf("invalid CIDR %q: %w", cidrStr, err)
-	}
-
-	// Reject IPv4-mapped IPv6 addresses (e.g., ::ffff:10.0.0.0/104).
-	// Note: zones are already rejected by netip.ParsePrefix per go.dev/issue/51899.
-	if p.Addr().Is4In6() {
-		return netip.Prefix{}, fmt.Errorf("invalid CIDR %q: IPv4-mapped IPv6 not allowed", cidrStr)
-	}
-
-	p = p.Masked() // Canonicalize: 10.1.2.3/24 → 10.1.2.0/24
-
-	_, err = ComputeExcept(p)
-	if err != nil {
-		return netip.Prefix{}, err
-	}
-	return p, nil
-}
-
 // ParsePrefix parses a CIDR string and returns the canonicalized prefix.
-// Does NOT validate against blocked ranges - use ParseAndValidate for that.
+// Does NOT validate against blocked ranges.
 func ParsePrefix(cidrStr string) (netip.Prefix, error) {
 	p, err := netip.ParsePrefix(cidrStr)
 	if err != nil {
