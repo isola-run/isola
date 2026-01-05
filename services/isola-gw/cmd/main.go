@@ -67,8 +67,8 @@ func main() {
 	r := gin.New()
 
 	// Add middleware
-	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
+	r.Use(gin.Recovery())
 
 	handler.SetupRoutes(r)
 
