@@ -160,6 +160,29 @@ var _ = BeforeSuite(func() {
 	}
 	Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 
+	// Create and reconcile the default NetworkTemplate that all sandboxes use
+	defaultNetworkTemplate := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      sandboxv1alpha1.DefaultNetworkTemplate,
+			Namespace: testNamespace,
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{},
+	}
+	Expect(k8sClient.Create(ctx, defaultNetworkTemplate)).To(Succeed())
+
+	// Reconcile to make it ready
+	ntReconciler := &NetworkTemplateReconciler{
+		Client: k8sClient,
+		Scheme: scheme.Scheme,
+	}
+	_, err = ntReconciler.Reconcile(ctx, ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      sandboxv1alpha1.DefaultNetworkTemplate,
+			Namespace: testNamespace,
+		},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
 	// Create fake event recorder for test assertions
 	testRecorder = record.NewFakeRecorder(100)
 })

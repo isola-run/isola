@@ -71,7 +71,6 @@ type NetworkConfig struct {
 	// TemplateRef references an existing NetworkTemplate in the same namespace.
 	// The referenced NetworkTemplate is not owned by this sandbox and will persist
 	// independently of sandbox lifecycle.
-	// +kubebuilder:validation:MinLength=1
 	// +optional
 	TemplateRef *NetworkTemplateReference `json:"templateRef,omitempty"`
 
@@ -98,7 +97,6 @@ type SandboxSpec struct {
 	// +optional
 	Network *NetworkConfig `json:"network,omitempty"`
 }
-
 
 // GetNetworkTemplateName returns the effective NetworkTemplate name for this sandbox.
 // - For templateRef: returns the referenced template name

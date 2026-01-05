@@ -108,7 +108,6 @@ func (r *NetworkTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return ctrl.Result{}, nil
 }
 
-
 func (r *NetworkTemplateReconciler) ensureFinalizer(ctx context.Context, networkTemplate *sandboxv1alpha1.NetworkTemplate) error {
 	log := logf.FromContext(ctx).WithValues("networktemplate", networkTemplate.Name, "namespace", networkTemplate.Namespace)
 
