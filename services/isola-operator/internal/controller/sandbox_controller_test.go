@@ -200,6 +200,10 @@ func hasConditionWithReason(sandbox *sandboxv1alpha1.Sandbox, condType string, s
 	return cond != nil && cond.Status == status && cond.Reason == reason
 }
 
+func stringPtr(s string) *string {
+	return &s
+}
+
 // recreatePodWithNodeName deletes the existing pod and creates a new one with NodeName set
 // This is needed because Kubernetes doesn't allow updating NodeName on existing pods
 func recreatePodWithNodeName(ctx context.Context, podName, nodeName string, runtimeClassName *string) *corev1.Pod {
@@ -2690,6 +2694,268 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(owned1.OwnerReferences).To(HaveLen(1))
 			Expect(owned1.OwnerReferences[0].Name).To(Equal(sandbox1Name))
+		})
+	})
+
+	// ============================================
+	// Category I: Default NetworkTemplate Tests
+	// ============================================
+	Context("Default NetworkTemplate Behavior", func() {
+		var (
+			reconciler   *SandboxReconciler
+			fakeClock    *FakeClock
+			templateName string
+		)
+
+		// restoreDefaultNetworkTemplate recreates and reconciles the default template
+		restoreDefaultNetworkTemplate := func() {
+			nt := &sandboxv1alpha1.NetworkTemplate{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      sandboxv1alpha1.DefaultNetworkTemplate,
+				Namespace: testNamespace,
+			}, nt)
+			if err != nil {
+				createNetworkTemplate(ctx, sandboxv1alpha1.DefaultNetworkTemplate)
+				reconcileNetworkTemplate(ctx, sandboxv1alpha1.DefaultNetworkTemplate)
+			}
+		}
+
+		BeforeEach(func() {
+			fakeClock = NewFakeClock(time.Now())
+			reconciler = newTestReconciler(fakeClock)
+			templateName = fmt.Sprintf("template-default-net-%d", time.Now().UnixNano())
+			createTemplate(ctx, templateName)
+		})
+
+		AfterEach(func() {
+			deleteTemplate(ctx, templateName)
+			restoreDefaultNetworkTemplate()
+		})
+
+		It("should block pod creation until default NetworkTemplate exists", func() {
+			sandboxName := fmt.Sprintf("sandbox-no-network-%d", time.Now().UnixNano())
+
+			// Delete the default template to test the missing template scenario
+			deleteNetworkTemplate(ctx, sandboxv1alpha1.DefaultNetworkTemplate)
+
+			sandbox := &sandboxv1alpha1.Sandbox{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      sandboxName,
+					Namespace: testNamespace,
+				},
+				Spec: sandboxv1alpha1.SandboxSpec{
+					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
+						Name: templateName,
+					},
+					Network: nil,
+				},
+			}
+			Expect(k8sClient.Create(ctx, sandbox)).To(Succeed())
+			defer deleteSandbox(ctx, sandboxName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			podName := sandboxName + "-pod"
+			pod := getPod(ctx, podName)
+			Expect(pod).To(BeNil(), "pod should not exist when default NetworkTemplate is missing")
+
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, SandboxNetworkReadyCondition,
+				metav1.ConditionFalse, CondReasonNetworkTemplateNotFound)).To(BeTrue())
+
+			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxNetworkReadyCondition)
+			Expect(cond.Message).To(ContainSubstring(sandboxv1alpha1.DefaultNetworkTemplate))
+		})
+
+		It("should create pod with default template label when default template exists", func() {
+			sandboxName := fmt.Sprintf("sandbox-default-template-%d", time.Now().UnixNano())
+			podName := sandboxName + "-pod"
+
+			// Default template already exists from BeforeSuite
+
+			sandbox := &sandboxv1alpha1.Sandbox{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      sandboxName,
+					Namespace: testNamespace,
+				},
+				Spec: sandboxv1alpha1.SandboxSpec{
+					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
+						Name: templateName,
+					},
+					Network: nil,
+				},
+			}
+			Expect(k8sClient.Create(ctx, sandbox)).To(Succeed())
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Labels["sandbox.isola.run/network-template"]).To(
+				Equal(sandboxv1alpha1.DefaultNetworkTemplate),
+			)
+		})
+
+		It("should configure DNS sink (127.0.0.1) when default template has no DNSServers", func() {
+			sandboxName := fmt.Sprintf("sandbox-dns-sink-%d", time.Now().UnixNano())
+			podName := sandboxName + "-pod"
+
+			// Default template already exists from BeforeSuite with empty spec (no DNS servers)
+
+			sandbox := &sandboxv1alpha1.Sandbox{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      sandboxName,
+					Namespace: testNamespace,
+				},
+				Spec: sandboxv1alpha1.SandboxSpec{
+					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
+						Name: templateName,
+					},
+					Network: nil,
+				},
+			}
+			Expect(k8sClient.Create(ctx, sandbox)).To(Succeed())
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
+			Expect(pod.Spec.DNSConfig).NotTo(BeNil())
+			Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"127.0.0.1"}))
+			Expect(pod.Spec.DNSConfig.Options).To(ContainElements(
+				corev1.PodDNSConfigOption{Name: "timeout", Value: stringPtr("1")},
+				corev1.PodDNSConfigOption{Name: "attempts", Value: stringPtr("1")},
+				corev1.PodDNSConfigOption{Name: "ndots", Value: stringPtr("1")},
+			))
+		})
+
+		It("should configure custom DNS when template has DNSServers", func() {
+			sandboxName := fmt.Sprintf("sandbox-dns-custom-%d", time.Now().UnixNano())
+			podName := sandboxName + "-pod"
+			networkTemplateName := fmt.Sprintf("dns-template-%d", time.Now().UnixNano())
+
+			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
+				nt.Spec.DNSServers = []string{"8.8.8.8", "1.1.1.1"}
+			})
+			reconcileNetworkTemplate(ctx, networkTemplateName)
+			defer deleteNetworkTemplate(ctx, networkTemplateName)
+
+			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
+			Expect(pod.Spec.DNSConfig).NotTo(BeNil())
+			Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
+			Expect(pod.Spec.DNSConfig.Options).To(BeEmpty())
+		})
+
+		It("should have NetworkReady=False when network template not ready", func() {
+			sandboxName := fmt.Sprintf("sandbox-ready-network-%d", time.Now().UnixNano())
+			podName := sandboxName + "-pod"
+
+			// Replace the default template with one that is NOT reconciled (not ready)
+			deleteNetworkTemplate(ctx, sandboxv1alpha1.DefaultNetworkTemplate)
+			createNetworkTemplate(ctx, sandboxv1alpha1.DefaultNetworkTemplate)
+
+			sandbox := &sandboxv1alpha1.Sandbox{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      sandboxName,
+					Namespace: testNamespace,
+				},
+				Spec: sandboxv1alpha1.SandboxSpec{
+					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
+						Name: templateName,
+					},
+					Network: nil,
+				},
+			}
+			Expect(k8sClient.Create(ctx, sandbox)).To(Succeed())
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox = getSandbox(ctx, sandboxName)
+
+			// NetworkReady should be False when template is not ready
+			networkCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxNetworkReadyCondition)
+			Expect(networkCond).NotTo(BeNil())
+			Expect(networkCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(networkCond.Reason).To(Equal(CondReasonNetworkConfigNotApplied))
+
+			// Overall Ready should also be False (either PodPending or NetworkConfigNotApplied)
+			readyCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+		})
+
+		It("should index sandboxes without network config under default template name", func() {
+			sandboxName := fmt.Sprintf("sandbox-index-test-%d", time.Now().UnixNano())
+
+			sandbox := &sandboxv1alpha1.Sandbox{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      sandboxName,
+					Namespace: testNamespace,
+				},
+				Spec: sandboxv1alpha1.SandboxSpec{
+					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
+						Name: templateName,
+					},
+					Network: nil,
+				},
+			}
+
+			result := extractNetworkTemplateRefName(sandbox)
+			Expect(result).To(Equal([]string{sandboxv1alpha1.DefaultNetworkTemplate}))
+		})
+
+		It("should reconcile sandbox when referenced NetworkTemplate is created", func() {
+			sandboxName := fmt.Sprintf("sandbox-watch-test-%d", time.Now().UnixNano())
+			podName := sandboxName + "-pod"
+			networkTemplateName := fmt.Sprintf("watch-template-%d", time.Now().UnixNano())
+
+			cachedReconciler := newTestReconcilerWithCache(fakeClock)
+
+			// Create sandbox referencing a template that doesn't exist yet
+			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, SandboxNetworkReadyCondition,
+				metav1.ConditionFalse, CondReasonNetworkTemplateNotFound)).To(BeTrue())
+
+			// Now create the template
+			networkTemplate := createNetworkTemplate(ctx, networkTemplateName)
+			defer deleteNetworkTemplate(ctx, networkTemplateName)
+
+			// Verify watch triggers reconcile via findSandboxesForNetworkTemplate
+			Eventually(func() []reconcile.Request {
+				return cachedReconciler.findSandboxesForNetworkTemplate(ctx, networkTemplate)
+			}, testTimeout, testInterval).Should(ContainElement(reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      sandboxName,
+					Namespace: testNamespace,
+				},
+			}))
 		})
 	})
 })
