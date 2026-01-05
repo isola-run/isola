@@ -4,20 +4,35 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: sandboxtemplates.sandbox.isola.run
+  name: networktemplates.sandbox.isola.run
 spec:
   group: sandbox.isola.run
   names:
-    kind: SandboxTemplate
-    listKind: SandboxTemplateList
-    plural: sandboxtemplates
-    singular: sandboxtemplate
+    kind: NetworkTemplate
+    listKind: NetworkTemplateList
+    plural: networktemplates
+    singular: networktemplate
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: NetworkPolicy applied
+      jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - description: Reason for Ready condition
+      jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: SandboxTemplate is the Schema for the sandboxtemplates API
+        description: |-
+          NetworkTemplate defines network isolation rules that can be shared across multiple Sandboxes.
+          When a Sandbox references a NetworkTemplate, a Kubernetes NetworkPolicy is created that selects
+          pods with the label sandbox.isola.run/network-template={template-name}.
         properties:
           apiVersion:
             description: |-
@@ -37,69 +52,47 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of SandboxTemplate
+            description: spec defines the network isolation rules
             properties:
-              podTemplate:
+              allowedEgress:
                 description: |-
-                  PodTemplate describes the pod that will be created to run the sandbox.
-                  The Sandbox controller will override specific security settings (runtimeClassName, etc.)
-                  but allows users to define containers, volumes, and env vars.
-
-                  todo benl: I am extremly unsure about the kubebuilder attributes above
-                  todo benl: agent-sandbox use PodTemplate instead of PodTemplateSpec but from my research the PodTemplateSpec is far more popular and suitable
-                  todo benl: enforce PreemptionPolicy never in validating webhook?
-                  todo benl: verify total resources make sense, etc
-                x-kubernetes-preserve-unknown-fields: true
-              shutdownPolicy:
+                  AllowedEgress is a list of CIDRs the sandbox is allowed to connect to (outbound traffic).
+                  If empty, all egress traffic is blocked (default-deny) unless some other NetworkPolicy in the cluster allows traffic.
+                  Risky IPs (cloud metadata 169.254.0.0/16, IPv6 link-local fe80::/10) are automatically
+                  blocked when the specified CIDR would otherwise allow them.
+                items:
+                  pattern: ^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$
+                  type: string
+                type: array
+              allowedIngress:
                 description: |-
-                  todo benl: utilize TerminationGracePeriodSeconds like RabbitMQ operator to allow shutdown hooks to execute
-                  todo benl: think on how to implement shutdown policy to allow multiple toggles
-                  ShutdownPolicy defines what to do when the sandbox ends
-                properties:
-                  policy:
-                    allOf:
-                    - enum:
-                      - Delete
-                      - SnapshotFilesystem
-                    - enum:
-                      - Delete
-                      - SnapshotFilesystem
-                    default: Delete
-                    description: Policy determines the action taken when the sandbox
-                      shuts down
-                    type: string
-                  snapshotTimeoutSeconds:
-                    default: 300
-                    description: |-
-                      SnapshotTimeoutSeconds sets how long to wait for filesystem snapshotting to finish
-                      before giving up. Only used when Policy is SnapshotFilesystem.
-                    format: int64
-                    minimum: 1
-                    type: integer
-                type: object
-              timeoutSeconds:
-                description: TimeoutSeconds defines how long the sandbox runs before
-                  being terminated
-                format: int64
-                minimum: 1
-                type: integer
-            required:
-            - podTemplate
+                  AllowedIngress is a list of CIDRs allowed to connect to the sandbox (inbound traffic).
+                  If empty, all ingress traffic is blocked (default-deny) unless some other NetworkPolicy in the cluster allows traffic.
+                  todo benl: consider removing AllowedIngress
+                items:
+                  pattern: ^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$
+                  type: string
+                type: array
+              dnsServers:
+                description: |-
+                  DNSServers is a list of DNS server IP addresses the sandbox can use.
+                  When specified, egress to these IPs on port 53 (UDP/TCP) is allowed,
+                  and the pod is configured with dnsPolicy: None using these as nameservers.
+                  If empty (or not specified), DNS is not available (sandbox is fully isolated from DNS).
+                  MaxItems=3 because k8s allow specifying at most 3 nameservers https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/?utm_source=chatgpt.com#pod-dns-config
+                items:
+                  type: string
+                maxItems: 3
+                type: array
+                x-kubernetes-validations:
+                - message: dnsServers must be valid IPv4/IPv6 addresses
+                  rule: self.size() == 0 || self.all(s, isIP(s))
             type: object
           status:
-            description: status defines the observed state of SandboxTemplate
+            description: status defines the observed state of NetworkTemplate
             properties:
               conditions:
-                description: |-
-                  conditions represent the current state of the SandboxTemplate resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+                description: Conditions represent the current state of the NetworkTemplate.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

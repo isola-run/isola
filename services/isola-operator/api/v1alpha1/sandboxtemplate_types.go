@@ -21,24 +21,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-//todo benl: I am not sure how to implement NetworkConfig / NetworkPolicy
-// should we use a NetworkPolicy spec or create our own IsolaNetworkPolicy that may or may not be translated into a NetworkPolicy object?
-// what to do with possible races between pod creation and NetworkPolicy application (if the policy is from outside and not enforced by, say, a gVisor patch)? init container that waits?
-
-// NetworkConfig configure network isolation and limits
-type NetworkConfig struct {
-	// AllowedIncoming is a list of CIDRs allowed to connect to the sandbox
-	// +optional
-	AllowedIncoming []string `json:"allowedIncoming,omitempty"`
-
-	// AllowedOutgoing is a list of CIDRs the sandbox is allowed to connect to
-	// +optional
-	AllowedOutgoing []string `json:"allowedOutgoing,omitempty"`
-}
-
 // SandboxShutdownPolicy defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotFilesystem
 type SandboxShutdownPolicy string
@@ -51,7 +33,7 @@ const (
 // ShutdownPolicy controls how the sandbox is handled when it ends
 type ShutdownPolicy struct {
 	// Policy determines the action taken when the sandbox shuts down
-	// +required
+	// +optional
 	// +kubebuilder:default=Delete
 	// +kubebuilder:validation:Enum=Delete;SnapshotFilesystem
 	Policy SandboxShutdownPolicy `json:"policy"`
@@ -84,11 +66,6 @@ type SandboxTemplateSpec struct {
 	// todo benl: enforce PreemptionPolicy never in validating webhook?
 	// todo benl: verify total resources make sense, etc
 	PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
-
-	// todo benl: is this the right place for it? should we allow / ready to change this policy at runtime?
-	// Network configures network isolation and limits
-	// +optional
-	Network *NetworkConfig `json:"network,omitempty"`
 
 	// TimeoutSeconds defines how long the sandbox runs before being terminated
 	// +kubebuilder:validation:Minimum=1

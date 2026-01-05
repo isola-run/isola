@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 MINIKUBE_BIN=${MINIKUBE_BIN:-minikube}
+NAMESPACE=${NAMESPACE:-isola-sandboxes}
 
 require_cmd() {
   local bin="$1"
@@ -71,8 +72,7 @@ build_and_verify_image "isola-operator:dev" "services/isola-operator/Dockerfile"
 echo "applying manifests in correct order..."
 cd "${SCRIPT_DIR}/"
 
-echo "  → creating namespaces..."
-kubectl apply -f "${SCRIPT_DIR}/manifests/isola-control-plane-namespace.yaml"
+echo "  → creating namespace..."
 kubectl apply -f "${SCRIPT_DIR}/manifests/isola-sandboxes-namespace.yaml"
 
 echo "  → creating runtime class..."
@@ -102,21 +102,21 @@ kubectl apply -f "${SCRIPT_DIR}/manifests/isola-controller-deployment.yaml"
 kubectl apply -f "${SCRIPT_DIR}/manifests/isola-agent-deployment.yaml"
 
 echo "  → forcing isola-operator restart to pick up the rebuilt image..."
-kubectl rollout restart deployment/isola-operator-controller-manager -n isola-control-plane
+kubectl rollout restart deployment/isola-operator-controller-manager -n ${NAMESPACE}
 
 echo "forcing pod restart to pick up new images..."
-kubectl rollout restart deployment/isola-controller -n isola-control-plane
-kubectl rollout restart deployment/isola-agent -n isola-control-plane
+kubectl rollout restart deployment/isola-controller -n ${NAMESPACE}
+kubectl rollout restart deployment/isola-agent -n ${NAMESPACE}
 
 echo "waiting for deployments to be ready..."
-kubectl rollout status deployment/isola-operator-controller-manager -n isola-control-plane --timeout=60s
-kubectl rollout status deployment/isola-controller -n isola-control-plane --timeout=60s
-kubectl rollout status deployment/isola-agent -n isola-control-plane --timeout=60s
+kubectl rollout status deployment/isola-operator-controller-manager -n ${NAMESPACE} --timeout=60s
+kubectl rollout status deployment/isola-controller -n ${NAMESPACE} --timeout=60s
+kubectl rollout status deployment/isola-agent -n ${NAMESPACE} --timeout=60s
 
-echo -e "\n=== Pods in isola-control-plane ==="
-kubectl get pods -n isola-control-plane -o wide
+echo -e "\n=== Pods in ${NAMESPACE} ==="
+kubectl get pods -n ${NAMESPACE} -o wide
 
-echo -e "\n=== Services in isola-control-plane ==="
-kubectl get svc -n isola-control-plane
+echo -e "\n=== Services in ${NAMESPACE} ==="
+kubectl get svc -n ${NAMESPACE}
 
 echo -e "\nDeployment complete! ✓"

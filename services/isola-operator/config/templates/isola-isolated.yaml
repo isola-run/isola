@@ -1,0 +1,11 @@
+apiVersion: sandbox.isola.run/v1alpha1
+kind: NetworkTemplate
+metadata:
+  name: isola-isolated
+  labels:
+    app.kubernetes.io/managed-by: isola-operator
+    app.kubernetes.io/component: network-template
+    isola.run/builtin: "true"
+spec: {}
+# Empty spec = deny all traffic
+# The NetworkPolicy builder always allows isola controller ingress
