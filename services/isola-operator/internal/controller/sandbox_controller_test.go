@@ -459,19 +459,6 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.InitContainers).To(HaveLen(1))
 			Expect(pod.Spec.InitContainers[0].Name).To(Equal(agentContainerName))
 			Expect(pod.Spec.InitContainers[0].Image).To(Equal("isola-agent:test"))
-
-			envVars := pod.Spec.InitContainers[0].Env
-			var sandboxIDFound, sharedDirFound bool
-			for _, env := range envVars {
-				if env.Name == "SANDBOX_ID" && env.Value == sandboxName {
-					sandboxIDFound = true
-				}
-				if env.Name == "SHARED_DIR" {
-					sharedDirFound = true
-				}
-			}
-			Expect(sandboxIDFound).To(BeTrue(), "SANDBOX_ID env var should be set")
-			Expect(sharedDirFound).To(BeTrue(), "SHARED_DIR env var should be set")
 		})
 
 		It("should set owner reference for garbage collection", func() {

@@ -109,10 +109,6 @@ type SandboxReconciler struct {
 }
 
 const (
-	// Shared volume name for communication between sandbox container and agent sidecar
-	sharedVolumeName = "sandbox-shared"
-	// Default mount path for shared volume
-	defaultSharedVolumeMountPath = "/sandbox-shared"
 	agentContainerName           = "isola-agent"
 
 	// Field index for efficient lookup of sandboxes by templates references
@@ -133,6 +129,7 @@ func (r *SandboxReconciler) clock() Clock {
 	return RealClock{}
 }
 
+<<<<<<< HEAD
 func isNetworkTemplateReady(networkTemplate *sandboxv1alpha1.NetworkTemplate) bool {
 	if networkTemplate == nil {
 		return false
@@ -150,56 +147,39 @@ func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Contain
 		mountPath = defaultSharedVolumeMountPath
 	}
 
+=======
+func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
+>>>>>>> 3385a27d9501ed76080fcd51eef499907b81dee1
 	rp := corev1.ContainerRestartPolicyAlways
 	return corev1.Container{
-		Name:          "isola-agent",
+		Name:          agentContainerName,
 		Image:         r.AgentImage,
 		RestartPolicy: &rp,
-		Env: []corev1.EnvVar{
-			{
-				Name:  "SANDBOX_ID",
-				Value: sandboxID,
-			},
-			{
-				Name:  "SHARED_DIR",
-				Value: mountPath,
-			},
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      sharedVolumeName,
-				MountPath: mountPath,
-			},
+		// RunAsUser 0 (root) is needed to read /proc/<pid>/environ of other users' processes
+		// and to access /proc/<pid>/root when using shared PID namespace.
+		SecurityContext: &corev1.SecurityContext{
+			RunAsUser: ptr.To(int64(0)),
 		},
 	}
 }
 
-func (r *SandboxReconciler) injectSidecar(pod *corev1.Pod, sandboxID string) {
-	mountPath := r.SharedVolumeMountPath
-	if mountPath == "" {
-		mountPath = defaultSharedVolumeMountPath
+func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
+	if len(sandboxPod.Spec.Containers) != 1 {
+		// todo: remove this assumption
+		return fmt.Errorf("Sandbox pod must have exactly one container")
 	}
 
-	sharedVolume := corev1.Volume{
-		Name: sharedVolumeName,
-		VolumeSource: corev1.VolumeSource{
-			EmptyDir: &corev1.EmptyDirVolumeSource{},
-		},
-	}
-	pod.Spec.Volumes = append(pod.Spec.Volumes, sharedVolume)
+	// Mark the first container as the main container so the agent can discover it via /proc/<pid>/environ.
+	// Note: a single main container is supported. The agent's findMarkedProcess() returns the first PID it finds with the ISOLA_MAIN_CONTAINER marker.
+	sandboxPod.Spec.Containers[0].Env = append(sandboxPod.Spec.Containers[0].Env, corev1.EnvVar{
+		Name:  "ISOLA_MAIN_CONTAINER",
+		Value: "true",
+	})
 
-	for i := range pod.Spec.Containers {
-		pod.Spec.Containers[i].VolumeMounts = append(
-			pod.Spec.Containers[i].VolumeMounts,
-			corev1.VolumeMount{
-				Name:      sharedVolumeName,
-				MountPath: mountPath,
-			},
-		)
-	}
-
-	agentContainer := r.buildAgentContainer(sandboxID)
-	pod.Spec.InitContainers = append(pod.Spec.InitContainers, agentContainer)
+	// Add agent sidecar container as an init container
+	agentContainer := r.buildAgentContainer()
+	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, agentContainer)
+	return nil
 }
 
 func isPodReady(pod *corev1.Pod) bool {
@@ -373,6 +353,10 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		// todo benl: copy annotations as well?
 		Spec: template.Spec.PodTemplate.Spec,
 	}
+
+	// Enable shared PID namespace so the isola agent can locate the main container and access it's filesystem via /proc/<pid>/root
+	sandboxPod.Spec.ShareProcessNamespace = ptr.To(true)
+
 	// todo benl: implement api to restore pod from snapshot (make sure they are compatible)
 	// if sandboxPod.Annotations == nil {
 	// 	sandboxPod.Annotations = map[string]string{}
@@ -380,6 +364,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	// sandboxPod.Annotations["dev.gvisor.tar.rootfs.upper.todobenl"] = "/tmp/rootfs-sandbox-870e5846-1766869560.tar"
 
+<<<<<<< HEAD
 	// todo benl: make sure networkTemplate is never nil
 	// Configure DNS for network-isolated sandboxes.
 	// Always set dnsPolicy: None to prevent cluster DNS access and prevent leaking information from kube-dns.
@@ -406,6 +391,12 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	// Inject agent sidecar and shared volume
 	r.injectSidecar(sandboxPod, sandbox.Name)
+=======
+	if err := r.injectSidecar(sandboxPod); err != nil {
+		log.Error(err, "Failed to inject sidecar")
+		return err
+	}
+>>>>>>> 3385a27d9501ed76080fcd51eef499907b81dee1
 
 	// Set Pod's object owner reference to the Sandbox object
 	if err := controllerutil.SetControllerReference(sandbox, sandboxPod, r.Scheme); err != nil {
