@@ -285,6 +285,7 @@ const (
 	ReasonFSSnapshotTargetNotFound      = "TargetNotFound"
 	ReasonFSSnapshotPodNotReady         = "SnapshotPodNotReady"
 	ReasonFSSnapshotSnapshotting        = "Snapshotting"
+	ReasonFSSnapshotNotSnapshotting     = "NotSnapshotting"
 )
 
 func (r *SandboxReconciler) verifySnapshottingCapability(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (string, error) {
@@ -381,7 +382,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	// todo benl: make sure networkTemplate is never nil
 	// Configure DNS for network-isolated sandboxes.
-	// Always set dnsPolicy: None to prevent cluster DNS access.
+	// Always set dnsPolicy: None to prevent cluster DNS access and prevent leaking information from kube-dns.
 	// When DNSServers is empty, use 127.0.0.1 as a sink (DNS won't work - full isolation).
 	// Note: Kubernetes requires at least one nameserver when dnsPolicy is None.
 	if networkTemplate != nil {
@@ -775,16 +776,8 @@ func (r *SandboxReconciler) EnsureOwnedNetworkTemplateFromSpec(
 
 // EnsureNetworkTemplate fetches the NetworkTemplate for the sandbox.
 // For embedded specs (network.spec), creates a sandbox-owned NetworkTemplate.
-// Returns nil if no network config is specified (sandbox has unrestricted network).
 func (r *SandboxReconciler) EnsureNetworkTemplate(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.NetworkTemplate, ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
-
-	// No network config = no NetworkPolicy needed (unrestricted network)
-	// Network condition will be set by reconcileSandboxStatus
-	if !sandbox.HasNetworkConfig() {
-		log.Info("No network configuration specified, sandbox has unrestricted network")
-		return nil, ctrl.Result{}, nil
-	}
 
 	// For embedded specs, create/update the sandbox-owned NetworkTemplate first
 	if sandbox.HasNetworkSpec() {
@@ -934,18 +927,15 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 
 	networkCondition := r.determineNetworkCondition(sandbox, networkTemplate)
 	conditions = append(conditions, networkCondition)
-	networkReady := networkCondition.Status == metav1.ConditionTrue
 
 	snapshotterPod, err := r.getFilesystemSnapshotterPod(ctx, sandbox)
 	if err != nil {
 		return err
 	}
-	if snapshotterPod != nil {
-		snapshotCondition := r.determineSnapshotCondition(sandbox, snapshotterPod)
-		conditions = append(conditions, snapshotCondition)
-	}
+	snapshotCondition := r.determineSnapshotCondition(sandbox, snapshotterPod)
+	conditions = append(conditions, snapshotCondition)
 
-	readyCondition := r.determineReadyCondition(sandbox, sandboxPod, networkReady)
+	readyCondition := r.determineReadyCondition(sandbox, sandboxPod, networkTemplate)
 	conditions = append(conditions, readyCondition)
 
 	return r.patchStatus(ctx, baseSandbox, sandbox, conditions)
@@ -988,6 +978,16 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 
 // determineSnapshotCondition returns the SnapshottingFilesystem condition based on the snapshotter pod state.
 func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snapshotterPod *corev1.Pod) metav1.Condition {
+	if snapshotterPod == nil {
+		return metav1.Condition{
+			Type:               SandboxFilesystemSnapshotCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             ReasonFSSnapshotNotSnapshotting,
+			Message:            "No filesystem snapshot in progress",
+			ObservedGeneration: sandbox.Generation,
+		}
+	}
+
 	if isPodReady(snapshotterPod) {
 		return metav1.Condition{
 			Type:               SandboxFilesystemSnapshotCondition,
@@ -1009,23 +1009,12 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 }
 
 func (r *SandboxReconciler) determineNetworkCondition(sandbox *sandboxv1alpha1.Sandbox, networkTemplate *sandboxv1alpha1.NetworkTemplate) metav1.Condition {
-	// No network config = unrestricted network access
-	if !sandbox.HasNetworkConfig() {
-		return metav1.Condition{
-			Type:               SandboxNetworkReadyCondition,
-			Status:             metav1.ConditionTrue,
-			Reason:             CondReasonNoNetworkPolicy,
-			Message:            "No network configuration specified; sandbox has unrestricted network access",
-			ObservedGeneration: sandbox.Generation,
-		}
-	}
-
 	if networkTemplate == nil {
 		return metav1.Condition{
 			Type:               SandboxNetworkReadyCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonNetworkTemplateNotFound,
-			Message:            "NetworkTemplate not available",
+			Message:            "NetworkTemplate not found",
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
@@ -1051,7 +1040,7 @@ func (r *SandboxReconciler) determineNetworkCondition(sandbox *sandboxv1alpha1.S
 
 // determineReadyCondition returns the aggregate Ready condition.
 // Sandbox is ready when pod is ready AND network is configured (if network template exists).
-func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod, networkReady bool) metav1.Condition {
+func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.NetworkTemplate) metav1.Condition {
 	if isPodTerminated(sandboxPod) {
 		reason := CondReasonPodFailed
 		if sandboxPod.Status.Phase == corev1.PodSucceeded {
@@ -1076,7 +1065,7 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 		}
 	}
 
-	if !networkReady {
+	if !isNetworkTemplateReady(networkTemplate) {
 		return metav1.Condition{
 			Type:               SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
@@ -1105,6 +1094,7 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=node.k8s.io,resources=runtimeclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
+
 func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	//todo benl: pass params by value sometimes, to avoid dereferencing nils by accident
 	// todo benl: add r.RecordEvent for events (observability)
@@ -1180,11 +1170,12 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err != nil {
 		return result, err
 	}
-	// todo benl: let's not allow networkTemplate == nil and use a default-deny policy if not exists
-	if networkTemplate == nil && sandbox.HasNetworkConfig() {
-		log.Info("NetworkTemplate not found, waiting", "template", sandbox.GetNetworkTemplateName())
+
+	if networkTemplate == nil {
+		log.Info("NetworkTemplate not found, waiting")
 		return ctrl.Result{}, nil
 	}
+
 
 	sandboxPod, err := r.getSandboxPod(ctx, sandbox)
 	if err != nil {
@@ -1581,9 +1572,6 @@ func extractNetworkTemplateRefName(obj client.Object) []string {
 		return nil
 	}
 
-	if !sandbox.HasNetworkConfig() {
-		return []string{}
-	}
 	return []string{sandbox.GetNetworkTemplateName()}
 }
 

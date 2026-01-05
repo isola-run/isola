@@ -38,6 +38,10 @@ const (
 	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
 )
 
+const (
+	DefaultNetworkTemplate string = "isola-isolated"
+)
+
 // SandboxTemplateReference identifies a SandboxTemplate in the same namespace.
 type SandboxTemplateReference struct {
 	// Name of the SandboxTemplate in the same namespace.
@@ -67,6 +71,7 @@ type NetworkConfig struct {
 	// TemplateRef references an existing NetworkTemplate in the same namespace.
 	// The referenced NetworkTemplate is not owned by this sandbox and will persist
 	// independently of sandbox lifecycle.
+	// +kubebuilder:validation:MinLength=1
 	// +optional
 	TemplateRef *NetworkTemplateReference `json:"templateRef,omitempty"`
 
@@ -94,17 +99,14 @@ type SandboxSpec struct {
 	Network *NetworkConfig `json:"network,omitempty"`
 }
 
-func (s *Sandbox) HasNetworkConfig() bool {
-	return s.Spec.Network != nil
-}
 
 // GetNetworkTemplateName returns the effective NetworkTemplate name for this sandbox.
-// Panics if HasNetworkConfig() is false - callers must check first.
 // - For templateRef: returns the referenced template name
 // - For spec: returns "{sandbox-name}-network"
+// - otherwise defaults to DefaultNetworkTemplate
 func (s *Sandbox) GetNetworkTemplateName() string {
 	if s.Spec.Network == nil {
-		panic("GetNetworkTemplateName called without network config - check HasNetworkConfig() first")
+		return DefaultNetworkTemplate
 	}
 	if s.Spec.Network.TemplateRef != nil {
 		return s.Spec.Network.TemplateRef.Name
