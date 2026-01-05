@@ -29,16 +29,6 @@ func (h *Handler) UploadFile(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	backend := getSandboxBackend()
-	if backend != "kubernetes" {
-		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
-			Error:   "NotImplemented",
-			Message: "File upload is only implemented for the Kubernetes backend",
-		})
-		return
-	}
-
-	// Check sandbox exists and is running
 	state, ipAddress, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
 	if state == nil {
 		log.Printf("[UPLOAD] Sandbox %s not found", sandboxID)
@@ -263,15 +253,6 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 		return
 	}
 
-	backend := getSandboxBackend()
-	if backend != "kubernetes" {
-		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
-			Error:   "NotImplemented",
-			Message: "Large file upload is only implemented for the Kubernetes backend",
-		})
-		return
-	}
-
 	state, _, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
 	if state == nil {
 		log.Printf("[UPLOAD-URL] Sandbox %s not found", sandboxID)
@@ -350,16 +331,7 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 		return
 	}
 
-	backend := getSandboxBackend()
-	if backend != "kubernetes" {
-		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
-			Error:   "NotImplemented",
-			Message: "Large file upload is only implemented for the Kubernetes backend",
-		})
-		return
-	}
-
-	// Check sandbox exists and is running
+	state, ipAddress, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
 	state, ipAddress, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
 	if state == nil {
 		log.Printf("[CONFIRM] Sandbox %s not found", sandboxID)
