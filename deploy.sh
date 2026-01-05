@@ -69,7 +69,7 @@ ensure_runtime_class
 
 echo "Building images..."
 build_image "isola-controller:dev" "services/isola_controller/Dockerfile" "${ROOT_DIR}"
-build_image "isola-agent:dev" "services/isola_agent/Dockerfile" "${ROOT_DIR}"
+build_image "isola-agent:dev" "Dockerfile" "${ROOT_DIR}/services/isola-agent"
 build_image "isola-operator:dev" "Dockerfile" "${ROOT_DIR}/services/isola-operator"
 
 # Deploy LocalStack for S3 storage
