@@ -104,7 +104,6 @@ type SandboxReconciler struct {
 	Scheme                *runtime.Scheme
 	Recorder              record.EventRecorder
 	AgentImage            string
-	SharedVolumeMountPath string
 	Clock                 Clock // Clock interface for time operations, allows mocking in tests
 }
 
@@ -129,7 +128,6 @@ func (r *SandboxReconciler) clock() Clock {
 	return RealClock{}
 }
 
-<<<<<<< HEAD
 func isNetworkTemplateReady(networkTemplate *sandboxv1alpha1.NetworkTemplate) bool {
 	if networkTemplate == nil {
 		return false
@@ -140,16 +138,7 @@ func isNetworkTemplateReady(networkTemplate *sandboxv1alpha1.NetworkTemplate) bo
 	return readyCond != nil && readyCond.Status == metav1.ConditionTrue
 }
 
-// buildAgentContainer creates the agent sidecar container spec
-func (r *SandboxReconciler) buildAgentContainer(sandboxID string) corev1.Container {
-	mountPath := r.SharedVolumeMountPath
-	if mountPath == "" {
-		mountPath = defaultSharedVolumeMountPath
-	}
-
-=======
 func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
->>>>>>> 3385a27d9501ed76080fcd51eef499907b81dee1
 	rp := corev1.ContainerRestartPolicyAlways
 	return corev1.Container{
 		Name:          agentContainerName,
@@ -169,6 +158,7 @@ func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
 		return fmt.Errorf("Sandbox pod must have exactly one container")
 	}
 
+	// todo benl: Mark with sandboxPod.Spec.Containers[i].Name
 	// Mark the first container as the main container so the agent can discover it via /proc/<pid>/environ.
 	// Note: a single main container is supported. The agent's findMarkedProcess() returns the first PID it finds with the ISOLA_MAIN_CONTAINER marker.
 	sandboxPod.Spec.Containers[0].Env = append(sandboxPod.Spec.Containers[0].Env, corev1.EnvVar{
@@ -176,7 +166,6 @@ func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
 		Value: "true",
 	})
 
-	// Add agent sidecar container as an init container
 	agentContainer := r.buildAgentContainer()
 	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, agentContainer)
 	return nil
@@ -364,40 +353,31 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	// sandboxPod.Annotations["dev.gvisor.tar.rootfs.upper.todobenl"] = "/tmp/rootfs-sandbox-870e5846-1766869560.tar"
 
-<<<<<<< HEAD
-	// todo benl: make sure networkTemplate is never nil
 	// Configure DNS for network-isolated sandboxes.
 	// Always set dnsPolicy: None to prevent cluster DNS access and prevent leaking information from kube-dns.
-	// When DNSServers is empty, use 127.0.0.1 as a sink (DNS won't work - full isolation).
+	// When DNSServers is empty, use 127.0.0.1 as a sink (DNS won't work).
 	// Note: Kubernetes requires at least one nameserver when dnsPolicy is None.
-	if networkTemplate != nil {
-		sandboxPod.Spec.DNSPolicy = corev1.DNSNone
-		nameservers := networkTemplate.Spec.DNSServers
-		var dnsOptions []corev1.PodDNSConfigOption
-		if len(nameservers) == 0 { // nameservers must be at least 1 https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-dns-config
-			nameservers = []string{"127.0.0.1"} // Sink - DNS queries will fail
-			// Fast-fail options: minimize time wasted on DNS queries that will never succeed
-			dnsOptions = []corev1.PodDNSConfigOption{
-				{Name: "timeout", Value: ptr.To("1")},
-				{Name: "attempts", Value: ptr.To("1")},
-				{Name: "ndots", Value: ptr.To("1")},
-			}
-		}
-		sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{
-			Nameservers: nameservers,
-			Options:     dnsOptions,
+	sandboxPod.Spec.DNSPolicy = corev1.DNSNone
+	nameservers := networkTemplate.Spec.DNSServers
+	var dnsOptions []corev1.PodDNSConfigOption
+	if len(nameservers) == 0 { // nameservers must be at least 1 https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-dns-config
+		nameservers = []string{"127.0.0.1"} // Sink - DNS queries will fail
+		// Fast-fail options: minimize time wasted on DNS queries that will never succeed
+		dnsOptions = []corev1.PodDNSConfigOption{
+			{Name: "timeout", Value: ptr.To("1")},
+			{Name: "attempts", Value: ptr.To("1")},
+			{Name: "ndots", Value: ptr.To("1")},
 		}
 	}
+	sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{
+		Nameservers: nameservers,
+		Options:     dnsOptions,
+		}
 
-	// Inject agent sidecar and shared volume
-	r.injectSidecar(sandboxPod, sandbox.Name)
-=======
 	if err := r.injectSidecar(sandboxPod); err != nil {
 		log.Error(err, "Failed to inject sidecar")
 		return err
 	}
->>>>>>> 3385a27d9501ed76080fcd51eef499907b81dee1
-
 	// Set Pod's object owner reference to the Sandbox object
 	if err := controllerutil.SetControllerReference(sandbox, sandboxPod, r.Scheme); err != nil {
 		log.Error(err, "Failed to set controller reference")
