@@ -95,6 +95,7 @@ func main() {
 	log.Println("Shutting down server...")
 
 	// Graceful shutdown
+	// TODO: __OMER__ Configure pod terminationGracePeriodSeconds in deployment.yaml to match this timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
