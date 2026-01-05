@@ -139,7 +139,7 @@ func TestComputeExcept(t *testing.T) {
 			name:           "0.0.0.0/0 - except all blocked IPv4",
 			allowed:        "0.0.0.0/0",
 			expectError:    false,
-			expectedExcept: []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"},
+			expectedExcept: []string{"10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "240.0.0.0/4"},
 		},
 		{
 			name:           "public CIDR - no except",
@@ -148,10 +148,10 @@ func TestComputeExcept(t *testing.T) {
 			expectedExcept: nil,
 		},
 		{
-			name:           "128.0.0.0/1 - no overlap with blocked",
+			name:           "128.0.0.0/1 - upper half of IPv4",
 			allowed:        "128.0.0.0/1",
 			expectError:    false,
-			expectedExcept: []string{"169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16"},
+			expectedExcept: []string{"169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "240.0.0.0/4"},
 		},
 		{
 			name:           "::/0 - except all blocked IPv6",

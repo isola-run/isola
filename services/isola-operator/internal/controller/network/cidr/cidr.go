@@ -24,9 +24,11 @@ import (
 // BlockedV4 are IPv4 prefixes that sandboxes should never reach via CIDR-based rules.
 var BlockedV4 = []netip.Prefix{
 	netip.MustParsePrefix("10.0.0.0/8"),      // RFC 1918: 10.0.0.0 - 10.255.255.255 (Class A private)
+	netip.MustParsePrefix("100.64.0.0/10"),   // RFC 6598: 100.64.0.0 - 100.127.255.255 (Carrier-grade NAT / shared address space)
+	netip.MustParsePrefix("169.254.0.0/16"),  // RFC 3927: Link-local (includes cloud metadata 169.254.169.254)
 	netip.MustParsePrefix("172.16.0.0/12"),   // RFC 1918: 172.16.0.0 - 172.31.255.255 (Class B private)
 	netip.MustParsePrefix("192.168.0.0/16"),  // RFC 1918: 192.168.0.0 - 192.168.255.255 (Class C private)
-	netip.MustParsePrefix("169.254.0.0/16"),  // RFC 3927: Link-local (includes cloud metadata 169.254.169.254)
+	netip.MustParsePrefix("240.0.0.0/4"),     // RFC 1112: 240.0.0.0 - 255.255.255.255 (Class E reserved)
 }
 
 // BlockedV6 are IPv6 prefixes that sandboxes should never reach via CIDR-based rules.
