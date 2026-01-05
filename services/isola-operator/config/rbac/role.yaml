@@ -5,6 +5,25 @@ metadata:
   name: isola-operator-manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - networking.k8s.io
   resources:
   - networkpolicies
@@ -15,6 +34,14 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - node.k8s.io
+  resources:
+  - runtimeclasses
+  verbs:
+  - get
+  - list
   - watch
 - apiGroups:
   - sandbox.isola.run
@@ -30,13 +57,35 @@ rules:
   - sandbox.isola.run
   resources:
   - networktemplates/finalizers
+  - sandboxes/finalizers
   verbs:
   - update
 - apiGroups:
   - sandbox.isola.run
   resources:
   - networktemplates/status
+  - sandboxes/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - sandbox.isola.run
+  resources:
+  - sandboxes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - sandbox.isola.run
+  resources:
+  - sandboxtemplates
+  verbs:
+  - get
+  - list
+  - watch
