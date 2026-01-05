@@ -3,12 +3,14 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -236,6 +238,134 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	})
 }
 
+// DownloadFile handles GET /sandboxes/:id/files?path=...
+// For small files (under 5MB), reads the file directly from the sandbox agent.
+func (h *Handler) DownloadFile(c *gin.Context) {
+	sandboxID := c.Param("id")
+	targetPath := c.Query("path")
+
+	if targetPath == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "BadRequest",
+			Message: "path query parameter is required",
+		})
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	backend := getSandboxBackend()
+	if backend != "kubernetes" {
+		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
+			Error:   "NotImplemented",
+			Message: "File download is only implemented for the Kubernetes backend",
+		})
+		return
+	}
+
+	state, ipAddress, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
+	if state == nil {
+		log.Printf("[DOWNLOAD] Sandbox %s not found", sandboxID)
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error:   "NotFound",
+			Message: "Sandbox not found",
+		})
+		return
+	}
+
+	if *state != models.SandboxStateRunning {
+		log.Printf("[DOWNLOAD] Sandbox %s not in running state: %s", sandboxID, *state)
+		c.JSON(http.StatusConflict, models.ErrorResponse{
+			Error:   "Conflict",
+			Message: "Sandbox must be in 'running' state, current state: " + string(*state),
+		})
+		return
+	}
+
+	if ipAddress == nil || *ipAddress == "" {
+		log.Printf("[DOWNLOAD] Sandbox %s has no IP address", sandboxID)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Sandbox pod has no IP address",
+		})
+		return
+	}
+
+	// Call agent's /read-file endpoint
+	agentURL := fmt.Sprintf("http://%s:%d/read-file?path=%s", *ipAddress, agentSidecarPort, targetPath)
+	log.Printf("[DOWNLOAD] Forwarding to agent at %s", agentURL)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", agentURL, nil)
+	if err != nil {
+		log.Printf("[DOWNLOAD] Failed to create request: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to create request: " + err.Error(),
+		})
+		return
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[DOWNLOAD] Failed to connect to agent at %s: %v", agentURL, err)
+		c.JSON(http.StatusBadGateway, models.ErrorResponse{
+			Error:   "BadGateway",
+			Message: "Failed to connect to sandbox agent: " + err.Error(),
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	// Handle error responses from agent
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[DOWNLOAD] Agent returned error: %d - %s", resp.StatusCode, string(bodyBytes))
+
+		// Try to parse agent error response
+		var agentError struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(bodyBytes, &agentError); err == nil && agentError.Error != "" {
+			c.JSON(resp.StatusCode, models.ErrorResponse{
+				Error:   "AgentError",
+				Message: agentError.Error,
+			})
+			return
+		}
+
+		c.JSON(resp.StatusCode, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Agent read-file failed: " + string(bodyBytes),
+		})
+		return
+	}
+
+	var agentResponse struct {
+		Success bool   `json:"success"`
+		Path    string `json:"path"`
+		Size    int64  `json:"size"`
+		Content []byte `json:"content"`
+	}
+	if err := json.Unmarshal(bodyBytes, &agentResponse); err != nil {
+		log.Printf("[DOWNLOAD] Failed to parse agent response: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to parse agent response: " + err.Error(),
+		})
+		return
+	}
+
+	log.Printf("[DOWNLOAD] Successfully downloaded file from sandbox %s: path=%s, size=%d", sandboxID, agentResponse.Path, agentResponse.Size)
+
+	c.JSON(http.StatusOK, models.FileDownloadResponse{
+		Path:    agentResponse.Path,
+		Size:    agentResponse.Size,
+		Content: base64.StdEncoding.EncodeToString(agentResponse.Content),
+	})
+}
+
 func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 	sandboxID := c.Param("id")
 
@@ -318,6 +448,252 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 		UploadURL: uploadURL,
 		UploadID:  uploadID,
 		ExpiresIn: expiresIn,
+	})
+}
+
+// GenerateDownloadUrl handles POST /sandboxes/:id/files/download-url
+// For large files (over 5MB), orchestrates uploading the file from sandbox to S3
+// and returns a presigned download URL to the client.
+func (h *Handler) GenerateDownloadUrl(c *gin.Context) {
+	sandboxID := c.Param("id")
+
+	var req models.DownloadUrlRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "BadRequest",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	log.Printf("[DOWNLOAD-URL] Request for sandbox %s: path=%s", sandboxID, req.Path)
+
+	tenantID, _ := c.Get("tenant_id")
+	tenantIDStr := tenantID.(string)
+
+	ctx := c.Request.Context()
+
+	if h.storage == nil {
+		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
+			Error:   "NotImplemented",
+			Message: "Storage not configured. Large file downloads are not available.",
+		})
+		return
+	}
+
+	backend := getSandboxBackend()
+	if backend != "kubernetes" {
+		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
+			Error:   "NotImplemented",
+			Message: "Large file download is only implemented for the Kubernetes backend",
+		})
+		return
+	}
+
+	// Check sandbox exists and is running
+	// TODO: __OMER__ move this function to avoid code repetition
+	state, ipAddress, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
+	if state == nil {
+		log.Printf("[DOWNLOAD-URL] Sandbox %s not found", sandboxID)
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error:   "NotFound",
+			Message: "Sandbox not found",
+		})
+		return
+	}
+
+	if *state != models.SandboxStateRunning {
+		log.Printf("[DOWNLOAD-URL] Sandbox %s not in running state: %s", sandboxID, *state)
+		c.JSON(http.StatusConflict, models.ErrorResponse{
+			Error:   "Conflict",
+			Message: "Sandbox must be in 'running' state, current state: " + string(*state),
+		})
+		return
+	}
+
+	if ipAddress == nil || *ipAddress == "" {
+		log.Printf("[DOWNLOAD-URL] Sandbox %s has no IP address", sandboxID)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Sandbox pod has no IP address",
+		})
+		return
+	}
+
+	// Step 1: Call agent's /file-info to get file size and check existence
+	// TODO: __OMER__ avoid this step
+	fileInfoURL := fmt.Sprintf("http://%s:%d/file-info?path=%s", *ipAddress, agentSidecarPort, req.Path)
+	log.Printf("[DOWNLOAD-URL] Getting file info from agent at %s", fileInfoURL)
+
+	fileInfoReq, err := http.NewRequestWithContext(ctx, "GET", fileInfoURL, nil)
+	if err != nil {
+		log.Printf("[DOWNLOAD-URL] Failed to create file-info request: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to create request: " + err.Error(),
+		})
+		return
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	fileInfoResp, err := client.Do(fileInfoReq)
+	if err != nil {
+		log.Printf("[DOWNLOAD-URL] Failed to connect to agent at %s: %v", fileInfoURL, err)
+		c.JSON(http.StatusBadGateway, models.ErrorResponse{
+			Error:   "BadGateway",
+			Message: "Failed to connect to sandbox agent: " + err.Error(),
+		})
+		return
+	}
+	defer fileInfoResp.Body.Close()
+
+	fileInfoBody, _ := io.ReadAll(fileInfoResp.Body)
+
+	if fileInfoResp.StatusCode != http.StatusOK {
+		log.Printf("[DOWNLOAD-URL] Agent file-info returned error: %d - %s", fileInfoResp.StatusCode, string(fileInfoBody))
+		var agentError struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(fileInfoBody, &agentError); err == nil && agentError.Error != "" {
+			c.JSON(fileInfoResp.StatusCode, models.ErrorResponse{
+				Error:   "AgentError",
+				Message: agentError.Error,
+			})
+			return
+		}
+		c.JSON(fileInfoResp.StatusCode, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Agent file-info failed: " + string(fileInfoBody),
+		})
+		return
+	}
+
+	var fileInfo models.FileInfoResponse
+	if err := json.Unmarshal(fileInfoBody, &fileInfo); err != nil {
+		log.Printf("[DOWNLOAD-URL] Failed to parse file-info response: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to parse file-info response: " + err.Error(),
+		})
+		return
+	}
+
+	if !fileInfo.Exists {
+		log.Printf("[DOWNLOAD-URL] File not found: %s", req.Path)
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error:   "NotFound",
+			Message: "File not found: " + req.Path,
+		})
+		return
+	}
+
+	log.Printf("[DOWNLOAD-URL] File info: path=%s, size=%d", fileInfo.Path, fileInfo.Size)
+
+	// Step 2: Generate unique download ID and S3 object key
+	downloadID := uuid.New().String()
+	filename := filepath.Base(req.Path)
+	objectKey := fmt.Sprintf("downloads/%s/%s/%s/%s", tenantIDStr, sandboxID, downloadID, filename)
+
+	// Step 3: Generate presigned PUT URL for the agent to upload to S3
+	expiresIn := 900 // 15 minutes
+	uploadURL, err := h.storage.GeneratePresignedUploadURL(ctx, objectKey, expiresIn, "")
+	if err != nil {
+		log.Printf("[DOWNLOAD-URL] Failed to generate presigned upload URL: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to generate presigned URL: " + err.Error(),
+		})
+		return
+	}
+
+	log.Printf("[DOWNLOAD-URL] Generated presigned upload URL for object: %s", objectKey)
+
+	// Step 4: Tell agent to upload file to the presigned URL
+	uploadToUrlReq := struct {
+		UploadURL string `json:"upload_url"`
+		Path      string `json:"path"`
+	}{
+		UploadURL: uploadURL,
+		Path:      req.Path,
+	}
+
+	uploadToUrlBody, err := json.Marshal(uploadToUrlReq)
+	if err != nil {
+		log.Printf("[DOWNLOAD-URL] Failed to marshal upload-to-url request: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to marshal request: " + err.Error(),
+		})
+		return
+	}
+
+	agentUploadURL := fmt.Sprintf("http://%s:%d/upload-to-url", *ipAddress, agentSidecarPort)
+	log.Printf("[DOWNLOAD-URL] Triggering agent upload at %s", agentUploadURL)
+
+	uploadReq, err := http.NewRequestWithContext(ctx, "POST", agentUploadURL, bytes.NewReader(uploadToUrlBody))
+	if err != nil {
+		log.Printf("[DOWNLOAD-URL] Failed to create upload-to-url request: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to create request: " + err.Error(),
+		})
+		return
+	}
+	uploadReq.Header.Set("Content-Type", "application/json")
+
+	// Use a longer timeout for large file uploads
+	uploadClient := &http.Client{Timeout: 5 * time.Minute}
+	uploadResp, err := uploadClient.Do(uploadReq)
+	if err != nil {
+		log.Printf("[DOWNLOAD-URL] Failed to connect to agent for upload: %v", err)
+		c.JSON(http.StatusBadGateway, models.ErrorResponse{
+			Error:   "BadGateway",
+			Message: "Failed to connect to sandbox agent: " + err.Error(),
+		})
+		return
+	}
+	defer uploadResp.Body.Close()
+
+	if uploadResp.StatusCode != http.StatusOK {
+		uploadRespBody, _ := io.ReadAll(uploadResp.Body)
+		log.Printf("[DOWNLOAD-URL] Agent upload-to-url returned error: %d - %s", uploadResp.StatusCode, string(uploadRespBody))
+		var agentError struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(uploadRespBody, &agentError); err == nil && agentError.Error != "" {
+			c.JSON(uploadResp.StatusCode, models.ErrorResponse{
+				Error:   "AgentError",
+				Message: agentError.Error,
+			})
+			return
+		}
+		c.JSON(uploadResp.StatusCode, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Agent upload-to-url failed: " + string(uploadRespBody),
+		})
+		return
+	}
+
+	log.Printf("[DOWNLOAD-URL] Agent successfully uploaded file to S3")
+
+	// Step 5: Generate presigned GET URL for the client to download
+	// TODO: __OMER__ what is the expiration time?
+	downloadURL, err := h.storage.GeneratePresignedDownloadURL(ctx, objectKey, expiresIn)
+	if err != nil {
+		log.Printf("[DOWNLOAD-URL] Failed to generate presigned download URL: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to generate download URL: " + err.Error(),
+		})
+		return
+	}
+
+	log.Printf("[DOWNLOAD-URL] Generated presigned download URL for download_id=%s", downloadID)
+
+	c.JSON(http.StatusOK, models.DownloadUrlResponse{
+		DownloadURL: downloadURL,
+		DownloadID:  downloadID,
+		ExpiresIn:   expiresIn,
 	})
 }
 
