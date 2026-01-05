@@ -32,7 +32,7 @@ const (
 	templatePlural    = "sandboxtemplates"
 	defaultTimeout    = 600 // seconds
 	defaultShutdown   = "Delete"
-	runtimeClassName  = "runsc"
+	runtimeClassName  = "gvisor"
 )
 
 type Manager struct {

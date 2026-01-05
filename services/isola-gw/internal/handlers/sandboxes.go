@@ -114,11 +114,23 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 
 	log.Printf("Creating sandbox: %+v", sandbox)
 
-	// Create sandbox asynchronously in background
-	ctx := context.Background()
-	go h.handleSandboxCreation(ctx, tenantID.(string), sandboxID, req, req.AutoStart)
+	ctx := c.Request.Context()
+	templateName := "sandbox-template-" + sandboxID
+	success, errorReason := h.k8sManager.CreateSandboxCR(ctx, sandboxID, req, templateName)
+	if !success {
+		errMsg := "unknown error"
+		if errorReason != nil {
+			errMsg = *errorReason
+		}
+		log.Printf("Sandbox %s CR creation failed: %s", sandboxID, errMsg)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to create sandbox: " + errMsg,
+		})
+		return
+	}
 
-	log.Printf("Sandbox request created: %+v", sandbox)
+	log.Printf("Sandbox %s created successfully", sandboxID)
 	c.JSON(http.StatusCreated, sandbox)
 }
 
@@ -286,17 +298,4 @@ func (h *Handler) listAllSandboxes(ctx context.Context) ([]models.Sandbox, error
 	return sandboxes, nil
 }
 
-func (h *Handler) handleSandboxCreation(ctx context.Context, tenantID, sandboxID string, req models.CreateSandboxRequest, autoStart bool) {
-	templateName := "sandbox-template-" + sandboxID
-	success, errorReason := h.k8sManager.CreateSandboxCR(ctx, sandboxID, req, templateName)
-	if !success {
-		if errorReason != nil {
-			log.Printf("Sandbox %s CR creation failed: %s", sandboxID, *errorReason)
-		} else {
-			log.Printf("Sandbox %s CR creation failed: unknown error", sandboxID)
-		}
-	} else {
-		log.Printf("Sandbox %s CR creation result success=%v", sandboxID, success)
-	}
-}
 

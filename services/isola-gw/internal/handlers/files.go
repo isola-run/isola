@@ -332,7 +332,6 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 	}
 
 	state, ipAddress, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
-	state, ipAddress, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
 	if state == nil {
 		log.Printf("[CONFIRM] Sandbox %s not found", sandboxID)
 		c.JSON(http.StatusNotFound, models.ErrorResponse{
