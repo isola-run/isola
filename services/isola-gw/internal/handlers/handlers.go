@@ -44,9 +44,11 @@ func (h *Handler) SetupRoutes(r *gin.Engine) {
 		api.POST("/sandboxes/:id/execute", h.ExecuteCommand)
 
 		// File operations
+		api.GET("/sandboxes/:id/files", h.DownloadFile)
 		api.POST("/sandboxes/:id/files", h.UploadFile)
 		api.POST("/sandboxes/:id/files/upload-url", h.GenerateUploadUrl)
 		api.POST("/sandboxes/:id/files/confirm", h.ConfirmUpload)
+		api.POST("/sandboxes/:id/files/download-url", h.GenerateDownloadUrl)
 	}
 }
 

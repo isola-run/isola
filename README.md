@@ -36,3 +36,9 @@ curl -X GET "http://localhost:30080/sandboxes" \
 # Delete a sandbox
 curl -X DELETE "http://localhost:30080/sandboxes/YOUR_SANDBOX_ID" \
   -H "X-API-Key: iso_sk_demo"
+
+# Upload file
+curl -X POST "http://localhost:30080/sandboxes/YOUR_SANDBOX_ID/files" \
+  -H "X-API-Key: iso_sk_demo" \
+  -F "file=@/PATH/TO/File/On/Client" \
+  -F "path=myfile.txt"
