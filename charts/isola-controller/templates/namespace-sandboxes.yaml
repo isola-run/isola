@@ -1,8 +1,0 @@
-# Namespace for sandbox pods
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: isola-sandboxes
-  labels:
-    app: isola-controller
-    component: sandbox-environment
