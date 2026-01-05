@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Configuration
-NAMESPACE="isola-control-plane"
+NAMESPACE="${NAMESPACE:-isola-system}"
 SERVICE_NAME="isola-controller-nodeport"
 TEST_DIR="services/isola_controller"
 READY_TIMEOUT_SECONDS=180
@@ -23,7 +23,10 @@ if ! kubectl get crd sandboxes.sandbox.isola.run >/dev/null 2>&1; then
     exit 1
 fi
 
-kubectl wait --for=condition=Established --timeout=60s crd/sandboxes.sandbox.isola.run crd/sandboxtemplates.sandbox.isola.run
+kubectl wait --for=condition=Established --timeout=60s \
+    crd/sandboxes.sandbox.isola.run \
+    crd/sandboxtemplates.sandbox.isola.run \
+    crd/networktemplates.sandbox.isola.run
 kubectl rollout status deployment/isola-operator -n $NAMESPACE --timeout=${READY_TIMEOUT_SECONDS}s
 kubectl rollout status deployment/isola-controller -n $NAMESPACE --timeout=${READY_TIMEOUT_SECONDS}s
 

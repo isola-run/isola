@@ -1,5 +1,6 @@
-# Adds namespace to all resources.
-namespace: isola-control-plane
+# Namespace for all isola resources (operator, templates, sandboxes all live together).
+# Override by creating a kustomization overlay or using: kustomize edit set namespace <your-namespace>
+namespace: isola-sandboxes
 
 # Value of this field is prepended to the
 # names of all resources, e.g. a deployment named
@@ -18,6 +19,12 @@ resources:
 - ../crd
 - ../rbac
 - ../manager
+# todo benl: revisit this if revisit controller's hardcoded default template name
+# todo benl: consider NOT shipping templates with helm install for simplicity (not sure what's a better option)
+# Note: Built-in NetworkTemplates are NOT included here because namePrefix would
+# rename them (e.g., isola-isolated -> isola-operator-isola-isolated), breaking
+# the controller's hardcoded default template name.
+# Use config/deploy/ for full installation which composes this overlay + templates.
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
 # crd/kustomization.yaml
 #- ../webhook

@@ -64,27 +64,47 @@ func WithRuntimeClass(name string) TemplateOption {
 	}
 }
 
-func WithNetwork(allowedIncoming, allowedOutgoing []string) TemplateOption {
-	return func(t *sandboxv1alpha1.SandboxTemplate) {
-		t.Spec.Network = &sandboxv1alpha1.NetworkConfig{
-			AllowedIncoming: allowedIncoming,
-			AllowedOutgoing: allowedOutgoing,
+// SandboxOption is a functional option for configuring Sandbox
+type SandboxOption func(*sandboxv1alpha1.Sandbox)
+
+// WithNetworkTemplateRef adds a NetworkTemplate reference to the sandbox
+func WithNetworkTemplateRef(name string) SandboxOption {
+	return func(s *sandboxv1alpha1.Sandbox) {
+		s.Spec.Network = &sandboxv1alpha1.NetworkConfig{
+			TemplateRef: &sandboxv1alpha1.NetworkTemplateReference{
+				Name: name,
+			},
 		}
 	}
 }
 
-func NewTestSandbox(name, namespace, templateRef string) *sandboxv1alpha1.Sandbox {
-	return &sandboxv1alpha1.Sandbox{
+// WithNetworkSpec adds an embedded NetworkTemplateSpec to the sandbox
+func WithNetworkSpec(spec sandboxv1alpha1.NetworkTemplateSpec) SandboxOption {
+	return func(s *sandboxv1alpha1.Sandbox) {
+		s.Spec.Network = &sandboxv1alpha1.NetworkConfig{
+			Spec: &spec,
+		}
+	}
+}
+
+func NewTestSandbox(name, namespace, templateRef string, opts ...SandboxOption) *sandboxv1alpha1.Sandbox {
+	sandbox := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
 		Spec: sandboxv1alpha1.SandboxSpec{
-			TemplateRef: &corev1.LocalObjectReference{
+			TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
 				Name: templateRef,
 			},
 		},
 	}
+
+	for _, opt := range opts {
+		opt(sandbox)
+	}
+
+	return sandbox
 }
 
 func NewTestSandboxTemplate(name, namespace string, opts ...TemplateOption) *sandboxv1alpha1.SandboxTemplate {
@@ -113,6 +133,52 @@ func NewTestSandboxTemplate(name, namespace string, opts ...TemplateOption) *san
 	}
 
 	return template
+}
+
+// NetworkTemplateOption is a functional option for configuring NetworkTemplate
+type NetworkTemplateOption func(*sandboxv1alpha1.NetworkTemplate)
+
+// WithAllowedIngress sets the allowed ingress CIDRs
+func WithAllowedIngress(cidrs ...string) NetworkTemplateOption {
+	return func(nt *sandboxv1alpha1.NetworkTemplate) {
+		nt.Spec.AllowedIngress = cidrs
+	}
+}
+
+// WithAllowedEgress sets the allowed egress CIDRs
+func WithAllowedEgress(cidrs ...string) NetworkTemplateOption {
+	return func(nt *sandboxv1alpha1.NetworkTemplate) {
+		nt.Spec.AllowedEgress = cidrs
+	}
+}
+
+// WithDNSServers sets the DNS server IPs for the network template
+func WithDNSServers(servers ...string) NetworkTemplateOption {
+	return func(nt *sandboxv1alpha1.NetworkTemplate) {
+		nt.Spec.DNSServers = servers
+	}
+}
+
+// NewTestNetworkTemplate creates a new NetworkTemplate for testing
+func NewTestNetworkTemplate(name, namespace string, opts ...NetworkTemplateOption) *sandboxv1alpha1.NetworkTemplate {
+	nt := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{},
+	}
+
+	for _, opt := range opts {
+		opt(nt)
+	}
+
+	return nt
+}
+
+// NewTestNetworkTemplateDenyAll creates a NetworkTemplate that denies all traffic
+func NewTestNetworkTemplateDenyAll(name, namespace string) *sandboxv1alpha1.NetworkTemplate {
+	return NewTestNetworkTemplate(name, namespace)
 }
 
 func NewTestRuntimeClass(name, handler string) *nodev1.RuntimeClass {
