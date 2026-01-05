@@ -25,6 +25,7 @@ func NewBucketWrapper(bucket *blob.Bucket, bucketName string) (*BucketWrapper, e
 	}, nil
 }
 
+// TODO: limit the size of the file that can be uploaded
 func (b *BucketWrapper) GeneratePresignedUploadURL(ctx context.Context, key string, expiresIn int, contentType string) (string, error) {
 	opts := &blob.SignedURLOptions{
 		Expiry: time.Duration(expiresIn) * time.Second,
