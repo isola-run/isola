@@ -26,28 +26,27 @@ import (
 )
 
 const (
-	sandboxGroup    = "sandbox.isola.run"
-	sandboxVersion  = "v1alpha1"
-	sandboxPlural   = "sandboxes"
-	templatePlural  = "sandboxtemplates"
-	defaultTimeout  = 600 // seconds
-	defaultShutdown = "Delete"
+	sandboxGroup      = "sandbox.isola.run"
+	sandboxVersion    = "v1alpha1"
+	sandboxPlural     = "sandboxes"
+	templatePlural    = "sandboxtemplates"
+	defaultTimeout    = 600 // seconds
+	defaultShutdown   = "Delete"
+	runtimeClassName  = "runsc"
 )
 
 type Manager struct {
-	namespace        string
-	runtimeClassName *string
-	clientset        kubernetes.Interface
-	dynamicClient    dynamic.Interface
-	restConfig       *rest.Config
-	initOnce         sync.Once
-	initErr          error
+	namespace     string
+	clientset     kubernetes.Interface
+	dynamicClient dynamic.Interface
+	restConfig    *rest.Config
+	initOnce      sync.Once
+	initErr       error
 }
 
-func NewManager(namespace string, runtimeClassName *string) *Manager {
+func NewManager(namespace string) *Manager {
 	return &Manager{
-		namespace:        namespace,
-		runtimeClassName: runtimeClassName,
+		namespace: namespace,
 	}
 }
 
@@ -60,8 +59,8 @@ func (m *Manager) Initialize() error {
 }
 
 func (m *Manager) doInitialize() error {
-	log.Printf("Initializing KubernetesManager for namespace '%s' (runtime_class=%v)",
-		m.namespace, m.runtimeClassName)
+	log.Printf("Initializing KubernetesManager for namespace '%s' (runtime_class=%s)",
+		m.namespace, runtimeClassName)
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -130,10 +129,8 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 		},
 	}
 
-	if m.runtimeClassName != nil {
-		podSpec := templateSpec["podTemplate"].(map[string]interface{})["spec"].(map[string]interface{})
-		podSpec["runtimeClassName"] = *m.runtimeClassName
-	}
+	podSpec := templateSpec["podTemplate"].(map[string]interface{})["spec"].(map[string]interface{})
+	podSpec["runtimeClassName"] = runtimeClassName
 
 	err := m.createSandboxTemplateCR(ctx, templateName, templateSpec)
 	if err != nil {
