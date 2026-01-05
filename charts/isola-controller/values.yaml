@@ -1,0 +1,24 @@
+# isola-controller values
+
+image:
+  repository: isola-controller
+  tag: "latest"
+
+# Log level: debug, info, warning, error
+logLevel: info
+
+# Namespace for sandbox pods
+sandboxNamespace: isola-sandboxes
+
+# NodePort for local development access
+nodePort:
+  enabled: false
+
+# S3/Object Storage configuration
+storage:
+  enabled: false
+  bucket: ""
+  endpointUrl: ""
+  region: "us-east-1"
+  accessKeyId: ""
+  secretAccessKey: ""

@@ -1,0 +1,5 @@
+# Built-in NetworkTemplates that are installed with the operator.
+# These templates provide secure defaults for sandbox network isolation.
+resources:
+  - isola-isolated.yaml
+  - isola-egress-only.yaml

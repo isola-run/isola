@@ -57,14 +57,16 @@ spec:
           value: "0.0.0.0"
         - name: HTTP_PORT
           value: "8080"
-        - name: KUBERNETES_NAMESPACE
-          value: {{ .Values.kubernetes.namespace | quote }}
         {{- if .Values.kubernetes.runtimeClassName }}
         - name: RUNTIME_CLASS_NAME
           value: {{ .Values.kubernetes.runtimeClassName | quote }}
         {{- end }}
         - name: GIN_MODE
           value: {{ if eq .Values.logLevel "debug" }}"debug"{{ else }}"release"{{ end }}
+        - name: LOG_LEVEL
+          value: {{ .Values.logLevel | default "info" | quote }}
+        - name: KUBERNETES_NAMESPACE
+          value: {{ .Values.sandboxNamespace | quote }}
         {{- if .Values.storage.enabled }}
         - name: STORAGE_BACKEND
           value: {{ .Values.storage.backend | quote }}

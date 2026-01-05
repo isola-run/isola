@@ -9,3 +9,7 @@ metadata:
 spec:
   templateRef:
     name: default-template
+  # networkTemplateRef is optional - defaults to "isola-isolated" (deny-all)
+  # To use a different network template, uncomment:
+  # networkTemplateRef:
+  #   name: isola-egress-only
