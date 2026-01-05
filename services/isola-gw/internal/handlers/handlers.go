@@ -2,8 +2,6 @@
 package handlers
 
 import (
-	"os"
-
 	"github.com/gin-gonic/gin"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/kubernetes"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/storage"
@@ -78,13 +76,5 @@ func tenantFromAPIKey(apiKey string) string {
 		return "e766a1e8-4b0e-4bb7-9612-80b9c1c8cd87"
 	}
 	return "e766a1e8-4b0e-4bb7-9612-80b9c1c8cd87"
-}
-
-func getSandboxBackend() string {
-	backend := os.Getenv("SANDBOX_BACKEND")
-	if backend == "" {
-		backend = "kubernetes"
-	}
-	return backend
 }
 

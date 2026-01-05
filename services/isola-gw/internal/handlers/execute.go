@@ -29,16 +29,6 @@ func (h *Handler) ExecuteCommand(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	backend := getSandboxBackend()
-	if backend != "kubernetes" {
-		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
-			Error:   "NotImplemented",
-			Message: "Command execution is only implemented for the Kubernetes backend",
-		})
-		return
-	}
-
-	// Check sandbox exists and is running
 	state, _, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
 	if state == nil {
 		log.Printf("[EXECUTE] Sandbox %s not found", sandboxID)

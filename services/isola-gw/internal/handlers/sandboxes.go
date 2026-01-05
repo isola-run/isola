@@ -287,21 +287,16 @@ func (h *Handler) listAllSandboxes(ctx context.Context) ([]models.Sandbox, error
 }
 
 func (h *Handler) handleSandboxCreation(ctx context.Context, tenantID, sandboxID string, req models.CreateSandboxRequest, autoStart bool) {
-	backend := getSandboxBackend()
-	if backend == "kubernetes" {
-		templateName := "sandbox-template-" + sandboxID
-		success, errorReason := h.k8sManager.CreateSandboxCR(ctx, sandboxID, req, templateName)
-		if !success {
-			if errorReason != nil {
-				log.Printf("Sandbox %s CR creation failed: %s", sandboxID, *errorReason)
-			} else {
-				log.Printf("Sandbox %s CR creation failed: unknown error", sandboxID)
-			}
+	templateName := "sandbox-template-" + sandboxID
+	success, errorReason := h.k8sManager.CreateSandboxCR(ctx, sandboxID, req, templateName)
+	if !success {
+		if errorReason != nil {
+			log.Printf("Sandbox %s CR creation failed: %s", sandboxID, *errorReason)
 		} else {
-			log.Printf("Sandbox %s CR creation result success=%v", sandboxID, success)
+			log.Printf("Sandbox %s CR creation failed: unknown error", sandboxID)
 		}
 	} else {
-		log.Printf("Sandbox %s creation failed: Agent backend is not available", sandboxID)
+		log.Printf("Sandbox %s CR creation result success=%v", sandboxID, success)
 	}
 }
 
