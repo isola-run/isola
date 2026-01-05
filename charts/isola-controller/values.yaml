@@ -7,6 +7,9 @@ image:
 # Log level: debug, info, warning, error
 logLevel: info
 
+# Namespace for sandbox pods
+sandboxNamespace: isola-sandboxes
+
 # NodePort for local development access
 nodePort:
   enabled: false

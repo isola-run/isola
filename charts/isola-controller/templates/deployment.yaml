@@ -57,6 +57,8 @@ spec:
           value: "1"
         - name: LOG_LEVEL
           value: {{ .Values.logLevel | default "info" | quote }}
+        - name: KUBERNETES_NAMESPACE
+          value: {{ .Values.sandboxNamespace | quote }}
         {{- if .Values.storage.enabled }}
         - name: BUCKET_NAME
           value: {{ .Values.storage.bucket | quote }}

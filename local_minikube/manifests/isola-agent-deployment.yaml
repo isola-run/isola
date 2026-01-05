@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: isola-agent
-  namespace: isola-control-plane
+  namespace: isola-sandboxes
   labels:
     app.kubernetes.io/name: isola-agent
     app.kubernetes.io/instance: isola-agent-dev
