@@ -34,18 +34,18 @@ spec:
         env:
         - name: PYTHONUNBUFFERED
           value: "1"
-        - name: LOG_LEVEL
+        - name: ISOLA_LOG_LEVEL
           value: "debug"
         # S3 configuration for large file uploads (LocalStack for development)
-        - name: BUCKET_NAME
+        - name: ISOLA_BUCKET_NAME
           value: "isola-uploads"
-        - name: ENDPOINT_URL
+        - name: ISOLA_STORAGE_ENDPOINT
           value: "http://localstack:4566"
-        - name: REGION
+        - name: ISOLA_STORAGE_REGION
           value: "us-east-1"
-        - name: ACCESS_KEY_ID
+        - name: ISOLA_STORAGE_ACCESS_KEY_ID
           value: "test"
-        - name: SECRET_ACCESS_KEY
+        - name: ISOLA_STORAGE_SECRET_ACCESS_KEY
           value: "test"
         ports:
           - name: http

@@ -70,7 +70,7 @@ func (r *NetworkTemplateReconciler) getControllerLabels() map[string]string {
 		return r.IsolaGatewayLabels
 	}
 	return map[string]string{
-		"app.kubernetes.io/name": "isola-controller",
+		"app.kubernetes.io/name": "isola-gw",
 	}
 }
 
