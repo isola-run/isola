@@ -22,7 +22,6 @@ const (
 	EnvHTTPHost            = "HTTP_HOST"
 	EnvHTTPPort            = "HTTP_PORT"
 	EnvKubernetesNamespace = "KUBERNETES_NAMESPACE"
-	EnvRuntimeClassName    = "RUNTIME_CLASS_NAME"
 	EnvGinMode            = "GIN_MODE"
 )
 
@@ -41,13 +40,7 @@ func main() {
 	host := getEnvOrDefault(EnvHTTPHost, DefaultHTTPHost)
 	port := getEnvOrDefault(EnvHTTPPort, DefaultHTTPPort)
 	namespace := getEnvOrDefault(EnvKubernetesNamespace, DefaultKubernetesNamespace)
-	runtimeClassName := os.Getenv(EnvRuntimeClassName)
-
-	var runtimeClassPtr *string
-	if runtimeClassName != "" {
-		runtimeClassPtr = &runtimeClassName
-	}
-	k8sManager := kubernetes.NewManager(namespace, runtimeClassPtr)
+	k8sManager := kubernetes.NewManager(namespace)
 
 	ctx := context.Background()
 	var storageBucket *storage.BucketWrapper
