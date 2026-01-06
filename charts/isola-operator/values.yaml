@@ -6,3 +6,6 @@ image:
 
 # Agent sidecar image injected into sandbox pods
 agentImage: isola-agent:latest
+
+# Namespace where sandbox pods are created
+sandboxNamespace: isola-sandboxes

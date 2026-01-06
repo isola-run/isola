@@ -2,8 +2,6 @@
 package handlers
 
 import (
-	"os"
-
 	"github.com/gin-gonic/gin"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/kubernetes"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/storage"
@@ -31,7 +29,7 @@ func (h *Handler) SetupRoutes(r *gin.Engine) {
 	r.GET("/ready", h.ReadinessCheck)
 
 	// API routes with authentication
-	api := r.Group("/")
+	api := r.Group("/api/v1")
 	api.Use(h.APIKeyAuth())
 	{
 		// Sandbox CRUD
@@ -71,6 +69,7 @@ func (h *Handler) APIKeyAuth() gin.HandlerFunc {
 	}
 }
 
+// TODO: benl __OMER__ change this
 func tenantFromAPIKey(apiKey string) string {
 	if apiKey == "iso_sk_a1b2c3d4e5f67890a1b2c3d4e5f67890" {
 		return "2280e575-f37d-4329-b033-9de263ce7625"
@@ -79,13 +78,5 @@ func tenantFromAPIKey(apiKey string) string {
 		return "e766a1e8-4b0e-4bb7-9612-80b9c1c8cd87"
 	}
 	return "e766a1e8-4b0e-4bb7-9612-80b9c1c8cd87"
-}
-
-func getSandboxBackend() string {
-	backend := os.Getenv("SANDBOX_BACKEND")
-	if backend == "" {
-		backend = "kubernetes"
-	}
-	return backend
 }
 

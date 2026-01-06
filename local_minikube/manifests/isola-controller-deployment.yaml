@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: isola-controller
-  namespace: isola-control-plane
+  namespace: isola-sandboxes
   labels:
     app.kubernetes.io/name: isola-controller
     app.kubernetes.io/instance: isola-controller-dev
@@ -34,18 +34,15 @@ spec:
         env:
         - name: PYTHONUNBUFFERED
           value: "1"
-        - name: LOG_LEVEL
+        - name: ISOLA_LOG_LEVEL
           value: "debug"
         # S3 configuration for large file uploads (LocalStack for development)
-        - name: BUCKET_NAME
-          value: "isola-uploads"
-        - name: ENDPOINT_URL
-          value: "http://localstack:4566"
-        - name: REGION
-          value: "us-east-1"
-        - name: ACCESS_KEY_ID
+         # Env name should follow go-cloud standard
+        - name: ISOLA_BUCKET_URL
+          value: "s3://isola-uploads?endpoint=http://localstack:4566&use_path_style=true&region=us-east-1"
+        - name: AWS_ACCESS_KEY_ID
           value: "test"
-        - name: SECRET_ACCESS_KEY
+        - name: AWS_SECRET_ACCESS_KEY
           value: "test"
         ports:
           - name: http

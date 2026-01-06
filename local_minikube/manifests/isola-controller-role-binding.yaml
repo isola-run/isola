@@ -6,7 +6,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: isola-controller-serviceaccount
-  namespace: isola-control-plane
+  namespace: isola-sandboxes
 roleRef:
   kind: Role
   name: sandboxes-manager

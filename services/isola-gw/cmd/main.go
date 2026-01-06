@@ -19,11 +19,10 @@ import (
 
 // Environment variable keys
 const (
-	EnvHTTPHost            = "HTTP_HOST"
-	EnvHTTPPort            = "HTTP_PORT"
-	EnvKubernetesNamespace = "KUBERNETES_NAMESPACE"
-	EnvRuntimeClassName    = "RUNTIME_CLASS_NAME"
-	EnvGinMode            = "GIN_MODE"
+	EnvHTTPHost            = "ISOLA_HTTP_HOST"
+	EnvHTTPPort            = "ISOLA_HTTP_PORT"
+	EnvKubernetesNamespace = "ISOLA_KUBERNETES_NAMESPACE"
+	EnvGinMode             = "ISOLA_GIN_MODE"
 )
 
 // Default values
@@ -41,41 +40,18 @@ func main() {
 	host := getEnvOrDefault(EnvHTTPHost, DefaultHTTPHost)
 	port := getEnvOrDefault(EnvHTTPPort, DefaultHTTPPort)
 	namespace := getEnvOrDefault(EnvKubernetesNamespace, DefaultKubernetesNamespace)
-	runtimeClassName := os.Getenv(EnvRuntimeClassName)
-
-	var runtimeClassPtr *string
-	if runtimeClassName != "" {
-		runtimeClassPtr = &runtimeClassName
-	}
-	k8sManager := kubernetes.NewManager(namespace, runtimeClassPtr)
+	k8sManager := kubernetes.NewManager(namespace)
 
 	ctx := context.Background()
-	var storageBucket *storage.BucketWrapper
-	bucket, err := storage.CreateObjectStorage(ctx)
-	if err != nil {
-		log.Printf("Warning: Failed to initialize storage: %v. Large file uploads will not be available.", err)
-	} else {
-		bucketName := os.Getenv("BUCKET_NAME")
-		if bucketName == "" {
-			log.Printf("Warning: BUCKET_NAME not set. Large file uploads will not be available.")
-		} else {
-			wrapper, err := storage.NewBucketWrapper(bucket, bucketName)
-			if err != nil {
-				log.Printf("Warning: Failed to create storage wrapper: %v. Large file uploads will not be available.", err)
-			} else {
-				storageBucket = wrapper
-				log.Printf("Storage initialized successfully")
-			}
-		}
-	}
+	storageBucket := initStorage(ctx)
 
 	handler := handlers.NewHandler(k8sManager, storageBucket)
 
 	r := gin.New()
 
 	// Add middleware
-	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
+	r.Use(gin.Recovery())
 
 	handler.SetupRoutes(r)
 
@@ -102,6 +78,7 @@ func main() {
 	log.Println("Shutting down server...")
 
 	// Graceful shutdown
+	// TODO: __OMER__ Configure pod terminationGracePeriodSeconds in deployment.yaml to match this timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -112,6 +89,23 @@ func main() {
 	log.Println("Server exited")
 }
 
+func initStorage(ctx context.Context) *storage.BucketWrapper {
+	bucket, bucketName, err := storage.OpenBucket(ctx)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize storage: %v. Large file uploads will not be available.", err)
+		return nil
+	}
+
+	wrapper, err := storage.NewBucketWrapper(bucket, bucketName)
+	if err != nil {
+		log.Printf("Warning: Failed to create storage wrapper: %v. Large file uploads will not be available.", err)
+		return nil
+	}
+
+	log.Printf("Storage initialized successfully with bucket: %s", bucketName)
+	return wrapper
+}
+
 func getEnvOrDefault(key, defaultValue string) string {
 	value := os.Getenv(key)
 	if value == "" {
@@ -119,4 +113,3 @@ func getEnvOrDefault(key, defaultValue string) string {
 	}
 	return value
 }
-

@@ -40,7 +40,7 @@ func main() {
 	}
 
 	// Set Gin mode based on environment
-	if os.Getenv("GIN_MODE") == "" {
+	if os.Getenv("ISOLA_GIN_MODE") == "" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 

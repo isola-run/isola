@@ -33,8 +33,15 @@ import (
 	"github.com/omereli/dev-isola/services/isola-operator/test/utils"
 )
 
-// namespace where the project is deployed in
-const namespace = "isola-control-plane"
+// namespace where the project is deployed in (configurable via ISOLA_TEST_NAMESPACE env var)
+var namespace = getEnvOrDefault("ISOLA_TEST_NAMESPACE", "isola-test")
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
+}
 
 // serviceAccountName created for the project
 const serviceAccountName = "isola-operator-controller-manager"

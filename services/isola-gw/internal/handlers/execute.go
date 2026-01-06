@@ -29,18 +29,16 @@ func (h *Handler) ExecuteCommand(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	backend := getSandboxBackend()
-	if backend != "kubernetes" {
-		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
-			Error:   "NotImplemented",
-			Message: "Command execution is only implemented for the Kubernetes backend",
+	status, err := h.k8sManager.GetSandboxStatus(ctx, sandboxID)
+	if err != nil {
+		log.Printf("[EXECUTE] Failed to get sandbox %s status: %v", sandboxID, err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to get sandbox status",
 		})
 		return
 	}
-
-	// Check sandbox exists and is running
-	state, _, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
-	if state == nil {
+	if status == nil {
 		log.Printf("[EXECUTE] Sandbox %s not found", sandboxID)
 		c.JSON(http.StatusNotFound, models.ErrorResponse{
 			Error:   "NotFound",
@@ -49,11 +47,11 @@ func (h *Handler) ExecuteCommand(c *gin.Context) {
 		return
 	}
 
-	if *state != models.SandboxStateRunning {
-		log.Printf("[EXECUTE] Sandbox %s not in running state: %s", sandboxID, *state)
+	if status.State != models.SandboxStateRunning {
+		log.Printf("[EXECUTE] Sandbox %s not in running state: %s", sandboxID, status.State)
 		c.JSON(http.StatusConflict, models.ErrorResponse{
 			Error:   "Conflict",
-			Message: "Sandbox must be in 'running' state, current state: " + string(*state),
+			Message: "Sandbox must be in 'running' state, current state: " + string(status.State),
 		})
 		return
 	}

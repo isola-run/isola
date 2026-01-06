@@ -1,7 +1,15 @@
 #!/bin/bash
-SANDBOX_ID="0ed17dff-a155-4194-b45b-8427afbea9a1"
+
+# Check if sandbox ID is provided
+if [ -z "$1" ]; then
+  echo "Error: Sandbox ID is required"
+  echo "Usage: $0 <SANDBOX_ID>"
+  exit 1
+fi
+
+SANDBOX_ID="$1"
 API_KEY="iso_sk_demo"
-BASE_URL="http://localhost:30080"
+BASE_URL="http://localhost:30080/api/v1"
 FILE_PATH="/tmp/largefile.bin"  
 FILENAME="largefile.bin"
 TARGET_PATH="myfile.txt"

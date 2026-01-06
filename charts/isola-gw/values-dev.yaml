@@ -5,6 +5,9 @@ image:
 
 logLevel: debug
 
+# Namespace for sandbox pods
+sandboxNamespace: isola-sandboxes
+
 nodePort:
   enabled: true
   port: 30080
@@ -14,12 +17,9 @@ kubernetes:
   runtimeClassName: ""
 
 # LocalStack configuration
+# URL includes endpoint and path style for S3-compatible services
 storage:
   enabled: true
-  backend: "localstack"
-  bucket: "isola-uploads"
-  endpointUrl: "http://localstack.localstack.svc.cluster.local:4566"
-  region: "us-east-1"
-  accessKeyId: "test"
-  secretAccessKey: "test"
-
+  bucketUrl: "s3://isola-uploads?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
+  awsAccessKeyId: "test"
+  awsSecretAccessKey: "test"
