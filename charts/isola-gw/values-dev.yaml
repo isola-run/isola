@@ -1,0 +1,25 @@
+# Development environment values
+image:
+  repository: isola-gw
+  tag: "dev"
+
+logLevel: debug
+
+# Namespace for sandbox pods
+sandboxNamespace: isola-sandboxes
+
+nodePort:
+  enabled: true
+  port: 30080
+
+kubernetes:
+  namespace: "isola-sandboxes"
+  runtimeClassName: ""
+
+# LocalStack configuration
+# URL includes endpoint and path style for S3-compatible services
+storage:
+  enabled: true
+  bucketUrl: "s3://isola-uploads?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
+  awsAccessKeyId: "test"
+  awsSecretAccessKey: "test"

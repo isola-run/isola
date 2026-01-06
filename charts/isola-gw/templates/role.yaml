@@ -1,10 +1,10 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: isola-controller
+  name: isola-gw
   namespace: {{ .Values.sandboxNamespace | quote }}
   labels:
-    app: isola-controller
+    app: isola-gw
 rules:
 - apiGroups: [""]
   resources: ["pods", "pods/log", "pods/exec", "pods/status"]
@@ -21,3 +21,4 @@ rules:
 - apiGroups: ["sandbox.isola.run"]
   resources: ["sandboxes", "sandboxes/status", "sandboxtemplates", "sandboxtemplates/status"]
   verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+

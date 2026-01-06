@@ -1,0 +1,20 @@
+# Headless service for DNS-based addressing of sandbox agent sidecars.
+# Enables pods to be addressed as: <pod-name>.sandbox-agents.<namespace>.svc.cluster.local
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-agents
+  namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  labels:
+    app.kubernetes.io/name: sandbox-agents
+    app.kubernetes.io/component: sandbox-dns
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  clusterIP: None  # Headless service
+  selector:
+    app: isola-sandbox
+  ports:
+    - name: agent
+      port: 8080
+      targetPort: 8080
+

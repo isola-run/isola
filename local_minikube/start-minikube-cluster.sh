@@ -19,6 +19,7 @@ require_cmd() {
 require_cmd "${MINIKUBE_BIN}" "Install it via ${SCRIPT_DIR}/install-minikube.sh or set MINIKUBE_BIN to your minikube binary."
 require_cmd kubectl "kubectl must be on PATH to apply manifests."
 require_cmd make "make is required for the isola-operator deploy step."
+require_cmd helm "helm is required for deploying isola-gw."
 
 echo "starting minikube single-node cluster..."
 "${MINIKUBE_BIN}" start --container-runtime=containerd --docker-opt containerd=/var/run/containerd/containerd.sock
@@ -65,9 +66,9 @@ build_and_verify_image() {
 
 echo "building images..."
 cd "${SCRIPT_DIR}/.."
-build_and_verify_image "isola-controller:dev" "services/isola_controller/Dockerfile" "."
 build_and_verify_image "isola-agent:dev" "services/isola-agent/Dockerfile" "services/isola-agent"
 build_and_verify_image "isola-operator:dev" "services/isola-operator/Dockerfile" "services/isola-operator"
+build_and_verify_image "isola-gw:dev" "services/isola-gw/Dockerfile" "services/isola-gw"
 
 echo "applying manifests in correct order..."
 cd "${SCRIPT_DIR}/"
@@ -78,18 +79,7 @@ kubectl apply -f "${SCRIPT_DIR}/manifests/isola-sandboxes-namespace.yaml"
 echo "  → creating runtime class..."
 kubectl apply -f "${SCRIPT_DIR}/manifests/gvisor-runtime-class.yaml"
 
-echo "  → creating service accounts..."
-kubectl apply -f "${SCRIPT_DIR}/manifests/isola-controller-service-account.yaml"
-
-echo "  → creating RBAC resources..."
-kubectl apply -f "${SCRIPT_DIR}/manifests/isola-controller-role.yaml"
-kubectl apply -f "${SCRIPT_DIR}/manifests/isola-controller-role-binding.yaml"
-
-echo "  → creating services..."
-kubectl apply -f "${SCRIPT_DIR}/manifests/isola-controller-service.yaml"
-kubectl apply -f "${SCRIPT_DIR}/manifests/isola-controller-nodeport.yaml"
-
-echo "  → installing isola-operator CRDs..."
+  echo "  → installing isola-operator CRDs..."
 kubectl apply -f "${SCRIPT_DIR}/../services/isola-operator/config/crd/bases/"
 
 echo "  → deploying isola-operator..."
@@ -97,20 +87,25 @@ cd "${SCRIPT_DIR}/../services/isola-operator"
 make deploy IMG=isola-operator:dev
 cd "${SCRIPT_DIR}"
 
+echo "  → deploying isola-gw with Helm..."
+helm upgrade --install isola-gw "${SCRIPT_DIR}/../charts/isola-gw" \
+  -f "${SCRIPT_DIR}/../charts/isola-gw/values-dev.yaml" \
+  -n isola-control-plane \
+  --create-namespace
+
 echo "  → creating/updating deployments..."
-kubectl apply -f "${SCRIPT_DIR}/manifests/isola-controller-deployment.yaml"
 kubectl apply -f "${SCRIPT_DIR}/manifests/isola-agent-deployment.yaml"
 
 echo "  → forcing isola-operator restart to pick up the rebuilt image..."
 kubectl rollout restart deployment/isola-operator-controller-manager -n ${NAMESPACE}
 
 echo "forcing pod restart to pick up new images..."
-kubectl rollout restart deployment/isola-controller -n ${NAMESPACE}
+kubectl rollout restart deployment/isola-gw -n ${NAMESPACE}
 kubectl rollout restart deployment/isola-agent -n ${NAMESPACE}
 
 echo "waiting for deployments to be ready..."
 kubectl rollout status deployment/isola-operator-controller-manager -n ${NAMESPACE} --timeout=60s
-kubectl rollout status deployment/isola-controller -n ${NAMESPACE} --timeout=60s
+kubectl rollout status deployment/isola-gw -n ${NAMESPACE} --timeout=60s
 kubectl rollout status deployment/isola-agent -n ${NAMESPACE} --timeout=60s
 
 echo -e "\n=== Pods in ${NAMESPACE} ==="

@@ -1,7 +1,8 @@
 {{/*
 Selector labels for matching pods
 */}}
-{{- define "isola-controller.selectorLabels" -}}
-app.kubernetes.io/name: isola-controller
+{{- define "isola-gw.selectorLabels" -}}
+app.kubernetes.io/name: isola-gw
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+

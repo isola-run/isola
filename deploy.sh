@@ -68,7 +68,7 @@ ensure_minikube
 ensure_runtime_class
 
 echo "Building images..."
-build_image "isola-controller:dev" "services/isola_controller/Dockerfile" "${ROOT_DIR}"
+build_image "isola-gw:dev" "Dockerfile" "${ROOT_DIR}/services/isola-gw"
 build_image "isola-agent:dev" "Dockerfile" "${ROOT_DIR}/services/isola-agent"
 build_image "isola-operator:dev" "Dockerfile" "${ROOT_DIR}/services/isola-operator"
 
@@ -100,9 +100,9 @@ echo "Helm doesn't override existing CRDs. For dev, manually delete isola CRDs..
   crd/sandboxtemplates.sandbox.isola.run \
   crd/networktemplates.sandbox.isola.run
 
-echo "Deploying isola-controller with Helm..."
-"${HELM_BIN}" upgrade --install isola-controller charts/isola-controller \
-  -f charts/isola-controller/values-dev.yaml \
+echo "Deploying isola-gw with Helm..."
+"${HELM_BIN}" upgrade --install isola-gw charts/isola-gw \
+  -f charts/isola-gw/values-dev.yaml \
   --set sandboxNamespace="${SANDBOX_NAMESPACE}" \
   -n "${NAMESPACE}" \
   --create-namespace \
@@ -111,9 +111,9 @@ echo "Deploying isola-controller with Helm..."
 # Force pod restart to pick up the new images
 echo "Restarting deployments to pick up new images..."
 "${KUBECTL_BIN}" rollout restart deployment/isola-operator -n "${NAMESPACE}"
-"${KUBECTL_BIN}" rollout restart deployment/isola-controller -n "${NAMESPACE}"
+"${KUBECTL_BIN}" rollout restart deployment/isola-gw -n "${NAMESPACE}"
 
 # Wait for deployments
 echo "Waiting for deployments to be ready..."
 "${KUBECTL_BIN}" rollout status deployment/isola-operator -n "${NAMESPACE}" --timeout=180s
-"${KUBECTL_BIN}" rollout status deployment/isola-controller -n "${NAMESPACE}" --timeout=180s
+"${KUBECTL_BIN}" rollout status deployment/isola-gw -n "${NAMESPACE}" --timeout=180s
