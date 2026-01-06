@@ -343,6 +343,8 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		Spec: template.Spec.PodTemplate.Spec,
 	}
 
+	sandboxPod.Spec.Subdomain = "sandbox-agents"
+
 	// Enable shared PID namespace so the isola agent can locate the main container and access it's filesystem via /proc/<pid>/root
 	sandboxPod.Spec.ShareProcessNamespace = ptr.To(true)
 

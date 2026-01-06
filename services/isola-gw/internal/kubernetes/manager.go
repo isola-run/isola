@@ -312,70 +312,120 @@ func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) (bool, 
 	return true, nil
 }
 
-func (m *Manager) GetPodStatus(ctx context.Context, sandboxID string) (*models.SandboxState, *string, *string) {
+
+const agentServiceName = "sandbox-agents"
+
+type SandboxStatus struct {
+	State       models.SandboxState
+	ErrorReason *string
+	AgentAddress string
+}
+
+
+func (m *Manager) GetSandboxStatus(ctx context.Context, sandboxID string) (*SandboxStatus, error) {
 	if err := m.Initialize(); err != nil {
-		errorMsg := fmt.Sprintf("Failed to initialize: %v", err)
-		state := models.SandboxStateError
-		return &state, nil, &errorMsg
+		return nil, fmt.Errorf("failed to initialize: %w", err)
 	}
 
-	log.Printf("Fetching pod status for sandbox '%s'", sandboxID)
+	log.Printf("Fetching sandbox status for '%s' from CR conditions", sandboxID)
 
-	labelSelector := labels.SelectorFromSet(map[string]string{
-		"sandbox-id": sandboxID,
-	}).String()
-
-	pods, err := m.clientset.CoreV1().Pods(m.namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: labelSelector,
-	})
+	// Get the Sandbox CR - this is the source of truth
+	sandbox, err := m.GetSandboxCR(ctx, sandboxID)
 	if err != nil {
-		log.Printf("Failed to list pods for sandbox %s: %v", sandboxID, err)
-		errorMsg := fmt.Sprintf("API error: %v", err)
-		state := models.SandboxStateError
-		return &state, nil, &errorMsg
+		return nil, fmt.Errorf("failed to get sandbox CR: %w", err)
+	}
+	if sandbox == nil {
+		return nil, nil // Sandbox not found
 	}
 
-	if len(pods.Items) == 0 {
-		errorMsg := "Pod not found"
-		return nil, nil, &errorMsg
+	// Parse state from CR conditions (maintained by the controller)
+	state, errorReason := m.parseStateFromConditions(sandbox)
+
+	// Construct DNS address for the agent
+	agentAddress := m.getAgentAddress(sandboxID)
+
+	return &SandboxStatus{
+		State:        state,
+		ErrorReason:  errorReason,
+		AgentAddress: agentAddress,
+	}, nil
+}
+
+// getAgentAddress constructs the DNS-resolvable address for the sandbox agent.
+// Format: <pod-name>.<headless-service>.<namespace>.svc.cluster.local
+func (m *Manager) getAgentAddress(sandboxID string) string {
+	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
+	podName := sandboxName + "-pod"
+	return fmt.Sprintf("%s.%s.%s.svc.cluster.local", podName, agentServiceName, m.namespace)
+}
+
+// parseStateFromConditions derives the SandboxState from the Sandbox CR conditions.
+// This mirrors what the controller sets and avoids duplicating pod-inspection logic.
+func (m *Manager) parseStateFromConditions(sandbox *unstructured.Unstructured) (models.SandboxState, *string) {
+	status, found, _ := unstructured.NestedMap(sandbox.Object, "status")
+	if !found {
+		return models.SandboxStatePending, nil
 	}
 
-	pod := pods.Items[0]
-	phase := pod.Status.Phase
-	var ipAddress *string
-	if pod.Status.PodIP != "" {
-		ipAddress = &pod.Status.PodIP
+	conditions, found, _ := unstructured.NestedSlice(status, "conditions")
+	if !found {
+		return models.SandboxStatePending, nil
 	}
 
-	// Map Kubernetes phase to SandboxState
-	var state models.SandboxState
-	switch phase {
-	case corev1.PodPending:
-		state = models.SandboxStatePending
-	case corev1.PodRunning:
-		state = models.SandboxStateRunning
-	case corev1.PodSucceeded:
-		state = models.SandboxStateStopped
-	case corev1.PodFailed:
-		state = models.SandboxStateError
-	default:
-		state = models.SandboxStateError
-	}
+	var readyCondition map[string]interface{}
+	var podReadyCondition map[string]interface{}
 
-	// Get error reason if failed
-	var errorReason *string
-	if phase == corev1.PodFailed && len(pod.Status.ContainerStatuses) > 0 {
-		for _, containerStatus := range pod.Status.ContainerStatuses {
-			if containerStatus.State.Terminated != nil {
-				reason := containerStatus.State.Terminated.Reason
-				errorReason = &reason
-				break
-			}
+	for _, cond := range conditions {
+		condMap, ok := cond.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		condType, _ := condMap["type"].(string)
+		switch condType {
+		case "Ready":
+			readyCondition = condMap
+		case "PodReady":
+			podReadyCondition = condMap
 		}
 	}
 
-	return &state, ipAddress, errorReason
+	// Use Ready condition as primary indicator
+	if readyCondition != nil {
+		condStatus, _ := readyCondition["status"].(string)
+		reason, _ := readyCondition["reason"].(string)
+		message, _ := readyCondition["message"].(string)
+
+		if condStatus == "True" {
+			return models.SandboxStateRunning, nil
+		}
+
+		// Map controller reasons to states
+		switch reason {
+		case "PodPending", "PodCreating", "Reconciling":
+			return models.SandboxStatePending, nil
+		case "PodFailed", "PodCreationFailed":
+			errorReason := message
+			return models.SandboxStateError, &errorReason
+		case "PodSucceeded", "TimedOut", "Deleting":
+			return models.SandboxStateStopped, nil
+		case "NetworkConfigNotApplied", "NetworkTemplateNotFound", "NetworkTemplateDeleting":
+			// Network not ready yet, but pod might be pending/running
+			if podReadyCondition != nil {
+				podStatus, _ := podReadyCondition["status"].(string)
+				if podStatus == "True" {
+					// Pod is ready but network isn't - still consider it "pending" from user perspective
+					return models.SandboxStatePending, nil
+				}
+			}
+			return models.SandboxStatePending, nil
+		default:
+			return models.SandboxStatePending, nil
+		}
+	}
+
+	return models.SandboxStatePending, nil
 }
+
 
 // Executes a command in a pod
 // Will be implemented in the future in the sidecar
