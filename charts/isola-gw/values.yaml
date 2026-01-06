@@ -17,7 +17,7 @@ kubernetes:
 
 storage:
   enabled: false
-   bucketUrl: ""
+  bucketUrl: ""
   # Credentials (read automatically by go-cloud from standard env vars)
   awsAccessKeyId: ""
   awsSecretAccessKey: ""
