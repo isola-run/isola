@@ -1,0 +1,16 @@
+# Full installation overlay that composes:
+# - config/default: Operator components (CRDs, RBAC, manager) with namePrefix
+# - config/templates: Built-in NetworkTemplates WITHOUT namePrefix
+#
+# This separation ensures NetworkTemplate names remain canonical (isola-isolated,
+# isola-egress-only) so they match the controller's hardcoded default template name.
+#
+# Usage: kustomize build config/deploy | kubectl apply -f -
+#        or: make deploy IMG=<image>
+# todo benl: revisit this if revisit controller's hardcoded default template name
+
+resources:
+  # Operator components (with namePrefix from config/default)
+  - ../default
+  # Built-in NetworkTemplates (no namePrefix - names must stay canonical)
+  - ../templates

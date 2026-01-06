@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -39,15 +38,86 @@ const (
 	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
 )
 
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+const (
+	DefaultNetworkTemplate string = "isola-isolated"
+)
+
+// SandboxTemplateReference identifies a SandboxTemplate in the same namespace.
+type SandboxTemplateReference struct {
+	// Name of the SandboxTemplate in the same namespace.
+	// The referenced SandboxTemplate provides the pod configuration (containers, initContainers, etc.)
+	// and lifecycle settings (timeout, shutdown policy) for this Sandbox.
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
+// NetworkTemplateReference identifies a NetworkTemplate in the same namespace.
+type NetworkTemplateReference struct {
+	// Name of the NetworkTemplate in the same namespace.
+	// The referenced NetworkTemplate defines the network isolation rules.
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
+// todo benl: neither specific
+// NetworkConfig specifies the network isolation configuration for a Sandbox.
+// Exactly one of TemplateRef or Spec must be specified.
+// +kubebuilder:validation:XValidation:rule="has(self.templateRef) || has(self.spec)",message="At least one of 'templateRef' or 'spec' is required."
+type NetworkConfig struct {
+	// TemplateRef references an existing NetworkTemplate in the same namespace.
+	// The referenced NetworkTemplate is not owned by this sandbox and will persist
+	// independently of sandbox lifecycle.
+	// +optional
+	TemplateRef *NetworkTemplateReference `json:"templateRef,omitempty"`
+
+	// Spec embeds network isolation rules directly in the sandbox.
+	// When specified, the controller creates a NetworkTemplate CR
+	// that is owned by this sandbox and garbage-collected
+	// when the sandbox is deleted.
+	// Note: This spec is immutable after sandbox creation - changes are ignored.
+	// +optional
+	Spec *NetworkTemplateSpec `json:"spec,omitempty"`
+}
 
 // SandboxSpec defines the desired state of Sandbox
 type SandboxSpec struct {
-	// TemplateRef refers to a SandboxTemplate to inherit defaults from. The lean object reference is used to query the api server for the actual SandboxTemplate object referenced.
+	// TemplateRef references the SandboxTemplate to inherit pod configuration from.
+	// The SandboxTemplate must exist in the same namespace as this Sandbox.
 	// +required
-	TemplateRef *corev1.LocalObjectReference `json:"templateRef,omitempty"`
+	TemplateRef SandboxTemplateReference `json:"templateRef"`
 
-	//todo benl: figure out the best way to expose overrides in a user and etcd friendly way (I don't think that duplicating spec fields is intuitive, see what other projects do)
+	// Network specifies the network isolation configuration for this sandbox.
+	// Can either reference a shared NetworkTemplate or embed network rules directly.
+	// If not specified, no NetworkPolicy is created (unrestricted network access).
+	// When specified, must contain exactly one of templateRef or spec.
+	// +optional
+	Network *NetworkConfig `json:"network,omitempty"`
+}
+
+// GetNetworkTemplateName returns the effective NetworkTemplate name for this sandbox.
+// - For templateRef: returns the referenced template name
+// - For spec: returns "{sandbox-name}-network"
+// - otherwise defaults to DefaultNetworkTemplate
+func (s *Sandbox) GetNetworkTemplateName() string {
+	if s.Spec.Network == nil {
+		return DefaultNetworkTemplate
+	}
+	if s.Spec.Network.TemplateRef != nil {
+		return s.Spec.Network.TemplateRef.Name
+	}
+	return s.GetOwnedNetworkTemplateName()
+}
+
+func (s *Sandbox) GetOwnedNetworkTemplateName() string {
+	return s.Name + "-network"
+}
+
+func (s *Sandbox) HasNetworkSpec() bool {
+	return s.Spec.Network != nil && s.Spec.Network.Spec != nil
 }
 
 // todo benl: for now, not storing sandbox pod or snapshotter pod info anywhere in the sandbox CRD

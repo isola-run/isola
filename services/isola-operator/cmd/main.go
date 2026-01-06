@@ -63,6 +63,8 @@ func main() {
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
 	var agentImage string
+	var isolaGatewayNamespace string
+	var isolaGatewayLabelName string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -81,6 +83,8 @@ func main() {
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&agentImage, "agent-image", "isola-agent:dev", "Container image for the isola-agent sidecar")
+	flag.StringVar(&isolaGatewayNamespace, "gateway-namespace", "isola-system", "Namespace where isola-gw runs (for NetworkPolicy ingress rules)")
+	flag.StringVar(&isolaGatewayLabelName, "gateway-label-name", "isola-gw", "Value of app.kubernetes.io/name label for isola-gw pods")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -180,6 +184,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// SandboxReconciler manages Sandbox resources.
 	if err := (&controller.SandboxReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
@@ -187,6 +192,18 @@ func main() {
 		Clock:      controller.RealClock{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
+		os.Exit(1)
+	}
+
+	// NetworkTemplateReconciler manages the lifecycle for NetworkTemplates.
+	// It creates/updates policies and sets the Ready condition that SandboxReconciler checks.
+	if err := (&controller.NetworkTemplateReconciler{
+		Client:                mgr.GetClient(),
+		Scheme:                mgr.GetScheme(),
+		IsolaGatewayNamespace: isolaGatewayNamespace,
+		IsolaGatewayLabels:    map[string]string{"app.kubernetes.io/name": isolaGatewayLabelName},
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "NetworkTemplate")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
