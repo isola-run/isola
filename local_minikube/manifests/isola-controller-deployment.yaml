@@ -37,7 +37,7 @@ spec:
         - name: ISOLA_LOG_LEVEL
           value: "debug"
         # S3 configuration for large file uploads (LocalStack for development)
-        # URL includes endpoint and path style for S3-compatible services
+         # Env name should follow go-cloud standard
         - name: ISOLA_BUCKET_URL
           value: "s3://isola-uploads?endpoint=http://localstack:4566&use_path_style=true&region=us-east-1"
         - name: AWS_ACCESS_KEY_ID
