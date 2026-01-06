@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -24,14 +23,6 @@ const (
 	EnvHTTPPort            = "ISOLA_HTTP_PORT"
 	EnvKubernetesNamespace = "ISOLA_KUBERNETES_NAMESPACE"
 	EnvGinMode             = "ISOLA_GIN_MODE"
-
-	// Storage configuration
-	EnvStorageBackend    = "ISOLA_STORAGE_BACKEND"
-	EnvBucketName        = "ISOLA_BUCKET_NAME"
-	EnvStorageRegion     = "ISOLA_STORAGE_REGION"
-	EnvStorageEndpoint   = "ISOLA_STORAGE_ENDPOINT"
-	EnvStorageAccessKey  = "ISOLA_STORAGE_ACCESS_KEY_ID"
-	EnvStorageSecretKey  = "ISOLA_STORAGE_SECRET_ACCESS_KEY"
 )
 
 // Default values
@@ -98,31 +89,8 @@ func main() {
 	log.Println("Server exited")
 }
 
-// loadStorageConfig reads all storage-related environment variables
-// and returns a StorageConfig. This is the single place where storage
-// env vars are read.
-func loadStorageConfig() storage.StorageConfig {
-	return storage.StorageConfig{
-		Backend:         strings.ToLower(os.Getenv(EnvStorageBackend)),
-		BucketName:      os.Getenv(EnvBucketName),
-		Region:          os.Getenv(EnvStorageRegion),
-		EndpointURL:     os.Getenv(EnvStorageEndpoint),
-		AccessKeyID:     os.Getenv(EnvStorageAccessKey),
-		SecretAccessKey: os.Getenv(EnvStorageSecretKey),
-	}
-}
-
-// initStorage initializes the storage backend using configuration from
-// environment variables. Returns nil if storage initialization fails.
 func initStorage(ctx context.Context) *storage.BucketWrapper {
-	cfg := loadStorageConfig()
-
-	if cfg.BucketName == "" {
-		log.Printf("Warning: %s not set. Large file uploads will not be available.", EnvBucketName)
-		return nil
-	}
-
-	bucket, bucketName, err := storage.CreateObjectStorage(ctx, cfg)
+	bucket, bucketName, err := storage.OpenBucket(ctx)
 	if err != nil {
 		log.Printf("Warning: Failed to initialize storage: %v. Large file uploads will not be available.", err)
 		return nil
@@ -134,7 +102,7 @@ func initStorage(ctx context.Context) *storage.BucketWrapper {
 		return nil
 	}
 
-	log.Printf("Storage initialized successfully")
+	log.Printf("Storage initialized successfully with bucket: %s", bucketName)
 	return wrapper
 }
 
