@@ -4,5 +4,6 @@ kind: Namespace
 metadata:
   name: {{ .Values.sandboxNamespace | quote }}
   labels:
-    app: isola-controller
+    app: isola-gw
     component: sandbox-environment
+

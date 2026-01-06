@@ -1,20 +1,20 @@
-# isola-controller values
-
+# isola-gw values
 image:
-  repository: isola-controller
+  repository: isola-gw
   tag: "latest"
 
-# Log level: debug, info, warning, error
 logLevel: info
 
 # Namespace for sandbox pods
 sandboxNamespace: isola-sandboxes
 
-# NodePort for local development access
 nodePort:
   enabled: false
 
-# S3/Object Storage configuration
+kubernetes:
+  namespace: "isola-sandboxes"
+  runtimeClassName: ""
+
 storage:
   enabled: false
   bucketUrl: ""
