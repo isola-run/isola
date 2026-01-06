@@ -58,14 +58,12 @@ func OpenBucket(ctx context.Context) (*blob.Bucket, string, error) {
 	return bucket, bucketName, nil
 }
 
-// BucketWrapper wraps a blob.Bucket and provides presigned URL functionality.
-// It uses gocloud.dev/blob's cloud-agnostic SignedURL method.
+
 type BucketWrapper struct {
 	bucket     *blob.Bucket
 	bucketName string
 }
 
-// NewBucketWrapper creates a new BucketWrapper from a blob.Bucket.
 func NewBucketWrapper(bucket *blob.Bucket, bucketName string) (*BucketWrapper, error) {
 	return &BucketWrapper{
 		bucket:     bucket,
