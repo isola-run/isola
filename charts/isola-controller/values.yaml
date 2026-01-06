@@ -17,8 +17,7 @@ nodePort:
 # S3/Object Storage configuration
 storage:
   enabled: false
-  bucket: ""
-  endpointUrl: ""
-  region: "us-east-1"
-  accessKeyId: ""
-  secretAccessKey: ""
+  bucketUrl: ""
+  # Credentials (read automatically by go-cloud from standard env vars)
+  awsAccessKeyId: ""
+  awsSecretAccessKey: ""
