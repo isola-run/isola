@@ -26,27 +26,28 @@ import (
 )
 
 const (
-	sandboxGroup      = "sandbox.isola.run"
-	sandboxVersion    = "v1alpha1"
-	sandboxPlural     = "sandboxes"
-	templatePlural    = "sandboxtemplates"
-	defaultTimeout    = 600 // seconds
-	defaultShutdown   = "Delete"
-	runtimeClassName  = "gvisor"
+	sandboxGroup    = "sandbox.isola.run"
+	sandboxVersion  = "v1alpha1"
+	sandboxPlural   = "sandboxes"
+	templatePlural  = "sandboxtemplates"
+	defaultTimeout  = 600 // seconds
+	defaultShutdown = "Delete"
 )
 
 type Manager struct {
-	namespace     string
-	clientset     kubernetes.Interface
-	dynamicClient dynamic.Interface
-	restConfig    *rest.Config
-	initOnce      sync.Once
-	initErr       error
+	namespace        string
+	runtimeClassName string
+	clientset        kubernetes.Interface
+	dynamicClient    dynamic.Interface
+	restConfig       *rest.Config
+	initOnce         sync.Once
+	initErr          error
 }
 
-func NewManager(namespace string) *Manager {
+func NewManager(namespace string, runtimeClassName string) *Manager {
 	return &Manager{
-		namespace: namespace,
+		namespace:        namespace,
+		runtimeClassName: runtimeClassName,
 	}
 }
 
@@ -60,7 +61,7 @@ func (m *Manager) Initialize() error {
 
 func (m *Manager) doInitialize() error {
 	log.Printf("Initializing KubernetesManager for namespace '%s' (runtime_class=%s)",
-		m.namespace, runtimeClassName)
+		m.namespace, m.runtimeClassName)
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -130,7 +131,9 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 	}
 
 	podSpec := templateSpec["podTemplate"].(map[string]interface{})["spec"].(map[string]interface{})
-	podSpec["runtimeClassName"] = runtimeClassName
+	if m.runtimeClassName != "" {
+		podSpec["runtimeClassName"] = m.runtimeClassName
+	}
 
 	err := m.createSandboxTemplateCR(ctx, templateName, templateSpec)
 	if err != nil {

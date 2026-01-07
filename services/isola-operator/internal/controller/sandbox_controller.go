@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"maps"
 	"context"
 	"errors"
 	"fmt"
@@ -328,9 +329,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	}
 
 	if template.Spec.PodTemplate.Labels != nil {
-		for k, v := range template.Spec.PodTemplate.Labels {
-			labels[k] = v
-		}
+		maps.Copy(labels, template.Spec.PodTemplate.Labels)
 	}
 
 	sandboxPod := &corev1.Pod{

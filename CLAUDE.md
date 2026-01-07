@@ -10,6 +10,8 @@ This is **isola** - a Kubernetes-based sandboxing platform with three Go microse
 - **isola-gw** - API gateway handling client requests and cloud storage integration
 - **isola-agent** - Sidecar agent running tasks within sandbox pods
 
+This code is intended to be open sourced, and currently not yet release or in production, so breaking changes are OK.
+
 ## Build Commands
 
 ### isola-operator (primary development target)
@@ -26,9 +28,36 @@ make manifests          # Generate CRDs and RBAC configs
 make generate           # Generate DeepCopy methods
 ```
 
-### Local Development
+### Local Development (Kind + Tilt)
+
+**Quick Start:**
 ```bash
-./deploy.sh             # Full deployment to local Minikube
+./scripts/setup.sh      # One-time setup: creates Kind cluster + registry + Python venv
+./scripts/dev.sh        # Start Tilt development environment (live-reload)
+./scripts/test-e2e.sh   # Run E2E tests
+./scripts/teardown.sh   # Clean up cluster and registry
+```
+
+**Development Workflow:**
+1. Run `./scripts/setup.sh` once to set up the environment
+2. Run `./scripts/dev.sh` to start Tilt (opens http://localhost:10350)
+3. Make code changes - Tilt automatically rebuilds and redeploys
+4. API is available at http://localhost:30080
+5. Run `./scripts/test-e2e.sh --smoke` to verify changes
+
+**Test Options:**
+```bash
+./scripts/test-e2e.sh           # Run all E2E tests
+./scripts/test-e2e.sh --smoke   # Quick smoke tests only
+./scripts/test-e2e.sh -p        # Run tests in parallel
+./scripts/test-e2e.sh -k "test_create"  # Run specific tests
+./scripts/test-e2e.sh --skip-cleanup    # Keep sandboxes for debugging
+./scripts/test-e2e.sh --html    # Generate HTML test report
+```
+
+**Alternative (Minikube):**
+```bash
+./deploy.sh             # Full deployment to local Minikube (slower)
 ```
 
 ## Architecture
@@ -60,18 +89,33 @@ tests/                  # Python pytest E2E tests
 
 ## Testing
 
-**Go tests** use Ginkgo/Gomega with envtest for Kubernetes API simulation.
-
-**E2E tests** use Python pytest with fixtures in `tests/conftest.py`. Run against a deployed cluster with:
+**Go unit tests** use Ginkgo/Gomega with envtest for Kubernetes API simulation:
 ```bash
-pytest tests/ -v -s --base-url=http://localhost:30080 --api-key=iso_sk_demo
+cd services/isola-operator && make test
 ```
 
-or simply:
-
+**E2E tests** use Python pytest with fixtures in `tests/conftest.py`:
 ```bash
-./scripts/run-e2e.sh    # Run Python E2E tests against deployed cluster
+./scripts/test-e2e.sh           # Run all E2E tests
+./scripts/test-e2e.sh --smoke   # Quick smoke tests (~30s)
+./scripts/test-e2e.sh -k "lifecycle"  # Run specific test pattern
 ```
+
+**E2E Test Structure:**
+```
+tests/
+├── conftest.py              # Fixtures: isola_client, sandbox, etc.
+├── client/isola_client.py   # API client wrapper (pre-SDK)
+├── test_sandbox_lifecycle.py    # Create, get, list, terminate
+├── test_command_execution.py    # Execute commands in sandboxes
+├── test_error_handling.py       # 401, 404, validation errors
+└── test_file_operations.py      # File upload/download
+```
+
+**Test Markers:**
+- `@pytest.mark.smoke` - Quick sanity tests
+- `@pytest.mark.slow` - Tests taking >30s
+- `@pytest.mark.network` - Network isolation tests
 
 ## CRD Development
 
