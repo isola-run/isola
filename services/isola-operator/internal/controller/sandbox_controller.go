@@ -89,7 +89,7 @@ const (
 	CondReasonNetworkTemplateNotFound = "NetworkTemplateNotFound"
 )
 
-const defaultSnapshotTimeoutSeconds int64 = 300
+const defaultActiveDeadlineSeconds int64 = 300
 
 const SandboxFinalizer = "sandbox.isola.run/cleanup"
 
@@ -480,6 +480,7 @@ func (r *SandboxReconciler) CreateSnapshotterJob(
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	sandboxPod *corev1.Pod,
+	activeDeadlineSeconds int64,
 ) (ctrl.Result, error) {
 	// todo benl: reduce linux capabilities of snapshot job's pod to only what is needed
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
@@ -509,7 +510,9 @@ func (r *SandboxReconciler) CreateSnapshotterJob(
 			Namespace: sandbox.Namespace,
 		},
 		Spec: batchv1.JobSpec{
-			BackoffLimit: ptr.To(int32(0)), // Don't retry on failure
+			BackoffLimit:            ptr.To(int32(0)),
+			ActiveDeadlineSeconds:   &activeDeadlineSeconds,
+			TTLSecondsAfterFinished: ptr.To(int32(60)),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					NodeSelector: map[string]string{
@@ -1363,19 +1366,22 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 
 	switch template.Spec.ShutdownPolicy.Policy {
 	case sandboxv1alpha1.ShutdownPolicySnapshotFilesystem:
-		return r.handleFilesystemSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline)
+		return r.handleFilesystemSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, r.getActiveDeadlineSeconds(template))
 	default:
 		log.Info("Unknown shutdown policy; proceeding with deletion", "policy", template.Spec.ShutdownPolicy.Policy)
 		return ctrl.Result{}, true, nil
 	}
 }
 
-func (r *SandboxReconciler) calculateSnapshotDeadline(template *sandboxv1alpha1.SandboxTemplate) time.Time {
-	snapshotTimeoutSeconds := defaultSnapshotTimeoutSeconds
-	if template != nil && template.Spec.ShutdownPolicy != nil && template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds != nil {
-		snapshotTimeoutSeconds = *template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds
+func (r *SandboxReconciler) getActiveDeadlineSeconds(template *sandboxv1alpha1.SandboxTemplate) int64 {
+	if template != nil && template.Spec.ShutdownPolicy != nil && template.Spec.ShutdownPolicy.ActiveDeadlineSeconds != nil {
+		return *template.Spec.ShutdownPolicy.ActiveDeadlineSeconds
 	}
-	return r.clock().Now().Add(time.Duration(snapshotTimeoutSeconds) * time.Second)
+	return defaultActiveDeadlineSeconds
+}
+
+func (r *SandboxReconciler) calculateSnapshotDeadline(template *sandboxv1alpha1.SandboxTemplate) time.Time {
+	return r.clock().Now().Add(time.Duration(r.getActiveDeadlineSeconds(template)) * time.Second)
 }
 
 func (r *SandboxReconciler) handleFilesystemSnapshot(
@@ -1384,6 +1390,7 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	sandboxPod *corev1.Pod,
 	snapshotDeadline time.Time,
+	activeDeadlineSeconds int64,
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 
@@ -1464,7 +1471,7 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 		return ctrl.Result{}, false, err
 	}
 	if snapshotterJob == nil {
-		res, createErr := r.CreateSnapshotterJob(ctx, sandbox, baseSandbox, sandboxPod)
+		res, createErr := r.CreateSnapshotterJob(ctx, sandbox, baseSandbox, sandboxPod, activeDeadlineSeconds)
 		if res.RequeueAfter == 0 {
 			res.RequeueAfter = time.Second
 		}
