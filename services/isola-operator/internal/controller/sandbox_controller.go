@@ -102,14 +102,14 @@ const (
 
 type SandboxReconciler struct {
 	client.Client
-	Scheme                *runtime.Scheme
-	Recorder              record.EventRecorder
-	AgentImage            string
-	Clock                 Clock // Clock interface for time operations, allows mocking in tests
+	Scheme     *runtime.Scheme
+	Recorder   record.EventRecorder
+	AgentImage string
+	Clock      Clock // Clock interface for time operations, allows mocking in tests
 }
 
 const (
-	agentContainerName           = "isola-agent"
+	agentContainerName = "isola-agent"
 
 	// Field index for efficient lookup of sandboxes by templates references
 	sandboxTemplateRefField        = ".spec.templateRef.name"
@@ -195,7 +195,6 @@ func isPodTerminated(pod *corev1.Pod) bool {
 	return pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed
 }
 
-// isJobComplete checks if a Job has completed successfully
 func isJobComplete(job *batchv1.Job) bool {
 	if job == nil {
 		return false
@@ -208,7 +207,6 @@ func isJobComplete(job *batchv1.Job) bool {
 	return false
 }
 
-// isJobFailed checks if a Job has failed
 func isJobFailed(job *batchv1.Job) bool {
 	if job == nil {
 		return false
@@ -219,6 +217,18 @@ func isJobFailed(job *batchv1.Job) bool {
 		}
 	}
 	return false
+}
+
+func getJobConditionMessage(job *batchv1.Job, conditionType batchv1.JobConditionType) string {
+	if job == nil {
+		return ""
+	}
+	for _, condition := range job.Status.Conditions {
+		if condition.Type == conditionType && condition.Status == corev1.ConditionTrue {
+			return condition.Message
+		}
+	}
+	return ""
 }
 
 func describePodContainerState(pod *corev1.Pod) string {
@@ -380,7 +390,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	sandboxPod.Spec.ShareProcessNamespace = ptr.To(true)
 
 	// Set high priority to prevent preemption by applicative non-sandbox pods
-	sandboxPod.Spec.Priority = ptr.To(int32(1000000000))
+	sandboxPod.Spec.PriorityClassName = "isola-sandbox"
 
 	// todo benl: implement api to restore pod from snapshot (make sure they are compatible)
 	// if sandboxPod.Annotations == nil {
@@ -408,7 +418,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{
 		Nameservers: nameservers,
 		Options:     dnsOptions,
-		}
+	}
 
 	if err := r.injectSidecar(sandboxPod); err != nil {
 		log.Error(err, "Failed to inject sidecar")
@@ -988,7 +998,6 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 	}
 }
 
-// determineSnapshotCondition returns the SnapshottingFilesystem condition based on the snapshotter job state.
 func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snapshotterJob *batchv1.Job) metav1.Condition {
 	if snapshotterJob == nil {
 		return metav1.Condition{
@@ -1000,7 +1009,6 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 		}
 	}
 
-	// Check if job completed successfully
 	if isJobComplete(snapshotterJob) {
 		return metav1.Condition{
 			Type:               SandboxFilesystemSnapshotCondition,
@@ -1011,18 +1019,20 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 		}
 	}
 
-	// Check if job failed
 	if isJobFailed(snapshotterJob) {
+		message := "Filesystem snapshot job failed"
+		if condMsg := getJobConditionMessage(snapshotterJob, batchv1.JobFailed); condMsg != "" {
+			message = fmt.Sprintf("Filesystem snapshot job failed: %s", condMsg)
+		}
 		return metav1.Condition{
 			Type:               SandboxFilesystemSnapshotCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonSnapshotFailed,
-			Message:            "Filesystem snapshot job failed",
+			Message:            message,
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
 
-	// Job is still running
 	return metav1.Condition{
 		Type:               SandboxFilesystemSnapshotCondition,
 		Status:             metav1.ConditionFalse,
@@ -1500,14 +1510,18 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 	}
 
 	if isJobFailed(snapshotterJob) {
-		log.Info("Filesystem snapshot job failed")
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", "Filesystem snapshot job failed")
+		failureMessage := "Filesystem snapshot job failed"
+		if condMsg := getJobConditionMessage(snapshotterJob, batchv1.JobFailed); condMsg != "" {
+			failureMessage = fmt.Sprintf("Filesystem snapshot job failed: %s", condMsg)
+		}
+		log.Info(failureMessage)
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", failureMessage)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxFilesystemSnapshotCondition,
 				Status:             metav1.ConditionFalse,
 				Reason:             CondReasonSnapshotFailed,
-				Message:            "Filesystem snapshot job failed",
+				Message:            failureMessage,
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
@@ -1516,7 +1530,6 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	// Job is still running
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               SandboxFilesystemSnapshotCondition,
