@@ -5,15 +5,16 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 import uuid
 from typing import TYPE_CHECKING, Generator
 
 import pytest
+import requests
 
 from client.isola_client import IsolaClient, IsolaError
 
 if TYPE_CHECKING:
-    from _pytest.config import Config
     from _pytest.fixtures import FixtureRequest
 
 logger = logging.getLogger(__name__)
@@ -21,18 +22,6 @@ logger = logging.getLogger(__name__)
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     """Add custom command line options."""
-    parser.addoption(
-        "--base-url",
-        action="store",
-        default=os.getenv("ISOLA_BASE_URL", "http://localhost:30080"),
-        help="Base URL for the isola-gw API",
-    )
-    parser.addoption(
-        "--api-key",
-        action="store",
-        default=os.getenv("ISOLA_API_KEY", "iso_sk_demo"),
-        help="API key for authentication",
-    )
     parser.addoption(
         "--skip-cleanup",
         action="store_true",
@@ -42,15 +31,15 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 @pytest.fixture(scope="session")
-def base_url(request: FixtureRequest) -> str:
+def base_url() -> str:
     """Get base URL for API requests."""
-    return request.config.getoption("--base-url")
+    return os.getenv("ISOLA_BASE_URL", "http://localhost:30080")
 
 
 @pytest.fixture(scope="session")
-def api_key(request: FixtureRequest) -> str:
+def api_key() -> str:
     """Get API key for authentication."""
-    return request.config.getoption("--api-key")
+    return os.getenv("ISOLA_API_KEY", "iso_sk_demo")
 
 
 @pytest.fixture(scope="session")
@@ -59,15 +48,30 @@ def skip_cleanup(request: FixtureRequest) -> bool:
     return request.config.getoption("--skip-cleanup")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def wait_for_isola_gw(base_url: str) -> None:
+    """Wait for isola-gw to be ready before running tests."""
+    max_attempts = 30
+    for i in range(max_attempts):
+        try:
+            resp = requests.get(f"{base_url}/health", timeout=5)
+            if resp.ok:
+                logger.info(f"isola-gw ready at {base_url}")
+                return
+        except requests.RequestException:
+            pass
+
+        if i < max_attempts - 1:
+            logger.info(f"Waiting for isola-gw... ({i + 1}/{max_attempts})")
+            time.sleep(2)
+
+    pytest.fail(f"isola-gw not ready at {base_url} after 60s")
+
+
 @pytest.fixture(scope="session")
 def isola_client(base_url: str, api_key: str) -> IsolaClient:
     """Create a session-scoped Isola API client."""
     client = IsolaClient(base_url=base_url, api_key=api_key)
-
-    # Verify connectivity
-    if not client.health_check():
-        pytest.fail(f"Cannot connect to isola-gw at {base_url}")
-
     logger.info(f"Connected to isola-gw at {base_url}")
     return client
 

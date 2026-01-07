@@ -1,5 +1,3 @@
-# isola-operator values
-
 image:
   repository: isola-operator
   tag: "latest"
