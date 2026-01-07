@@ -223,32 +223,24 @@ func getJobConditionMessage(job *batchv1.Job, conditionType batchv1.JobCondition
 	if job == nil {
 		return ""
 	}
-	for _, condition := range job.Status.Conditions {
-		if condition.Type == conditionType && condition.Status == corev1.ConditionTrue {
-			return condition.Message
+	for _, cond := range job.Status.Conditions {
+		if cond.Type == conditionType && cond.Status == corev1.ConditionTrue {
+			return cond.Message
 		}
 	}
 	return ""
 }
 
-func describePodContainerState(pod *corev1.Pod) string {
-	if pod == nil || len(pod.Status.ContainerStatuses) == 0 {
-		return "container status unavailable"
+func getPodConditionMessage(pod *corev1.Pod, conditionType corev1.PodConditionType) string {
+	if pod == nil {
+		return ""
 	}
-
-	cs := pod.Status.ContainerStatuses[0]
-	if cs.State.Terminated != nil {
-		term := cs.State.Terminated
-		return fmt.Sprintf("terminated: reason=%s exitCode=%d message=%s", term.Reason, term.ExitCode, term.Message)
+	for _, cond := range pod.Status.Conditions {
+		if cond.Type == conditionType {
+			return cond.Message
+		}
 	}
-	if cs.State.Waiting != nil {
-		wait := cs.State.Waiting
-		return fmt.Sprintf("waiting: reason=%s message=%s", wait.Reason, wait.Message)
-	}
-	if cs.State.Running != nil {
-		return "running"
-	}
-	return "unknown container state"
+	return ""
 }
 
 // extractContainerID extracts the container ID from a pod's container status
@@ -977,14 +969,16 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 
 	if isPodTerminated(sandboxPod) {
 		reason := CondReasonPodFailed
+		message := "Pod failed"
 		if sandboxPod.Status.Phase == corev1.PodSucceeded {
 			reason = CondReasonPodSucceeded
+			message = "Pod completed"
 		}
 		return metav1.Condition{
 			Type:               SandboxPodReadyCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             reason,
-			Message:            describePodContainerState(sandboxPod),
+			Message:            message,
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
@@ -1077,14 +1071,16 @@ func (r *SandboxReconciler) determineNetworkCondition(sandbox *sandboxv1alpha1.S
 func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.NetworkTemplate) metav1.Condition {
 	if isPodTerminated(sandboxPod) {
 		reason := CondReasonPodFailed
+		message := "Pod failed"
 		if sandboxPod.Status.Phase == corev1.PodSucceeded {
 			reason = CondReasonPodSucceeded
+			message = "Pod completed"
 		}
 		return metav1.Condition{
 			Type:               SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             reason,
-			Message:            describePodContainerState(sandboxPod),
+			Message:            message,
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
