@@ -4,7 +4,7 @@ metadata:
   name: isola-sandbox
   labels:
     app: isola-operator
-value: 1000000000
+value: 900000000
 globalDefault: false
 preemptionPolicy: PreemptLowerPriority
 description: "High priority for isola sandbox pods to prevent preemption by applicative non-sandbox pods"
