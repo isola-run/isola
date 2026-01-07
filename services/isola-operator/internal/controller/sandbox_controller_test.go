@@ -1410,8 +1410,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy:                 sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
-					SnapshotTimeoutSeconds: &snapshotTimeout,
+					Policy:                sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					ActiveDeadlineSeconds: &snapshotTimeout,
 				}
 			})
 			defer deleteTemplate(ctx, templateName)
@@ -1422,8 +1422,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 			template := &sandboxv1alpha1.SandboxTemplate{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: templateName, Namespace: testNamespace}, template)).To(Succeed())
-			Expect(template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds).NotTo(BeNil())
-			Expect(*template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds).To(Equal(snapshotTimeout))
+			Expect(template.Spec.ShutdownPolicy.ActiveDeadlineSeconds).NotTo(BeNil())
+			Expect(*template.Spec.ShutdownPolicy.ActiveDeadlineSeconds).To(Equal(snapshotTimeout))
 		})
 
 		It("should handle RuntimeClass not found during snapshot verification", func() {

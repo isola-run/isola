@@ -38,12 +38,13 @@ type ShutdownPolicy struct {
 	// +kubebuilder:validation:Enum=Delete;SnapshotFilesystem
 	Policy SandboxShutdownPolicy `json:"policy"`
 
-	// SnapshotTimeoutSeconds sets how long to wait for filesystem snapshotting to finish
-	// before giving up. Only used when Policy is SnapshotFilesystem.
+	// ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
+	// that the snapshot job may be active before the system tries to terminate it.
+	// Only used when Policy is SnapshotFilesystem.
 	// +optional
 	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=1
-	SnapshotTimeoutSeconds *int64 `json:"snapshotTimeoutSeconds,omitempty"`
+	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
 }
 
 // SandboxTemplateSpec defines the desired state of SandboxTemplate
