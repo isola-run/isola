@@ -1,4 +1,3 @@
-# isola-gw values
 image:
   repository: isola-gw
   tag: "latest"

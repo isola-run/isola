@@ -32,33 +32,18 @@ make generate           # Generate DeepCopy methods
 
 **Quick Start:**
 ```bash
-./scripts/setup.sh      # One-time setup: creates Kind cluster + registry + Python venv
-./scripts/dev.sh        # Start Tilt development environment (live-reload)
-./scripts/test-e2e.sh   # Run E2E tests
-./scripts/teardown.sh   # Clean up cluster and registry
+./scripts/setup.sh                   # One-time: creates Kind cluster + local registry
+tilt up                              # Start dev environment (live-reload)
+cd tests && uv run pytest -m smoke   # Run smoke tests
+kind delete cluster --name isola-dev # Teardown
 ```
 
 **Development Workflow:**
-1. Run `./scripts/setup.sh` once to set up the environment
-2. Run `./scripts/dev.sh` to start Tilt (opens http://localhost:10350)
+1. Run `./scripts/setup.sh` once to create the Kind cluster
+2. Run `tilt up` to start development (web UI: http://localhost:10350)
 3. Make code changes - Tilt automatically rebuilds and redeploys
 4. API is available at http://localhost:30080
-5. Run `./scripts/test-e2e.sh --smoke` to verify changes
-
-**Test Options:**
-```bash
-./scripts/test-e2e.sh           # Run all E2E tests
-./scripts/test-e2e.sh --smoke   # Quick smoke tests only
-./scripts/test-e2e.sh -p        # Run tests in parallel
-./scripts/test-e2e.sh -k "test_create"  # Run specific tests
-./scripts/test-e2e.sh --skip-cleanup    # Keep sandboxes for debugging
-./scripts/test-e2e.sh --html    # Generate HTML test report
-```
-
-**Alternative (Minikube):**
-```bash
-./deploy.sh             # Full deployment to local Minikube (slower)
-```
+5. Run tests: `cd tests && uv run pytest -m smoke`
 
 ## Architecture
 
@@ -94,17 +79,23 @@ tests/                  # Python pytest E2E tests
 cd services/isola-operator && make test
 ```
 
-**E2E tests** use Python pytest with fixtures in `tests/conftest.py`:
+**E2E tests** use Python pytest (run from `tests/` directory):
 ```bash
-./scripts/test-e2e.sh           # Run all E2E tests
-./scripts/test-e2e.sh --smoke   # Quick smoke tests (~30s)
-./scripts/test-e2e.sh -k "lifecycle"  # Run specific test pattern
+cd tests
+uv run pytest                    # Run all E2E tests
+uv run pytest -m smoke           # Quick smoke tests (~30s)
+uv run pytest -k "lifecycle"     # Run specific test pattern
+uv run pytest --skip-cleanup     # Keep sandboxes for debugging
 ```
+
+**Environment variables:**
+- `ISOLA_BASE_URL` - isola-gw URL (default: `http://localhost:30080`)
+- `ISOLA_API_KEY` - API key (default: `iso_sk_demo`)
 
 **E2E Test Structure:**
 ```
 tests/
-├── conftest.py              # Fixtures: isola_client, sandbox, etc.
+├── conftest.py              # Fixtures: isola_client, sandbox, wait_for_isola_gw
 ├── client/isola_client.py   # API client wrapper (pre-SDK)
 ├── test_sandbox_lifecycle.py    # Create, get, list, terminate
 ├── test_command_execution.py    # Execute commands in sandboxes
@@ -126,5 +117,5 @@ When modifying CRD types in `api/v1alpha1/`:
 
 In order to sync the generated code from the operator to the helm charts:
 ```bash
- cd services/isola-operator && make generate manifests && cp config/crd/bases/*.yaml ../../charts/isola-operator/templates/crds/ && cp config/rbac/role.yaml ../../charts/isola-operator/templates/clusterrole.yaml
+cd services/isola-operator && make generate manifests && cp config/crd/bases/*.yaml ../../charts/isola-operator/crds/ && cp config/rbac/role.yaml ../../charts/isola-operator/templates/clusterrole.yaml
 ```
