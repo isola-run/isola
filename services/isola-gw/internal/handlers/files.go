@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -15,12 +16,52 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/omereli/dev-isola/services/isola-gw/internal/kubernetes"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/models"
 )
 
 const (
 	fileSizeThresholdBytes = 5 * 1024 * 1024 // 5MB
 )
+
+// buildObjectKey constructs an S3 object key path.
+// format: {type}/{tenantID}/{sandboxID}/{id}/{filename}
+func buildObjectKey(objectType string, tenantID string, sandboxID string, id string, filename string) string {
+	return fmt.Sprintf("%s/%s/%s/%s/%s", objectType, tenantID, sandboxID, id, filename)
+}
+
+// getSandboxStatusAndAddress retrieves sandbox status and validates it's running.
+// Returns (status, agentAddress, shouldReturn) where shouldReturn is true if an error response was sent.
+func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context, sandboxID string, logPrefix string) (*kubernetes.SandboxStatus, string, bool) {
+	status, err := h.k8sManager.GetSandboxStatus(ctx, sandboxID)
+	if err != nil {
+		log.Printf("[%s] Failed to get sandbox %s status: %v", logPrefix, sandboxID, err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to get sandbox status",
+		})
+		return nil, "", true
+	}
+	if status == nil {
+		log.Printf("[%s] Sandbox %s not found", logPrefix, sandboxID)
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error:   "NotFound",
+			Message: "Sandbox not found",
+		})
+		return nil, "", true
+	}
+
+	if status.State != models.SandboxStateRunning {
+		log.Printf("[%s] Sandbox %s not in running state: %s", logPrefix, sandboxID, status.State)
+		c.JSON(http.StatusConflict, models.ErrorResponse{
+			Error:   "Conflict",
+			Message: "Sandbox must be in 'running' state, current state: " + string(status.State),
+		})
+		return nil, "", true
+	}
+
+	return status, status.AgentAddress, false
+}
 
 func (h *Handler) UploadFile(c *gin.Context) {
 	sandboxID := c.Param("id")
@@ -31,34 +72,10 @@ func (h *Handler) UploadFile(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	status, err := h.k8sManager.GetSandboxStatus(ctx, sandboxID)
-	if err != nil {
-		log.Printf("[UPLOAD] Failed to get sandbox %s status: %v", sandboxID, err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to get sandbox status",
-		})
+	_, agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "UPLOAD")
+	if shouldReturn {
 		return
 	}
-	if status == nil {
-		log.Printf("[UPLOAD] Sandbox %s not found", sandboxID)
-		c.JSON(http.StatusNotFound, models.ErrorResponse{
-			Error:   "NotFound",
-			Message: "Sandbox not found",
-		})
-		return
-	}
-
-	if status.State != models.SandboxStateRunning {
-		log.Printf("[UPLOAD] Sandbox %s not in running state: %s", sandboxID, status.State)
-		c.JSON(http.StatusConflict, models.ErrorResponse{
-			Error:   "Conflict",
-			Message: "Sandbox must be in 'running' state, current state: " + string(status.State),
-		})
-		return
-	}
-
-	agentAddress := status.AgentAddress
 
 	// Parse multipart form
 	form, err := c.MultipartForm()
@@ -245,45 +262,13 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	backend := getSandboxBackend()
-	if backend != "kubernetes" {
-		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
-			Error:   "NotImplemented",
-			Message: "File download is only implemented for the Kubernetes backend",
-		})
-		return
-	}
-
-	state, ipAddress, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
-	if state == nil {
-		log.Printf("[DOWNLOAD] Sandbox %s not found", sandboxID)
-		c.JSON(http.StatusNotFound, models.ErrorResponse{
-			Error:   "NotFound",
-			Message: "Sandbox not found",
-		})
-		return
-	}
-
-	if *state != models.SandboxStateRunning {
-		log.Printf("[DOWNLOAD] Sandbox %s not in running state: %s", sandboxID, *state)
-		c.JSON(http.StatusConflict, models.ErrorResponse{
-			Error:   "Conflict",
-			Message: "Sandbox must be in 'running' state, current state: " + string(*state),
-		})
-		return
-	}
-
-	if ipAddress == nil || *ipAddress == "" {
-		log.Printf("[DOWNLOAD] Sandbox %s has no IP address", sandboxID)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Sandbox pod has no IP address",
-		})
+	_, agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "DOWNLOAD")
+	if shouldReturn {
 		return
 	}
 
 	// Call agent's /read-file endpoint
-	agentURL := fmt.Sprintf("http://%s:%d/read-file?path=%s", *ipAddress, agentSidecarPort, targetPath)
+	agentURL := fmt.Sprintf("http://%s:%d/read-file?path=%s", agentAddress, agentSidecarPort, targetPath)
 	log.Printf("[DOWNLOAD] Forwarding to agent at %s", agentURL)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", agentURL, nil)
@@ -384,36 +369,14 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 		return
 	}
 
-	status, err := h.k8sManager.GetSandboxStatus(ctx, sandboxID)
-	if err != nil {
-		log.Printf("[UPLOAD-URL] Failed to get sandbox %s status: %v", sandboxID, err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to get sandbox status",
-		})
-		return
-	}
-	if status == nil {
-		log.Printf("[UPLOAD-URL] Sandbox %s not found", sandboxID)
-		c.JSON(http.StatusNotFound, models.ErrorResponse{
-			Error:   "NotFound",
-			Message: "Sandbox not found",
-		})
-		return
-	}
-
-	if status.State != models.SandboxStateRunning {
-		log.Printf("[UPLOAD-URL] Sandbox %s not in running state: %s", sandboxID, status.State)
-		c.JSON(http.StatusConflict, models.ErrorResponse{
-			Error:   "Conflict",
-			Message: "Sandbox must be in 'running' state, current state: " + string(status.State),
-		})
+	_, _, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "UPLOAD-URL")
+	if shouldReturn {
 		return
 	}
 
 	// Generate unique upload ID and object key
 	uploadID := uuid.New().String()
-	objectKey := fmt.Sprintf("uploads/%s/%s/%s/%s", tenantIDStr, sandboxID, uploadID, req.Filename)
+	objectKey := buildObjectKey("uploads", tenantIDStr, sandboxID, uploadID, req.Filename)
 
 	// Generate presigned upload URL (15 minutes expiration)
 	expiresIn := 900 // 15 minutes
@@ -471,48 +434,14 @@ func (h *Handler) GenerateDownloadUrl(c *gin.Context) {
 		return
 	}
 
-	backend := getSandboxBackend()
-	if backend != "kubernetes" {
-		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
-			Error:   "NotImplemented",
-			Message: "Large file download is only implemented for the Kubernetes backend",
-		})
-		return
-	}
-
-	// Check sandbox exists and is running
-	// TODO: __OMER__ move this function to avoid code repetition
-	state, ipAddress, _ := h.k8sManager.GetPodStatus(ctx, sandboxID)
-	if state == nil {
-		log.Printf("[DOWNLOAD-URL] Sandbox %s not found", sandboxID)
-		c.JSON(http.StatusNotFound, models.ErrorResponse{
-			Error:   "NotFound",
-			Message: "Sandbox not found",
-		})
-		return
-	}
-
-	if *state != models.SandboxStateRunning {
-		log.Printf("[DOWNLOAD-URL] Sandbox %s not in running state: %s", sandboxID, *state)
-		c.JSON(http.StatusConflict, models.ErrorResponse{
-			Error:   "Conflict",
-			Message: "Sandbox must be in 'running' state, current state: " + string(*state),
-		})
-		return
-	}
-
-	if ipAddress == nil || *ipAddress == "" {
-		log.Printf("[DOWNLOAD-URL] Sandbox %s has no IP address", sandboxID)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Sandbox pod has no IP address",
-		})
+	_, agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "DOWNLOAD-URL")
+	if shouldReturn {
 		return
 	}
 
 	// Step 1: Call agent's /file-info to get file size and check existence
 	// TODO: __OMER__ avoid this step
-	fileInfoURL := fmt.Sprintf("http://%s:%d/file-info?path=%s", *ipAddress, agentSidecarPort, req.Path)
+	fileInfoURL := fmt.Sprintf("http://%s:%d/file-info?path=%s", agentAddress, agentSidecarPort, req.Path)
 	log.Printf("[DOWNLOAD-URL] Getting file info from agent at %s", fileInfoURL)
 
 	fileInfoReq, err := http.NewRequestWithContext(ctx, "GET", fileInfoURL, nil)
@@ -582,7 +511,7 @@ func (h *Handler) GenerateDownloadUrl(c *gin.Context) {
 	// Step 2: Generate unique download ID and S3 object key
 	downloadID := uuid.New().String()
 	filename := filepath.Base(req.Path)
-	objectKey := fmt.Sprintf("downloads/%s/%s/%s/%s", tenantIDStr, sandboxID, downloadID, filename)
+	objectKey := buildObjectKey("downloads", tenantIDStr, sandboxID, downloadID, filename)
 
 	// Step 3: Generate presigned PUT URL for the agent to upload to S3
 	expiresIn := 900 // 15 minutes
@@ -617,7 +546,7 @@ func (h *Handler) GenerateDownloadUrl(c *gin.Context) {
 		return
 	}
 
-	agentUploadURL := fmt.Sprintf("http://%s:%d/upload-to-url", *ipAddress, agentSidecarPort)
+	agentUploadURL := fmt.Sprintf("http://%s:%d/upload-to-url", agentAddress, agentSidecarPort)
 	log.Printf("[DOWNLOAD-URL] Triggering agent upload at %s", agentUploadURL)
 
 	uploadReq, err := http.NewRequestWithContext(ctx, "POST", agentUploadURL, bytes.NewReader(uploadToUrlBody))
@@ -716,37 +645,13 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 		return
 	}
 
-	status, err := h.k8sManager.GetSandboxStatus(ctx, sandboxID)
-	if err != nil {
-		log.Printf("[CONFIRM] Failed to get sandbox %s status: %v", sandboxID, err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to get sandbox status",
-		})
+	_, agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "CONFIRM")
+	if shouldReturn {
 		return
 	}
-	if status == nil {
-		log.Printf("[CONFIRM] Sandbox %s not found", sandboxID)
-		c.JSON(http.StatusNotFound, models.ErrorResponse{
-			Error:   "NotFound",
-			Message: "Sandbox not found",
-		})
-		return
-	}
-
-	if status.State != models.SandboxStateRunning {
-		log.Printf("[CONFIRM] Sandbox %s not in running state: %s", sandboxID, status.State)
-		c.JSON(http.StatusConflict, models.ErrorResponse{
-			Error:   "Conflict",
-			Message: "Sandbox must be in 'running' state, current state: " + string(status.State),
-		})
-		return
-	}
-
-	agentAddress := status.AgentAddress
 
 	// Reconstruct object key from upload_id and filename
-	objectKey := fmt.Sprintf("uploads/%s/%s/%s/%s", tenantIDStr, sandboxID, req.UploadID, req.Filename)
+	objectKey := buildObjectKey("uploads", tenantIDStr, sandboxID, req.UploadID, req.Filename)
 	targetPath := req.Path
 
 	// Generate presigned download URL for the agent
@@ -846,4 +751,3 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 		Size:    size,
 	})
 }
-

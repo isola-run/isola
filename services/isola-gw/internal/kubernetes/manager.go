@@ -26,13 +26,13 @@ import (
 )
 
 const (
-	sandboxGroup      = "sandbox.isola.run"
-	sandboxVersion    = "v1alpha1"
-	sandboxPlural     = "sandboxes"
-	templatePlural    = "sandboxtemplates"
-	defaultTimeout    = 600 // seconds
-	defaultShutdown   = "Delete"
-	runtimeClassName  = "gvisor"
+	sandboxGroup     = "sandbox.isola.run"
+	sandboxVersion   = "v1alpha1"
+	sandboxPlural    = "sandboxes"
+	templatePlural   = "sandboxtemplates"
+	defaultTimeout   = 600 // seconds
+	defaultShutdown  = "Delete"
+	runtimeClassName = "gvisor"
 )
 
 type Manager struct {
@@ -312,15 +312,13 @@ func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) (bool, 
 	return true, nil
 }
 
-
 const agentServiceName = "sandbox-agents"
 
 type SandboxStatus struct {
-	State       models.SandboxState
-	ErrorReason *string
+	State        models.SandboxState
+	ErrorReason  *string
 	AgentAddress string
 }
-
 
 func (m *Manager) GetSandboxStatus(ctx context.Context, sandboxID string) (*SandboxStatus, error) {
 	if err := m.Initialize(); err != nil {
@@ -329,7 +327,7 @@ func (m *Manager) GetSandboxStatus(ctx context.Context, sandboxID string) (*Sand
 
 	log.Printf("Fetching sandbox status for '%s' from CR conditions", sandboxID)
 
-	// Get the Sandbox CR - this is the source of truth
+	// Get the Sandbox CR
 	sandbox, err := m.GetSandboxCR(ctx, sandboxID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sandbox CR: %w", err)
@@ -338,7 +336,7 @@ func (m *Manager) GetSandboxStatus(ctx context.Context, sandboxID string) (*Sand
 		return nil, nil // Sandbox not found
 	}
 
-	// Parse state from CR conditions (maintained by the controller)
+	// Parse state from CR conditions
 	state, errorReason := m.parseStateFromConditions(sandbox)
 
 	// Construct DNS address for the agent
@@ -426,7 +424,6 @@ func (m *Manager) parseStateFromConditions(sandbox *unstructured.Unstructured) (
 	return models.SandboxStatePending, nil
 }
 
-
 // Executes a command in a pod
 // Will be implemented in the future in the sidecar
 func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command string) (string, string, int, error) {
@@ -467,8 +464,8 @@ func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command 
 		SubResource("exec").
 		VersionedParams(&corev1.PodExecOptions{
 			Command: execCommand,
-			Stdout:   true,
-			Stderr:   true,
+			Stdout:  true,
+			Stderr:  true,
 		}, parameterCodec)
 
 	exec, err := remotecommand.NewSPDYExecutor(m.restConfig, "POST", req.URL())
@@ -525,4 +522,3 @@ func envToK8sEnv(env map[string]string) []map[string]interface{} {
 	}
 	return result
 }
-
