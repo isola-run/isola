@@ -312,6 +312,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		"app":                          "isola-sandbox",
 		"sandbox.isola.run/id":         sandbox.Name,
 		"app.kubernetes.io/managed-by": "isola-operator",
+		"cluster-autoscaler.kubernetes.io/safe-to-evict": "false",
 	}
 
 	// Add network-template label if network config is specified.
@@ -350,6 +351,9 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	// Enable shared PID namespace so the isola agent can locate the main container and access it's filesystem via /proc/<pid>/root
 	sandboxPod.Spec.ShareProcessNamespace = ptr.To(true)
+
+	// Set high priority to prevent preemption by applicative non-sandbox pods
+	sandboxPod.Spec.Priority = ptr.To(int32(1000000000))
 
 	// todo benl: implement api to restore pod from snapshot (make sure they are compatible)
 	// if sandboxPod.Annotations == nil {
