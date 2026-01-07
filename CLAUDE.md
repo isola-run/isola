@@ -19,11 +19,7 @@ return ...
 // and to access /proc/<pid>/root when using shared PID namespace.
 SecurityContext: &corev1.SecurityContext{
     RunAsUser: ptr.To(int64(0)),
-},
-
-// Fast-fail options: minimize time wasted on DNS queries that will never succeed
-dnsOptions = []corev1.PodDNSConfigOption{
-    {Name: "timeout", Value: ptr.To("1")},
+}
 ```
 
 If code needs a comment to be understood, first consider if better naming or restructuring could make it self-explanatory.
