@@ -62,13 +62,6 @@ type ReadFileResponse struct {
 	Content []byte `json:"content"`
 }
 
-type FileInfoResponse struct {
-	Success bool   `json:"success"`
-	Path    string `json:"path"`
-	Size    int64  `json:"size"`
-	Exists  bool   `json:"exists"`
-}
-
 type UploadToUrlRequest struct {
 	UploadURL string `json:"upload_url" binding:"required"`
 	Path      string `json:"path" binding:"required"`
@@ -310,60 +303,6 @@ func (h *Handler) ReadFile(c *gin.Context) {
 	})
 }
 
-// TODO: __OMER__ reduce code duplication
-// GetFileInfo handles GET /file-info requests.
-// Returns file metadata (size, exists) without reading the file content.
-func (h *Handler) GetFileInfo(c *gin.Context) {
-	targetPath := c.Query("path")
-	if targetPath == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "path query parameter is required"})
-		return
-	}
-
-	// Resolve path via /proc/<pid>/root to access main container's filesystem
-	fullPath, err := h.procFS.ResolvePath(targetPath)
-	if err != nil {
-		log.Printf("Failed to resolve path via procfs: %v", err)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to resolve path: " + err.Error()})
-		return
-	}
-
-	fileInfo, err := os.Stat(fullPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			c.JSON(http.StatusOK, FileInfoResponse{
-				Success: true,
-				Path:    targetPath,
-				Size:    0,
-				Exists:  false,
-			})
-			return
-		}
-		if os.IsPermission(err) {
-			c.JSON(http.StatusForbidden, ErrorResponse{Error: "permission denied: " + targetPath})
-			return
-		}
-		log.Printf("Failed to stat file %s: %v", fullPath, err)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to access file"})
-		return
-	}
-
-	// Check if it's a directory
-	if fileInfo.IsDir() {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "path is a directory, not a file"})
-		return
-	}
-
-	log.Printf("Successfully retrieved file info for %s (size: %d bytes)", fullPath, fileInfo.Size())
-
-	c.JSON(http.StatusOK, FileInfoResponse{
-		Success: true,
-		Path:    targetPath,
-		Size:    fileInfo.Size(),
-		Exists:  true,
-	})
-}
-
 // UploadToUrl handles POST /upload-to-url requests.
 // Reads a file from the main container's filesystem and uploads it to a presigned storage URL.
 func (h *Handler) UploadToUrl(c *gin.Context) {
@@ -469,6 +408,5 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.POST("/upload", h.Upload)
 	r.POST("/download", h.Download)
 	r.GET("/read-file", h.ReadFile)
-	r.GET("/file-info", h.GetFileInfo)
 	r.POST("/upload-to-url", h.UploadToUrl)
 }

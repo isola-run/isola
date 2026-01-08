@@ -54,15 +54,8 @@ type DownloadUrlResponse struct {
 	ExpiresIn   int    `json:"expires_in"`
 }
 
-type FileInfoResponse struct {
-	Path   string `json:"path"`
-	Size   int64  `json:"size"`
-	Exists bool   `json:"exists"`
-}
-
 type FileDownloadResponse struct {
 	Path    string `json:"path"`
 	Size    int64  `json:"size"`
 	Content string `json:"content"`
 }
-
