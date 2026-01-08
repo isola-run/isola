@@ -21,7 +21,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
-	utilexec "k8s.io/utils/exec"
 
 	"github.com/omereli/dev-isola/services/isola-gw/internal/models"
 )
@@ -490,8 +489,8 @@ func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command 
 
 	exitCode := 0
 	if err != nil {
-		if exitErr, ok := err.(utilexec.CodeExitError); ok {
-			exitCode = exitErr.ExitStatus()
+		if e, ok := err.(interface{ ExitStatus() int }); ok {
+			exitCode = e.ExitStatus()
 		} else {
 			log.Printf("Failed to execute command in pod %s: %v", podName, err)
 			return stdout.String(), stderr.String(), 1, err
