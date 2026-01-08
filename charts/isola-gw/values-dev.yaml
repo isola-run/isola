@@ -13,7 +13,7 @@ nodePort:
 
 kubernetes:
   namespace: "isola-sandboxes"
-  runtimeClassName: ""
+  runtimeClassName: "gvisor"
 
 # LocalStack configuration
 # URL includes endpoint and path style for S3-compatible services
