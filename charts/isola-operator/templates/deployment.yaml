@@ -31,6 +31,9 @@ spec:
         - --leader-elect
         - --health-probe-bind-address=:8081
         - --agent-image={{ .Values.agentImage }}
+        {{- if .Values.runtimeClassName }}
+        - --runtime-class={{ .Values.runtimeClassName }}
+        {{- end }}
         securityContext:
           capabilities:
             drop:

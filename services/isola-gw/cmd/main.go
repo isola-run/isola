@@ -22,7 +22,6 @@ const (
 	EnvHTTPHost            = "ISOLA_HTTP_HOST"
 	EnvHTTPPort            = "ISOLA_HTTP_PORT"
 	EnvKubernetesNamespace = "ISOLA_KUBERNETES_NAMESPACE"
-	EnvRuntimeClassName    = "ISOLA_RUNTIME_CLASS"
 	EnvGinMode             = "GIN_MODE"
 )
 
@@ -31,7 +30,6 @@ const (
 	DefaultHTTPHost            = "0.0.0.0"
 	DefaultHTTPPort            = "8080"
 	DefaultKubernetesNamespace = "isola-sandboxes"
-	DefaultRuntimeClassName    = "gvisor"
 )
 
 func main() {
@@ -42,12 +40,7 @@ func main() {
 	host := getEnvOrDefault(EnvHTTPHost, DefaultHTTPHost)
 	port := getEnvOrDefault(EnvHTTPPort, DefaultHTTPPort)
 	namespace := getEnvOrDefault(EnvKubernetesNamespace, DefaultKubernetesNamespace)
-	// runtimeClassName: use env var if set (even if empty), otherwise use default
-	runtimeClassName := DefaultRuntimeClassName
-	if val, ok := os.LookupEnv(EnvRuntimeClassName); ok {
-		runtimeClassName = val
-	}
-	k8sManager := kubernetes.NewManager(namespace, runtimeClassName)
+	k8sManager := kubernetes.NewManager(namespace)
 
 	ctx := context.Background()
 	storageBucket := initStorage(ctx)

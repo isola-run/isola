@@ -35,19 +35,17 @@ const (
 )
 
 type Manager struct {
-	namespace        string
-	runtimeClassName string
-	clientset        kubernetes.Interface
-	dynamicClient    dynamic.Interface
-	restConfig       *rest.Config
-	initOnce         sync.Once
-	initErr          error
+	namespace     string
+	clientset     kubernetes.Interface
+	dynamicClient dynamic.Interface
+	restConfig    *rest.Config
+	initOnce      sync.Once
+	initErr       error
 }
 
-func NewManager(namespace string, runtimeClassName string) *Manager {
+func NewManager(namespace string) *Manager {
 	return &Manager{
-		namespace:        namespace,
-		runtimeClassName: runtimeClassName,
+		namespace: namespace,
 	}
 }
 
@@ -60,8 +58,7 @@ func (m *Manager) Initialize() error {
 }
 
 func (m *Manager) doInitialize() error {
-	log.Printf("Initializing KubernetesManager for namespace '%s' (runtime_class=%s)",
-		m.namespace, m.runtimeClassName)
+	log.Printf("Initializing KubernetesManager for namespace '%s'", m.namespace)
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -128,11 +125,6 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 		"shutdownPolicy": map[string]interface{}{
 			"policy": defaultShutdown,
 		},
-	}
-
-	podSpec := templateSpec["podTemplate"].(map[string]interface{})["spec"].(map[string]interface{})
-	if m.runtimeClassName != "" {
-		podSpec["runtimeClassName"] = m.runtimeClassName
 	}
 
 	err := m.createSandboxTemplateCR(ctx, templateName, templateSpec)

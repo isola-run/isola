@@ -5,5 +5,9 @@ image:
 # Agent sidecar image injected into sandbox pods
 agentImage: isola-agent:latest
 
+# RuntimeClassName for sandbox pods (e.g. "gvisor" for sandboxed execution)
+# Empty string means use cluster default runtime
+runtimeClassName: "gvisor"
+
 # Namespace where sandbox pods are created
 sandboxNamespace: isola-sandboxes

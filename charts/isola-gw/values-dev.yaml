@@ -11,10 +11,6 @@ nodePort:
   enabled: true
   port: 30080
 
-kubernetes:
-  namespace: "isola-sandboxes"
-  runtimeClassName: "gvisor"
-
 # LocalStack configuration
 # URL includes endpoint and path style for S3-compatible services
 storage:

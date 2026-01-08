@@ -2,5 +2,6 @@ image:
   repository: isola-operator
   tag: "dev"
 
-# Agent sidecar image for development
 agentImage: isola-agent:dev
+
+runtimeClassName: ""
