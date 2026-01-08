@@ -115,7 +115,7 @@ for node in $(kind get nodes --name "${KIND_CLUSTER_NAME}" 2>/dev/null); do
     install_gvisor_in_node "$node"
 done
 
-# Create registry configmap for Tilt/other tools to discover
+# Create registry configmap for Tilt: https://github.com/kubernetes/enhancements/tree/master/keps/sig-cluster-lifecycle/generic/1755-communicating-a-local-registry
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: ConfigMap
