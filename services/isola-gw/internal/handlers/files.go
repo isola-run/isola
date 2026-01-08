@@ -293,7 +293,29 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	// Limit response body to slightly more than threshold to detect oversized files
+	// We don't trust the agent's reported size - enforce the limit by reading at most this many bytes
+	maxReadBytes := int64(fileSizeThresholdBytes + 1024) // 5MB + 1KB buffer for JSON overhead
+	limitedReader := io.LimitReader(resp.Body, maxReadBytes)
+	bodyBytes, err := io.ReadAll(limitedReader)
+	if err != nil {
+		log.Printf("[DOWNLOAD] Failed to read agent response: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to read agent response: " + err.Error(),
+		})
+		return
+	}
+
+	// Check if we hit the limit (file too large)
+	if int64(len(bodyBytes)) >= maxReadBytes {
+		log.Printf("[DOWNLOAD] File exceeds size limit of %d bytes for sandbox %s, path=%s", fileSizeThresholdBytes, sandboxID, targetPath)
+		c.JSON(http.StatusRequestEntityTooLarge, models.ErrorResponse{
+			Error:   "FileTooLarge",
+			Message: fmt.Sprintf("File exceeds maximum size of %d bytes for direct download. Use chunked download for large files.", fileSizeThresholdBytes),
+		})
+		return
+	}
 
 	// Handle error responses from agent
 	if resp.StatusCode != http.StatusOK {
@@ -337,7 +359,7 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.FileDownloadResponse{
 		Path:    agentResponse.Path,
-		Size:    agentResponse.Size,
+		Size:    int64(len(agentResponse.Content)),
 		Content: base64.StdEncoding.EncodeToString(agentResponse.Content),
 	})
 }
@@ -439,81 +461,11 @@ func (h *Handler) GenerateDownloadUrl(c *gin.Context) {
 		return
 	}
 
-	// Step 1: Call agent's /file-info to get file size and check existence
-	// TODO: __OMER__ avoid this step
-	fileInfoURL := fmt.Sprintf("http://%s:%d/file-info?path=%s", agentAddress, agentSidecarPort, req.Path)
-	log.Printf("[DOWNLOAD-URL] Getting file info from agent at %s", fileInfoURL)
-
-	fileInfoReq, err := http.NewRequestWithContext(ctx, "GET", fileInfoURL, nil)
-	if err != nil {
-		log.Printf("[DOWNLOAD-URL] Failed to create file-info request: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to create request: " + err.Error(),
-		})
-		return
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	fileInfoResp, err := client.Do(fileInfoReq)
-	if err != nil {
-		log.Printf("[DOWNLOAD-URL] Failed to connect to agent at %s: %v", fileInfoURL, err)
-		c.JSON(http.StatusBadGateway, models.ErrorResponse{
-			Error:   "BadGateway",
-			Message: "Failed to connect to sandbox agent: " + err.Error(),
-		})
-		return
-	}
-	defer fileInfoResp.Body.Close()
-
-	fileInfoBody, _ := io.ReadAll(fileInfoResp.Body)
-
-	if fileInfoResp.StatusCode != http.StatusOK {
-		log.Printf("[DOWNLOAD-URL] Agent file-info returned error: %d - %s", fileInfoResp.StatusCode, string(fileInfoBody))
-		var agentError struct {
-			Error string `json:"error"`
-		}
-		if err := json.Unmarshal(fileInfoBody, &agentError); err == nil && agentError.Error != "" {
-			c.JSON(fileInfoResp.StatusCode, models.ErrorResponse{
-				Error:   "AgentError",
-				Message: agentError.Error,
-			})
-			return
-		}
-		c.JSON(fileInfoResp.StatusCode, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Agent file-info failed: " + string(fileInfoBody),
-		})
-		return
-	}
-
-	var fileInfo models.FileInfoResponse
-	if err := json.Unmarshal(fileInfoBody, &fileInfo); err != nil {
-		log.Printf("[DOWNLOAD-URL] Failed to parse file-info response: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to parse file-info response: " + err.Error(),
-		})
-		return
-	}
-
-	if !fileInfo.Exists {
-		log.Printf("[DOWNLOAD-URL] File not found: %s", req.Path)
-		c.JSON(http.StatusNotFound, models.ErrorResponse{
-			Error:   "NotFound",
-			Message: "File not found: " + req.Path,
-		})
-		return
-	}
-
-	log.Printf("[DOWNLOAD-URL] File info: path=%s, size=%d", fileInfo.Path, fileInfo.Size)
-
-	// Step 2: Generate unique download ID and S3 object key
+	// Step 1: Generate presigned PUT URL for the agent to upload to S3
 	downloadID := uuid.New().String()
 	filename := filepath.Base(req.Path)
 	objectKey := buildObjectKey("downloads", tenantIDStr, sandboxID, downloadID, filename)
 
-	// Step 3: Generate presigned PUT URL for the agent to upload to S3
 	expiresIn := 900 // 15 minutes
 	uploadURL, err := h.storage.GeneratePresignedUploadURL(ctx, objectKey, expiresIn, "")
 	if err != nil {
@@ -527,7 +479,7 @@ func (h *Handler) GenerateDownloadUrl(c *gin.Context) {
 
 	log.Printf("[DOWNLOAD-URL] Generated presigned upload URL for object: %s", objectKey)
 
-	// Step 4: Tell agent to upload file to the presigned URL
+	// Step 2: Tell agent to upload file to the presigned URL
 	uploadToUrlReq := struct {
 		UploadURL string `json:"upload_url"`
 		Path      string `json:"path"`
@@ -560,7 +512,6 @@ func (h *Handler) GenerateDownloadUrl(c *gin.Context) {
 	}
 	uploadReq.Header.Set("Content-Type", "application/json")
 
-	// Use a longer timeout for large file uploads
 	uploadClient := &http.Client{Timeout: 5 * time.Minute}
 	uploadResp, err := uploadClient.Do(uploadReq)
 	if err != nil {
@@ -595,8 +546,7 @@ func (h *Handler) GenerateDownloadUrl(c *gin.Context) {
 
 	log.Printf("[DOWNLOAD-URL] Agent successfully uploaded file to S3")
 
-	// Step 5: Generate presigned GET URL for the client to download
-	// TODO: __OMER__ what is the expiration time?
+	// Step 3: Generate presigned GET URL for the client to download
 	downloadURL, err := h.storage.GeneratePresignedDownloadURL(ctx, objectKey, expiresIn)
 	if err != nil {
 		log.Printf("[DOWNLOAD-URL] Failed to generate presigned download URL: %v", err)
