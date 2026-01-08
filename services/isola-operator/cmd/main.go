@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -36,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
+	"github.com/omereli/dev-isola/services/isola-operator/internal/ca"
 	"github.com/omereli/dev-isola/services/isola-operator/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
@@ -184,11 +186,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize CA manager for sandbox agent certificate issuance.
+	// The CA is stored in the operator's namespace and used to sign certificates
+	// that embed the sandbox UUID for verification by isola-gw.
+	operatorNamespace := os.Getenv("POD_NAMESPACE")
+	if operatorNamespace == "" {
+		operatorNamespace = "isola-system"
+	}
+
+	caManager := ca.NewManager(mgr.GetClient(), operatorNamespace)
+	if err := caManager.Initialize(context.Background()); err != nil {
+		setupLog.Error(err, "unable to initialize CA manager")
+		os.Exit(1)
+	}
+	setupLog.Info("CA manager initialized", "namespace", operatorNamespace)
+
 	// SandboxReconciler manages Sandbox resources.
 	if err := (&controller.SandboxReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		AgentImage: agentImage,
+		CAManager:  caManager,
 		Clock:      controller.RealClock{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")

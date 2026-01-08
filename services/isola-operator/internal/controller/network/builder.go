@@ -101,8 +101,8 @@ const (
 
 	NetworkTemplateLabelKey = "sandbox.isola.run/network-template"
 
-	// the port used by the isola-agent sidecar
-	isolaAgentIngressPort = 8080
+	// the TLS port used by the isola-agent sidecar
+	isolaAgentIngressPort = 8443
 )
 
 func GetNetworkPolicyName(templateName string) string {

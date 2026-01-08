@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/omereli/dev-isola/services/isola-gw/internal/agent"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/handlers"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/kubernetes"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/storage"
@@ -23,6 +24,7 @@ const (
 	EnvHTTPPort            = "ISOLA_HTTP_PORT"
 	EnvKubernetesNamespace = "ISOLA_KUBERNETES_NAMESPACE"
 	EnvGinMode             = "ISOLA_GIN_MODE"
+	EnvCABundlePath        = "ISOLA_CA_BUNDLE_PATH"
 )
 
 // Default values
@@ -30,6 +32,7 @@ const (
 	DefaultHTTPHost            = "0.0.0.0"
 	DefaultHTTPPort            = "8080"
 	DefaultKubernetesNamespace = "isola-sandboxes"
+	DefaultCABundlePath        = "/etc/isola/ca/ca-bundle.crt"
 )
 
 func main() {
@@ -40,12 +43,21 @@ func main() {
 	host := getEnvOrDefault(EnvHTTPHost, DefaultHTTPHost)
 	port := getEnvOrDefault(EnvHTTPPort, DefaultHTTPPort)
 	namespace := getEnvOrDefault(EnvKubernetesNamespace, DefaultKubernetesNamespace)
+	caBundlePath := getEnvOrDefault(EnvCABundlePath, DefaultCABundlePath)
+
 	k8sManager := kubernetes.NewManager(namespace)
 
 	ctx := context.Background()
 	storageBucket := initStorage(ctx)
 
-	handler := handlers.NewHandler(k8sManager, storageBucket)
+	// Initialize agent client for TLS communication with sandbox agents
+	agentClient, err := agent.NewClient(caBundlePath)
+	if err != nil {
+		log.Fatalf("Failed to initialize agent client: %v", err)
+	}
+	log.Printf("Agent client initialized with CA bundle: %s", caBundlePath)
+
+	handler := handlers.NewHandler(k8sManager, storageBucket, agentClient)
 
 	r := gin.New()
 

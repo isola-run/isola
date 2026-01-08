@@ -120,7 +120,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	agentURL := fmt.Sprintf("http://%s:%d/upload", agentAddress, agentSidecarPort)
+	agentURL := fmt.Sprintf("https://%s:%d/upload", agentAddress, agentSidecarPort)
 	log.Printf("[UPLOAD] Forwarding to agent at %s", agentURL)
 
 	// Create multipart form for agent
@@ -165,7 +165,8 @@ func (h *Handler) UploadFile(c *gin.Context) {
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	// Use TLS client with sandbox UUID verification
+	client := h.agentClient.HTTPClient(sandboxID)
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("[UPLOAD] Failed to connect to agent at %s: %v", agentURL, err)
@@ -385,7 +386,7 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 	}
 
 	// Call agent's /download endpoint
-	agentURL := fmt.Sprintf("http://%s:%d/download", agentAddress, agentSidecarPort)
+	agentURL := fmt.Sprintf("https://%s:%d/download", agentAddress, agentSidecarPort)
 	log.Printf("[CONFIRM] Triggering agent download at %s", agentURL)
 
 	downloadReq := models.DownloadRequest{
@@ -415,7 +416,8 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	// Use TLS client with sandbox UUID verification
+	client := h.agentClient.HTTPClient(sandboxID)
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		log.Printf("[CONFIRM] Failed to connect to agent at %s: %v", agentURL, err)

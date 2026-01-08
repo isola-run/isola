@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -41,6 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
+	"github.com/omereli/dev-isola/services/isola-operator/internal/ca"
 	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/network"
 	"k8s.io/client-go/tools/record"
 )
@@ -105,6 +107,7 @@ type SandboxReconciler struct {
 	Scheme     *runtime.Scheme
 	Recorder   record.EventRecorder
 	AgentImage string
+	CAManager  *ca.Manager
 	Clock      Clock // Clock interface for time operations, allows mocking in tests
 }
 
@@ -139,9 +142,10 @@ func isNetworkTemplateReady(networkTemplate *sandboxv1alpha1.NetworkTemplate) bo
 	return readyCond != nil && readyCond.Status == metav1.ConditionTrue
 }
 
-func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
+func (r *SandboxReconciler) buildAgentContainer(sandboxID, podDNS string) (corev1.Container, error) {
 	rp := corev1.ContainerRestartPolicyAlways
-	return corev1.Container{
+
+	container := corev1.Container{
 		Name:          agentContainerName,
 		Image:         r.AgentImage,
 		RestartPolicy: &rp,
@@ -151,9 +155,30 @@ func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
 			RunAsUser: ptr.To(int64(0)),
 		},
 	}
+
+	// Issue TLS certificate for the agent with sandbox UUID embedded
+	if r.CAManager != nil {
+		certPEM, keyPEM, err := r.CAManager.IssueCert(sandboxID, podDNS)
+		if err != nil {
+			return corev1.Container{}, fmt.Errorf("issuing agent certificate: %w", err)
+		}
+
+		container.Env = append(container.Env,
+			corev1.EnvVar{
+				Name:  "ISOLA_AGENT_TLS_CERT",
+				Value: base64.StdEncoding.EncodeToString(certPEM),
+			},
+			corev1.EnvVar{
+				Name:  "ISOLA_AGENT_TLS_KEY",
+				Value: base64.StdEncoding.EncodeToString(keyPEM),
+			},
+		)
+	}
+
+	return container, nil
 }
 
-func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
+func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod, sandboxID, podDNS string) error {
 	if len(sandboxPod.Spec.Containers) != 1 {
 		// todo: remove this assumption
 		return fmt.Errorf("Sandbox pod must have exactly one container")
@@ -167,7 +192,10 @@ func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
 		Value: "true",
 	})
 
-	agentContainer := r.buildAgentContainer()
+	agentContainer, err := r.buildAgentContainer(sandboxID, podDNS)
+	if err != nil {
+		return fmt.Errorf("building agent container: %w", err)
+	}
 	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, agentContainer)
 	return nil
 }
@@ -412,7 +440,16 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		Options:     dnsOptions,
 	}
 
-	if err := r.injectSidecar(sandboxPod); err != nil {
+	// Get sandbox ID for certificate issuance
+	sandboxID := ""
+	if sandbox.Labels != nil {
+		sandboxID = sandbox.Labels["sandbox-id"]
+	}
+
+	// Construct the DNS name for the agent pod
+	podDNS := fmt.Sprintf("%s.sandbox-agents.%s.svc.cluster.local", getSandboxPodName(sandbox), sandbox.Namespace)
+
+	if err := r.injectSidecar(sandboxPod, sandboxID, podDNS); err != nil {
 		log.Error(err, "Failed to inject sidecar")
 		return err
 	}

@@ -14,7 +14,7 @@ spec:
   selector:
     app: isola-sandbox
   ports:
-    - name: agent
-      port: 8080
-      targetPort: 8080
+    - name: agent-tls
+      port: 8443
+      targetPort: 8443
 

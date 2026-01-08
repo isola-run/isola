@@ -79,3 +79,13 @@ spec:
           value: {{ .Values.storage.awsSecretAccessKey | quote }}
         {{- end }}
         {{- end }}
+        - name: ISOLA_CA_BUNDLE_PATH
+          value: "/etc/isola/ca/ca-bundle.crt"
+        volumeMounts:
+        - name: ca-bundle
+          mountPath: /etc/isola/ca
+          readOnly: true
+      volumes:
+      - name: ca-bundle
+        configMap:
+          name: isola-sandbox-ca-bundle

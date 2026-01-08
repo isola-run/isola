@@ -3,23 +3,27 @@ package handlers
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/omereli/dev-isola/services/isola-gw/internal/agent"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/kubernetes"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/storage"
 )
 
 const (
-	agentSidecarPort = 8080
+	// agentSidecarPort is the TLS port used by sandbox agents
+	agentSidecarPort = 8443
 )
 
 type Handler struct {
-	k8sManager *kubernetes.Manager
-	storage    *storage.BucketWrapper
+	k8sManager  *kubernetes.Manager
+	storage     *storage.BucketWrapper
+	agentClient *agent.Client
 }
 
-func NewHandler(k8sManager *kubernetes.Manager, storageBucket *storage.BucketWrapper) *Handler {
+func NewHandler(k8sManager *kubernetes.Manager, storageBucket *storage.BucketWrapper, agentClient *agent.Client) *Handler {
 	return &Handler{
-		k8sManager: k8sManager,
-		storage:    storageBucket,
+		k8sManager:  k8sManager,
+		storage:     storageBucket,
+		agentClient: agentClient,
 	}
 }
 
