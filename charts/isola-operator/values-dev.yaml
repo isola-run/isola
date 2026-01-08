@@ -4,4 +4,5 @@ image:
 
 agentImage: isola-agent:dev
 
-runtimeClassName: ""
+# Use gVisor runtime (installed by setup.sh)
+runtimeClassName: "gvisor"
