@@ -37,9 +37,19 @@ install_gvisor_in_node() {
         *) echo "ERROR: Unsupported architecture: $arch"; exit 1 ;;
     esac
 
+    local gvisor_url="${GVISOR_URL}/${arch}"
     docker exec "$node" sh -c "
-        curl -fsSL '${GVISOR_URL}/${arch}/runsc' -o /usr/local/bin/runsc && \
-        chmod +x /usr/local/bin/runsc
+        set -e
+        cd /tmp
+        curl -fsSL '${gvisor_url}/runsc' -o runsc
+        curl -fsSL '${gvisor_url}/runsc.sha512' -o runsc.sha512
+        curl -fsSL '${gvisor_url}/containerd-shim-runsc-v1' -o containerd-shim-runsc-v1
+        curl -fsSL '${gvisor_url}/containerd-shim-runsc-v1.sha512' -o containerd-shim-runsc-v1.sha512
+        sha512sum -c runsc.sha512
+        sha512sum -c containerd-shim-runsc-v1.sha512
+        rm -f *.sha512
+        chmod a+rx runsc containerd-shim-runsc-v1
+        mv runsc containerd-shim-runsc-v1 /usr/local/bin/
     "
 
     if ! docker exec "$node" grep -q 'plugins.*containerd.*runtimes.*runsc' /etc/containerd/config.toml 2>/dev/null; then
@@ -55,9 +65,11 @@ TOML'
     docker exec "$node" systemctl restart containerd
 
     if docker exec "$node" runsc --version &>/dev/null; then
-        echo "    [OK] runsc installed successfully"
+        local version
+        version=$(docker exec "$node" runsc --version 2>&1 | head -1)
+        echo "    [OK] gVisor installed: $version"
     else
-        echo "    [WARN] runsc installation may have issues"
+        echo "    [WARN] gVisor installation may have issues"
     fi
 }
 
