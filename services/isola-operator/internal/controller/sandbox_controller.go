@@ -102,10 +102,11 @@ const (
 
 type SandboxReconciler struct {
 	client.Client
-	Scheme                *runtime.Scheme
-	Recorder              record.EventRecorder
-	AgentImage            string
-	Clock                 Clock // Clock interface for time operations, allows mocking in tests
+	Scheme           *runtime.Scheme
+	Recorder         record.EventRecorder
+	AgentImage       string
+	RuntimeClassName string // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
+	Clock            Clock  // Clock interface for time operations, allows mocking in tests
 }
 
 const (
@@ -340,6 +341,11 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		},
 		// todo benl: copy annotations as well?
 		Spec: template.Spec.PodTemplate.Spec,
+	}
+
+	// Set RuntimeClassName if configured (e.g. "gvisor" for sandboxed execution)
+	if r.RuntimeClassName != "" {
+		sandboxPod.Spec.RuntimeClassName = &r.RuntimeClassName
 	}
 
 	// Set hostname and subdomain to enable DNS-based addressing via headless service.

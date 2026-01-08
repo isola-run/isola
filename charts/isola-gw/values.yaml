@@ -10,10 +10,6 @@ sandboxNamespace: isola-sandboxes
 nodePort:
   enabled: false
 
-kubernetes:
-  namespace: "isola-sandboxes"
-  runtimeClassName: "gvisor"
-
 storage:
   enabled: false
   bucketUrl: ""
