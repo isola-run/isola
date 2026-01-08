@@ -6,6 +6,7 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-isola-dev}"
 REGISTRY_NAME="${REGISTRY_NAME:-kind-registry}"
 REGISTRY_PORT="${REGISTRY_PORT:-5001}"
+GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/latest"
 
 echo "=== Isola Development Environment Setup ==="
 
@@ -18,6 +19,46 @@ check_tool() {
         exit 1
     fi
     echo "  [OK] $tool found"
+}
+
+# Install gVisor (runsc) in a Kind node and configure containerd
+# https://gvisor.dev/docs/user_guide/install/
+# https://gvisor.dev/docs/user_guide/containerd/quick_start/
+install_gvisor_in_node() {
+    local node="$1"
+
+    echo "  Installing gVisor in node: $node"
+
+    local arch
+    arch=$(docker exec "$node" uname -m)
+    case "$arch" in
+        x86_64) arch="x86_64" ;;
+        aarch64) arch="aarch64" ;;
+        *) echo "ERROR: Unsupported architecture: $arch"; exit 1 ;;
+    esac
+
+    docker exec "$node" sh -c "
+        curl -fsSL '${GVISOR_URL}/${arch}/runsc' -o /usr/local/bin/runsc && \
+        chmod +x /usr/local/bin/runsc
+    "
+
+    if ! docker exec "$node" grep -q 'plugins.*containerd.*runtimes.*runsc' /etc/containerd/config.toml 2>/dev/null; then
+        docker exec "$node" sh -c 'cat >> /etc/containerd/config.toml << "TOML"
+
+# gVisor (runsc) runtime configuration
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+  runtime_type = "io.containerd.runsc.v1"
+TOML'
+    fi
+
+    # Restart containerd to pick up the new runtime
+    docker exec "$node" systemctl restart containerd
+
+    if docker exec "$node" runsc --version &>/dev/null; then
+        echo "    [OK] runsc installed successfully"
+    else
+        echo "    [WARN] runsc installation may have issues"
+    fi
 }
 
 echo ""
@@ -68,6 +109,12 @@ for node in $(kind get nodes --name "${KIND_CLUSTER_NAME}" 2>/dev/null); do
 EOF
 done
 
+echo ""
+echo "Installing gVisor runtime in cluster nodes..."
+for node in $(kind get nodes --name "${KIND_CLUSTER_NAME}" 2>/dev/null); do
+    install_gvisor_in_node "$node"
+done
+
 # Create registry configmap for Tilt/other tools to discover
 kubectl apply -f - <<EOF
 apiVersion: v1
@@ -79,6 +126,16 @@ data:
   localRegistryHosting.v1: |
     host: "localhost:${REGISTRY_PORT}"
     help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
+EOF
+
+echo ""
+echo "Creating gVisor RuntimeClass..."
+kubectl apply -f - <<EOF
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
 EOF
 
 echo ""
