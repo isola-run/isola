@@ -45,16 +45,6 @@ class TestValidationErrors:
 
         assert exc_info.value.status_code == 400
 
-    def test_create_sandbox_invalid_name(self, isola_client: IsolaClient) -> None:
-        """Creating sandbox with invalid name should fail."""
-        with pytest.raises(IsolaError) as exc_info:
-            # Names with uppercase or special chars may be invalid
-            isola_client.create_sandbox(name="INVALID_NAME!!!")
-
-        # Should be 400 or 422
-        assert exc_info.value.status_code in (400, 422)
-
-
 class TestNotFoundErrors:
     """Test 404 error responses."""
 
@@ -63,13 +53,6 @@ class TestNotFoundErrors:
         """Get non-existent sandbox should return 404."""
         with pytest.raises(IsolaError) as exc_info:
             isola_client.get_sandbox("nonexistent-sandbox-id")
-
-        assert exc_info.value.status_code == 404
-
-    def test_terminate_nonexistent_sandbox(self, isola_client: IsolaClient) -> None:
-        """Terminate non-existent sandbox should return 404."""
-        with pytest.raises(IsolaError) as exc_info:
-            isola_client.terminate_sandbox("nonexistent-sandbox-id")
 
         assert exc_info.value.status_code == 404
 

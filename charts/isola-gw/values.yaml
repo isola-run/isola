@@ -12,7 +12,7 @@ nodePort:
 
 kubernetes:
   namespace: "isola-sandboxes"
-  runtimeClassName: ""
+  runtimeClassName: "gvisor"
 
 storage:
   enabled: false

@@ -9,6 +9,7 @@ kind: NetworkTemplate
 metadata:
   name: isola-egress-only
   labels:
+  # TODO: algin all component, managed-by, etc labels across all resources
     app.kubernetes.io/managed-by: isola-operator
     app.kubernetes.io/component: network-template
     isola.run/builtin: "true"

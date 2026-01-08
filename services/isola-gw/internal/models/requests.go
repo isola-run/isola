@@ -1,4 +1,5 @@
 // Package models provides data structures for the isola-gw API.
+// TODO: align validations with CRD openapi spec validations
 package models
 
 type CreateSandboxRequest struct {

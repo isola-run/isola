@@ -14,7 +14,7 @@ spec: {}
 # Empty spec = deny all traffic
 # The NetworkPolicy builder always allows isola controller ingress
 ---
-# isola-egress-only: Allow internet egress and cluster DNS
+# isola-egress-only: Allow internet egress
 apiVersion: sandbox.isola.run/v1alpha1
 kind: NetworkTemplate
 metadata:
