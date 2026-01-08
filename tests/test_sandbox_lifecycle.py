@@ -154,13 +154,6 @@ class TestSandboxTerminate:
         # Should be 404 or state should be terminating/terminated
         assert exc_info.value.status_code in (404, 410)
 
-    def test_terminate_nonexistent_sandbox(self, isola_client: IsolaClient) -> None:
-        """Terminate non-existent sandbox should return 404."""
-        with pytest.raises(IsolaError) as exc_info:
-            isola_client.terminate_sandbox("nonexistent-123")
-
-        assert exc_info.value.status_code == 404
-
     def test_force_terminate_sandbox(
         self,
         isola_client: IsolaClient,

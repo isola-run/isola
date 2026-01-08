@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
+	utilexec "k8s.io/utils/exec"
 
 	"github.com/omereli/dev-isola/services/isola-gw/internal/models"
 )
@@ -432,6 +433,7 @@ func (m *Manager) parseStateFromConditions(sandbox *unstructured.Unstructured) (
 
 // Executes a command in a pod
 // Will be implemented in the future in the sidecar
+// TODO: simplify / make more readable return value
 func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command string) (string, string, int, error) {
 	if err := m.Initialize(); err != nil {
 		return "", fmt.Sprintf("Failed to initialize: %v", err), 1, err
@@ -481,20 +483,25 @@ func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command 
 	}
 
 	var stdout, stderr bytes.Buffer
-	err = exec.Stream(remotecommand.StreamOptions{
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdout: &stdout,
 		Stderr: &stderr,
 	})
-	if err != nil {
-		log.Printf("Failed to execute command in pod %s: %v", podName, err)
-		return stdout.String(), stderr.String(), 1, err
-	}
 
 	exitCode := 0
+	if err != nil {
+		if exitErr, ok := err.(utilexec.CodeExitError); ok {
+			exitCode = exitErr.ExitStatus()
+		} else {
+			log.Printf("Failed to execute command in pod %s: %v", podName, err)
+			return stdout.String(), stderr.String(), 1, err
+		}
+	}
 
 	log.Printf("Executed command in pod %s: %s... (exit_code=%d)", podName, command[:min(50, len(command))], exitCode)
 	return stdout.String(), stderr.String(), exitCode, nil
 }
+
 
 // Helper functions
 func getImage(img *string) string {
