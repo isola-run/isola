@@ -93,6 +93,15 @@ docker_build(
     ]
 )
 
+local_resource(
+    'rebuild-isola-agent',
+    cmd='docker build -t localhost:5001/isola-agent:tilt-build services/isola-agent && docker push localhost:5001/isola-agent:tilt-build',
+    # don't run this on init, only on manual trigger:
+    auto_init=False,
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    labels=['isola'],
+)
+
 # ==============================================================================
 # isola-gw (API Gateway)
 # ==============================================================================
