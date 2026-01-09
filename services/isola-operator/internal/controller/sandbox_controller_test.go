@@ -23,6 +23,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	nodev1 "k8s.io/api/node/v1"
@@ -31,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -138,6 +140,25 @@ func deletePod(ctx context.Context, name string) {
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pod)
 	if err == nil {
 		_ = k8sClient.Delete(ctx, pod)
+	}
+}
+
+func getJob(ctx context.Context, name string) *batchv1.Job {
+	job := &batchv1.Job{}
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, job)
+	if errors.IsNotFound(err) {
+		return nil
+	}
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	return job
+}
+
+func deleteJob(ctx context.Context, name string) {
+	job := &batchv1.Job{}
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, job)
+	if err == nil {
+		propagationPolicy := metav1.DeletePropagationBackground
+		_ = k8sClient.Delete(ctx, job, &client.DeleteOptions{PropagationPolicy: &propagationPolicy})
 	}
 }
 
@@ -1102,7 +1123,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 
-		It("should create snapshotter pod for supported runtime (runsc)", func() {
+		It("should create snapshotter job for supported runtime (runsc)", func() {
 			sandboxName := "sandbox-runsc-snapshot"
 			templateName := "template-runsc-snapshot"
 			runtimeClassName := "gvisor-runsc"
@@ -1124,9 +1145,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterPodName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-fssnapshotter"
 			defer deletePod(ctx, podName)
-			defer deletePod(ctx, snapshotterPodName)
+			defer deleteJob(ctx, snapshotterJobName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -1177,10 +1198,10 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshotterPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterPodName, Namespace: testNamespace}, snapshotterPod)
+			snapshotterJob := &batchv1.Job{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterJobName, Namespace: testNamespace}, snapshotterJob)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(snapshotterPod.Spec.Containers[0].Name).To(Equal("snapshotter"))
+			Expect(snapshotterJob.Spec.Template.Spec.Containers[0].Name).To(Equal("snapshotter"))
 		})
 
 		It("should set condition when sandbox pod is not found during snapshot", func() {
@@ -1219,7 +1240,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 
-		It("should mark snapshot complete when snapshotter pod succeeds", func() {
+		It("should mark snapshot complete when snapshotter job succeeds", func() {
 			sandboxName := "sandbox-snapshot-success"
 			templateName := "template-snapshot-success"
 			runtimeClassName := "gvisor-success"
@@ -1244,9 +1265,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterPodName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-fssnapshotter"
 			defer deletePod(ctx, podName)
-			defer deletePod(ctx, snapshotterPodName)
+			defer deleteJob(ctx, snapshotterJobName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -1280,14 +1301,18 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshotterPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterPodName, Namespace: testNamespace}, snapshotterPod)
+			snapshotterJob := &batchv1.Job{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterJobName, Namespace: testNamespace}, snapshotterJob)
 			Expect(err).NotTo(HaveOccurred())
-			snapshotterPod.Status.Phase = corev1.PodSucceeded
-			snapshotterPod.Status.ContainerStatuses = []corev1.ContainerStatus{
-				{Name: "snapshotter", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0, Reason: "Completed"}}},
+			now := metav1.Now()
+			snapshotterJob.Status.StartTime = &now
+			snapshotterJob.Status.CompletionTime = &now
+			snapshotterJob.Status.Succeeded = 1
+			snapshotterJob.Status.Conditions = []batchv1.JobCondition{
+				{Type: batchv1.JobSuccessCriteriaMet, Status: corev1.ConditionTrue},
+				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
 			}
-			Expect(k8sClient.Status().Update(ctx, snapshotterPod)).To(Succeed())
+			Expect(k8sClient.Status().Update(ctx, snapshotterJob)).To(Succeed())
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -1308,7 +1333,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 
-		It("should mark snapshot failed when snapshotter pod fails", func() {
+		It("should mark snapshot failed when snapshotter job fails", func() {
 			sandboxName := "sandbox-snapshot-fail"
 			templateName := "template-snapshot-fail"
 			runtimeClassName := "gvisor-fail"
@@ -1330,9 +1355,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterPodName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-fssnapshotter"
 			defer deletePod(ctx, podName)
-			defer deletePod(ctx, snapshotterPodName)
+			defer deleteJob(ctx, snapshotterJobName)
 
 			// Setup: reconcile to create pod, then replace with pod that has NodeName
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -1357,14 +1382,17 @@ var _ = Describe("Sandbox Controller", func() {
 			fakeClock.Advance(2 * time.Second)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
-			snapshotterPod := &corev1.Pod{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterPodName, Namespace: testNamespace}, snapshotterPod)
+			snapshotterJob := &batchv1.Job{}
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterJobName, Namespace: testNamespace}, snapshotterJob)
 			Expect(err).NotTo(HaveOccurred())
-			snapshotterPod.Status.Phase = corev1.PodFailed
-			snapshotterPod.Status.ContainerStatuses = []corev1.ContainerStatus{
-				{Name: "snapshotter", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1, Reason: "Error"}}},
+			now := metav1.Now()
+			snapshotterJob.Status.StartTime = &now
+			snapshotterJob.Status.Failed = 1
+			snapshotterJob.Status.Conditions = []batchv1.JobCondition{
+				{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue},
+				{Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Message: "Job failed"},
 			}
-			Expect(k8sClient.Status().Update(ctx, snapshotterPod)).To(Succeed())
+			Expect(k8sClient.Status().Update(ctx, snapshotterJob)).To(Succeed())
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 			Expect(err).NotTo(HaveOccurred())
@@ -1382,8 +1410,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy:                 sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
-					SnapshotTimeoutSeconds: &snapshotTimeout,
+					Policy:                sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					ActiveDeadlineSeconds: &snapshotTimeout,
 				}
 			})
 			defer deleteTemplate(ctx, templateName)
@@ -1394,8 +1422,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 			template := &sandboxv1alpha1.SandboxTemplate{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: templateName, Namespace: testNamespace}, template)).To(Succeed())
-			Expect(template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds).NotTo(BeNil())
-			Expect(*template.Spec.ShutdownPolicy.SnapshotTimeoutSeconds).To(Equal(snapshotTimeout))
+			Expect(template.Spec.ShutdownPolicy.ActiveDeadlineSeconds).NotTo(BeNil())
+			Expect(*template.Spec.ShutdownPolicy.ActiveDeadlineSeconds).To(Equal(snapshotTimeout))
 		})
 
 		It("should handle RuntimeClass not found during snapshot verification", func() {
@@ -1427,7 +1455,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err.Error()).To(ContainSubstring("RuntimeClass"))
 		})
 
-		It("should create snapshotter pod exactly once even if reconciled multiple times", func() {
+		It("should create snapshotter job exactly once even if reconciled multiple times", func() {
 			sandboxName := "sandbox-snapshot-idempotent"
 			templateName := "template-snapshot-idempotent"
 			runtimeClassName := "gvisor-idempotent"
@@ -1449,9 +1477,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterPodName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-fssnapshotter"
 			defer deletePod(ctx, podName)
-			defer deletePod(ctx, snapshotterPodName)
+			defer deleteJob(ctx, snapshotterJobName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -1485,10 +1513,10 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshotterPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterPodName, Namespace: testNamespace}, snapshotterPod)
+			snapshotterJob := &batchv1.Job{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterJobName, Namespace: testNamespace}, snapshotterJob)
 			Expect(err).NotTo(HaveOccurred())
-			originalUID := snapshotterPod.UID
+			originalUID := snapshotterJob.UID
 
 			// Second reconcile while snapshotter running - should be idempotent
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
@@ -1496,10 +1524,10 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshotterPod = &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterPodName, Namespace: testNamespace}, snapshotterPod)
+			snapshotterJob = &batchv1.Job{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterJobName, Namespace: testNamespace}, snapshotterJob)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(snapshotterPod.UID).To(Equal(originalUID), "Snapshotter pod should not be recreated")
+			Expect(snapshotterJob.UID).To(Equal(originalUID), "Snapshotter job should not be recreated")
 
 			// Third reconcile - still idempotent
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
@@ -1507,10 +1535,10 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshotterPod = &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterPodName, Namespace: testNamespace}, snapshotterPod)
+			snapshotterJob = &batchv1.Job{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterJobName, Namespace: testNamespace}, snapshotterJob)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(snapshotterPod.UID).To(Equal(originalUID), "Snapshotter pod should not be recreated on third reconcile")
+			Expect(snapshotterJob.UID).To(Equal(originalUID), "Snapshotter job should not be recreated on third reconcile")
 		})
 	})
 
@@ -1577,9 +1605,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterPodName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-fssnapshotter"
 			defer deletePod(ctx, podName)
-			defer deletePod(ctx, snapshotterPodName)
+			defer deleteJob(ctx, snapshotterJobName)
 
 			// Create and make pod ready (need to recreate with NodeName)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -1597,7 +1625,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Eventually(func() bool {
 				select {
 				case event := <-recorder.Events:
-					return event == "Normal SnapshottingStarted Snapshotter pod created"
+					return event == "Normal SnapshottingStarted Snapshotter job created"
 				default:
 					return false
 				}
@@ -1624,9 +1652,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterPodName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-fssnapshotter"
 			defer deletePod(ctx, podName)
-			defer deletePod(ctx, snapshotterPodName)
+			defer deleteJob(ctx, snapshotterJobName)
 
 			// Setup - recreate pod with NodeName
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -1646,12 +1674,18 @@ var _ = Describe("Sandbox Controller", func() {
 			fakeClock.Advance(2 * time.Second)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
-			// Mark snapshotter succeeded
-			snapshotterPod := getPod(ctx, snapshotterPodName)
-			Expect(snapshotterPod).NotTo(BeNil())
-			snapshotterPod.Status.Phase = corev1.PodSucceeded
-			snapshotterPod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "snapshotter", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0}}}}
-			Expect(k8sClient.Status().Update(ctx, snapshotterPod)).To(Succeed())
+			// Mark snapshotter job succeeded
+			snapshotterJob := getJob(ctx, snapshotterJobName)
+			Expect(snapshotterJob).NotTo(BeNil())
+			now := metav1.Now()
+			snapshotterJob.Status.StartTime = &now
+			snapshotterJob.Status.CompletionTime = &now
+			snapshotterJob.Status.Succeeded = 1
+			snapshotterJob.Status.Conditions = []batchv1.JobCondition{
+				{Type: batchv1.JobSuccessCriteriaMet, Status: corev1.ConditionTrue},
+				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
+			}
+			Expect(k8sClient.Status().Update(ctx, snapshotterJob)).To(Succeed())
 
 		drainEvents2:
 			for {
@@ -1667,7 +1701,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Eventually(func() bool {
 				select {
 				case event := <-recorder.Events:
-					return len(event) > 0 && (event == "Normal SnapshotSucceeded terminated: reason= exitCode=0 message=" || len(event) > 20)
+					return len(event) > 0 && (event == "Normal SnapshotSucceeded Filesystem snapshot job completed" || len(event) > 20)
 				default:
 					return false
 				}
@@ -1694,9 +1728,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterPodName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-fssnapshotter"
 			defer deletePod(ctx, podName)
-			defer deletePod(ctx, snapshotterPodName)
+			defer deleteJob(ctx, snapshotterJobName)
 
 			// Setup - recreate pod with NodeName
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -1706,12 +1740,17 @@ var _ = Describe("Sandbox Controller", func() {
 			fakeClock.Advance(2 * time.Second)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
-			// Mark snapshotter failed
-			snapshotterPod := getPod(ctx, snapshotterPodName)
-			Expect(snapshotterPod).NotTo(BeNil())
-			snapshotterPod.Status.Phase = corev1.PodFailed
-			snapshotterPod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "snapshotter", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1, Reason: "Error"}}}}
-			Expect(k8sClient.Status().Update(ctx, snapshotterPod)).To(Succeed())
+			// Mark snapshotter job failed
+			snapshotterJob := getJob(ctx, snapshotterJobName)
+			Expect(snapshotterJob).NotTo(BeNil())
+			now := metav1.Now()
+			snapshotterJob.Status.StartTime = &now
+			snapshotterJob.Status.Failed = 1
+			snapshotterJob.Status.Conditions = []batchv1.JobCondition{
+				{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue},
+				{Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Message: "Job failed"},
+			}
+			Expect(k8sClient.Status().Update(ctx, snapshotterJob)).To(Succeed())
 
 			// Drain previous events
 		drainEvents3:
@@ -1985,9 +2024,9 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 
 			podName := sandboxName + "-pod"
-			snapshotterPodName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-fssnapshotter"
 			defer deletePod(ctx, podName)
-			defer deletePod(ctx, snapshotterPodName)
+			defer deleteJob(ctx, snapshotterJobName)
 
 			// First reconcile - creates pod and adds finalizer
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -2026,24 +2065,27 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
 
-			// Reconcile - should create snapshotter pod
+			// Reconcile - should create snapshotter job
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Verify snapshotter pod was created
-			snapshotterPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterPodName, Namespace: testNamespace}, snapshotterPod)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(snapshotterPod.Spec.Containers[0].Name).To(Equal("snapshotter"))
+			// Verify snapshotter job was created
+			snapshotterJob := getJob(ctx, snapshotterJobName)
+			Expect(snapshotterJob).NotTo(BeNil())
+			Expect(snapshotterJob.Spec.Template.Spec.Containers[0].Name).To(Equal("snapshotter"))
 
-			// Mark snapshotter pod as succeeded
-			snapshotterPod.Status.Phase = corev1.PodSucceeded
-			snapshotterPod.Status.ContainerStatuses = []corev1.ContainerStatus{
-				{Name: "snapshotter", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0, Reason: "Completed"}}},
+			// Mark snapshotter job as complete
+			now := metav1.Now()
+			snapshotterJob.Status.StartTime = &now
+			snapshotterJob.Status.CompletionTime = &now
+			snapshotterJob.Status.Succeeded = 1
+			snapshotterJob.Status.Conditions = []batchv1.JobCondition{
+				{Type: batchv1.JobSuccessCriteriaMet, Status: corev1.ConditionTrue},
+				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
 			}
-			Expect(k8sClient.Status().Update(ctx, snapshotterPod)).To(Succeed())
+			Expect(k8sClient.Status().Update(ctx, snapshotterJob)).To(Succeed())
 
 			// Reconcile - should complete deletion
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{

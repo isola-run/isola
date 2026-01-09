@@ -29,6 +29,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	nodev1 "k8s.io/api/node/v1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -159,6 +160,18 @@ var _ = BeforeSuite(func() {
 		},
 	}
 	Expect(k8sClient.Create(ctx, ns)).To(Succeed())
+
+	// Create PriorityClass for sandbox pods
+	priorityClass := &schedulingv1.PriorityClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "isola-sandbox",
+		},
+		Value:            1000000000,
+		GlobalDefault:    false,
+		PreemptionPolicy: func() *corev1.PreemptionPolicy { p := corev1.PreemptLowerPriority; return &p }(),
+		Description:      "High priority for isola sandbox pods",
+	}
+	Expect(k8sClient.Create(ctx, priorityClass)).To(Succeed())
 
 	// Create and reconcile the default NetworkTemplate that all sandboxes use
 	defaultNetworkTemplate := &sandboxv1alpha1.NetworkTemplate{
