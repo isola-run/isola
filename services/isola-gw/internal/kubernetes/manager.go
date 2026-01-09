@@ -26,13 +26,12 @@ import (
 )
 
 const (
-	sandboxGroup      = "sandbox.isola.run"
-	sandboxVersion    = "v1alpha1"
-	sandboxPlural     = "sandboxes"
-	templatePlural    = "sandboxtemplates"
-	defaultTimeout    = 600 // seconds
-	defaultShutdown   = "Delete"
-	runtimeClassName  = "gvisor"
+	sandboxGroup    = "sandbox.isola.run"
+	sandboxVersion  = "v1alpha1"
+	sandboxPlural   = "sandboxes"
+	templatePlural  = "sandboxtemplates"
+	defaultTimeout  = 600 // seconds
+	defaultShutdown = "Delete"
 )
 
 type Manager struct {
@@ -59,8 +58,7 @@ func (m *Manager) Initialize() error {
 }
 
 func (m *Manager) doInitialize() error {
-	log.Printf("Initializing KubernetesManager for namespace '%s' (runtime_class=%s)",
-		m.namespace, runtimeClassName)
+	log.Printf("Initializing KubernetesManager for namespace '%s'", m.namespace)
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -128,9 +126,6 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 			"policy": defaultShutdown,
 		},
 	}
-
-	podSpec := templateSpec["podTemplate"].(map[string]interface{})["spec"].(map[string]interface{})
-	podSpec["runtimeClassName"] = runtimeClassName
 
 	err := m.createSandboxTemplateCR(ctx, templateName, templateSpec)
 	if err != nil {
@@ -429,6 +424,7 @@ func (m *Manager) parseStateFromConditions(sandbox *unstructured.Unstructured) (
 
 // Executes a command in a pod
 // Will be implemented in the future in the sidecar
+// TODO: simplify / make more readable return value
 func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command string) (string, string, int, error) {
 	if err := m.Initialize(); err != nil {
 		return "", fmt.Sprintf("Failed to initialize: %v", err), 1, err
@@ -478,20 +474,25 @@ func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command 
 	}
 
 	var stdout, stderr bytes.Buffer
-	err = exec.Stream(remotecommand.StreamOptions{
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdout: &stdout,
 		Stderr: &stderr,
 	})
-	if err != nil {
-		log.Printf("Failed to execute command in pod %s: %v", podName, err)
-		return stdout.String(), stderr.String(), 1, err
-	}
 
 	exitCode := 0
+	if err != nil {
+		if e, ok := err.(interface{ ExitStatus() int }); ok {
+			exitCode = e.ExitStatus()
+		} else {
+			log.Printf("Failed to execute command in pod %s: %v", podName, err)
+			return stdout.String(), stderr.String(), 1, err
+		}
+	}
 
 	log.Printf("Executed command in pod %s: %s... (exit_code=%d)", podName, command[:min(50, len(command))], exitCode)
 	return stdout.String(), stderr.String(), exitCode, nil
 }
+
 
 // Helper functions
 func getImage(img *string) string {

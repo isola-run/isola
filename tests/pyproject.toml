@@ -1,0 +1,39 @@
+[project]
+name = "isola-e2e-tests"
+version = "0.1.0"
+description = "E2E tests for isola"
+requires-python = ">=3.11"
+dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-xdist>=3.5.0",
+    "pytest-timeout>=2.2.0",
+    "pytest-cov>=4.1.0",
+    "pytest-html>=4.1.0",
+    "requests>=2.31.0",
+    "httpx>=0.27.0",
+    "kubernetes>=29.0.0",
+    "tenacity>=8.2.0",
+    "python-dateutil>=2.8.2",
+    "pyyaml>=6.0.1",
+    "structlog>=24.1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "smoke: Quick sanity tests (< 30s total)",
+    "regression: Full regression suite",
+    "stress: Load/stress tests (long running)",
+    "slow: Tests that take > 30 seconds",
+    "network: Tests requiring network isolation features",
+]
+addopts = "-v --tb=short --strict-markers -ra --timeout=120"
+asyncio_mode = "auto"
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(name)s: %(message)s"
+log_cli_date_format = "%H:%M:%S"
