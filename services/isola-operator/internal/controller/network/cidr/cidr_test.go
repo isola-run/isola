@@ -363,3 +363,105 @@ func TestParseDNSServerIP(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkIsBlockedCIDR_IPv4(b *testing.B) {
+	testCases := []string{
+		"10.1.2.0/24",     // Inside blocked range
+		"8.8.8.0/24",      // Public (not blocked)
+		"192.168.1.0/24",  // Inside blocked range
+		"1.1.1.0/24",      // Public (not blocked)
+		"172.16.0.0/16",   // Inside blocked range
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cidr := testCases[i%len(testCases)]
+		prefix, _ := ParsePrefix(cidr)
+		_, _ = ComputeExcept(prefix)
+	}
+}
+
+func BenchmarkIsBlockedCIDR_IPv6(b *testing.B) {
+	testCases := []string{
+		"fc00::/8",        // Inside blocked range
+		"2001:db8::/32",   // Public (not blocked)
+		"fe80::/64",       // Inside blocked range
+		"2606:4700::/32",  // Public (not blocked)
+		"fd00::/8",        // Inside blocked range
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cidr := testCases[i%len(testCases)]
+		prefix, _ := ParsePrefix(cidr)
+		_, _ = ComputeExcept(prefix)
+	}
+}
+
+func BenchmarkValidateEgressCIDRs_Small(b *testing.B) {
+	cidrs := []string{
+		"8.8.8.0/24",
+		"1.1.1.0/24",
+		"0.0.0.0/0",
+		"2001:db8::/32",
+		"2606:4700::/32",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, cidr := range cidrs {
+			prefix, err := ParsePrefix(cidr)
+			if err != nil {
+				continue
+			}
+			_, _ = ComputeExcept(prefix)
+		}
+	}
+}
+
+func BenchmarkValidateEgressCIDRs_Large(b *testing.B) {
+	cidrs := []string{
+		"8.8.8.0/24", "1.1.1.0/24", "8.8.4.0/24", "1.0.0.0/24",
+		"208.67.222.0/24", "208.67.220.0/24", "9.9.9.0/24", "149.112.112.0/24",
+		"64.6.64.0/24", "64.6.65.0/24", "185.228.168.0/24", "185.228.169.0/24",
+		"76.76.19.0/24", "76.223.122.0/24", "94.140.14.0/24", "94.140.15.0/24",
+		"216.146.35.0/24", "216.146.36.0/24", "156.154.70.0/24", "156.154.71.0/24",
+		"2001:4860:4860::/48", "2606:4700:4700::/48", "2620:fe::/48", "2620:119:35::/48",
+		"2620:119:53::/48", "2a0d:2a00:1::/48", "2a0d:2a00:2::/48", "2620:74:1b::/48",
+		"2001:608::/32", "2001:678::/32", "2001:67c::/32", "2a01:4f8::/32",
+		"2a01:4f9::/32", "2a02:6b8::/32", "2a02:2498::/32", "2a03:2880::/32",
+		"2a04:4e42::/32", "2a05:d012::/32", "2a06:98c0::/32", "2a07:1c44::/32",
+		"2a09:bac0::/32", "2a0a:e5c0::/32", "2a0b:4d07::/32", "2a0c:b641::/32",
+		"2a0d:5600::/32", "2a0e:b107::/32", "2a0f:9400::/32", "2a10:cc40::/32",
+		"2a11:fb00::/32", "2a12:4946::/32",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, cidr := range cidrs {
+			prefix, err := ParsePrefix(cidr)
+			if err != nil {
+				continue
+			}
+			_, _ = ComputeExcept(prefix)
+		}
+	}
+}
+
+func FuzzValidateEgressCIDR(f *testing.F) {
+	f.Add("10.0.0.0/8")
+	f.Add("8.8.8.8/32")
+	f.Add("2001:db8::/32")
+	f.Add("invalid")
+	f.Add("")
+	f.Add("256.1.1.1/8")
+	f.Add("10.0.0.0/33")
+
+	f.Fuzz(func(t *testing.T, cidr string) {
+		prefix, err := ParsePrefix(cidr)
+		if err != nil {
+			return
+		}
+		_, _ = ComputeExcept(prefix)
+	})
+}

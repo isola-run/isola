@@ -684,3 +684,290 @@ func TestBuildNetworkPolicy_WithIngressCIDRs_OrderAgnostic(t *testing.T) {
 	require.NotNil(t, cidrRule, "should have ingress rule with both CIDRs")
 	assert.Len(t, cidrRule.From, 2)
 }
+
+// =============================================================================
+// Negative/Edge Case Tests
+// =============================================================================
+
+func TestBuildNetworkPolicy_NilTemplate(t *testing.T) {
+	controllerNS := "isola-system"
+	controllerLabels := map[string]string{"app": "isola-controller"}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Logf("Expected panic occurred: %v", r)
+		}
+	}()
+
+	_, err := BuildNetworkPolicy(nil, controllerNS, controllerLabels)
+	if err == nil {
+		t.Error("expected error or panic for nil template, got nil error")
+	}
+}
+
+func TestBuildNetworkPolicy_EmptyTemplateName(t *testing.T) {
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{},
+	}
+
+	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	require.NoError(t, err)
+
+	assert.Equal(t, "-netpol", np.Name)
+	assert.Equal(t, "", np.Labels[NetworkTemplateLabelKey])
+	assert.Equal(t, "", np.Spec.PodSelector.MatchLabels[NetworkTemplateLabelKey])
+}
+
+func TestBuildNetworkPolicy_DuplicateCIDRs(t *testing.T) {
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-template",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{
+			AllowedIngress: []string{"10.0.0.0/8", "10.0.0.0/8", "10.0.0.0/8"},
+			AllowedEgress:  []string{"8.8.8.0/24", "8.8.8.0/24"},
+		},
+	}
+
+	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	require.NoError(t, err)
+
+	require.Len(t, np.Spec.Ingress, 2)
+	var ingressCIDRCount int
+	for _, rule := range np.Spec.Ingress {
+		for _, from := range rule.From {
+			if from.IPBlock != nil && from.IPBlock.CIDR == "10.0.0.0/8" {
+				ingressCIDRCount++
+			}
+		}
+	}
+	assert.Equal(t, 1, ingressCIDRCount, "duplicate ingress CIDRs should be deduplicated")
+
+	require.Len(t, np.Spec.Egress, 1)
+	assert.Len(t, np.Spec.Egress[0].To, 1, "duplicate egress CIDRs should be deduplicated")
+	assert.Equal(t, "8.8.8.0/24", np.Spec.Egress[0].To[0].IPBlock.CIDR)
+}
+
+func TestBuildNetworkPolicy_MixedIPv4IPv6(t *testing.T) {
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-template",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{
+			AllowedIngress: []string{"10.0.0.0/8", "2001:db8::/32"},
+			AllowedEgress:  []string{"8.8.8.0/24", "2606:4700:4700::1111/128"},
+			DNSServers:     []string{"8.8.8.8", "2001:4860:4860::8888"},
+		},
+	}
+
+	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	require.NoError(t, err)
+
+	require.Len(t, np.Spec.Ingress, 2)
+	ingressCIDRs := make([]string, 0)
+	for _, rule := range np.Spec.Ingress {
+		for _, from := range rule.From {
+			if from.IPBlock != nil {
+				ingressCIDRs = append(ingressCIDRs, from.IPBlock.CIDR)
+			}
+		}
+	}
+	assert.Contains(t, ingressCIDRs, "10.0.0.0/8", "should contain IPv4 ingress CIDR")
+	assert.Contains(t, ingressCIDRs, "2001:db8::/32", "should contain IPv6 ingress CIDR")
+
+	require.Len(t, np.Spec.Egress, 3)
+
+	dnsRule := findDNSEgressRule(np.Spec.Egress)
+	require.NotNil(t, dnsRule, "should have DNS egress rule")
+	dnsCIDRs := make([]string, 0)
+	for _, to := range dnsRule.To {
+		if to.IPBlock != nil {
+			dnsCIDRs = append(dnsCIDRs, to.IPBlock.CIDR)
+		}
+	}
+	assert.Contains(t, dnsCIDRs, "8.8.8.8/32", "should contain IPv4 DNS server")
+	assert.Contains(t, dnsCIDRs, "2001:4860:4860::8888/128", "should contain IPv6 DNS server")
+
+	nonDNSEgress := make([]string, 0)
+	for _, rule := range np.Spec.Egress {
+		isDNS := false
+		for _, port := range rule.Ports {
+			if port.Port != nil && port.Port.IntVal == 53 {
+				isDNS = true
+				break
+			}
+		}
+		if !isDNS {
+			for _, to := range rule.To {
+				if to.IPBlock != nil {
+					nonDNSEgress = append(nonDNSEgress, to.IPBlock.CIDR)
+				}
+			}
+		}
+	}
+	assert.Contains(t, nonDNSEgress, "8.8.8.0/24", "should contain IPv4 egress CIDR")
+	assert.Contains(t, nonDNSEgress, "2606:4700:4700::1111/128", "should contain IPv6 egress CIDR")
+}
+
+func TestBuildNetworkPolicy_EmptyControllerLabels(t *testing.T) {
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-template",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{},
+	}
+
+	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{})
+	require.NoError(t, err)
+
+	require.Len(t, np.Spec.Ingress, 1)
+	ingressRule := np.Spec.Ingress[0]
+	require.Len(t, ingressRule.From, 1)
+	require.NotNil(t, ingressRule.From[0].PodSelector)
+	assert.Empty(t, ingressRule.From[0].PodSelector.MatchLabels, "should have empty controller labels")
+	assert.Equal(t, "isola-system", ingressRule.From[0].NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"])
+}
+
+func TestBuildNetworkPolicy_LargeCIDRList(t *testing.T) {
+	ingressCIDRs := make([]string, 60)
+	egressCIDRs := make([]string, 60)
+
+	for i := 0; i < 60; i++ {
+		ingressCIDRs[i] = "8.0.0.0/8"
+		egressCIDRs[i] = "9.0.0.0/8"
+	}
+
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-template",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{
+			AllowedIngress: ingressCIDRs,
+			AllowedEgress:  egressCIDRs,
+		},
+	}
+
+	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	require.NoError(t, err)
+
+	require.Len(t, np.Spec.Ingress, 2)
+	require.Len(t, np.Spec.Egress, 1)
+
+	var ingressCIDRCount int
+	for _, rule := range np.Spec.Ingress {
+		for _, from := range rule.From {
+			if from.IPBlock != nil {
+				ingressCIDRCount++
+			}
+		}
+	}
+	assert.Equal(t, 1, ingressCIDRCount, "duplicate CIDRs should be deduplicated")
+
+	assert.Len(t, np.Spec.Egress[0].To, 1, "duplicate CIDRs should be deduplicated")
+}
+
+func TestGetNetworkPolicyName_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name         string
+		templateName string
+		expected     string
+	}{
+		{
+			name:         "empty name",
+			templateName: "",
+			expected:     "-netpol",
+		},
+		{
+			name:         "very long name",
+			templateName: "this-is-a-very-long-template-name-that-might-exceed-kubernetes-limits-for-resource-names-and-we-need-to-test-how-it-behaves",
+			expected:     "this-is-a-very-long-template-name-that-might-exceed-kubernetes-limits-for-resource-names-and-we-need-to-test-how-it-behaves-netpol",
+		},
+		{
+			name:         "name with hyphens",
+			templateName: "my-custom-template-with-many-hyphens",
+			expected:     "my-custom-template-with-many-hyphens-netpol",
+		},
+		{
+			name:         "single character",
+			templateName: "a",
+			expected:     "a-netpol",
+		},
+		{
+			name:         "name with numbers",
+			templateName: "template-123-456",
+			expected:     "template-123-456-netpol",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GetNetworkPolicyName(tt.templateName)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// =============================================================================
+// Benchmark Tests
+// =============================================================================
+
+func BenchmarkBuildNetworkPolicy_Simple(b *testing.B) {
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "bench-template",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{},
+	}
+
+	controllerNS := "isola-system"
+	controllerLabels := map[string]string{"app": "isola-controller"}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := BuildNetworkPolicy(template, controllerNS, controllerLabels)
+		if err != nil {
+			b.Fatalf("unexpected error: %v", err)
+		}
+	}
+}
+
+func BenchmarkBuildNetworkPolicy_ComplexCIDRs(b *testing.B) {
+	ingressCIDRs := make([]string, 50)
+	egressCIDRs := make([]string, 50)
+	for i := 0; i < 50; i++ {
+		ingressCIDRs[i] = "8.8.8.0/24"
+		egressCIDRs[i] = "9.9.9.0/24"
+	}
+
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "bench-template",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{
+			AllowedIngress: ingressCIDRs,
+			AllowedEgress:  egressCIDRs,
+			DNSServers:     []string{"8.8.8.8", "1.1.1.1", "2001:4860:4860::8888"},
+		},
+	}
+
+	controllerNS := "isola-system"
+	controllerLabels := map[string]string{"app": "isola-controller"}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := BuildNetworkPolicy(template, controllerNS, controllerLabels)
+		if err != nil {
+			b.Fatalf("unexpected error: %v", err)
+		}
+	}
+}
