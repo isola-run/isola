@@ -83,7 +83,7 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&agentImage, "agent-image", "isola-agent:dev", "Container image for the isola-agent sidecar")
+	flag.StringVar(&agentImage, "agent-image", "isola-agent:latest", "Container image for the isola-agent sidecar")
 	flag.StringVar(&runtimeClassName, "runtime-class", "", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
 	flag.StringVar(&isolaGatewayNamespace, "gateway-namespace", "isola-system", "Namespace where isola-gw runs (for NetworkPolicy ingress rules)")
 	flag.StringVar(&isolaGatewayLabelName, "gateway-label-name", "isola-gw", "Value of app.kubernetes.io/name label for isola-gw pods")
