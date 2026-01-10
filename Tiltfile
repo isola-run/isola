@@ -146,6 +146,58 @@ k8s_resource(
 )
 
 # ==============================================================================
+# isola-frontend (Web UI)
+# ==============================================================================
+
+docker_build(
+    'isola-frontend',
+    context='frontend',
+    dockerfile='frontend/Dockerfile',
+)
+
+k8s_yaml(blob("""
+apiVersion: v1
+kind: Service
+metadata:
+  name: isola-frontend
+  namespace: isola-system
+spec:
+  selector:
+    app: isola-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: isola-frontend
+  namespace: isola-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: isola-frontend
+  template:
+    metadata:
+      labels:
+        app: isola-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: isola-frontend
+          ports:
+            - containerPort: 80
+"""))
+
+k8s_resource(
+    workload='isola-frontend',
+    port_forwards=['3000:80'],
+    resource_deps=['isola-gw'],
+    labels=['isola'],
+)
+
+# ==============================================================================
 # E2E Tests (manual trigger)
 # ==============================================================================
 
