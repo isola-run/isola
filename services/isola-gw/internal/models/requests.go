@@ -3,17 +3,17 @@
 package models
 
 type CreateSandboxRequest struct {
-	Name      string             `json:"name" binding:"required"`
-	Image     *string            `json:"image,omitempty"`
-	Region    string             `json:"region,omitempty"`
-	CPU       *float64           `json:"cpu,omitempty"`
-	Memory    *float64           `json:"memory,omitempty"`
-	Disk      *float64           `json:"disk,omitempty"`
-	GPU       int                `json:"gpu,omitempty"`
-	Env       map[string]string  `json:"env,omitempty"`
-	Labels    map[string]string  `json:"labels,omitempty"`
-	Volumes   []AttachedVolume   `json:"volumes,omitempty"`
-	AutoStart bool               `json:"autoStart,omitempty"`
+	Name      string            `json:"name" binding:"required"`
+	Image     *string           `json:"image,omitempty"`
+	Region    string            `json:"region,omitempty"`
+	CPU       *float64          `json:"cpu,omitempty"`
+	Memory    *float64          `json:"memory,omitempty"`
+	Disk      *float64          `json:"disk,omitempty"`
+	GPU       int               `json:"gpu,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	Labels    map[string]string `json:"labels,omitempty"`
+	Volumes   []AttachedVolume  `json:"volumes,omitempty"`
+	AutoStart bool              `json:"autoStart,omitempty"`
 }
 
 type ExecuteCommandRequest struct {
@@ -50,4 +50,3 @@ type ListSandboxesParams struct {
 type TerminateSandboxParams struct {
 	Force bool `form:"force,default=false"`
 }
-

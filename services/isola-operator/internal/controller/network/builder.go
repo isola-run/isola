@@ -219,7 +219,7 @@ func buildIngressRules(
 
 	// Add CIDR-based rules
 	if len(allowedPrefixes) > 0 {
-		var peers []networkingv1.NetworkPolicyPeer
+		peers := make([]networkingv1.NetworkPolicyPeer, 0, len(allowedPrefixes))
 		for _, prefix := range allowedPrefixes {
 			peers = append(peers, networkingv1.NetworkPolicyPeer{
 				IPBlock: &networkingv1.IPBlock{
@@ -297,7 +297,7 @@ func buildDNSServerEgressRule(dnsServers []netip.Addr) networkingv1.NetworkPolic
 	tcpProtocol := corev1.ProtocolTCP
 	port53 := intstr.FromInt(53)
 
-	var peers []networkingv1.NetworkPolicyPeer
+	peers := make([]networkingv1.NetworkPolicyPeer, 0, len(dnsServers))
 	for _, addr := range dnsServers {
 		// Convert IP to /32 (IPv4) or /128 (IPv6) CIDR
 		bits := 32

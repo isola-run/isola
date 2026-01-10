@@ -1,0 +1,39 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: isola-operator
+            test_cmd: make test
+          - service: isola-gw
+            test_cmd: go test ./... -v
+          - service: isola-agent
+            test_cmd: go test ./... -v
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/${{ matrix.service }}/go.mod
+
+      - name: Run go mod tidy
+        working-directory: services/${{ matrix.service }}
+        run: go mod tidy
+
+      - name: Run tests
+        working-directory: services/${{ matrix.service }}
+        run: ${{ matrix.test_cmd }}
