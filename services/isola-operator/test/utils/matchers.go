@@ -201,8 +201,9 @@ func (m *initContainerMatcher) Match(actual interface{}) (bool, error) {
 
 func (m *initContainerMatcher) FailureMessage(actual interface{}) string {
 	pod, _ := actual.(PodSpecGetter)
-	var names []string
-	for _, c := range pod.GetPodSpec().InitContainers {
+	initContainers := pod.GetPodSpec().InitContainers
+	names := make([]string, 0, len(initContainers))
+	for _, c := range initContainers {
 		names = append(names, c.Name)
 	}
 	return fmt.Sprintf("Expected init container %q\nActual init containers: %v", m.name, names)

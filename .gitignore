@@ -211,3 +211,12 @@ __marimo__/
 .DS_Store
 
 coverage.html
+
+# Go
+bin/
+*.exe
+*.test
+*.out
+cover.out
+go.work
+go.work.sum
