@@ -370,7 +370,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		if sandboxPod.Annotations == nil {
 			sandboxPod.Annotations = map[string]string{}
 		}
-		sandboxPod.Annotations["dev.gvisor.spec.pod.overlay2"] = "root:self"
+		sandboxPod.Annotations["dev.gvisor.flag.overlay2"] = "root:self"
 	}
 
 	// Set hostname and subdomain to enable DNS-based addressing via headless service.
