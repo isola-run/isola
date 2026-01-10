@@ -57,11 +57,7 @@ spec:
           value: "0.0.0.0"
         - name: ISOLA_HTTP_PORT
           value: "8080"
-        {{- if .Values.kubernetes.runtimeClassName }}
-        - name: ISOLA_RUNTIME_CLASS_NAME
-          value: {{ .Values.kubernetes.runtimeClassName | quote }}
-        {{- end }}
-        - name: ISOLA_GIN_MODE
+        - name: GIN_MODE
           value: {{ if eq .Values.logLevel "debug" }}"debug"{{ else }}"release"{{ end }}
         - name: ISOLA_LOG_LEVEL
           value: {{ .Values.logLevel | default "info" | quote }}
@@ -79,3 +75,5 @@ spec:
           value: {{ .Values.storage.awsSecretAccessKey | quote }}
         {{- end }}
         {{- end }}
+#TODO: REMOVE SECRETS FROM THIS FILE - THEY SHOULD BE MOUNTED AS SECRETS
+#TODO: it doe ISOLA_GIN_MODE is determined by logLevel as it affects more than just logs

@@ -1,0 +1,10 @@
+# Namespace for sandbox pods - created by operator to ensure it exists
+# before deploying the sandbox-agents headless service
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: isola
+    app.kubernetes.io/component: sandbox-environment

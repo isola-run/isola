@@ -3,7 +3,7 @@ package handlers
 
 import (
 	"context"
-	"log" // Use slog
+	"log" // TODO: Use slog
 	"net/http"
 	"strings"
 	"time"

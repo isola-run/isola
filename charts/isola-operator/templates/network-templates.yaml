@@ -1,0 +1,29 @@
+# Built-in NetworkTemplates for sandbox network isolation
+---
+# isola-isolated: Deny all network traffic (except controller ingress)
+apiVersion: sandbox.isola.run/v1alpha1
+kind: NetworkTemplate
+metadata:
+  name: isola-isolated
+  namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: network-template
+    isola.run/builtin: "true"
+spec: {}
+# Empty spec = deny all traffic
+# The NetworkPolicy builder always allows isola controller ingress
+---
+# isola-egress-only: Allow internet egress
+apiVersion: sandbox.isola.run/v1alpha1
+kind: NetworkTemplate
+metadata:
+  name: isola-egress-only
+  namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: network-template
+    isola.run/builtin: "true"
+spec:
+  allowedEgress:
+    - "0.0.0.0/0"
