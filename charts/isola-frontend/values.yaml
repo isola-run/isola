@@ -1,0 +1,21 @@
+image:
+  repository: isola-frontend
+  tag: "latest"
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 80
+
+nodePort:
+  enabled: false
+  port: 30081
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi

@@ -136,12 +136,45 @@ helm_resource(
 )
 
 # ==============================================================================
+# isola-frontend (Web UI)
+# ==============================================================================
+
+docker_build(
+    'isola-frontend',
+    context='frontend',
+    dockerfile='frontend/Dockerfile',
+)
+
+helm_resource(
+    'isola-frontend',
+    'charts/isola-frontend',
+    namespace='isola-system',
+    flags=[
+        '--create-namespace',
+        '-f', 'charts/isola-frontend/values-dev.yaml',
+        '--set', 'image.repository=isola-frontend',
+        '--set', 'image.tag=latest',
+    ],
+    image_deps=['isola-frontend'],
+    image_keys=[('image.repository', 'image.tag')],
+    resource_deps=['isola-gw'],
+    deps=['charts/isola-frontend'],
+    labels=['isola'],
+)
+
+# ==============================================================================
 # Port Forward
 # ==============================================================================
 
 k8s_resource(
     workload='isola-gw',
     port_forwards=['30080:8080'],
+    labels=['isola'],
+)
+
+k8s_resource(
+    workload='isola-frontend',
+    port_forwards=['30081:80'],
     labels=['isola'],
 )
 

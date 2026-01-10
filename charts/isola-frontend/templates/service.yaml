@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: isola-frontend
+  labels:
+    app: isola-frontend
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+  - port: {{ .Values.service.port }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "isola-frontend.selectorLabels" . | nindent 4 }}
+---
+{{- if .Values.nodePort.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: isola-frontend-nodeport
+  labels:
+    app: isola-frontend
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    nodePort: {{ .Values.nodePort.port | default 30081 }}
+    name: http
+  selector:
+    {{- include "isola-frontend.selectorLabels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,9 @@
+image:
+  repository: isola-frontend
+  tag: "dev"
+
+replicaCount: 1
+
+nodePort:
+  enabled: true
+  port: 30081
