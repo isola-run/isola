@@ -75,7 +75,7 @@ func (p *ProcFS) findMarkedProcess() (int, error) {
 
 func (p *ProcFS) hasMainContainerMarker(pid int) bool {
 	environPath := filepath.Join(p.procPath, strconv.Itoa(pid), "environ")
-	data, err := os.ReadFile(environPath)
+	data, err := os.ReadFile(environPath) //nolint:gosec // reading /proc/<pid>/environ is intentional
 	if err != nil {
 		return false
 	}

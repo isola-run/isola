@@ -58,7 +58,6 @@ func OpenBucket(ctx context.Context) (*blob.Bucket, string, error) {
 	return bucket, bucketName, nil
 }
 
-
 type BucketWrapper struct {
 	bucket     *blob.Bucket
 	bucketName string
@@ -79,12 +78,12 @@ func (b *BucketWrapper) GeneratePresignedUploadURL(ctx context.Context, key stri
 		Method: "PUT",
 	}
 
-	url, err := b.bucket.SignedURL(ctx, key, opts)
+	signedURL, err := b.bucket.SignedURL(ctx, key, opts)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned upload URL: %w", err)
 	}
 
-	return url, nil
+	return signedURL, nil
 }
 
 // GeneratePresignedDownloadURL generates a presigned URL for downloading a file.
@@ -94,12 +93,12 @@ func (b *BucketWrapper) GeneratePresignedDownloadURL(ctx context.Context, key st
 		Method: "GET",
 	}
 
-	url, err := b.bucket.SignedURL(ctx, key, opts)
+	signedURL, err := b.bucket.SignedURL(ctx, key, opts)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned download URL: %w", err)
 	}
 
-	return url, nil
+	return signedURL, nil
 }
 
 // DeleteObject deletes an object from the bucket.
