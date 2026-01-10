@@ -1,0 +1,16 @@
+# Isolated Network Template
+# Denies all network traffic (default security policy)
+apiVersion: sandbox.isola.run/v1alpha1
+kind: NetworkTemplate
+metadata:
+  name: isola-isolated
+  namespace: isola-sandboxes
+  labels:
+    security-level: maximum
+  annotations:
+    description: "Complete network isolation - no egress or ingress allowed"
+spec:
+  # Empty arrays = deny all
+  allowedEgress: []
+  allowedIngress: []
+  dnsServers: []
