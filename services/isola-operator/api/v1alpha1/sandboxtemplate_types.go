@@ -41,7 +41,7 @@ type ShutdownPolicy struct {
 	// ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
 	// that the snapshot job may be active before the system tries to terminate it.
 	// Only used when Policy is SnapshotFilesystem.
-	// +optional
+	// +required
 	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=1
 	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
