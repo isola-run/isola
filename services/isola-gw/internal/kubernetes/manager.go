@@ -400,7 +400,7 @@ func (m *Manager) parseStateFromConditions(sandbox *unstructured.Unstructured) (
 		case "PodFailed", "PodCreationFailed":
 			errorReason := message
 			return models.SandboxStateError, &errorReason
-		case "PodSucceeded", "TimedOut", "Deleting":
+		case "PodSucceeded", "DeadlineExceeded", "Deleting":
 			return models.SandboxStateStopped, nil
 		case "NetworkConfigNotApplied", "NetworkTemplateNotFound", "NetworkTemplateDeleting":
 			// Network not ready yet, but pod might be pending/running

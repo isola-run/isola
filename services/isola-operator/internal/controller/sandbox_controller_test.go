@@ -899,7 +899,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(sandbox.Status.TimeoutAt.Time).To(BeTemporally("~", expectedTimeout, time.Second))
 		})
 
-		It("should delete sandbox with Delete policy when timeout exceeded and set TimedOut reason", func() {
+		It("should delete sandbox with Delete policy when timeout exceeded and set DeadlineExceeded reason", func() {
 			sandboxName := "sandbox-timeout-delete"
 			templateName := "template-timeout-delete"
 
@@ -932,7 +932,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 
-		It("should set TimedOut condition reason before deleting sandbox", func() {
+		It("should set DeadlineExceeded condition reason before deleting sandbox", func() {
 			sandboxName := "sandbox-timeout-condition"
 			templateName := "template-timeout-condition"
 
