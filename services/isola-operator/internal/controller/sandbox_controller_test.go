@@ -161,6 +161,17 @@ func deleteJob(ctx context.Context, name string) {
 	}
 }
 
+func deleteFilesystemSnapshot(ctx context.Context, name string) {
+	snapshot := &sandboxv1alpha1.FilesystemSnapshot{}
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, snapshot)
+	if err == nil {
+		// Remove finalizer before deleting
+		snapshot.Finalizers = nil
+		_ = k8sClient.Update(ctx, snapshot)
+		_ = k8sClient.Delete(ctx, snapshot)
+	}
+}
+
 func createNetworkTemplate(ctx context.Context, name string, opts ...func(*sandboxv1alpha1.NetworkTemplate)) *sandboxv1alpha1.NetworkTemplate {
 	nt := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1138,8 +1149,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-snapshot-job"
 			defer deletePod(ctx, podName)
+			defer deleteFilesystemSnapshot(ctx, sandboxName+"-snapshot")
 			defer deleteJob(ctx, snapshotterJobName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -1258,8 +1270,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-snapshot-job"
 			defer deletePod(ctx, podName)
+			defer deleteFilesystemSnapshot(ctx, sandboxName+"-snapshot")
 			defer deleteJob(ctx, snapshotterJobName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -1348,8 +1361,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-snapshot-job"
 			defer deletePod(ctx, podName)
+			defer deleteFilesystemSnapshot(ctx, sandboxName+"-snapshot")
 			defer deleteJob(ctx, snapshotterJobName)
 
 			// Setup: reconcile to create pod, then replace with pod that has NodeName
@@ -1442,8 +1456,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-snapshot-job"
 			defer deletePod(ctx, podName)
+			defer deleteFilesystemSnapshot(ctx, sandboxName+"-snapshot")
 			defer deleteJob(ctx, snapshotterJobName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -1535,8 +1550,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-snapshot-job"
 			defer deletePod(ctx, podName)
+			defer deleteFilesystemSnapshot(ctx, sandboxName+"-snapshot")
 			defer deleteJob(ctx, snapshotterJobName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -1663,8 +1679,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-snapshot-job"
 			defer deletePod(ctx, podName)
+			defer deleteFilesystemSnapshot(ctx, sandboxName+"-snapshot")
 			defer deleteJob(ctx, snapshotterJobName)
 
 			// Create and make pod ready (need to recreate with NodeName)
@@ -1710,8 +1727,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-snapshot-job"
 			defer deletePod(ctx, podName)
+			defer deleteFilesystemSnapshot(ctx, sandboxName+"-snapshot")
 			defer deleteJob(ctx, snapshotterJobName)
 
 			// Setup - recreate pod with NodeName
@@ -1786,8 +1804,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-snapshot-job"
 			defer deletePod(ctx, podName)
+			defer deleteFilesystemSnapshot(ctx, sandboxName+"-snapshot")
 			defer deleteJob(ctx, snapshotterJobName)
 
 			// Setup - recreate pod with NodeName
@@ -2082,8 +2101,9 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			snapshotterJobName := sandboxName + "-snapshot-job"
 			defer deletePod(ctx, podName)
+			defer deleteFilesystemSnapshot(ctx, sandboxName+"-snapshot")
 			defer deleteJob(ctx, snapshotterJobName)
 
 			// First reconcile - creates pod and adds finalizer

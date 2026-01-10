@@ -302,3 +302,25 @@ func reconcileNetworkTemplate(ctx context.Context, templateName string) {
 	})
 	Expect(err).NotTo(HaveOccurred())
 }
+
+// newTestFilesystemSnapshotReconciler creates a FilesystemSnapshotReconciler configured for testing.
+// Uses direct k8sClient for immediate consistency in tests.
+func newTestFilesystemSnapshotReconciler(clock Clock) *FilesystemSnapshotReconciler {
+	rec := record.NewFakeRecorder(100)
+	return &FilesystemSnapshotReconciler{
+		Client:   k8sClient,
+		Scheme:   scheme.Scheme,
+		Recorder: rec,
+		Clock:    clock,
+	}
+}
+
+// newTestFilesystemSnapshotReconcilerWithRecorder creates a FilesystemSnapshotReconciler with a specific recorder for event testing.
+func newTestFilesystemSnapshotReconcilerWithRecorder(clock Clock, recorder record.EventRecorder) *FilesystemSnapshotReconciler {
+	return &FilesystemSnapshotReconciler{
+		Client:   k8sClient,
+		Scheme:   scheme.Scheme,
+		Recorder: recorder,
+		Clock:    clock,
+	}
+}

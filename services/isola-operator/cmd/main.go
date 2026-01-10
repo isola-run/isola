@@ -209,6 +209,17 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "NetworkTemplate")
 		os.Exit(1)
 	}
+
+	// FilesystemSnapshotReconciler manages FilesystemSnapshot resources.
+	// It creates snapshotter jobs and monitors their completion.
+	if err := (&controller.FilesystemSnapshotReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		Clock:  controller.RealClock{},
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FilesystemSnapshot")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
