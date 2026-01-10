@@ -77,8 +77,6 @@ spec:
                     description: Policy determines the action taken when the sandbox
                       shuts down
                     type: string
-                required:
-                - activeDeadlineSeconds
                 type: object
               timeoutSeconds:
                 description: TimeoutSeconds defines how long the sandbox runs before
