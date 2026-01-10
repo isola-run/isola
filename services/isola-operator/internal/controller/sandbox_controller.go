@@ -364,6 +364,13 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// Set RuntimeClassName if configured (e.g. "gvisor" for sandboxed execution)
 	if r.RuntimeClassName != "" {
 		sandboxPod.Spec.RuntimeClassName = &r.RuntimeClassName
+
+		// Configure gvisor overlay2 for rootfs. This enables copy-on-write overlay
+		// filesystem which is required for filesystem snapshotting.
+		if sandboxPod.Annotations == nil {
+			sandboxPod.Annotations = map[string]string{}
+		}
+		sandboxPod.Annotations["dev.gvisor.spec.pod.overlay2"] = "root:self"
 	}
 
 	// Set hostname and subdomain to enable DNS-based addressing via headless service.
@@ -376,13 +383,6 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	// Set high priority to prevent preemption by applicative non-sandbox pods
 	sandboxPod.Spec.PriorityClassName = "isola-sandbox"
-
-	// todo benl: implement api to restore pod from snapshot (make sure they are compatible)
-	// if sandboxPod.Annotations == nil {
-	// 	sandboxPod.Annotations = map[string]string{}
-	// }
-
-	// sandboxPod.Annotations["dev.gvisor.tar.rootfs.upper.todobenl"] = "/tmp/rootfs-sandbox-870e5846-1766869560.tar"
 
 	// Configure DNS for network-isolated sandboxes.
 	// Always set dnsPolicy: None to prevent cluster DNS access and prevent leaking information from kube-dns.
