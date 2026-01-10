@@ -4,12 +4,13 @@ package kubernetes
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
@@ -169,7 +170,7 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 
 	_, err = m.dynamicClient.Resource(gvr).Namespace(m.namespace).Create(ctx, sandboxBody, metav1.CreateOptions{})
 	if err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			log.Printf("Sandbox CR '%s' already exists", sandboxName)
 			return true, nil
 		}
@@ -208,7 +209,7 @@ func (m *Manager) createSandboxTemplateCR(ctx context.Context, templateName stri
 
 	_, err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Create(ctx, templateBody, metav1.CreateOptions{})
 	if err != nil {
-		if errors.IsAlreadyExists(err) {
+		if apierrors.IsAlreadyExists(err) {
 			log.Printf("SandboxTemplate '%s' already exists, updating", templateName)
 			// Try to update if it already exists
 			existing, getErr := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Get(ctx, templateName, metav1.GetOptions{})
@@ -243,7 +244,7 @@ func (m *Manager) GetSandboxCR(ctx context.Context, sandboxID string) (*unstruct
 
 	sandbox, err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Get(ctx, sandboxName, metav1.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get Sandbox CR: %w", err)
@@ -294,7 +295,7 @@ func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) (bool, 
 
 	err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Delete(ctx, sandboxName, metav1.DeleteOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			log.Printf("Sandbox CR '%s' already deleted", sandboxName)
 			return true, nil
 		}
@@ -307,15 +308,13 @@ func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) (bool, 
 	return true, nil
 }
 
-
 const agentServiceName = "sandbox-agents"
 
 type SandboxStatus struct {
-	State       models.SandboxState
-	ErrorReason *string
+	State        models.SandboxState
+	ErrorReason  *string
 	AgentAddress string
 }
-
 
 func (m *Manager) GetSandboxStatus(ctx context.Context, sandboxID string) (*SandboxStatus, error) {
 	if err := m.Initialize(); err != nil {
@@ -421,7 +420,6 @@ func (m *Manager) parseStateFromConditions(sandbox *unstructured.Unstructured) (
 	return models.SandboxStatePending, nil
 }
 
-
 // Executes a command in a pod
 // Will be implemented in the future in the sidecar
 // TODO: simplify / make more readable return value
@@ -444,8 +442,8 @@ func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command 
 
 	if len(pods.Items) == 0 {
 		errorMsg := fmt.Sprintf("Pod not found for sandbox %s", sandboxID)
-		log.Printf(errorMsg)
-		return "", errorMsg, 1, fmt.Errorf(errorMsg)
+		log.Print(errorMsg)
+		return "", errorMsg, 1, errors.New(errorMsg)
 	}
 
 	pod := pods.Items[0]
@@ -463,8 +461,8 @@ func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command 
 		SubResource("exec").
 		VersionedParams(&corev1.PodExecOptions{
 			Command: execCommand,
-			Stdout:   true,
-			Stderr:   true,
+			Stdout:  true,
+			Stderr:  true,
 		}, parameterCodec)
 
 	exec, err := remotecommand.NewSPDYExecutor(m.restConfig, "POST", req.URL())
@@ -492,7 +490,6 @@ func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command 
 	log.Printf("Executed command in pod %s: %s... (exit_code=%d)", podName, command[:min(50, len(command))], exitCode)
 	return stdout.String(), stderr.String(), exitCode, nil
 }
-
 
 // Helper functions
 func getImage(img *string) string {
@@ -526,4 +523,3 @@ func envToK8sEnv(env map[string]string) []map[string]interface{} {
 	}
 	return result
 }
-

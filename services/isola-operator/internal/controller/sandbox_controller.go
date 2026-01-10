@@ -17,10 +17,10 @@ limitations under the License.
 package controller
 
 import (
-	"maps"
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -158,7 +158,7 @@ func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
 func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
 	if len(sandboxPod.Spec.Containers) != 1 {
 		// todo: remove this assumption
-		return fmt.Errorf("Sandbox pod must have exactly one container")
+		return fmt.Errorf("sandbox pod must have exactly one container")
 	}
 
 	// todo benl: Mark with sandboxPod.Spec.Containers[i].Name
@@ -233,18 +233,6 @@ func getJobConditionMessage(job *batchv1.Job, conditionType batchv1.JobCondition
 	return ""
 }
 
-func getPodConditionMessage(pod *corev1.Pod, conditionType corev1.PodConditionType) string {
-	if pod == nil {
-		return ""
-	}
-	for _, cond := range pod.Status.Conditions {
-		if cond.Type == conditionType {
-			return cond.Message
-		}
-	}
-	return ""
-}
-
 // extractContainerID extracts the container ID from a pod's container status
 // Returns the raw ID without the containerd:// prefix
 func extractContainerID(sandboxPod *corev1.Pod) (string, error) {
@@ -288,7 +276,7 @@ const (
 	ReasonFSSnapshotNotSnapshotting     = "NotSnapshotting"
 )
 
-func (r *SandboxReconciler) verifySnapshottingCapability(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (string, error) {
+func (r *SandboxReconciler) verifySnapshottingCapability(ctx context.Context, sandboxPod *corev1.Pod) (string, error) {
 	if sandboxPod == nil {
 		// can't snapshot if pod doesn't exist
 		return ReasonFSSnapshotPodDoesNotExist, nil
@@ -478,7 +466,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	return nil
 }
 
-// todo benl: extract snapshotting to a seperate controller that manages the FSSnapshotter CRD
+// todo benl: extract snapshotting to a separate controller that manages the FSSnapshotter CRD
 // CreateSnapshotterJob creates a Job to snapshot the sandbox container's filesystem
 func (r *SandboxReconciler) CreateSnapshotterJob(
 	ctx context.Context,
@@ -903,8 +891,8 @@ func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandb
 		log.Info("deduced start time from pod", "startTime", sandboxPod.Status.StartTime.Time)
 		startTime = sandboxPod.Status.StartTime.Time
 	} else {
-		log.Info("deduced start time from sandbox", "startTime", sandbox.ObjectMeta.CreationTimestamp.Time)
-		startTime = sandbox.ObjectMeta.CreationTimestamp.Time
+		log.Info("deduced start time from sandbox", "startTime", sandbox.CreationTimestamp.Time)
+		startTime = sandbox.CreationTimestamp.Time
 	}
 
 	timeoutAt := startTime.Add(time.Duration(*template.Spec.TimeoutSeconds) * time.Second)
@@ -1135,7 +1123,7 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 
 func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	//todo benl: pass params by value sometimes, to avoid dereferencing nils by accident
+	// todo benl: pass params by value sometimes, to avoid dereferencing nils by accident
 	// todo benl: add r.RecordEvent for events (observability)
 	log := logf.FromContext(ctx).WithValues("sandbox", req.Name, "namespace", req.Namespace)
 
@@ -1432,7 +1420,7 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	reason, err := r.verifySnapshottingCapability(ctx, sandbox, sandboxPod)
+	reason, err := r.verifySnapshottingCapability(ctx, sandboxPod)
 	if err != nil {
 		log.Error(err, "Failed to validate snapshotting support")
 		return ctrl.Result{}, false, err
