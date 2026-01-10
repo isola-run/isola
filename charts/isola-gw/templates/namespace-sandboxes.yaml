@@ -1,9 +1,0 @@
-# Namespace for sandbox pods
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: {{ .Values.sandboxNamespace | quote }}
-  labels:
-    app: isola-gw
-    component: sandbox-environment
-
