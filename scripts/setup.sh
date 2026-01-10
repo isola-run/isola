@@ -160,6 +160,20 @@ echo "Setting kubectl context..."
 kubectl config use-context "kind-${KIND_CLUSTER_NAME}"
 
 echo ""
+echo "Setting up pre-commit hooks..."
+if command -v lefthook &> /dev/null; then
+    if [ -f "${ROOT_DIR}/.lefthook.yml" ]; then
+        cd "${ROOT_DIR}"
+        lefthook install
+        echo "  [OK] Lefthook hooks installed"
+    fi
+else
+    echo "  [WARN] lefthook not found - pre-commit hooks will not be available"
+    echo "  To install: go install github.com/evilmartians/lefthook/v2@v2.0.13"
+    echo "  Then run: lefthook install"
+fi
+
+echo ""
 echo "=== Setup Complete ==="
 echo ""
 echo "Next steps:"
