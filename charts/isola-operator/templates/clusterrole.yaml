@@ -58,8 +58,11 @@ rules:
 - apiGroups:
   - sandbox.isola.run
   resources:
-  - networktemplates
+  - filesystemsnapshots
+  - sandboxes
   verbs:
+  - create
+  - delete
   - get
   - list
   - patch
@@ -68,6 +71,7 @@ rules:
 - apiGroups:
   - sandbox.isola.run
   resources:
+  - filesystemsnapshots/finalizers
   - networktemplates/finalizers
   - sandboxes/finalizers
   verbs:
@@ -75,6 +79,7 @@ rules:
 - apiGroups:
   - sandbox.isola.run
   resources:
+  - filesystemsnapshots/status
   - networktemplates/status
   - sandboxes/status
   verbs:
@@ -84,10 +89,8 @@ rules:
 - apiGroups:
   - sandbox.isola.run
   resources:
-  - sandboxes
+  - networktemplates
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch

@@ -24,12 +24,10 @@ import (
 	"strings"
 	"time"
 
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -52,8 +50,7 @@ const (
 
 	SandboxTemplateReadyCondition = "TemplateReady"
 	SandboxPodReadyCondition      = "PodReady"
-	SandboxNetworkReadyCondition  = "NetworkConfigured"
-	// todo benl: maybe keep just sandbox.Status.Snapshot and no snapshotting condition on sandbox (consider custom CRD for snapshotting)
+	SandboxNetworkReadyCondition       = "NetworkConfigured"
 	SandboxFilesystemSnapshotCondition = "FilesystemSnapshot"
 )
 
@@ -195,42 +192,6 @@ func isPodTerminated(pod *corev1.Pod) bool {
 		return false
 	}
 	return pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed
-}
-
-func isJobComplete(job *batchv1.Job) bool {
-	if job == nil {
-		return false
-	}
-	for _, condition := range job.Status.Conditions {
-		if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
-			return true
-		}
-	}
-	return false
-}
-
-func isJobFailed(job *batchv1.Job) bool {
-	if job == nil {
-		return false
-	}
-	for _, condition := range job.Status.Conditions {
-		if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
-			return true
-		}
-	}
-	return false
-}
-
-func getJobConditionMessage(job *batchv1.Job, conditionType batchv1.JobConditionType) string {
-	if job == nil {
-		return ""
-	}
-	for _, cond := range job.Status.Conditions {
-		if cond.Type == conditionType && cond.Status == corev1.ConditionTrue {
-			return cond.Message
-		}
-	}
-	return ""
 }
 
 // extractContainerID extracts the container ID from a pod's container status
@@ -466,19 +427,17 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	return nil
 }
 
-// todo benl: extract snapshotting to a separate controller that manages the FSSnapshotter CRD
-// CreateSnapshotterJob creates a Job to snapshot the sandbox container's filesystem
-func (r *SandboxReconciler) CreateSnapshotterJob(
+// CreateFilesystemSnapshot creates a FilesystemSnapshot CR to trigger snapshotting
+func (r *SandboxReconciler) CreateFilesystemSnapshot(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	sandboxPod *corev1.Pod,
 	activeDeadlineSeconds int64,
 ) (ctrl.Result, error) {
-	// todo benl: reduce linux capabilities of snapshot job's pod to only what is needed
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 
-	snapshotterJobName := getFilesystemSnapshotterJobName(sandbox)
+	snapshotName := getFilesystemSnapshotName(sandbox)
 	nodeName := sandboxPod.Spec.NodeName
 	timestamp := r.clock().Now().Unix()
 	snapshotPath := fmt.Sprintf("/tmp/rootfs-%s-%d.tar", sandbox.Name, timestamp)
@@ -489,127 +448,54 @@ func (r *SandboxReconciler) CreateSnapshotterJob(
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Creating filesystem snapshotter job", "job", snapshotterJobName, "node", nodeName)
+	log.Info("Creating FilesystemSnapshot CR", "snapshot", snapshotName, "node", nodeName)
 
-	privileged := false
-	hostPathDirectory := corev1.HostPathDirectory
-	hostPathFile := corev1.HostPathFile
-
-	// todo benl: add labels / annotations
-	// todo benl: create a minimal image (possibly with runsc backed in with a fixed version)
-	snapshotJob := &batchv1.Job{
+	fsSnapshot := &sandboxv1alpha1.FilesystemSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      snapshotterJobName,
+			Name:      snapshotName,
 			Namespace: sandbox.Namespace,
-		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit:            ptr.To(int32(0)),
-			ActiveDeadlineSeconds:   &activeDeadlineSeconds,
-			TTLSecondsAfterFinished: ptr.To(int32(60)),
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					NodeSelector: map[string]string{
-						"kubernetes.io/hostname": nodeName,
-					},
-					RestartPolicy: corev1.RestartPolicyNever,
-					Containers: []corev1.Container{
-						{
-							Name:    "snapshotter",
-							Image:   "debian:stable-slim",
-							Command: []string{"/usr/local/bin/runsc"},
-							Args:    []string{"--root=/run/containerd/runsc/k8s.io", "tar", "rootfs-upper", "--file", snapshotPath, containerID},
-							SecurityContext: &corev1.SecurityContext{
-								Privileged: &privileged,
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "runsc-bin",
-									MountPath: "/usr/local/bin/runsc",
-									ReadOnly:  true,
-								},
-								{
-									Name:      "runsc-state",
-									MountPath: "/run/containerd/runsc/k8s.io",
-									ReadOnly:  true,
-								},
-								// todo benl: upload to bucket instead
-								{
-									Name:      "tmp-output",
-									MountPath: "/tmp",
-								},
-							},
-							// todo benl: adjust resources. Large files might lead to OOM since gvisor loads them to memory?
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("100m"),
-									corev1.ResourceMemory: resource.MustParse("64Mi"),
-								},
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("500m"),
-									corev1.ResourceMemory: resource.MustParse("256Mi"),
-								},
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "runsc-bin",
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/usr/bin/runsc",
-									Type: &hostPathFile,
-								},
-							},
-						},
-						{
-							Name: "runsc-state",
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/run/containerd/runsc/k8s.io",
-									Type: &hostPathDirectory,
-								},
-							},
-						},
-						{
-							Name: "tmp-output",
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/tmp",
-									Type: &hostPathDirectory,
-								},
-							},
-						},
-					},
-				},
+			Labels: map[string]string{
+				"sandbox.isola.run/id":              sandbox.Name,
+				"app.kubernetes.io/managed-by":     "isola-operator",
 			},
+		},
+		Spec: sandboxv1alpha1.FilesystemSnapshotSpec{
+			SandboxRef: corev1.LocalObjectReference{
+				Name: sandbox.Name,
+			},
+			PodName:               sandboxPod.Name,
+			ContainerID:           containerID,
+			NodeName:              nodeName,
+			SnapshotPath:          snapshotPath,
+			ActiveDeadlineSeconds: activeDeadlineSeconds,
 		},
 	}
 
 	// Set owner reference to sandbox for cleanup
-	if err := controllerutil.SetControllerReference(sandbox, snapshotJob, r.Scheme); err != nil {
-		log.Error(err, "Failed to set controller reference for snapshot job")
+	if err := controllerutil.SetControllerReference(sandbox, fsSnapshot, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference for FilesystemSnapshot")
 		return ctrl.Result{}, err
 	}
 
-	if err := r.Create(ctx, snapshotJob); err != nil {
+	if err := r.Create(ctx, fsSnapshot); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			log.Info("Snapshotter job already exists")
+			log.Info("FilesystemSnapshot already exists")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to create snapshotter job")
+		log.Error(err, "Failed to create FilesystemSnapshot")
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Snapshotter job created", "snapshotJob", snapshotterJobName)
+	log.Info("FilesystemSnapshot created", "snapshot", snapshotName)
 
-	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshottingStarted", "Snapshotter job created")
+	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshottingStarted", "FilesystemSnapshot created")
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               SandboxFilesystemSnapshotCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonSnapshottingInProgress,
-			Message:            "Filesystem snapshotter in progress",
+			Message:            "Filesystem snapshot in progress",
 			ObservedGeneration: sandbox.Generation,
 		},
 	}); err != nil {
@@ -639,23 +525,23 @@ func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv
 	return sandboxPod, nil
 }
 
-func getFilesystemSnapshotterJobName(sandbox *sandboxv1alpha1.Sandbox) string {
-	return sandbox.Name + "-fssnapshotter"
+func getFilesystemSnapshotName(sandbox *sandboxv1alpha1.Sandbox) string {
+	return sandbox.Name + "-snapshot"
 }
 
-func (r *SandboxReconciler) getFilesystemSnapshotterJob(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*batchv1.Job, error) {
-	jobName := getFilesystemSnapshotterJobName(sandbox)
-	jobNamespace := sandbox.Namespace
+func (r *SandboxReconciler) getFilesystemSnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.FilesystemSnapshot, error) {
+	snapshotName := getFilesystemSnapshotName(sandbox)
+	snapshotNamespace := sandbox.Namespace
 
-	snapshotterJob := &batchv1.Job{}
-	if err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: jobNamespace}, snapshotterJob); err != nil {
+	fsSnapshot := &sandboxv1alpha1.FilesystemSnapshot{}
+	if err := r.Get(ctx, types.NamespacedName{Name: snapshotName, Namespace: snapshotNamespace}, fsSnapshot); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
 
-	return snapshotterJob, nil
+	return fsSnapshot, nil
 }
 
 func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.SandboxTemplate, ctrl.Result, error) {
@@ -938,11 +824,11 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	networkCondition := r.determineNetworkCondition(sandbox, networkTemplate)
 	conditions = append(conditions, networkCondition)
 
-	snapshotterJob, err := r.getFilesystemSnapshotterJob(ctx, sandbox)
+	fsSnapshot, err := r.getFilesystemSnapshot(ctx, sandbox)
 	if err != nil {
 		return err
 	}
-	snapshotCondition := r.determineSnapshotCondition(sandbox, snapshotterJob)
+	snapshotCondition := r.determineSnapshotConditionFromCR(sandbox, fsSnapshot)
 	conditions = append(conditions, snapshotCondition)
 
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod, networkTemplate)
@@ -988,8 +874,8 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 	}
 }
 
-func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snapshotterJob *batchv1.Job) metav1.Condition {
-	if snapshotterJob == nil {
+func (r *SandboxReconciler) determineSnapshotConditionFromCR(sandbox *sandboxv1alpha1.Sandbox, fsSnapshot *sandboxv1alpha1.FilesystemSnapshot) metav1.Condition {
+	if fsSnapshot == nil {
 		return metav1.Condition{
 			Type:               SandboxFilesystemSnapshotCondition,
 			Status:             metav1.ConditionFalse,
@@ -999,7 +885,8 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 		}
 	}
 
-	if isJobComplete(snapshotterJob) {
+	switch fsSnapshot.Status.Phase {
+	case sandboxv1alpha1.FilesystemSnapshotPhaseSucceeded:
 		return metav1.Condition{
 			Type:               SandboxFilesystemSnapshotCondition,
 			Status:             metav1.ConditionTrue,
@@ -1007,12 +894,10 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 			Message:            "Filesystem snapshot completed",
 			ObservedGeneration: sandbox.Generation,
 		}
-	}
-
-	if isJobFailed(snapshotterJob) {
-		message := "Filesystem snapshot job failed"
-		if condMsg := getJobConditionMessage(snapshotterJob, batchv1.JobFailed); condMsg != "" {
-			message = fmt.Sprintf("Filesystem snapshot job failed: %s", condMsg)
+	case sandboxv1alpha1.FilesystemSnapshotPhaseFailed:
+		message := "Filesystem snapshot failed"
+		if fsSnapshot.Status.Message != "" {
+			message = fsSnapshot.Status.Message
 		}
 		return metav1.Condition{
 			Type:               SandboxFilesystemSnapshotCondition,
@@ -1021,14 +906,22 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 			Message:            message,
 			ObservedGeneration: sandbox.Generation,
 		}
-	}
-
-	return metav1.Condition{
-		Type:               SandboxFilesystemSnapshotCondition,
-		Status:             metav1.ConditionFalse,
-		Reason:             ReasonFSSnapshotSnapshotting,
-		Message:            "Filesystem snapshot job is running",
-		ObservedGeneration: sandbox.Generation,
+	case sandboxv1alpha1.FilesystemSnapshotPhaseRunning:
+		return metav1.Condition{
+			Type:               SandboxFilesystemSnapshotCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             ReasonFSSnapshotSnapshotting,
+			Message:            "Filesystem snapshot is running",
+			ObservedGeneration: sandbox.Generation,
+		}
+	default:
+		return metav1.Condition{
+			Type:               SandboxFilesystemSnapshotCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             CondReasonSnapshottingInProgress,
+			Message:            "Filesystem snapshot pending",
+			ObservedGeneration: sandbox.Generation,
+		}
 	}
 }
 
@@ -1116,8 +1009,8 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxtemplates,verbs=get;list;watch
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=networktemplates,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=networktemplates/finalizers,verbs=update
+// +kubebuilder:rbac:groups=sandbox.isola.run,resources=filesystemsnapshots,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=node.k8s.io,resources=runtimeclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -1459,19 +1352,20 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	snapshotterJob, err := r.getFilesystemSnapshotterJob(ctx, sandbox)
+	// Get or create the FilesystemSnapshot CR
+	fsSnapshot, err := r.getFilesystemSnapshot(ctx, sandbox)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
-	if snapshotterJob == nil {
-		res, createErr := r.CreateSnapshotterJob(ctx, sandbox, baseSandbox, sandboxPod, activeDeadlineSeconds)
+	if fsSnapshot == nil {
+		res, createErr := r.CreateFilesystemSnapshot(ctx, sandbox, baseSandbox, sandboxPod, activeDeadlineSeconds)
 		if res.RequeueAfter == 0 {
 			res.RequeueAfter = time.Second
 		}
 		return res, false, createErr
 	}
 
-	// Avoid waiting forever if we are close to the deadline.
+	// Check if snapshot timed out
 	if r.clock().Now().After(snapshotDeadline) {
 		log.Info("Filesystem snapshot timed out before completion", "deadline", snapshotDeadline)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -1488,9 +1382,11 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	if isJobComplete(snapshotterJob) {
-		log.Info("Filesystem snapshot job succeeded")
-		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", "Filesystem snapshot job completed")
+	// Check FilesystemSnapshot status
+	switch fsSnapshot.Status.Phase {
+	case sandboxv1alpha1.FilesystemSnapshotPhaseSucceeded:
+		log.Info("Filesystem snapshot succeeded")
+		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", "Filesystem snapshot completed")
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxFilesystemSnapshotCondition,
@@ -1503,12 +1399,11 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 			return ctrl.Result{}, false, err
 		}
 		return ctrl.Result{}, true, nil
-	}
 
-	if isJobFailed(snapshotterJob) {
-		failureMessage := "Filesystem snapshot job failed"
-		if condMsg := getJobConditionMessage(snapshotterJob, batchv1.JobFailed); condMsg != "" {
-			failureMessage = fmt.Sprintf("Filesystem snapshot job failed: %s", condMsg)
+	case sandboxv1alpha1.FilesystemSnapshotPhaseFailed:
+		failureMessage := "Filesystem snapshot failed"
+		if fsSnapshot.Status.Message != "" {
+			failureMessage = fsSnapshot.Status.Message
 		}
 		log.Info(failureMessage)
 		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", failureMessage)
@@ -1526,12 +1421,13 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
+	// Snapshot still in progress
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               SandboxFilesystemSnapshotCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonSnapshottingInProgress,
-			Message:            "Filesystem snapshotter job is running",
+			Message:            "Filesystem snapshot is running",
 			ObservedGeneration: sandbox.Generation,
 		},
 	}); err != nil {
@@ -1575,7 +1471,7 @@ func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.Sandbox{}).
 		Owns(&corev1.Pod{}).
-		Owns(&batchv1.Job{}).
+		Owns(&sandboxv1alpha1.FilesystemSnapshot{}).
 		// Watch SandboxTemplate changes to reconcile affected sandboxes
 		Watches(
 			&sandboxv1alpha1.SandboxTemplate{},
