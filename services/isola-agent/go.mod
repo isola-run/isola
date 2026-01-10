@@ -1,6 +1,6 @@
 module github.com/omereli/dev-isola/services/isola-agent
 
-go 1.24.6
+go 1.25.5
 
 require github.com/gin-gonic/gin v1.10.0
 
