@@ -161,16 +161,20 @@ kubectl config use-context "kind-${KIND_CLUSTER_NAME}"
 
 echo ""
 echo "Setting up pre-commit hooks..."
+LEFTHOOK_BIN="${GOPATH:-$(go env GOPATH)}/bin/lefthook"
 if command -v lefthook &> /dev/null; then
+    LEFTHOOK_BIN="lefthook"
+fi
+if [ -x "$LEFTHOOK_BIN" ]; then
     if [ -f "${ROOT_DIR}/.lefthook.yml" ]; then
         cd "${ROOT_DIR}"
-        lefthook install
+        "$LEFTHOOK_BIN" install
         echo "  [OK] Lefthook hooks installed"
     fi
 else
     echo "  [WARN] lefthook not found - pre-commit hooks will not be available"
     echo "  To install: go install github.com/evilmartians/lefthook/v2@v2.0.13"
-    echo "  Then run: lefthook install"
+    echo "  Then run: \$(go env GOPATH)/bin/lefthook install"
 fi
 
 echo ""
