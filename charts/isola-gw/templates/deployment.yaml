@@ -66,14 +66,15 @@ spec:
         {{- if .Values.storage.enabled }}
         - name: ISOLA_BUCKET_URL
           value: {{ .Values.storage.bucketUrl | quote }}
-        {{- if .Values.storage.awsAccessKeyId }}
-        - name: AWS_ACCESS_KEY_ID
-          value: {{ .Values.storage.awsAccessKeyId | quote }}
         {{- end }}
-        {{- if .Values.storage.awsSecretAccessKey }}
-        - name: AWS_SECRET_ACCESS_KEY
-          value: {{ .Values.storage.awsSecretAccessKey | quote }}
+        # Bucket credentials loaded from secret (if configured)
+        # Falls back to service account auth (IRSA/Workload Identity) when no secret provided
+        {{- if .Values.storage.credentialsSecretRef }}
+        envFrom:
+        - secretRef:
+            name: {{ .Values.storage.credentialsSecretRef }}
+        {{- else if and .Values.storage.enabled .Values.storage.credentials.create }}
+        envFrom:
+        - secretRef:
+            name: {{ include "isola-gw.fullname" . }}-storage-credentials
         {{- end }}
-        {{- end }}
-#TODO: REMOVE SECRETS FROM THIS FILE - THEY SHOULD BE MOUNTED AS SECRETS
-#TODO: it doe ISOLA_GIN_MODE is determined by logLevel as it affects more than just logs

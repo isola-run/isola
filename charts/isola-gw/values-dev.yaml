@@ -16,5 +16,8 @@ nodePort:
 storage:
   enabled: true
   bucketUrl: "s3://isola-uploads?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
-  awsAccessKeyId: "test"
-  awsSecretAccessKey: "test"
+  # For development: create a Helm-managed secret with LocalStack test credentials
+  credentials:
+    create: true
+    awsAccessKeyId: "test"
+    awsSecretAccessKey: "test"

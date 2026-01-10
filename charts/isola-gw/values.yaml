@@ -13,6 +13,25 @@ nodePort:
 storage:
   enabled: false
   bucketUrl: ""
-  # Credentials (read automatically by go-cloud from standard env vars)
-  awsAccessKeyId: ""
-  awsSecretAccessKey: ""
+  # Credentials configuration - choose ONE of the following methods:
+  #
+  # Option 1: Reference an existing Kubernetes secret (recommended for production)
+  # The secret should contain keys matching cloud provider env vars:
+  #   - AWS: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+  #   - GCS: GOOGLE_APPLICATION_CREDENTIALS (path to mounted credentials file)
+  #   - Azure: AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_KEY
+  credentialsSecretRef: ""
+  #
+  # Option 2: Let Helm create a secret with provided credentials
+  # Only use for development/testing - production should use existing secrets or IRSA
+  credentials:
+    create: false
+    # AWS credentials (only used if create: true)
+    awsAccessKeyId: ""
+    awsSecretAccessKey: ""
+  #
+  # Option 3: No credentials configured (default)
+  # Falls back to pod service account authentication:
+  #   - AWS: IRSA (IAM Roles for Service Accounts)
+  #   - GCP: Workload Identity
+  #   - Azure: Workload Identity
