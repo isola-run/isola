@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
 
 This is **isola** - a Kubernetes-based sandboxing platform with three Go microservices:
@@ -14,16 +12,25 @@ This code is intended to be open sourced, and currently not yet release or in pr
 
 ## Build Commands
 
+### Linting and Formatting
+```bash
+# From repo root (all services)
+make check-all          # Run vet + lint + vulncheck (CI-safe, read-only)
+make fix-all            # Auto-fix formatting and lint issues
+
+# From any service directory (e.g., cd services/isola-gw)
+make check              # Same as above, single service
+make fix                # Same as above, single service
+```
+
+All services share `/.golangci.yml`. Run `make help` for full command list.
+
 ### isola-operator (primary development target)
 ```bash
 make build              # Build manager binary
 make test               # Run unit tests with coverage
 make test-verbose       # Verbose test output
 make test-focus FOCUS="TestName"  # Run specific test
-make lint               # Run golangci-lint
-make lint-fix           # Auto-fix lint issues
-make fmt                # Format code
-make vet                # Run go vet
 make manifests          # Generate CRDs and RBAC configs
 make generate           # Generate DeepCopy methods
 ```
@@ -44,6 +51,12 @@ kind delete cluster --name isola-dev # Teardown
 3. Make code changes - Tilt automatically rebuilds and redeploys
 4. API is available at http://localhost:30080
 5. Run tests: `cd tests && uv run pytest -m smoke`
+
+**Pre-commit Hooks (optional):**
+Lefthook auto-lints only affected services on commit. Install with:
+```bash
+go install github.com/evilmartians/lefthook/v2@v2.0.13 && lefthook install
+```
 
 ## Architecture
 
@@ -143,3 +156,4 @@ SecurityContext: &corev1.SecurityContext{
 ```
 
 If code needs a comment to be understood, first consider if better naming or restructuring could make it self-explanatory.
+
