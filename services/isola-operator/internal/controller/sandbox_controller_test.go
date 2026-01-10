@@ -84,7 +84,7 @@ func createTemplate(ctx context.Context, name string, opts ...func(*sandboxv1alp
 	return template
 }
 
-func createRuntimeClass(ctx context.Context, name, handler string) *nodev1.RuntimeClass {
+func createRuntimeClass(ctx context.Context, name, handler string) {
 	rc := &nodev1.RuntimeClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -92,7 +92,6 @@ func createRuntimeClass(ctx context.Context, name, handler string) *nodev1.Runti
 		Handler: handler,
 	}
 	ExpectWithOffset(1, k8sClient.Create(ctx, rc)).To(Succeed())
-	return rc
 }
 
 func getSandbox(ctx context.Context, name string) *sandboxv1alpha1.Sandbox {
@@ -190,7 +189,7 @@ func deleteNetworkTemplate(ctx context.Context, name string) {
 	}
 }
 
-func createSandboxWithNetworkTemplate(ctx context.Context, name, templateRef, networkTemplateRef string) *sandboxv1alpha1.Sandbox {
+func createSandboxWithNetworkTemplate(ctx context.Context, name, templateRef, networkTemplateRef string) {
 	sandbox := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -208,12 +207,6 @@ func createSandboxWithNetworkTemplate(ctx context.Context, name, templateRef, ne
 		},
 	}
 	ExpectWithOffset(1, k8sClient.Create(ctx, sandbox)).To(Succeed())
-	return sandbox
-}
-
-func hasCondition(sandbox *sandboxv1alpha1.Sandbox, condType string, status metav1.ConditionStatus) bool {
-	cond := meta.FindStatusCondition(sandbox.Status.Conditions, condType)
-	return cond != nil && cond.Status == status
 }
 
 func hasConditionWithReason(sandbox *sandboxv1alpha1.Sandbox, condType string, status metav1.ConditionStatus, reason string) bool {
@@ -290,13 +283,13 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-no-template"
 			templateName := "nonexistent-template"
 
-			sandbox := createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			sandbox = getSandbox(ctx, sandboxName)
+			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxTemplateReadyCondition, metav1.ConditionFalse, CondReasonTemplateNotFound)).To(BeTrue())
 			Expect(hasConditionWithReason(sandbox, SandboxReadyCondition, metav1.ConditionFalse, CondReasonTemplateNotFound)).To(BeTrue())
 		})
@@ -308,14 +301,14 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			sandbox := createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			sandbox = getSandbox(ctx, sandboxName)
+			sandbox := getSandbox(ctx, sandboxName)
 			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxTemplateReadyCondition)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
@@ -327,7 +320,7 @@ var _ = Describe("Sandbox Controller", func() {
 			templateName := "template-created-later"
 
 			// Create sandbox first (template doesn't exist yet)
-			sandbox := createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -335,7 +328,7 @@ var _ = Describe("Sandbox Controller", func() {
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			sandbox = getSandbox(ctx, sandboxName)
+			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxTemplateReadyCondition, metav1.ConditionFalse, CondReasonTemplateNotFound)).To(BeTrue())
 
 			createTemplate(ctx, templateName)
@@ -489,7 +482,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			sandbox := createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -498,7 +491,7 @@ var _ = Describe("Sandbox Controller", func() {
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			sandbox = getSandbox(ctx, sandboxName)
+			sandbox := getSandbox(ctx, sandboxName)
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
 			Expect(pod.OwnerReferences).To(HaveLen(1))
@@ -604,7 +597,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(sandbox.Status.Conditions).NotTo(BeNil())
-			Expect(len(sandbox.Status.Conditions)).To(BeNumerically(">", 0))
+			Expect(sandbox.Status.Conditions).ToNot(BeEmpty())
 		})
 
 		It("should set PodPending condition when pod is not ready", func() {
@@ -776,7 +769,7 @@ var _ = Describe("Sandbox Controller", func() {
 			conds3 := sandbox3.Status.Conditions
 
 			// Conditions should have same types and statuses between reconciles 2 and 3
-			Expect(len(conds3)).To(Equal(len(conds2)))
+			Expect(conds3).To(HaveLen(len(conds2)))
 			for _, c2 := range conds2 {
 				c3 := meta.FindStatusCondition(conds3, c2.Type)
 				Expect(c3).NotTo(BeNil())
@@ -2524,7 +2517,7 @@ var _ = Describe("Sandbox Controller", func() {
 		})
 
 		// Helper to create sandbox with embedded network spec
-		createSandboxWithNetworkSpec := func(name, templateRef string, networkSpec sandboxv1alpha1.NetworkTemplateSpec) *sandboxv1alpha1.Sandbox {
+		createSandboxWithNetworkSpec := func(name, templateRef string, networkSpec sandboxv1alpha1.NetworkTemplateSpec) {
 			sandbox := &sandboxv1alpha1.Sandbox{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -2540,7 +2533,6 @@ var _ = Describe("Sandbox Controller", func() {
 				},
 			}
 			ExpectWithOffset(1, k8sClient.Create(ctx, sandbox)).To(Succeed())
-			return sandbox
 		}
 
 		It("should create owned NetworkTemplate when sandbox has embedded network spec", func() {
