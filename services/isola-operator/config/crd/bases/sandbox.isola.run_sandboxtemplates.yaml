@@ -45,7 +45,7 @@ spec:
                   The Sandbox controller will override specific security settings (runtimeClassName, etc.)
                   but allows users to define containers, volumes, and env vars.
 
-                  todo benl: I am extremly unsure about the kubebuilder attributes above
+                  todo benl: I am extremely unsure about the kubebuilder attributes above
                   todo benl: agent-sandbox use PodTemplate instead of PodTemplateSpec but from my research the PodTemplateSpec is far more popular and suitable
                   todo benl: enforce PreemptionPolicy never in validating webhook?
                   todo benl: verify total resources make sense, etc
