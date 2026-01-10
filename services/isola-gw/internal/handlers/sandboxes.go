@@ -245,7 +245,7 @@ func (h *Handler) sandboxCRToModel(cr *unstructured.Unstructured) *models.Sandbo
 					}
 					break
 				}
-				if condType == "TimedOut" && condStatus == "True" {
+				if condType == "DeadlineExceeded" && condStatus == "True" {
 					state = models.SandboxStateStopped
 					break
 				}

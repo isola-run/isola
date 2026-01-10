@@ -31,9 +31,9 @@ const (
 	SandboxPodReady SandboxConditionType = "PodReady"
 	// Network is configured
 	SandboxNetworkConfigured SandboxConditionType = "NetworkConfigured"
-	// set when sandbox is past its timeout
+	// set when sandbox is past its deadline
 	// todo benl: necessary? helpful?
-	SandboxTimedOut SandboxConditionType = "TimedOut"
+	SandboxDeadlineExceeded SandboxConditionType = "DeadlineExceeded"
 	// Filesystem snapshotting is in progress
 	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
 )

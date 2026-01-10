@@ -67,7 +67,7 @@ const (
 	CondReasonPodSucceeded      = "PodSucceeded"
 	CondReasonPodCreating       = "PodCreating"
 	CondReasonPodCreationFailed = "PodCreationFailed"
-	CondReasonSandboxTimedOut   = "TimedOut"
+	CondReasonSandboxDeadlineExceeded = "DeadlineExceeded"
 	CondReasonDeleting          = "Deleting"
 	CondReasonReconciling       = "Reconciling"
 
@@ -1215,7 +1215,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if optionalTimeoutAt != nil && r.clock().Now().After(optionalTimeoutAt.Time) {
-		log.Info("Sandbox timed out")
+		log.Info("Sandbox deadline exceeded")
 
 		res, cleanupDone, err := r.finalizeSandbox(ctx, sandbox, baseSandbox, template)
 		if err != nil {
@@ -1323,8 +1323,8 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 	// Determine reason and message based on trigger
 	var reason, message string
 	if trigger == CleanupTriggerTimeout {
-		reason = CondReasonSandboxTimedOut
-		message = "Sandbox timed out"
+		reason = CondReasonSandboxDeadlineExceeded
+		message = "Sandbox deadline exceeded"
 	} else {
 		reason = CondReasonDeleting
 		message = "Sandbox being deleted"
