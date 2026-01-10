@@ -22,7 +22,7 @@ import {
 } from '@/components/ui'
 import { SandboxCard, SandboxStatusBadge, CreateSandboxModal } from '@/components/sandbox'
 import { apiClient } from '@/api/client'
-import { formatDistanceToNow } from '@/lib/utils'
+import { formatDistanceToNow } from '@/utils'
 import { clsx } from 'clsx'
 import type { SandboxState, Sandbox } from '@/types'
 

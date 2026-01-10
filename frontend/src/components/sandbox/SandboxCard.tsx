@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { formatDistanceToNow } from '@/lib/utils'
+import { formatDistanceToNow } from '@/utils'
 import { Card } from '@/components/ui'
 import { SandboxStatusBadge } from './SandboxStatusBadge'
 import { Clock, Tag } from 'lucide-react'

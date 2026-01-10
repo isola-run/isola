@@ -28,7 +28,7 @@ import {
 } from '@/components/ui'
 import { SandboxStatusBadge, Terminal, FileUpload } from '@/components/sandbox'
 import { apiClient } from '@/api/client'
-import { formatDate, formatDistanceToNow } from '@/lib/utils'
+import { formatDate, formatDistanceToNow } from '@/utils'
 import { clsx } from 'clsx'
 
 type Tab = 'terminal' | 'files' | 'settings'
