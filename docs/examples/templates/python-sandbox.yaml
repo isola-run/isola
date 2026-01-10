@@ -1,0 +1,54 @@
+# Python Sandbox Template
+# A general-purpose Python development environment
+apiVersion: sandbox.isola.run/v1alpha1
+kind: SandboxTemplate
+metadata:
+  name: python-sandbox
+  namespace: isola-sandboxes
+  labels:
+    language: python
+    variant: standard
+spec:
+  # Auto-terminate after 5 minutes of inactivity
+  timeoutSeconds: 300
+
+  # Pod specification
+  podTemplate:
+    metadata:
+      labels:
+        sandbox-type: python
+    spec:
+      containers:
+        - name: sandbox
+          image: python:3.11-slim
+          command: ["sleep", "infinity"]
+          workingDir: /workspace
+
+          # Environment variables
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            - name: PIP_NO_CACHE_DIR
+              value: "1"
+
+          # Resource limits
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          # Volume mounts
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+
+      # Volumes
+      volumes:
+        - name: workspace
+          emptyDir:
+            sizeLimit: 1Gi

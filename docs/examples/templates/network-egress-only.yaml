@@ -1,0 +1,23 @@
+# Egress-Only Network Template
+# Allows outbound traffic to the internet
+apiVersion: sandbox.isola.run/v1alpha1
+kind: NetworkTemplate
+metadata:
+  name: isola-egress-only
+  namespace: isola-sandboxes
+  labels:
+    security-level: standard
+  annotations:
+    description: "Allow all outbound traffic, deny inbound"
+spec:
+  # Allow all IPv4 egress
+  allowedEgress:
+    - "0.0.0.0/0"
+
+  # No inbound traffic
+  allowedIngress: []
+
+  # Use Google DNS
+  dnsServers:
+    - "8.8.8.8"
+    - "8.8.4.4"
