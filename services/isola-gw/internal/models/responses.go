@@ -47,4 +47,3 @@ type DownloadResponse struct {
 	Path    string `json:"path"`
 	Size    int64  `json:"size"`
 }
-
