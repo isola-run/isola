@@ -219,10 +219,6 @@ func hasConditionWithReason(sandbox *sandboxv1alpha1.Sandbox, condType string, s
 	return cond != nil && cond.Status == status && cond.Reason == reason
 }
 
-func stringPtr(s string) *string {
-	return &s
-}
-
 // recreatePodWithNodeName deletes the existing pod and creates a new one with NodeName set
 // This is needed because Kubernetes doesn't allow updating NodeName on existing pods
 func recreatePodWithNodeName(ctx context.Context, podName, nodeName string, runtimeClassName *string) *corev1.Pod {

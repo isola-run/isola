@@ -180,8 +180,8 @@ func BuildNetworkPolicy(template *sandboxv1alpha1.NetworkTemplate) (*networkingv
 		},
 	}
 
-	// Ingress: empty (default deny) - ingress from isola-gw is handled by a separate
-	// Helm-installed NetworkPolicy that selects pods with label `app: isola-sandbox`
+	// Ingress: empty (default deny) - ingress from isola-gw is handled by the
+	// Helm-installed NetworkPolicy "allow-isola-gw-ingress" in the sandbox namespace.
 	np.Spec.Ingress = nil
 	np.Spec.Egress = buildEgressRules(egressCIDRs, dnsAddrs, spec.AllowedEgressPods)
 

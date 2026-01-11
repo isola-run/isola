@@ -574,10 +574,10 @@ func TestBuildNetworkPolicy_WithEgressPods_MultipleRules(t *testing.T) {
 	for i := range np.Spec.Egress {
 		rule := &np.Spec.Egress[i]
 		if len(rule.To) > 0 && rule.To[0].NamespaceSelector != nil {
-			ns := rule.To[0].NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"]
-			if ns == "kube-system" {
+			switch rule.To[0].NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"] {
+			case "kube-system":
 				kubeDNSRule = rule
-			} else if ns == "localstack" {
+			case "localstack":
 				localstackRule = rule
 			}
 		}
