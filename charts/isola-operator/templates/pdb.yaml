@@ -1,0 +1,18 @@
+# PodDisruptionBudget to prevent voluntary disruptions (node drains, cluster upgrades)
+# from evicting sandbox pods. Setting maxUnavailable=0 ensures no sandbox pod can be
+# voluntarily disrupted.
+# See: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: isola-sandbox-pdb
+  namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: isola
+    app.kubernetes.io/component: sandbox-environment
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: isola-sandbox
