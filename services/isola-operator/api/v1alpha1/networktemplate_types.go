@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,36 +31,99 @@ const (
 	NetworkTemplateReady NetworkTemplateConditionType = "Ready"
 )
 
+// NetworkPort defines a port for network rules.
+// Using a custom type instead of networkingv1.NetworkPolicyPort for a simpler API
+// (no pointers, no IntOrString, no EndPort).
+type NetworkPort struct {
+	// Protocol (TCP or UDP). Defaults to TCP.
+	// +kubebuilder:validation:Enum=TCP;UDP
+	// +kubebuilder:default=TCP
+	// +optional
+	Protocol corev1.Protocol `json:"protocol,omitempty"`
+
+	// Port number.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +required
+	Port int32 `json:"port"`
+}
+
+// EgressPodRule defines a pod-based egress rule.
+// This allows sandboxes to communicate with specific pods in the cluster,
+// such as in-cluster DNS (kube-dns/CoreDNS) when using ClusterFirst DNS policy.
+type EgressPodRule struct {
+	// Namespace of the target pods.
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	Namespace string `json:"namespace"`
+
+	// PodSelector selects pods in the namespace.
+	// An empty selector ({}) matches all pods in the namespace.
+	// +required
+	PodSelector metav1.LabelSelector `json:"podSelector"`
+
+	// Ports to allow. If empty, all ports are allowed to the selected pods.
+	// +optional
+	Ports []NetworkPort `json:"ports,omitempty"`
+}
+
 // NetworkTemplateSpec defines network isolation configuration that can be shared across sandboxes.
 // When a Sandbox references a NetworkTemplate, a NetworkPolicy is created to enforce these rules.
 // The sandbox pod will not be created until the NetworkPolicy is successfully applied.
 // Note: This spec is immutable after creation - updates are ignored by the controller.
 // To change network rules, create a new NetworkTemplate.
+//
+// +kubebuilder:validation:XValidation:rule="self.dnsPolicy != 'None' || size(self.dnsNameservers) > 0",message="dnsNameservers is required when dnsPolicy is None"
+// +kubebuilder:validation:XValidation:rule="self.dnsPolicy != 'ClusterFirst' || size(self.allowedEgressPods) > 0",message="allowedEgressPods is required when dnsPolicy is ClusterFirst (must allow egress to cluster DNS)"
 type NetworkTemplateSpec struct {
-	// AllowedIngress is a list of CIDRs allowed to connect to the sandbox (inbound traffic).
-	// If empty, all ingress traffic is blocked (default-deny) unless some other NetworkPolicy in the cluster allows traffic.
-	// todo benl: consider removing AllowedIngress
-	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$`
+	// DNSPolicy specifies the DNS policy for sandbox pods.
+	// - "None": Pod uses only the nameservers from dnsNameservers (fully isolated from cluster DNS).
+	//   The pod's resolv.conf will have ndots:1 for faster resolution of external domains.
+	// - "ClusterFirst": Pod uses cluster DNS, with dnsNameservers combined (duplicates removed).
+	//   When using ClusterFirst, you must also add an egress rule via allowedEgressPods to permit
+	//   traffic to kube-dns (typically namespace=kube-system, label k8s-app=kube-dns or k8s-app=coredns).
+	//
+	// TODO: Reconsider the default - ClusterFirst is convenient but None is more secure by default.
+	//
+	// +kubebuilder:validation:Enum=None;ClusterFirst
+	// +kubebuilder:default=ClusterFirst
 	// +optional
-	AllowedIngress []string `json:"allowedIngress,omitempty"`
+	DNSPolicy corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
 
-	// AllowedEgress is a list of CIDRs the sandbox is allowed to connect to (outbound traffic).
-	// If empty, all egress traffic is blocked (default-deny) unless some other NetworkPolicy in the cluster allows traffic.
-	// Risky IPs (cloud metadata 169.254.0.0/16, IPv6 link-local fe80::/10) are automatically
-	// blocked when the specified CIDR would otherwise allow them.
-	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$`
-	// +optional
-	AllowedEgress []string `json:"allowedEgress,omitempty"`
-
-	// DNSServers is a list of DNS server IP addresses the sandbox can use.
-	// When specified, egress to these IPs on port 53 (UDP/TCP) is allowed,
-	// and the pod is configured with dnsPolicy: None using these as nameservers.
-	// If empty (or not specified), DNS is not available (sandbox is fully isolated from DNS).
-	// MaxItems=3 because k8s allow specifying at most 3 nameservers https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/?utm_source=chatgpt.com#pod-dns-config
+	// DNSNameservers is a list of DNS server IP addresses.
+	// - When dnsPolicy is "None": required (at least one), these are the only nameservers available.
+	// - When dnsPolicy is "ClusterFirst": optional, combined with cluster DNS (duplicates removed).
+	// MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
 	// +kubebuilder:validation:MaxItems=3
-	// +kubebuilder:validation:XValidation:rule="self.size() == 0 || self.all(s, isIP(s))",message="dnsServers must be valid IPv4/IPv6 addresses"
+	// +kubebuilder:validation:XValidation:rule="self.all(s, isIP(s))",message="must be valid IP addresses"
 	// +optional
-	DNSServers []string `json:"dnsServers,omitempty"`
+	DNSNameservers []string `json:"dnsNameservers,omitempty"`
+
+	// AllowedEgressCIDRs is a list of CIDRs the sandbox is allowed to connect to (outbound traffic).
+	// If empty, no CIDR-based egress is allowed (but allowedEgressPods rules may still permit traffic).
+	// Risky IPs (cloud metadata 169.254.0.0/16, private ranges, IPv6 link-local fe80::/10) are
+	// automatically blocked when the specified CIDR would otherwise allow them.
+	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$`
+	// +optional
+	AllowedEgressCIDRs []string `json:"allowedEgressCIDRs,omitempty"`
+
+	// AllowedEgressPods specifies pods the sandbox can connect to via label selectors.
+	// Useful for allowing access to in-cluster services like kube-dns.
+	// When using ClusterFirst DNS policy, you must add a rule here to allow egress to DNS.
+	//
+	// Example for kube-dns/CoreDNS:
+	//   - namespace: kube-system
+	//     podSelector:
+	//       matchLabels:
+	//         k8s-app: kube-dns  # or k8s-app: coredns depending on cluster
+	//     ports:
+	//       - port: 53
+	//         protocol: UDP
+	//       - port: 53
+	//         protocol: TCP
+	//
+	// +optional
+	AllowedEgressPods []EgressPodRule `json:"allowedEgressPods,omitempty"`
 }
 
 // NetworkTemplateStatus defines the observed state of NetworkTemplate.

@@ -138,35 +138,47 @@ func NewTestSandboxTemplate(name, namespace string, opts ...TemplateOption) *san
 // NetworkTemplateOption is a functional option for configuring NetworkTemplate
 type NetworkTemplateOption func(*sandboxv1alpha1.NetworkTemplate)
 
-// WithAllowedIngress sets the allowed ingress CIDRs
-func WithAllowedIngress(cidrs ...string) NetworkTemplateOption {
+// WithAllowedEgressCIDRs sets the allowed egress CIDRs
+func WithAllowedEgressCIDRs(cidrs ...string) NetworkTemplateOption {
 	return func(nt *sandboxv1alpha1.NetworkTemplate) {
-		nt.Spec.AllowedIngress = cidrs
+		nt.Spec.AllowedEgressCIDRs = cidrs
 	}
 }
 
-// WithAllowedEgress sets the allowed egress CIDRs
-func WithAllowedEgress(cidrs ...string) NetworkTemplateOption {
+// WithDNSNameservers sets the DNS server IPs for the network template
+func WithDNSNameservers(servers ...string) NetworkTemplateOption {
 	return func(nt *sandboxv1alpha1.NetworkTemplate) {
-		nt.Spec.AllowedEgress = cidrs
+		nt.Spec.DNSNameservers = servers
 	}
 }
 
-// WithDNSServers sets the DNS server IPs for the network template
-func WithDNSServers(servers ...string) NetworkTemplateOption {
+// WithDNSPolicy sets the DNS policy for the network template
+func WithDNSPolicy(policy corev1.DNSPolicy) NetworkTemplateOption {
 	return func(nt *sandboxv1alpha1.NetworkTemplate) {
-		nt.Spec.DNSServers = servers
+		nt.Spec.DNSPolicy = policy
 	}
 }
 
-// NewTestNetworkTemplate creates a new NetworkTemplate for testing
+// WithAllowedEgressPods sets the allowed egress pod rules
+func WithAllowedEgressPods(rules ...sandboxv1alpha1.EgressPodRule) NetworkTemplateOption {
+	return func(nt *sandboxv1alpha1.NetworkTemplate) {
+		nt.Spec.AllowedEgressPods = rules
+	}
+}
+
+// NewTestNetworkTemplate creates a new NetworkTemplate for testing.
+// By default, uses DNSPolicy: None with external DNS to satisfy CEL validation
+// without requiring cluster DNS access (isolated mode).
 func NewTestNetworkTemplate(name, namespace string, opts ...NetworkTemplateOption) *sandboxv1alpha1.NetworkTemplate {
 	nt := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: sandboxv1alpha1.NetworkTemplateSpec{},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{
+			DNSPolicy:      corev1.DNSNone,
+			DNSNameservers: []string{"8.8.8.8"},
+		},
 	}
 
 	for _, opt := range opts {
