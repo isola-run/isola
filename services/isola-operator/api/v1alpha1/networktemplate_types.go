@@ -21,7 +21,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// NetworkTemplate condition types
 type NetworkTemplateConditionType string
 
 const (
@@ -33,7 +32,6 @@ const (
 
 // NetworkPort defines a port for network rules.
 // Using a custom type instead of networkingv1.NetworkPolicyPort for a simpler API
-// (no pointers, no IntOrString, no EndPort).
 type NetworkPort struct {
 	// Protocol (TCP or UDP). Defaults to TCP.
 	// +kubebuilder:validation:Enum=TCP;UDP
@@ -73,13 +71,13 @@ type EgressPodRule struct {
 // Note: This spec is immutable after creation - updates are ignored by the controller.
 // To change network rules, create a new NetworkTemplate.
 //
-// +kubebuilder:validation:XValidation:rule="self.dnsPolicy != 'None' || size(self.dnsNameservers) > 0",message="dnsNameservers is required when dnsPolicy is None"
 // +kubebuilder:validation:XValidation:rule="self.dnsPolicy != 'ClusterFirst' || size(self.allowedEgressPods) > 0",message="allowedEgressPods is required when dnsPolicy is ClusterFirst (must allow egress to cluster DNS)"
 type NetworkTemplateSpec struct {
 	// DNSPolicy specifies the DNS policy for sandbox pods.
-	// - "None": Pod uses only the nameservers from dnsNameservers (fully isolated from cluster DNS).
+	// - "None": Pod uses only the nameservers from the nameservers field (fully isolated from cluster DNS).
+	//   If no nameservers are specified, a sink nameserver (127.0.0.1) is used and DNS queries will fail.
 	//   The pod's resolv.conf will have ndots:1 for faster resolution of external domains.
-	// - "ClusterFirst": Pod uses cluster DNS, with dnsNameservers combined (duplicates removed).
+	// - "ClusterFirst": Pod uses cluster DNS, with nameservers combined (duplicates removed).
 	//   When using ClusterFirst, you must also add an egress rule via allowedEgressPods to permit
 	//   traffic to kube-dns (typically namespace=kube-system, label k8s-app=kube-dns or k8s-app=coredns).
 	//
@@ -90,14 +88,16 @@ type NetworkTemplateSpec struct {
 	// +optional
 	DNSPolicy corev1.DNSPolicy `json:"dnsPolicy,omitempty"`
 
-	// DNSNameservers is a list of DNS server IP addresses.
-	// - When dnsPolicy is "None": required (at least one), these are the only nameservers available.
-	// - When dnsPolicy is "ClusterFirst": optional, combined with cluster DNS (duplicates removed).
+	// Nameservers is a list of DNS server IP addresses.
+	// - When dnsPolicy is "None": optional. If empty, 127.0.0.1 is used as a sink (DNS queries fail).
+	//   If specified, these are the only nameservers available, and egress to their IPs is automatically allowed.
+	// - When dnsPolicy is "ClusterFirst": optional, combined with cluster DNS (duplicates removed by k8s).
+	//   If specified, egress to their IPs is automatically allowed.
 	// MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
 	// +kubebuilder:validation:MaxItems=3
 	// +kubebuilder:validation:XValidation:rule="self.all(s, isIP(s))",message="must be valid IP addresses"
 	// +optional
-	DNSNameservers []string `json:"dnsNameservers,omitempty"`
+	Nameservers []string `json:"nameservers,omitempty"`
 
 	// AllowedEgressCIDRs is a list of CIDRs the sandbox is allowed to connect to (outbound traffic).
 	// If empty, no CIDR-based egress is allowed (but allowedEgressPods rules may still permit traffic).

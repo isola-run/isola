@@ -181,8 +181,8 @@ var _ = BeforeSuite(func() {
 			Namespace: testNamespace,
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSPolicy:      corev1.DNSNone,
-			DNSNameservers: []string{"8.8.8.8"},
+			DNSPolicy:   corev1.DNSNone,
+			Nameservers: []string{"8.8.8.8"},
 		},
 	}
 	Expect(k8sClient.Create(ctx, defaultNetworkTemplate)).To(Succeed())

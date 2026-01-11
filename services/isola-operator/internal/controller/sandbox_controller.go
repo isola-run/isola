@@ -385,7 +385,10 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// sandboxPod.Annotations["dev.gvisor.tar.rootfs.upper.todobenl"] = "/tmp/rootfs-sandbox-870e5846-1766869560.tar"
 
 	// Configure DNS for sandbox pods based on NetworkTemplate settings.
-	configureDNS(sandboxPod, networkTemplate)
+	if err := configureDNS(sandboxPod, networkTemplate); err != nil {
+		log.Error(err, "Failed to configure DNS")
+		return err
+	}
 
 	if err := r.injectSidecar(sandboxPod); err != nil {
 		log.Error(err, "Failed to inject sidecar")
@@ -449,46 +452,48 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 }
 
 // configureDNS sets up DNS configuration for the sandbox pod based on the NetworkTemplate.
-// - DNSPolicy None: Uses only the specified nameservers with ndots:1 for external domains.
+// - DNSPolicy None: Uses only the specified nameservers. If empty, uses 127.0.0.1 sink with fast-fail options.
 // - DNSPolicy ClusterFirst: Uses cluster DNS with optional additional nameservers.
-func configureDNS(sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.NetworkTemplate) {
+func configureDNS(sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.NetworkTemplate) error {
 	dnsPolicy := networkTemplate.Spec.DNSPolicy
-	if dnsPolicy == "" {
-		dnsPolicy = corev1.DNSClusterFirst
-	}
 
 	switch dnsPolicy {
 	case corev1.DNSNone:
-		// Fully isolated from cluster DNS - use only the specified nameservers
 		sandboxPod.Spec.DNSPolicy = corev1.DNSNone
-		nameservers := networkTemplate.Spec.DNSNameservers
+		nameservers := networkTemplate.Spec.Nameservers
+		dnsOptions := []corev1.PodDNSConfigOption{
+			// ndots:1 - external domains are tried directly without search domain suffix
+			{Name: "ndots", Value: ptr.To("1")},
+		}
 		if len(nameservers) == 0 {
-			// Shouldn't happen due to CEL validation, but be safe
+			// Sink nameserver - DNS queries will fail fast
 			nameservers = []string{"127.0.0.1"}
+			dnsOptions = []corev1.PodDNSConfigOption{
+				{Name: "timeout", Value: ptr.To("1")},
+				{Name: "attempts", Value: ptr.To("1")},
+				{Name: "ndots", Value: ptr.To("1")},
+			}
 		}
 		sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{
 			Nameservers: nameservers,
-			Options: []corev1.PodDNSConfigOption{
-				// ndots:1 - external domains are tried directly without search domain suffix
-				{Name: "ndots", Value: ptr.To("1")},
-			},
+			Options:     dnsOptions,
 		}
 
-	case corev1.DNSClusterFirst:
-		// Use cluster DNS, optionally with additional nameservers combined
+	case corev1.DNSClusterFirst, "":
 		sandboxPod.Spec.DNSPolicy = corev1.DNSClusterFirst
-		if len(networkTemplate.Spec.DNSNameservers) > 0 {
-			// Additional nameservers are combined with cluster DNS (duplicates removed by k8s)
-			sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{
-				Nameservers: networkTemplate.Spec.DNSNameservers,
+		if len(networkTemplate.Spec.Nameservers) > 0 {
+			if sandboxPod.Spec.DNSConfig == nil {
+				sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{}
 			}
+			sandboxPod.Spec.DNSConfig.Nameservers = networkTemplate.Spec.Nameservers
 		}
-		// When no additional nameservers, don't set DNSConfig - use pod template defaults
+		// When no additional nameservers, don't modify DNSConfig - use pod template defaults
 
 	default:
-		// For any other policy (shouldn't happen due to enum validation), default to ClusterFirst
-		sandboxPod.Spec.DNSPolicy = corev1.DNSClusterFirst
+		return fmt.Errorf("unsupported DNS policy: %q", dnsPolicy)
 	}
+
+	return nil
 }
 
 // todo benl: extract snapshotting to a separate controller that manages the FSSnapshotter CRD
