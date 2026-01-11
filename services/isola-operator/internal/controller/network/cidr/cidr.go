@@ -23,18 +23,21 @@ import (
 
 // BlockedV4 are IPv4 prefixes that sandboxes should never reach via CIDR-based rules.
 var BlockedV4 = []netip.Prefix{
-	netip.MustParsePrefix("10.0.0.0/8"),     // RFC 1918: 10.0.0.0 - 10.255.255.255 (Class A private)
-	netip.MustParsePrefix("100.64.0.0/10"),  // RFC 6598: 100.64.0.0 - 100.127.255.255 (Carrier-grade NAT / shared address space)
-	netip.MustParsePrefix("169.254.0.0/16"), // RFC 3927: Link-local (includes cloud metadata 169.254.169.254)
-	netip.MustParsePrefix("172.16.0.0/12"),  // RFC 1918: 172.16.0.0 - 172.31.255.255 (Class B private)
-	netip.MustParsePrefix("192.168.0.0/16"), // RFC 1918: 192.168.0.0 - 192.168.255.255 (Class C private)
-	netip.MustParsePrefix("240.0.0.0/4"),    // RFC 1112: 240.0.0.0 - 255.255.255.255 (Class E reserved)
+	netip.MustParsePrefix("10.0.0.0/8"),      // RFC 1918: 10.0.0.0 - 10.255.255.255 (Class A private)
+	netip.MustParsePrefix("100.64.0.0/10"),   // RFC 6598: 100.64.0.0 - 100.127.255.255 (Carrier-grade NAT / shared address space)
+	netip.MustParsePrefix("169.254.0.0/16"),  // RFC 3927: Link-local (includes cloud metadata 169.254.169.254)
+	netip.MustParsePrefix("172.16.0.0/12"),   // RFC 1918: 172.16.0.0 - 172.31.255.255 (Class B private)
+	netip.MustParsePrefix("192.168.0.0/16"),  // RFC 1918: 192.168.0.0 - 192.168.255.255 (Class C private)
+	netip.MustParsePrefix("240.0.0.0/4"),     // RFC 1112: 240.0.0.0 - 255.255.255.255 (Class E reserved)
+	netip.MustParsePrefix("34.118.224.0/20"), // GKE-managed Service ClusterIP range (newer GKE)
+	netip.MustParsePrefix("224.0.0.0/4"),     // Multicast
 }
 
 // BlockedV6 are IPv6 prefixes that sandboxes should never reach via CIDR-based rules.
 var BlockedV6 = []netip.Prefix{
 	netip.MustParsePrefix("fc00::/7"),  // RFC 4193: Unique Local Address (ULA) - IPv6 equivalent of RFC 1918
 	netip.MustParsePrefix("fe80::/10"), // RFC 4291: Link-local - auto-configured addresses for local network
+	netip.MustParsePrefix("ff00::/8"),  // Multicast
 }
 
 // ComputeExcept returns the list of blocked CIDRs to exclude from allowed in a NetworkPolicy.

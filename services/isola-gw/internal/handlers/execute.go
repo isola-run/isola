@@ -75,4 +75,3 @@ func (h *Handler) ExecuteCommand(c *gin.Context) {
 		ExitCode: exitCode,
 	})
 }
-

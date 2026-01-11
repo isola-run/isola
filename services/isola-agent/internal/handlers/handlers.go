@@ -100,7 +100,11 @@ func (h *Handler) Upload(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to read uploaded file"})
 		return
 	}
-	defer src.Close()
+	defer func() {
+		if err := src.Close(); err != nil {
+			log.Printf("Warning: failed to close uploaded file: %v", err)
+		}
+	}()
 
 	// Resolve path via /proc/<pid>/root to access main container's filesystem
 	fullPath, err := h.procFS.ResolvePath(targetPath)
@@ -112,14 +116,14 @@ func (h *Handler) Upload(c *gin.Context) {
 
 	// Ensure parent directories exist
 	parentDir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(parentDir, 0755); err != nil {
+	if err := os.MkdirAll(parentDir, 0750); err != nil {
 		log.Printf("Failed to create parent directories for %s: %v", fullPath, err)
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to create directories"})
 		return
 	}
 
 	// Create the destination file
-	dst, err := os.Create(fullPath)
+	dst, err := os.Create(fullPath) //nolint:gosec // path is unsanitized but sandbox filesystem is isolated
 	if err != nil {
 		if os.IsPermission(err) {
 			log.Printf("Permission denied writing to %s: %v", fullPath, err)
@@ -130,12 +134,23 @@ func (h *Handler) Upload(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to create file"})
 		return
 	}
-	defer dst.Close()
+	defer func() {
+		if err := dst.Close(); err != nil {
+			log.Printf("Warning: failed to close destination file: %v", err)
+		}
+	}()
 
 	written, err := io.Copy(dst, src)
 	if err != nil {
 		log.Printf("Failed to write file content to %s: %v", fullPath, err)
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to write file"})
+		return
+	}
+
+	// Explicitly close and check error before responding - ensures data is flushed
+	if err := dst.Close(); err != nil {
+		log.Printf("Failed to close file %s: %v", fullPath, err)
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to finalize file write"})
 		return
 	}
 
@@ -167,7 +182,7 @@ func (h *Handler) Download(c *gin.Context) {
 
 	// Ensure parent directories exist
 	parentDir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(parentDir, 0755); err != nil {
+	if err := os.MkdirAll(parentDir, 0750); err != nil {
 		log.Printf("Failed to create parent directories for %s: %v", fullPath, err)
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to create directories"})
 		return
@@ -196,7 +211,11 @@ func (h *Handler) Download(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "failed to download file from storage: " + err.Error()})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Storage download returned HTTP %d", resp.StatusCode)
@@ -205,7 +224,7 @@ func (h *Handler) Download(c *gin.Context) {
 	}
 
 	// Create the destination file
-	dst, err := os.Create(fullPath)
+	dst, err := os.Create(fullPath) //nolint:gosec // path is unsanitized but sandbox filesystem is isolated
 	if err != nil {
 		if os.IsPermission(err) {
 			log.Printf("Permission denied writing to %s: %v", fullPath, err)
@@ -216,13 +235,24 @@ func (h *Handler) Download(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to create file"})
 		return
 	}
-	defer dst.Close()
+	defer func() {
+		if err := dst.Close(); err != nil {
+			log.Printf("Warning: failed to close destination file: %v", err)
+		}
+	}()
 
 	// Copy file content
 	written, err := io.Copy(dst, resp.Body)
 	if err != nil {
 		log.Printf("Failed to write file content to %s: %v", fullPath, err)
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to write file"})
+		return
+	}
+
+	// Explicitly close and check error before responding - ensures data is flushed
+	if err := dst.Close(); err != nil {
+		log.Printf("Failed to close file %s: %v", fullPath, err)
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to finalize file write"})
 		return
 	}
 

@@ -3,15 +3,15 @@ package handlers
 
 import (
 	"context"
-	"log" // Use slog
+	"log" // TODO: Use slog
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/models"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 func (h *Handler) ListSandboxes(c *gin.Context) {
@@ -171,9 +171,9 @@ func (h *Handler) TerminateSandbox(c *gin.Context) {
 		params.Force = false
 	}
 
-		// Get tenant ID from context
+	// Get tenant ID from context
 	tenantID, _ := c.Get("tenant_id")
-	_ = tenantID // TODO: validate tenant_id belongs to the sandbox
+	_ = tenantID     // TODO: validate tenant_id belongs to the sandbox
 	_ = params.Force // TODO: implement force termination
 
 	ctx := c.Request.Context()
@@ -297,5 +297,3 @@ func (h *Handler) listAllSandboxes(ctx context.Context) ([]models.Sandbox, error
 
 	return sandboxes, nil
 }
-
-

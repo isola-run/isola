@@ -1,4 +1,3 @@
-# isola-gw values
 image:
   repository: isola-gw
   tag: "latest"
@@ -10,10 +9,6 @@ sandboxNamespace: isola-sandboxes
 
 nodePort:
   enabled: false
-
-kubernetes:
-  namespace: "isola-sandboxes"
-  runtimeClassName: ""
 
 storage:
   enabled: false

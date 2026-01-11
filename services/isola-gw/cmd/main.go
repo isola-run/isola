@@ -22,7 +22,7 @@ const (
 	EnvHTTPHost            = "ISOLA_HTTP_HOST"
 	EnvHTTPPort            = "ISOLA_HTTP_PORT"
 	EnvKubernetesNamespace = "ISOLA_KUBERNETES_NAMESPACE"
-	EnvGinMode             = "ISOLA_GIN_MODE"
+	EnvGinMode             = "GIN_MODE"
 )
 
 // Default values

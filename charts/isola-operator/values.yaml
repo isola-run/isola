@@ -1,11 +1,18 @@
-# isola-operator values
-
 image:
   repository: isola-operator
   tag: "latest"
 
 # Agent sidecar image injected into sandbox pods
 agentImage: isola-agent:latest
+
+# RuntimeClassName for sandbox pods.
+# Options:
+#   "gvisor" - Use gVisor (runsc) for stronger isolation. Requires gVisor installed on nodes
+#              and a RuntimeClass named "gvisor" pointing to the "runsc" handler.
+#   ""       - Use cluster default runtime (typically runc). Easier to get started,
+#              but provides weaker isolation between sandboxes and the host, and less isola features supported.
+# For production, use gvisor.
+runtimeClassName: "gvisor"
 
 # Namespace where sandbox pods are created
 sandboxNamespace: isola-sandboxes

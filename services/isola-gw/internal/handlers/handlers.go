@@ -79,4 +79,3 @@ func tenantFromAPIKey(apiKey string) string {
 	}
 	return "e766a1e8-4b0e-4bb7-9612-80b9c1c8cd87"
 }
-
