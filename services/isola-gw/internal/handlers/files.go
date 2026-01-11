@@ -11,6 +11,7 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -299,7 +300,7 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 	}
 
 	// Call agent's /read-file endpoint
-	agentURL := fmt.Sprintf("http://%s:%d/read-file?path=%s", agentAddress, agentSidecarPort, targetPath)
+	agentURL := fmt.Sprintf("http://%s:%d/read-file?path=%s", agentAddress, agentSidecarPort, url.QueryEscape(targetPath))
 	log.Printf("[DOWNLOAD] Forwarding to agent at %s", agentURL)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", agentURL, nil)
