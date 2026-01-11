@@ -28,6 +28,8 @@ cd services/isola-operator && make generate manifests && \
   cp config/rbac/role.yaml ../../charts/isola-operator/templates/clusterrole.yaml
 ```
 
+**NetworkTemplateSpec changes:** When modifying `NetworkTemplateSpec`, also update the built-in templates in `charts/isola-operator/templates/network-templates.yaml`. These are Helm-only (not generated) and must match the CRD schema.
+
 ## Architecture Notes
 
 **Backward compatibility:** not required at this stage. You may introduce breaking changes to CRDs, APIs, and internal interfaces if it simplifies the design, provided tests are updated accordingly.
@@ -50,8 +52,15 @@ cd services/isola-operator && make generate manifests && \
 **Network configuration options:**
 - Reference existing NetworkTemplate via `networkTemplateRef`
 - Embed spec in `network.spec` (creates owned template, garbage-collected with sandbox)
-- Default template: `isola-isolated` (deny all)
+- Default template: `isola-isolated` (deny all egress, DNS fails fast with sink nameserver)
 - Network spec is **immutable** after sandbox creation
+
+**Network isolation architecture:**
+- Each NetworkTemplate creates a NetworkPolicy that controls egress
+- Ingress from isola-gw is allowed by `allow-isola-gw-ingress` NetworkPolicy (Helm-installed, not per-template)
+- Built-in templates in `charts/isola-operator/templates/network-templates.yaml`:
+  - `isola-isolated`: Default, denies all traffic. Uses DNSPolicy: None with sink nameserver (127.0.0.1)
+  - `isola-egress-only`: Allows internet egress (0.0.0.0/0) with external DNS (8.8.8.8, 1.1.1.1)
 
 **Finalizers:** `sandbox.isola.run/cleanup` ensures cleanup before sandbox deletion.
 
