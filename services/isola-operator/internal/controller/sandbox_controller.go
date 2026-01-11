@@ -27,14 +27,12 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
-	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -468,53 +466,6 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	return nil
 }
 
-// CreateSandboxPDB creates a PodDisruptionBudget for the sandbox pod with maxUnavailable=0.
-// This prevents voluntary disruptions (like node drains or cluster upgrades) from evicting the sandbox pod.
-func (r *SandboxReconciler) CreateSandboxPDB(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) error {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
-	log.Info("Creating PodDisruptionBudget")
-
-	pdbName := getSandboxPDBName(sandbox)
-	maxUnavailable := intstr.FromInt32(0)
-
-	pdb := &policyv1.PodDisruptionBudget{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pdbName,
-			Namespace: sandbox.Namespace,
-			Labels: map[string]string{
-				"app":                          "isola-sandbox",
-				"sandbox.isola.run/id":         sandbox.Name,
-				"app.kubernetes.io/managed-by": "isola-operator",
-			},
-		},
-		Spec: policyv1.PodDisruptionBudgetSpec{
-			MaxUnavailable: &maxUnavailable,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"sandbox.isola.run/id": sandbox.Name,
-				},
-			},
-		},
-	}
-
-	if err := controllerutil.SetControllerReference(sandbox, pdb, r.Scheme); err != nil {
-		log.Error(err, "Failed to set controller reference for PDB")
-		return err
-	}
-
-	if err := r.Create(ctx, pdb); err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			log.Info("PodDisruptionBudget already exists")
-			return nil
-		}
-		log.Error(err, "Failed to create PodDisruptionBudget")
-		return err
-	}
-
-	log.Info("PodDisruptionBudget created", "pdb", pdbName)
-	return nil
-}
-
 // todo benl: extract snapshotting to a separate controller that manages the FSSnapshotter CRD
 // CreateSnapshotterJob creates a Job to snapshot the sandbox container's filesystem
 func (r *SandboxReconciler) CreateSnapshotterJob(
@@ -671,10 +622,6 @@ func (r *SandboxReconciler) CreateSnapshotterJob(
 
 func getSandboxPodName(sandbox *sandboxv1alpha1.Sandbox) string {
 	return sandbox.Name + "-pod"
-}
-
-func getSandboxPDBName(sandbox *sandboxv1alpha1.Sandbox) string {
-	return sandbox.Name + "-pdb"
 }
 
 func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*corev1.Pod, error) {
@@ -1174,7 +1121,6 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=node.k8s.io,resources=runtimeclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 
 func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// todo benl: pass params by value sometimes, to avoid dereferencing nils by accident
@@ -1299,9 +1245,6 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	if sandboxPod == nil {
 		if err := r.CreateSandboxPod(ctx, sandbox, baseSandbox, template, networkTemplate); err != nil {
-			return ctrl.Result{}, err
-		}
-		if err := r.CreateSandboxPDB(ctx, sandbox); err != nil {
 			return ctrl.Result{}, err
 		}
 		if err := r.reconcileSandboxStatus(ctx, sandbox, baseSandbox, nil, networkTemplate); err != nil {
@@ -1633,7 +1576,6 @@ func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&sandboxv1alpha1.Sandbox{}).
 		Owns(&corev1.Pod{}).
 		Owns(&batchv1.Job{}).
-		Owns(&policyv1.PodDisruptionBudget{}).
 		// Watch SandboxTemplate changes to reconcile affected sandboxes
 		Watches(
 			&sandboxv1alpha1.SandboxTemplate{},

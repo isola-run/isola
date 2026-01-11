@@ -27,7 +27,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	nodev1 "k8s.io/api/node/v1"
-	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -159,24 +158,6 @@ func deleteJob(ctx context.Context, name string) {
 	if err == nil {
 		propagationPolicy := metav1.DeletePropagationBackground
 		_ = k8sClient.Delete(ctx, job, &client.DeleteOptions{PropagationPolicy: &propagationPolicy})
-	}
-}
-
-func getPDB(ctx context.Context, name string) *policyv1.PodDisruptionBudget {
-	pdb := &policyv1.PodDisruptionBudget{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pdb)
-	if errors.IsNotFound(err) {
-		return nil
-	}
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	return pdb
-}
-
-func deletePDB(ctx context.Context, name string) {
-	pdb := &policyv1.PodDisruptionBudget{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pdb)
-	if err == nil {
-		_ = k8sClient.Delete(ctx, pdb)
 	}
 }
 
@@ -540,48 +521,6 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Labels).To(HaveKeyWithValue("app", "isola-sandbox"))
 			Expect(pod.Labels).To(HaveKeyWithValue("sandbox.isola.run/id", sandboxName))
 			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "isola-operator"))
-		})
-
-		It("should create PodDisruptionBudget with maxUnavailable=0", func() {
-			sandboxName := "sandbox-pdb"
-			templateName := "template-pdb"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
-			defer deleteSandbox(ctx, sandboxName)
-
-			podName := sandboxName + "-pod"
-			pdbName := sandboxName + "-pdb"
-			defer deletePod(ctx, podName)
-			defer deletePDB(ctx, pdbName)
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pdb := getPDB(ctx, pdbName)
-			Expect(pdb).NotTo(BeNil())
-
-			// Verify maxUnavailable is set to 0
-			Expect(pdb.Spec.MaxUnavailable).NotTo(BeNil())
-			Expect(pdb.Spec.MaxUnavailable.IntValue()).To(Equal(0))
-
-			// Verify selector matches sandbox pod
-			Expect(pdb.Spec.Selector).NotTo(BeNil())
-			Expect(pdb.Spec.Selector.MatchLabels).To(HaveKeyWithValue("sandbox.isola.run/id", sandboxName))
-
-			// Verify owner reference for garbage collection
-			sandbox := getSandbox(ctx, sandboxName)
-			Expect(pdb.OwnerReferences).To(HaveLen(1))
-			Expect(pdb.OwnerReferences[0].Name).To(Equal(sandboxName))
-			Expect(pdb.OwnerReferences[0].UID).To(Equal(sandbox.UID))
-			Expect(*pdb.OwnerReferences[0].Controller).To(BeTrue())
-
-			// Verify labels
-			Expect(pdb.Labels).To(HaveKeyWithValue("app", "isola-sandbox"))
-			Expect(pdb.Labels).To(HaveKeyWithValue("sandbox.isola.run/id", sandboxName))
-			Expect(pdb.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "isola-operator"))
 		})
 
 		It("should preserve template init containers when injecting agent sidecar", func() {
