@@ -160,14 +160,14 @@ func TestBuildNetworkPolicy_DoesNotBlockNonOverlappingCIDRs(t *testing.T) {
 	assert.Empty(t, ipBlock.Except)
 }
 
-func TestBuildNetworkPolicy_WithDNSNameservers_SingleIP(t *testing.T) {
+func TestBuildNetworkPolicy_WithNameservers_SingleIP(t *testing.T) {
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSNameservers: []string{"8.8.8.8"},
+			Nameservers: []string{"8.8.8.8"},
 		},
 	}
 
@@ -195,14 +195,14 @@ func TestBuildNetworkPolicy_WithDNSNameservers_SingleIP(t *testing.T) {
 	assert.True(t, hasTCP, "should have TCP port 53")
 }
 
-func TestBuildNetworkPolicy_WithDNSNameservers_MultipleIPs(t *testing.T) {
+func TestBuildNetworkPolicy_WithNameservers_MultipleIPs(t *testing.T) {
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSNameservers: []string{"8.8.8.8", "1.1.1.1"},
+			Nameservers: []string{"8.8.8.8", "1.1.1.1"},
 		},
 	}
 
@@ -221,14 +221,14 @@ func TestBuildNetworkPolicy_WithDNSNameservers_MultipleIPs(t *testing.T) {
 	require.Len(t, dnsRule.Ports, 2)
 }
 
-func TestBuildNetworkPolicy_WithDNSNameservers_IPv6(t *testing.T) {
+func TestBuildNetworkPolicy_WithNameservers_IPv6(t *testing.T) {
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSNameservers: []string{"2001:4860:4860::8888"},
+			Nameservers: []string{"2001:4860:4860::8888"},
 		},
 	}
 
@@ -243,14 +243,14 @@ func TestBuildNetworkPolicy_WithDNSNameservers_IPv6(t *testing.T) {
 	assert.Equal(t, "2001:4860:4860::8888/128", dnsRule.To[0].IPBlock.CIDR)
 }
 
-func TestBuildNetworkPolicy_WithDNSNameservers_Empty_NoDNSRule(t *testing.T) {
+func TestBuildNetworkPolicy_WithNameservers_Empty_NoDNSRule(t *testing.T) {
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSNameservers:     []string{}, // Explicitly empty
+			Nameservers:        []string{}, // Explicitly empty
 			AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 		},
 	}
@@ -263,20 +263,20 @@ func TestBuildNetworkPolicy_WithDNSNameservers_Empty_NoDNSRule(t *testing.T) {
 
 	// Verify no DNS rule exists (no port 53)
 	dnsRule := findDNSEgressRule(np.Spec.Egress)
-	assert.Nil(t, dnsRule, "should not have DNS rule when DNSNameservers is empty")
+	assert.Nil(t, dnsRule, "should not have DNS rule when Nameservers is empty")
 
 	// Verify the only rule is our CIDR
 	assert.Equal(t, "8.8.8.0/24", np.Spec.Egress[0].To[0].IPBlock.CIDR)
 }
 
-func TestBuildNetworkPolicy_WithDNSNameservers_Invalid_ReturnsError(t *testing.T) {
+func TestBuildNetworkPolicy_WithNameservers_Invalid_ReturnsError(t *testing.T) {
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSNameservers: []string{"not-an-ip"},
+			Nameservers: []string{"not-an-ip"},
 		},
 	}
 
@@ -376,7 +376,7 @@ func TestBuildNetworkPolicy_FullTemplate(t *testing.T) {
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
 			AllowedEgressCIDRs: []string{"0.0.0.0/0"},
-			DNSNameservers:     []string{"8.8.8.8"},
+			Nameservers:        []string{"8.8.8.8"},
 		},
 	}
 
@@ -634,14 +634,14 @@ func TestBuildNetworkPolicy_WithEgressPods_EmptyPodSelector(t *testing.T) {
 }
 
 func TestBuildNetworkPolicy_CombinedEgressRules(t *testing.T) {
-	// Test combining DNSNameservers, AllowedEgressPods, and AllowedEgressCIDRs
+	// Test combining Nameservers, AllowedEgressPods, and AllowedEgressCIDRs
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSNameservers: []string{"8.8.8.8"},
+			Nameservers: []string{"8.8.8.8"},
 			AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
 				{
 					Namespace: "kube-system",

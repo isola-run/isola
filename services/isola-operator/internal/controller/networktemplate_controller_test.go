@@ -134,7 +134,7 @@ var _ = Describe("NetworkTemplate Controller", func() {
 
 			np := getNetworkPolicy(name)
 			Expect(np).NotTo(BeNil())
-			// 2 egress rules: DNS (from default DNSNameservers) + CIDR
+			// 2 egress rules: DNS (from default Nameservers) + CIDR
 			Expect(np.Spec.Egress).To(HaveLen(2))
 			// Find the CIDR rule (not the DNS rule)
 			var cidrRule *networkingv1.NetworkPolicyEgressRule

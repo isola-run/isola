@@ -117,7 +117,7 @@ type egressCIDR struct {
 //
 // The generated policy enforces:
 // - Default deny for both ingress and egress
-// - Egress rules based on AllowedEgressCIDRs, AllowedEgressPods, and DNSNameservers
+// - Egress rules based on AllowedEgressCIDRs, AllowedEgressPods, and Nameservers
 //
 // Note: Ingress from isola-gw is handled by a separate Helm-installed NetworkPolicy
 // that selects pods with label `app: isola-sandbox`.
@@ -147,9 +147,9 @@ func BuildNetworkPolicy(template *sandboxv1alpha1.NetworkTemplate) (*networkingv
 		egressCIDRs = append(egressCIDRs, egressCIDR{Prefix: prefix, Except: except})
 	}
 
-	// Parse DNS nameserver IPs (only used for dnsPolicy: None)
+	// Parse nameserver IPs - egress to these IPs is automatically allowed on port 53
 	var dnsAddrs []netip.Addr
-	for _, ipStr := range spec.DNSNameservers {
+	for _, ipStr := range spec.Nameservers {
 		addr, err := cidr.ParseDNSServerIP(ipStr)
 		if err != nil {
 			return nil, err
@@ -199,17 +199,14 @@ func buildEgressRules(
 ) []networkingv1.NetworkPolicyEgressRule {
 	var rules []networkingv1.NetworkPolicyEgressRule
 
-	// Add DNS server egress rules (for dnsPolicy: None with explicit nameservers)
 	if len(dnsServers) > 0 {
 		rules = append(rules, buildDNSServerEgressRule(dnsServers))
 	}
 
-	// Add pod selector egress rules (e.g., for kube-dns when using ClusterFirst)
 	for _, podRule := range egressPodRules {
 		rules = append(rules, buildPodSelectorEgressRule(podRule))
 	}
 
-	// Add CIDR-based egress rules
 	for _, ecidr := range egressCIDRs {
 		ipBlock := &networkingv1.IPBlock{
 			CIDR: ecidr.Prefix.String(),
@@ -230,7 +227,6 @@ func buildEgressRules(
 	return rules
 }
 
-// buildPodSelectorEgressRule creates an egress rule allowing traffic to pods selected by label.
 func buildPodSelectorEgressRule(rule sandboxv1alpha1.EgressPodRule) networkingv1.NetworkPolicyEgressRule {
 	egressRule := networkingv1.NetworkPolicyEgressRule{
 		To: []networkingv1.NetworkPolicyPeer{
@@ -246,7 +242,6 @@ func buildPodSelectorEgressRule(rule sandboxv1alpha1.EgressPodRule) networkingv1
 		},
 	}
 
-	// Add port restrictions if specified
 	if len(rule.Ports) > 0 {
 		egressRule.Ports = make([]networkingv1.NetworkPolicyPort, 0, len(rule.Ports))
 		for _, p := range rule.Ports {

@@ -145,10 +145,10 @@ func WithAllowedEgressCIDRs(cidrs ...string) NetworkTemplateOption {
 	}
 }
 
-// WithDNSNameservers sets the DNS server IPs for the network template
-func WithDNSNameservers(servers ...string) NetworkTemplateOption {
+// WithNameservers sets the DNS server IPs for the network template
+func WithNameservers(servers ...string) NetworkTemplateOption {
 	return func(nt *sandboxv1alpha1.NetworkTemplate) {
-		nt.Spec.DNSNameservers = servers
+		nt.Spec.Nameservers = servers
 	}
 }
 
@@ -167,8 +167,8 @@ func WithAllowedEgressPods(rules ...sandboxv1alpha1.EgressPodRule) NetworkTempla
 }
 
 // NewTestNetworkTemplate creates a new NetworkTemplate for testing.
-// By default, uses DNSPolicy: None with external DNS to satisfy CEL validation
-// without requiring cluster DNS access (isolated mode).
+// By default, uses DNSPolicy: None with external DNS.
+// Use WithNameservers() to override or omit nameservers (empty = sink nameserver).
 func NewTestNetworkTemplate(name, namespace string, opts ...NetworkTemplateOption) *sandboxv1alpha1.NetworkTemplate {
 	nt := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
@@ -176,8 +176,8 @@ func NewTestNetworkTemplate(name, namespace string, opts ...NetworkTemplateOptio
 			Namespace: namespace,
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSPolicy:      corev1.DNSNone,
-			DNSNameservers: []string{"8.8.8.8"},
+			DNSPolicy:   corev1.DNSNone,
+			Nameservers: []string{"8.8.8.8"},
 		},
 	}
 
