@@ -48,12 +48,6 @@ type DownloadResponse struct {
 	Size    int64  `json:"size"`
 }
 
-type DownloadUrlResponse struct {
-	DownloadURL string `json:"download_url"`
-	DownloadID  string `json:"download_id"`
-	ExpiresIn   int    `json:"expires_in"`
-}
-
 type FileDownloadResponse struct {
 	Path    string `json:"path"`
 	Size    int64  `json:"size"`

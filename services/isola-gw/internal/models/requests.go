@@ -41,10 +41,6 @@ type DownloadRequest struct {
 	Path        string `json:"path" binding:"required"`
 }
 
-type DownloadUrlRequest struct {
-	Path string `json:"path" binding:"required"`
-}
-
 type ListSandboxesParams struct {
 	State  *SandboxState `form:"state,omitempty"`
 	Limit  int           `form:"limit,default=20" binding:"min=1,max=100"`
