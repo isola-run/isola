@@ -66,40 +66,157 @@ spec:
                       when the sandbox is deleted.
                       Note: This spec is immutable after sandbox creation - changes are ignored.
                     properties:
-                      allowedEgress:
+                      allowedEgressCIDRs:
                         description: |-
-                          AllowedEgress is a list of CIDRs the sandbox is allowed to connect to (outbound traffic).
-                          If empty, all egress traffic is blocked (default-deny) unless some other NetworkPolicy in the cluster allows traffic.
-                          Risky IPs (cloud metadata 169.254.0.0/16, IPv6 link-local fe80::/10) are automatically
-                          blocked when the specified CIDR would otherwise allow them.
+                          AllowedEgressCIDRs is a list of CIDRs the sandbox is allowed to connect to (outbound traffic).
+                          If empty, no CIDR-based egress is allowed (but allowedEgressPods rules may still permit traffic).
+                          Risky IPs (cloud metadata 169.254.0.0/16, private ranges, IPv6 link-local fe80::/10) are
+                          automatically blocked when the specified CIDR would otherwise allow them.
                         items:
                           pattern: ^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$
                           type: string
                         type: array
-                      allowedIngress:
+                      allowedEgressPods:
                         description: |-
-                          AllowedIngress is a list of CIDRs allowed to connect to the sandbox (inbound traffic).
-                          If empty, all ingress traffic is blocked (default-deny) unless some other NetworkPolicy in the cluster allows traffic.
-                          todo benl: consider removing AllowedIngress
+                          AllowedEgressPods specifies pods the sandbox can connect to via label selectors.
+                          Useful for allowing access to in-cluster services like kube-dns.
+                          When using ClusterFirst DNS policy, you must add a rule here to allow egress to DNS.
+
+                          Example for kube-dns/CoreDNS:
+                            - namespace: kube-system
+                              podSelector:
+                                matchLabels:
+                                  k8s-app: kube-dns  # or k8s-app: coredns depending on cluster
+                              ports:
+                                - port: 53
+                                  protocol: UDP
+                                - port: 53
+                                  protocol: TCP
                         items:
-                          pattern: ^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$
-                          type: string
+                          description: |-
+                            EgressPodRule defines a pod-based egress rule.
+                            This allows sandboxes to communicate with specific pods in the cluster,
+                            such as in-cluster DNS (kube-dns/CoreDNS) when using ClusterFirst DNS policy.
+                          properties:
+                            namespace:
+                              description: Namespace of the target pods.
+                              minLength: 1
+                              type: string
+                            podSelector:
+                              description: |-
+                                PodSelector selects pods in the namespace.
+                                An empty selector ({}) matches all pods in the namespace.
+                              properties:
+                                matchExpressions:
+                                  description: matchExpressions is a list of label
+                                    selector requirements. The requirements are ANDed.
+                                  items:
+                                    description: |-
+                                      A label selector requirement is a selector that contains values, a key, and an operator that
+                                      relates the key and values.
+                                    properties:
+                                      key:
+                                        description: key is the label key that the
+                                          selector applies to.
+                                        type: string
+                                      operator:
+                                        description: |-
+                                          operator represents a key's relationship to a set of values.
+                                          Valid operators are In, NotIn, Exists and DoesNotExist.
+                                        type: string
+                                      values:
+                                        description: |-
+                                          values is an array of string values. If the operator is In or NotIn,
+                                          the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                          the values array must be empty. This array is replaced during a strategic
+                                          merge patch.
+                                        items:
+                                          type: string
+                                        type: array
+                                        x-kubernetes-list-type: atomic
+                                    required:
+                                    - key
+                                    - operator
+                                    type: object
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                                matchLabels:
+                                  additionalProperties:
+                                    type: string
+                                  description: |-
+                                    matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                    map is equivalent to an element of matchExpressions, whose key field is "key", the
+                                    operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                  type: object
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            ports:
+                              description: Ports to allow. If empty, all ports are
+                                allowed to the selected pods.
+                              items:
+                                description: |-
+                                  NetworkPort defines a port for network rules.
+                                  Using a custom type instead of networkingv1.NetworkPolicyPort for a simpler API
+                                  (no pointers, no IntOrString, no EndPort).
+                                properties:
+                                  port:
+                                    description: Port number.
+                                    format: int32
+                                    maximum: 65535
+                                    minimum: 1
+                                    type: integer
+                                  protocol:
+                                    default: TCP
+                                    description: Protocol (TCP or UDP). Defaults to
+                                      TCP.
+                                    enum:
+                                    - TCP
+                                    - UDP
+                                    type: string
+                                required:
+                                - port
+                                type: object
+                              type: array
+                          required:
+                          - namespace
+                          - podSelector
+                          type: object
                         type: array
-                      dnsServers:
+                      dnsNameservers:
                         description: |-
-                          DNSServers is a list of DNS server IP addresses the sandbox can use.
-                          When specified, egress to these IPs on port 53 (UDP/TCP) is allowed,
-                          and the pod is configured with dnsPolicy: None using these as nameservers.
-                          If empty (or not specified), DNS is not available (sandbox is fully isolated from DNS).
-                          MaxItems=3 because k8s allow specifying at most 3 nameservers https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/?utm_source=chatgpt.com#pod-dns-config
+                          DNSNameservers is a list of DNS server IP addresses.
+                          - When dnsPolicy is "None": required (at least one), these are the only nameservers available.
+                          - When dnsPolicy is "ClusterFirst": optional, combined with cluster DNS (duplicates removed).
+                          MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
                         items:
                           type: string
                         maxItems: 3
                         type: array
                         x-kubernetes-validations:
-                        - message: dnsServers must be valid IPv4/IPv6 addresses
-                          rule: self.size() == 0 || self.all(s, isIP(s))
+                        - message: must be valid IP addresses
+                          rule: self.all(s, isIP(s))
+                      dnsPolicy:
+                        default: ClusterFirst
+                        description: |
+                          DNSPolicy specifies the DNS policy for sandbox pods.
+                          - "None": Pod uses only the nameservers from dnsNameservers (fully isolated from cluster DNS).
+                            The pod's resolv.conf will have ndots:1 for faster resolution of external domains.
+                          - "ClusterFirst": Pod uses cluster DNS, with dnsNameservers combined (duplicates removed).
+                            When using ClusterFirst, you must also add an egress rule via allowedEgressPods to permit
+                            traffic to kube-dns (typically namespace=kube-system, label k8s-app=kube-dns or k8s-app=coredns).
+                        enum:
+                        - None
+                        - ClusterFirst
+                        type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: dnsNameservers is required when dnsPolicy is None
+                      rule: self.dnsPolicy != 'None' || size(self.dnsNameservers)
+                        > 0
+                    - message: allowedEgressPods is required when dnsPolicy is ClusterFirst
+                        (must allow egress to cluster DNS)
+                      rule: self.dnsPolicy != 'ClusterFirst' || size(self.allowedEgressPods)
+                        > 0
                   templateRef:
                     description: |-
                       TemplateRef references an existing NetworkTemplate in the same namespace.
