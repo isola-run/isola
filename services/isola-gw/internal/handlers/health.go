@@ -29,4 +29,3 @@ func (h *Handler) ReadinessCheck(c *gin.Context) {
 
 	c.JSON(http.StatusOK, readyStatus)
 }
-

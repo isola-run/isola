@@ -1,0 +1,58 @@
+version: "2"
+
+run:
+  allow-parallel-runners: true
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    # Error handling
+    - errcheck
+    - ineffassign
+
+    # Code quality
+    - govet
+    - staticcheck
+    - unused
+    - unconvert
+    - unparam
+    - revive
+    - misspell
+    - nakedret
+    - prealloc
+
+    # Testing
+    - ginkgolinter
+
+    # Security
+    - gosec
+    - noctx
+    - bodyclose
+
+  settings:
+    revive:
+      rules:
+        - name: comment-spacings
+        - name: import-shadowing
+    gosec:
+      severity: medium
+      confidence: medium
+
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

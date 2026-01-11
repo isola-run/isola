@@ -105,7 +105,11 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		})
 		return
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("Warning: failed to close uploaded file: %v", err)
+		}
+	}()
 
 	pathValues := form.Value["path"]
 	if len(pathValues) == 0 {
@@ -145,36 +149,61 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	// Create multipart form for agent
 	formData := &bytes.Buffer{}
 	writer := multipart.NewWriter(formData)
+	defer func() {
+		if err := writer.Close(); err != nil {
+			log.Printf("Warning: failed to close multipart writer: %v", err)
+		}
+	}()
 
 	pathField, err := writer.CreateFormField("path")
 	if err != nil {
-		log.Printf("[UPLOAD] Failed to create path field: %v", err)
+		log.Printf("Failed to create path field: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "InternalServerError",
-			Message: "Failed to create form field: " + err.Error(),
+			Message: "Failed to process file upload",
 		})
 		return
 	}
-	pathField.Write([]byte(targetPath))
+	if _, err := pathField.Write([]byte(targetPath)); err != nil {
+		log.Printf("Failed to write path field: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to process file upload",
+		})
+		return
+	}
 
 	fileField, err := writer.CreateFormFile("file", fileHeader.Filename)
 	if err != nil {
-		writer.Close()
-		log.Printf("[UPLOAD] Failed to create file field: %v", err)
+		log.Printf("Failed to create file field: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "InternalServerError",
-			Message: "Failed to create file field: " + err.Error(),
+			Message: "Failed to process file upload",
 		})
 		return
 	}
-	fileField.Write(content)
+	if _, err := fileField.Write(content); err != nil {
+		log.Printf("Failed to write file content: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to process file upload",
+		})
+		return
+	}
 
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		log.Printf("Failed to finalize multipart writer: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to process file upload",
+		})
+		return
+	}
 
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, "POST", agentURL, formData)
 	if err != nil {
-		log.Printf("[UPLOAD] Failed to create request: %v", err)
+		log.Printf("Failed to create request: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "InternalServerError",
 			Message: "Failed to create request: " + err.Error(),
@@ -187,18 +216,22 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("[UPLOAD] Failed to connect to agent at %s: %v", agentURL, err)
+		log.Printf("Failed to connect to agent at %s: %v", agentURL, err)
 		c.JSON(http.StatusBadGateway, models.ErrorResponse{
 			Error:   "BadGateway",
 			Message: "Failed to connect to sandbox agent: " + err.Error(),
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		log.Printf("[UPLOAD] Agent returned error: %d - %s", resp.StatusCode, string(bodyBytes))
+		log.Printf("Agent returned error: %d - %s", resp.StatusCode, string(bodyBytes))
 		c.JSON(resp.StatusCode, models.ErrorResponse{
 			Error:   "InternalServerError",
 			Message: "Agent upload failed: " + string(bodyBytes),
@@ -211,7 +244,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	var agentResponse map[string]interface{}
 	if len(bodyBytes) > 0 {
 		if err := json.Unmarshal(bodyBytes, &agentResponse); err != nil {
-			log.Printf("[UPLOAD] Failed to parse agent response, using defaults: %v", err)
+			log.Printf("Failed to parse agent response, using defaults: %v", err)
 			// If response parsing fails, return success with default values
 			c.JSON(http.StatusOK, models.FileUploadResponse{
 				Success: true,
@@ -222,7 +255,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		}
 	}
 
-	log.Printf("[UPLOAD] Successfully uploaded file to sandbox %s: %+v", sandboxID, agentResponse)
+	log.Printf("Successfully uploaded file to sandbox %s: %+v", sandboxID, agentResponse)
 
 	success := true
 	if val, ok := agentResponse["success"].(bool); ok {
@@ -656,7 +689,11 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
