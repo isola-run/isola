@@ -3027,6 +3027,117 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(*pod.Spec.DNSConfig.Options[0].Value).To(Equal("1"))
 		})
 
+		It("should use sink nameserver with fast-fail options when dnsPolicy is None and nameservers is empty", func() {
+			sandboxName := fmt.Sprintf("sandbox-dns-sink-%d", time.Now().UnixNano())
+			podName := sandboxName + "-pod"
+			networkTemplateName := fmt.Sprintf("dns-sink-template-%d", time.Now().UnixNano())
+
+			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
+				nt.Spec.DNSPolicy = corev1.DNSNone
+				nt.Spec.Nameservers = []string{} // Empty - should use sink nameserver
+			})
+			reconcileNetworkTemplate(ctx, networkTemplateName)
+			defer deleteNetworkTemplate(ctx, networkTemplateName)
+
+			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
+			Expect(pod.Spec.DNSConfig).NotTo(BeNil())
+			// Should use sink nameserver 127.0.0.1
+			Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"127.0.0.1"}))
+			// Should have fast-fail options: timeout=1, attempts=1, ndots=1
+			Expect(pod.Spec.DNSConfig.Options).To(HaveLen(3))
+			optionMap := make(map[string]string)
+			for _, opt := range pod.Spec.DNSConfig.Options {
+				if opt.Value != nil {
+					optionMap[opt.Name] = *opt.Value
+				}
+			}
+			Expect(optionMap["timeout"]).To(Equal("1"))
+			Expect(optionMap["attempts"]).To(Equal("1"))
+			Expect(optionMap["ndots"]).To(Equal("1"))
+		})
+
+		It("should preserve existing DNSConfig options when adding nameservers for ClusterFirst", func() {
+			sandboxName := fmt.Sprintf("sandbox-dns-preserve-%d", time.Now().UnixNano())
+			podName := sandboxName + "-pod"
+			networkTemplateName := fmt.Sprintf("dns-preserve-template-%d", time.Now().UnixNano())
+			customTemplateName := fmt.Sprintf("template-dns-preserve-%d", time.Now().UnixNano())
+
+			// Create a SandboxTemplate with existing DNSConfig options in the PodTemplate
+			customTemplate := &sandboxv1alpha1.SandboxTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      customTemplateName,
+					Namespace: testNamespace,
+				},
+				Spec: sandboxv1alpha1.SandboxTemplateSpec{
+					PodTemplate: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:    "sandbox",
+									Image:   "busybox:latest",
+									Command: []string{"sleep", "infinity"},
+								},
+							},
+							DNSConfig: &corev1.PodDNSConfig{
+								Options: []corev1.PodDNSConfigOption{
+									{Name: "single-request-reopen"},
+									{Name: "edns0"},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, customTemplate)).To(Succeed())
+			defer deleteTemplate(ctx, customTemplateName)
+
+			// Create network template with ClusterFirst + additional nameservers
+			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
+				nt.Spec.DNSPolicy = corev1.DNSClusterFirst
+				nt.Spec.Nameservers = []string{"8.8.8.8"}
+				nt.Spec.AllowedEgressPods = []sandboxv1alpha1.EgressPodRule{
+					{
+						Namespace: "kube-system",
+						PodSelector: metav1.LabelSelector{
+							MatchLabels: map[string]string{"k8s-app": "kube-dns"},
+						},
+					},
+				}
+			})
+			reconcileNetworkTemplate(ctx, networkTemplateName)
+			defer deleteNetworkTemplate(ctx, networkTemplateName)
+
+			createSandboxWithNetworkTemplate(ctx, sandboxName, customTemplateName, networkTemplateName)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
+			Expect(pod.Spec.DNSConfig).NotTo(BeNil())
+			// Should have the additional nameservers
+			Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8"}))
+			// Should preserve the original options from the PodTemplate
+			Expect(pod.Spec.DNSConfig.Options).To(HaveLen(2))
+			optionNames := make([]string, 0, len(pod.Spec.DNSConfig.Options))
+			for _, opt := range pod.Spec.DNSConfig.Options {
+				optionNames = append(optionNames, opt.Name)
+			}
+			Expect(optionNames).To(ContainElements("single-request-reopen", "edns0"))
+		})
+
 		It("should have NetworkReady=False when network template not ready", func() {
 			sandboxName := fmt.Sprintf("sandbox-ready-network-%d", time.Now().UnixNano())
 			podName := sandboxName + "-pod"
@@ -3121,5 +3232,48 @@ var _ = Describe("Sandbox Controller", func() {
 				},
 			}))
 		})
+	})
+})
+
+var _ = Describe("configureDNS function", func() {
+	It("should return error for unsupported DNS policy", func() {
+		pod := &corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Name: "test", Image: "busybox"},
+				},
+			},
+		}
+
+		networkTemplate := &sandboxv1alpha1.NetworkTemplate{
+			Spec: sandboxv1alpha1.NetworkTemplateSpec{
+				DNSPolicy: corev1.DNSPolicy("InvalidPolicy"),
+			},
+		}
+
+		err := configureDNS(pod, networkTemplate)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unsupported DNS policy"))
+		Expect(err.Error()).To(ContainSubstring("InvalidPolicy"))
+	})
+
+	It("should not return error for empty DNS policy (defaults to ClusterFirst)", func() {
+		pod := &corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Name: "test", Image: "busybox"},
+				},
+			},
+		}
+
+		networkTemplate := &sandboxv1alpha1.NetworkTemplate{
+			Spec: sandboxv1alpha1.NetworkTemplateSpec{
+				DNSPolicy: "", // Empty should default to ClusterFirst
+			},
+		}
+
+		err := configureDNS(pod, networkTemplate)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
 	})
 })
