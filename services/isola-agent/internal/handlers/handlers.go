@@ -62,17 +62,6 @@ type ReadFileResponse struct {
 	Content []byte `json:"content"`
 }
 
-type UploadToUrlRequest struct {
-	UploadURL string `json:"upload_url" binding:"required"`
-	Path      string `json:"path" binding:"required"`
-}
-
-type UploadToUrlResponse struct {
-	Success bool   `json:"success"`
-	Path    string `json:"path"`
-	Size    int64  `json:"size"`
-}
-
 // Health handles GET /health requests.
 func (h *Handler) Health(c *gin.Context) {
 	c.JSON(http.StatusOK, HealthResponse{Status: "healthy"})
@@ -312,7 +301,7 @@ func (h *Handler) ReadFile(c *gin.Context) {
 		return
 	}
 
-	content, err := os.ReadFile(fullPath)
+	content, err := os.ReadFile(fullPath) //nolint:gosec // path is resolved via procfs in sandboxed environment
 	if err != nil {
 		if os.IsPermission(err) {
 			c.JSON(http.StatusForbidden, ErrorResponse{Error: "permission denied reading: " + targetPath})
@@ -333,110 +322,10 @@ func (h *Handler) ReadFile(c *gin.Context) {
 	})
 }
 
-// UploadToUrl handles POST /upload-to-url requests.
-// Reads a file from the main container's filesystem and uploads it to a presigned storage URL.
-func (h *Handler) UploadToUrl(c *gin.Context) {
-	var req UploadToUrlRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request: " + err.Error()})
-		return
-	}
-
-	// Resolve path via /proc/<pid>/root to access main container's filesystem
-	fullPath, err := h.procFS.ResolvePath(req.Path)
-	if err != nil {
-		log.Printf("Failed to resolve path via procfs: %v", err)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to resolve path: " + err.Error()})
-		return
-	}
-
-	// Stat the file to check existence and get size
-	fileInfo, err := os.Stat(fullPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			c.JSON(http.StatusNotFound, ErrorResponse{Error: "file not found: " + req.Path})
-			return
-		}
-		if os.IsPermission(err) {
-			c.JSON(http.StatusForbidden, ErrorResponse{Error: "permission denied: " + req.Path})
-			return
-		}
-		log.Printf("Failed to stat file %s: %v", fullPath, err)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to access file"})
-		return
-	}
-
-	// Check if it's a directory
-	if fileInfo.IsDir() {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "path is a directory, not a file"})
-		return
-	}
-
-	fileSize := fileInfo.Size()
-
-	// Open the file for reading
-	file, err := os.Open(fullPath)
-	if err != nil {
-		if os.IsPermission(err) {
-			c.JSON(http.StatusForbidden, ErrorResponse{Error: "permission denied reading: " + req.Path})
-			return
-		}
-		log.Printf("Failed to open file %s: %v", fullPath, err)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to open file"})
-		return
-	}
-	defer file.Close()
-
-	// Create the HTTP PUT request with the file as body
-	ctx, cancel := context.WithTimeout(c.Request.Context(), DownloadTimeoutSeconds*time.Second)
-	defer cancel()
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, req.UploadURL, file)
-	if err != nil {
-		log.Printf("Failed to create upload request: %v", err)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to create upload request"})
-		return
-	}
-
-	// Set content length for the upload
-	httpReq.ContentLength = fileSize
-
-	client := &http.Client{}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			log.Printf("Timeout uploading file to storage")
-			c.JSON(http.StatusGatewayTimeout, ErrorResponse{Error: "timeout uploading file to storage"})
-			return
-		}
-		log.Printf("Failed to upload file to storage: %v", err)
-		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "failed to upload file to storage: " + err.Error()})
-		return
-	}
-	defer resp.Body.Close()
-
-	// Presigned PUT returns 200 OK on success
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("Storage upload returned HTTP %d: %s", resp.StatusCode, string(body))
-		c.JSON(http.StatusBadGateway, ErrorResponse{Error: fmt.Sprintf("failed to upload file to storage: HTTP %s", resp.Status)})
-		return
-	}
-
-	log.Printf("Successfully uploaded file %s to storage (size: %d bytes)", fullPath, fileSize)
-
-	c.JSON(http.StatusOK, UploadToUrlResponse{
-		Success: true,
-		Path:    req.Path,
-		Size:    fileSize,
-	})
-}
-
 // RegisterRoutes registers all HTTP routes on the given Gin engine.
 func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/health", h.Health)
 	r.POST("/upload", h.Upload)
 	r.POST("/download", h.Download)
 	r.GET("/read-file", h.ReadFile)
-	r.POST("/upload-to-url", h.UploadToUrl)
 }

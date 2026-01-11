@@ -11,12 +11,10 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/omereli/dev-isola/services/isola-gw/internal/kubernetes"
 	"github.com/omereli/dev-isola/services/isola-gw/internal/models"
 )
 
@@ -31,8 +29,8 @@ func buildObjectKey(objectType string, tenantID string, sandboxID string, id str
 }
 
 // getSandboxStatusAndAddress retrieves sandbox status and validates it's running.
-// Returns (status, agentAddress, shouldReturn) where shouldReturn is true if an error response was sent.
-func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context, sandboxID string, logPrefix string) (*kubernetes.SandboxStatus, string, bool) {
+// Returns (agentAddress, shouldReturn) where shouldReturn is true if an error response was sent.
+func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context, sandboxID string, logPrefix string) (string, bool) {
 	status, err := h.k8sManager.GetSandboxStatus(ctx, sandboxID)
 	if err != nil {
 		log.Printf("[%s] Failed to get sandbox %s status: %v", logPrefix, sandboxID, err)
@@ -40,7 +38,7 @@ func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context
 			Error:   "InternalServerError",
 			Message: "Failed to get sandbox status",
 		})
-		return nil, "", true
+		return "", true
 	}
 	if status == nil {
 		log.Printf("[%s] Sandbox %s not found", logPrefix, sandboxID)
@@ -48,7 +46,7 @@ func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context
 			Error:   "NotFound",
 			Message: "Sandbox not found",
 		})
-		return nil, "", true
+		return "", true
 	}
 
 	if status.State != models.SandboxStateRunning {
@@ -57,10 +55,10 @@ func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context
 			Error:   "Conflict",
 			Message: "Sandbox must be in 'running' state, current state: " + string(status.State),
 		})
-		return nil, "", true
+		return "", true
 	}
 
-	return status, status.AgentAddress, false
+	return status.AgentAddress, false
 }
 
 func (h *Handler) UploadFile(c *gin.Context) {
@@ -72,7 +70,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	_, agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "UPLOAD")
+	agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "UPLOAD")
 	if shouldReturn {
 		return
 	}
@@ -295,7 +293,7 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	_, agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "DOWNLOAD")
+	agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "DOWNLOAD")
 	if shouldReturn {
 		return
 	}
@@ -324,7 +322,11 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[DOWNLOAD] Warning: failed to close response body: %v", err)
+		}
+	}()
 
 	// Limit response body to slightly more than threshold to detect oversized files
 	// We don't trust the agent's reported size - enforce the limit by reading at most this many bytes
@@ -424,7 +426,7 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 		return
 	}
 
-	_, _, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "UPLOAD-URL")
+	_, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "UPLOAD-URL")
 	if shouldReturn {
 		return
 	}
@@ -459,146 +461,6 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 	})
 }
 
-// GenerateDownloadUrl handles POST /sandboxes/:id/files/download-url
-// For large files (over 5MB), orchestrates uploading the file from sandbox to S3
-// and returns a presigned download URL to the client.
-func (h *Handler) GenerateDownloadUrl(c *gin.Context) {
-	sandboxID := c.Param("id")
-
-	var req models.DownloadUrlRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error:   "BadRequest",
-			Message: err.Error(),
-		})
-		return
-	}
-
-	log.Printf("[DOWNLOAD-URL] Request for sandbox %s: path=%s", sandboxID, req.Path)
-
-	tenantID, _ := c.Get("tenant_id")
-	tenantIDStr := tenantID.(string)
-
-	ctx := c.Request.Context()
-
-	if h.storage == nil {
-		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
-			Error:   "NotImplemented",
-			Message: "Storage not configured. Large file downloads are not available.",
-		})
-		return
-	}
-
-	_, agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "DOWNLOAD-URL")
-	if shouldReturn {
-		return
-	}
-
-	// Step 1: Generate presigned PUT URL for the agent to upload to S3
-	downloadID := uuid.New().String()
-	filename := filepath.Base(req.Path)
-	objectKey := buildObjectKey("downloads", tenantIDStr, sandboxID, downloadID, filename)
-
-	expiresIn := 900 // 15 minutes
-	uploadURL, err := h.storage.GeneratePresignedUploadURL(ctx, objectKey, expiresIn, "")
-	if err != nil {
-		log.Printf("[DOWNLOAD-URL] Failed to generate presigned upload URL: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to generate presigned URL: " + err.Error(),
-		})
-		return
-	}
-
-	log.Printf("[DOWNLOAD-URL] Generated presigned upload URL for object: %s", objectKey)
-
-	// Step 2: Tell agent to upload file to the presigned URL
-	uploadToUrlReq := struct {
-		UploadURL string `json:"upload_url"`
-		Path      string `json:"path"`
-	}{
-		UploadURL: uploadURL,
-		Path:      req.Path,
-	}
-
-	uploadToUrlBody, err := json.Marshal(uploadToUrlReq)
-	if err != nil {
-		log.Printf("[DOWNLOAD-URL] Failed to marshal upload-to-url request: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to marshal request: " + err.Error(),
-		})
-		return
-	}
-
-	agentUploadURL := fmt.Sprintf("http://%s:%d/upload-to-url", agentAddress, agentSidecarPort)
-	log.Printf("[DOWNLOAD-URL] Triggering agent upload at %s", agentUploadURL)
-
-	uploadReq, err := http.NewRequestWithContext(ctx, "POST", agentUploadURL, bytes.NewReader(uploadToUrlBody))
-	if err != nil {
-		log.Printf("[DOWNLOAD-URL] Failed to create upload-to-url request: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to create request: " + err.Error(),
-		})
-		return
-	}
-	uploadReq.Header.Set("Content-Type", "application/json")
-
-	uploadClient := &http.Client{Timeout: 5 * time.Minute}
-	uploadResp, err := uploadClient.Do(uploadReq)
-	if err != nil {
-		log.Printf("[DOWNLOAD-URL] Failed to connect to agent for upload: %v", err)
-		c.JSON(http.StatusBadGateway, models.ErrorResponse{
-			Error:   "BadGateway",
-			Message: "Failed to connect to sandbox agent: " + err.Error(),
-		})
-		return
-	}
-	defer uploadResp.Body.Close()
-
-	if uploadResp.StatusCode != http.StatusOK {
-		uploadRespBody, _ := io.ReadAll(uploadResp.Body)
-		log.Printf("[DOWNLOAD-URL] Agent upload-to-url returned error: %d - %s", uploadResp.StatusCode, string(uploadRespBody))
-		var agentError struct {
-			Error string `json:"error"`
-		}
-		if err := json.Unmarshal(uploadRespBody, &agentError); err == nil && agentError.Error != "" {
-			c.JSON(uploadResp.StatusCode, models.ErrorResponse{
-				Error:   "AgentError",
-				Message: agentError.Error,
-			})
-			return
-		}
-		c.JSON(uploadResp.StatusCode, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Agent upload-to-url failed: " + string(uploadRespBody),
-		})
-		return
-	}
-
-	log.Printf("[DOWNLOAD-URL] Agent successfully uploaded file to S3")
-
-	// Step 3: Generate presigned GET URL for the client to download
-	downloadURL, err := h.storage.GeneratePresignedDownloadURL(ctx, objectKey, expiresIn)
-	if err != nil {
-		log.Printf("[DOWNLOAD-URL] Failed to generate presigned download URL: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to generate download URL: " + err.Error(),
-		})
-		return
-	}
-
-	log.Printf("[DOWNLOAD-URL] Generated presigned download URL for download_id=%s", downloadID)
-
-	c.JSON(http.StatusOK, models.DownloadUrlResponse{
-		DownloadURL: downloadURL,
-		DownloadID:  downloadID,
-		ExpiresIn:   expiresIn,
-	})
-}
-
 // ConfirmUpload handles POST /sandboxes/:id/files/confirm
 func (h *Handler) ConfirmUpload(c *gin.Context) {
 	sandboxID := c.Param("id")
@@ -628,7 +490,7 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 		return
 	}
 
-	_, agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "CONFIRM")
+	agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "CONFIRM")
 	if shouldReturn {
 		return
 	}
