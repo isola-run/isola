@@ -320,12 +320,10 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-template-later"
 			templateName := "template-created-later"
 
-			// Create sandbox first (template doesn't exist yet)
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			// First reconcile - should fail to find template
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -335,7 +333,6 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			// Second reconcile - should find template now
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
@@ -350,7 +347,6 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should handle empty template reference gracefully", func() {
 			sandboxName := "sandbox-empty-template-ref"
 
-			// Create sandbox with empty template ref
 			sandbox := &sandboxv1alpha1.Sandbox{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      sandboxName,
@@ -362,7 +358,6 @@ var _ = Describe("Sandbox Controller", func() {
 					},
 				},
 			}
-			// CRD validation should reject empty template name
 			err := k8sClient.Create(ctx, sandbox)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("should be at least 1 chars long"))
@@ -388,11 +383,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandbox2Name)
 			defer deletePod(ctx, sandbox2Name+"-pod")
 
-			// sandbox3 references a different template
 			createSandbox(ctx, sandbox3Name, "other-template")
 			defer deleteSandbox(ctx, sandbox3Name)
 
-			// Wait for cache to sync
 			var requests []reconcile.Request
 			Eventually(func() int {
 				requests = cachedReconciler.findSandboxesForTemplate(ctx, template)
@@ -555,15 +548,9 @@ var _ = Describe("Sandbox Controller", func() {
 
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
-
-			// Should have 3 init containers: 2 from template + 1 agent sidecar
 			Expect(pod.Spec.InitContainers).To(HaveLen(3))
-
-			// Template init containers should be first (preserved)
 			Expect(pod.Spec.InitContainers[0].Name).To(Equal("init-setup"))
 			Expect(pod.Spec.InitContainers[1].Name).To(Equal("init-config"))
-
-			// Agent sidecar should be appended last
 			Expect(pod.Spec.InitContainers[2].Name).To(Equal(agentContainerName))
 		})
 	})
@@ -615,14 +602,12 @@ var _ = Describe("Sandbox Controller", func() {
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Second reconcile - pod exists but not ready yet
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
-			// Should be pending since pod is not running
 			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxPodReadyCondition)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
@@ -747,11 +732,9 @@ var _ = Describe("Sandbox Controller", func() {
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			// First reconcile - adds finalizer and creates pod
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Second reconcile (pod exists but not ready)
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
@@ -760,7 +743,6 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox2 := getSandbox(ctx, sandboxName)
 			conds2 := sandbox2.Status.Conditions
 
-			// Third reconcile (same state - should be stable now)
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
@@ -769,7 +751,6 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox3 := getSandbox(ctx, sandboxName)
 			conds3 := sandbox3.Status.Conditions
 
-			// Conditions should have same types and statuses between reconciles 2 and 3
 			Expect(conds3).To(HaveLen(len(conds2)))
 			for _, c2 := range conds2 {
 				c3 := meta.FindStatusCondition(conds3, c2.Type)
@@ -1995,33 +1976,26 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-delete-policy"
 			templateName := "template-delete-policy"
 
-			// Create template with Delete policy (default)
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			// First reconcile - creates pod and adds finalizer
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Verify finalizer is present
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(sandbox.Finalizers).To(ContainElement(SandboxFinalizer))
 
-			// Delete the sandbox
 			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
 
-			// Reconcile again - should handle deletion
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-
-			// Sandbox should be gone (finalizer removed, deletion proceeded)
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
@@ -2034,29 +2008,22 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			// First reconcile - adds finalizer
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Verify finalizer is present
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(sandbox.Finalizers).To(ContainElement(SandboxFinalizer))
 
-			// Delete the template
 			deleteTemplate(ctx, templateName)
 
-			// Delete the sandbox
 			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
 
-			// Reconcile - should handle deletion even without template
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-
-			// Sandbox should be gone
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
