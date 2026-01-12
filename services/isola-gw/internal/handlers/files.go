@@ -4,7 +4,6 @@ package handlers
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -279,7 +278,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 }
 
 // DownloadFile handles GET /sandboxes/:id/files?path=...
-// For small files (under 5MB), reads the file directly from the sandbox agent.
+// Streams the file directly from the sandbox agent to the client without buffering.
 func (h *Handler) DownloadFile(c *gin.Context) {
 	sandboxID := c.Param("id")
 	targetPath := c.Query("path")
@@ -299,9 +298,9 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		return
 	}
 
-	// Call agent's /read-file endpoint
+	// Call agent's /read-file endpoint for streaming response
 	agentURL := fmt.Sprintf("http://%s:%d/read-file?path=%s", agentAddress, agentSidecarPort, url.QueryEscape(targetPath))
-	log.Printf("[DOWNLOAD] Forwarding to agent at %s", agentURL)
+	log.Printf("[DOWNLOAD] Streaming from agent at %s", agentURL)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", agentURL, nil)
 	if err != nil {
@@ -313,7 +312,7 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		return
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("[DOWNLOAD] Failed to connect to agent at %s: %v", agentURL, err)
@@ -329,35 +328,11 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		}
 	}()
 
-	// Limit response body to slightly more than threshold to detect oversized files
-	// We don't trust the agent's reported size - enforce the limit by reading at most this many bytes
-	maxReadBytes := int64(fileSizeThresholdBytes + 1024) // 5MB + 1KB buffer for JSON overhead
-	limitedReader := io.LimitReader(resp.Body, maxReadBytes)
-	bodyBytes, err := io.ReadAll(limitedReader)
-	if err != nil {
-		log.Printf("[DOWNLOAD] Failed to read agent response: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to read agent response: " + err.Error(),
-		})
-		return
-	}
-
-	// Check if we hit the limit (file too large)
-	if int64(len(bodyBytes)) >= maxReadBytes {
-		log.Printf("[DOWNLOAD] File exceeds size limit of %d bytes for sandbox %s, path=%s", fileSizeThresholdBytes, sandboxID, targetPath)
-		c.JSON(http.StatusRequestEntityTooLarge, models.ErrorResponse{
-			Error:   "FileTooLarge",
-			Message: fmt.Sprintf("File exceeds maximum size of %d bytes for direct download. Use chunked download for large files.", fileSizeThresholdBytes),
-		})
-		return
-	}
-
-	// Handle error responses from agent
+	// Handle error responses from agent (errors are JSON, success is raw bytes)
 	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		log.Printf("[DOWNLOAD] Agent returned error: %d - %s", resp.StatusCode, string(bodyBytes))
 
-		// Try to parse agent error response
 		var agentError struct {
 			Error string `json:"error"`
 		}
@@ -376,28 +351,23 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		return
 	}
 
-	var agentResponse struct {
-		Success bool   `json:"success"`
-		Path    string `json:"path"`
-		Size    int64  `json:"size"`
-		Content []byte `json:"content"`
-	}
-	if err := json.Unmarshal(bodyBytes, &agentResponse); err != nil {
-		log.Printf("[DOWNLOAD] Failed to parse agent response: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to parse agent response: " + err.Error(),
+	// Stream the response directly to the client
+	contentLength := resp.ContentLength
+	if contentLength > fileSizeThresholdBytes {
+		log.Printf("[DOWNLOAD] File too large: %d bytes (limit: %d)", contentLength, fileSizeThresholdBytes)
+		c.JSON(http.StatusRequestEntityTooLarge, models.ErrorResponse{
+			Error:   "FileTooLarge",
+			Message: fmt.Sprintf("File size (%d bytes) exceeds maximum allowed size (%d bytes)", contentLength, fileSizeThresholdBytes),
 		})
 		return
 	}
 
-	log.Printf("[DOWNLOAD] Successfully downloaded file from sandbox %s: path=%s, size=%d", sandboxID, agentResponse.Path, agentResponse.Size)
+	log.Printf("[DOWNLOAD] Streaming file from sandbox %s: path=%s, size=%d", sandboxID, targetPath, contentLength)
 
-	c.JSON(http.StatusOK, models.FileDownloadResponse{
-		Path:    agentResponse.Path,
-		Size:    int64(len(agentResponse.Content)),
-		Content: base64.StdEncoding.EncodeToString(agentResponse.Content),
-	})
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+		c.Header("Content-Disposition", cd)
+	}
+	c.DataFromReader(http.StatusOK, contentLength, "application/octet-stream", resp.Body, nil)
 }
 
 func (h *Handler) GenerateUploadUrl(c *gin.Context) {

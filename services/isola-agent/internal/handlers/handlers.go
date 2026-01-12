@@ -55,13 +55,6 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-type ReadFileResponse struct {
-	Success bool   `json:"success"`
-	Path    string `json:"path"`
-	Size    int64  `json:"size"`
-	Content []byte `json:"content"`
-}
-
 // Health handles GET /health requests.
 func (h *Handler) Health(c *gin.Context) {
 	c.JSON(http.StatusOK, HealthResponse{Status: "healthy"})
@@ -254,7 +247,7 @@ func (h *Handler) Download(c *gin.Context) {
 	})
 }
 
-// Reads a file from the main container's filesystem and returns its content.
+// ReadFile streams a file from the main container's filesystem directly to the client.
 func (h *Handler) ReadFile(c *gin.Context) {
 	targetPath := c.Query("path")
 	if targetPath == "" {
@@ -262,7 +255,6 @@ func (h *Handler) ReadFile(c *gin.Context) {
 		return
 	}
 
-	// Resolve path via /proc/<pid>/root to access main container's filesystem
 	fullPath, err := h.procFS.ResolvePath(targetPath)
 	if err != nil {
 		log.Printf("Failed to resolve path via procfs: %v", err)
@@ -285,13 +277,11 @@ func (h *Handler) ReadFile(c *gin.Context) {
 		return
 	}
 
-	// Check if it's a directory
 	if fileInfo.IsDir() {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "path is a directory, not a file"})
 		return
 	}
 
-	// Check file size against threshold
 	fileSize := fileInfo.Size()
 	if fileSize >= fileSizeThresholdBytes {
 		log.Printf("File too large for direct read: %d bytes (threshold: %d bytes)", fileSize, fileSizeThresholdBytes)
@@ -301,25 +291,27 @@ func (h *Handler) ReadFile(c *gin.Context) {
 		return
 	}
 
-	content, err := os.ReadFile(fullPath) //nolint:gosec // path is resolved via procfs in sandboxed environment
+	file, err := os.Open(fullPath) //nolint:gosec // path is resolved via procfs in sandboxed environment
 	if err != nil {
 		if os.IsPermission(err) {
 			c.JSON(http.StatusForbidden, ErrorResponse{Error: "permission denied reading: " + targetPath})
 			return
 		}
-		log.Printf("Failed to read file %s: %v", fullPath, err)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to read file"})
+		log.Printf("Failed to open file %s: %v", fullPath, err)
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to open file"})
 		return
 	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("Warning: failed to close file: %v", err)
+		}
+	}()
 
-	log.Printf("Successfully read file %s (size: %d bytes)", fullPath, len(content))
+	fileName := filepath.Base(targetPath)
+	log.Printf("Streaming file %s (size: %d bytes)", fullPath, fileSize)
 
-	c.JSON(http.StatusOK, ReadFileResponse{
-		Success: true,
-		Path:    targetPath,
-		Size:    int64(len(content)),
-		Content: content,
-	})
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
+	c.DataFromReader(http.StatusOK, fileSize, "application/octet-stream", file, nil)
 }
 
 // RegisterRoutes registers all HTTP routes on the given Gin engine.
