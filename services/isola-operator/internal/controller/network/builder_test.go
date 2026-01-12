@@ -63,10 +63,7 @@ func TestBuildNetworkPolicy_Basic(t *testing.T) {
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{},
 	}
 
-	controllerNS := "isola-system"
-	controllerLabels := map[string]string{"app": "isola-controller"}
-
-	np, err := BuildNetworkPolicy(template, controllerNS, controllerLabels)
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
 
 	assert.Equal(t, "test-template-netpol", np.Name)
@@ -77,7 +74,9 @@ func TestBuildNetworkPolicy_Basic(t *testing.T) {
 	assert.Contains(t, np.Spec.PolicyTypes, networkingv1.PolicyTypeEgress)
 }
 
-func TestBuildNetworkPolicy_AlwaysIncludesControllerIngress(t *testing.T) {
+func TestBuildNetworkPolicy_IngressIsEmpty(t *testing.T) {
+	// Ingress from isola-gw is now handled by a separate Helm-installed NetworkPolicy
+	// that selects pods with label `app: isola-sandbox`
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
@@ -86,51 +85,14 @@ func TestBuildNetworkPolicy_AlwaysIncludesControllerIngress(t *testing.T) {
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{},
 	}
 
-	controllerNS := "isola-system"
-	controllerLabels := map[string]string{"app.kubernetes.io/name": "isola-controller"}
-
-	np, err := BuildNetworkPolicy(template, controllerNS, controllerLabels)
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
 
-	// Should have exactly one ingress rule (controller ingress)
-	require.Len(t, np.Spec.Ingress, 1)
-
-	ingressRule := np.Spec.Ingress[0]
-	require.Len(t, ingressRule.From, 1)
-	require.NotNil(t, ingressRule.From[0].NamespaceSelector)
-	assert.Equal(t, "isola-system", ingressRule.From[0].NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"])
-	require.NotNil(t, ingressRule.From[0].PodSelector)
-	assert.Equal(t, "isola-controller", ingressRule.From[0].PodSelector.MatchLabels["app.kubernetes.io/name"])
-	require.Len(t, ingressRule.Ports, 1)
-	assert.Equal(t, int32(8080), ingressRule.Ports[0].Port.IntVal)
-	assert.Equal(t, corev1.ProtocolTCP, *ingressRule.Ports[0].Protocol)
+	// Ingress should be nil (default deny, actual ingress handled by Helm)
+	assert.Nil(t, np.Spec.Ingress)
 }
 
-func TestBuildNetworkPolicy_WithAllowedIngressCIDRs(t *testing.T) {
-	template := &sandboxv1alpha1.NetworkTemplate{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-template",
-			Namespace: "default",
-		},
-		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedIngress: []string{"10.0.0.0/8", "192.168.0.0/16"},
-		},
-	}
-
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
-	require.NoError(t, err)
-
-	// Should have controller ingress + CIDR ingress
-	require.Len(t, np.Spec.Ingress, 2)
-
-	// Second rule should be the CIDR rules
-	cidrRule := np.Spec.Ingress[1]
-	require.Len(t, cidrRule.From, 2)
-	assert.Equal(t, "10.0.0.0/8", cidrRule.From[0].IPBlock.CIDR)
-	assert.Equal(t, "192.168.0.0/16", cidrRule.From[1].IPBlock.CIDR)
-}
-
-func TestBuildNetworkPolicy_WithAllowedEgress(t *testing.T) {
+func TestBuildNetworkPolicy_WithAllowedEgressCIDRs(t *testing.T) {
 	// Use public CIDR since private ranges are blocked
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
@@ -138,11 +100,11 @@ func TestBuildNetworkPolicy_WithAllowedEgress(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedEgress: []string{"8.8.8.0/24"},
+			AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
 
 	require.Len(t, np.Spec.Egress, 1)
@@ -156,11 +118,11 @@ func TestBuildNetworkPolicy_BlocksRiskyCIDRs(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedEgress: []string{"0.0.0.0/0"},
+			AllowedEgressCIDRs: []string{"0.0.0.0/0"},
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
 
 	require.Len(t, np.Spec.Egress, 1)
@@ -185,11 +147,11 @@ func TestBuildNetworkPolicy_DoesNotBlockNonOverlappingCIDRs(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedEgress: []string{"8.8.0.0/16"}, // Google DNS range - public, no overlap
+			AllowedEgressCIDRs: []string{"8.8.0.0/16"}, // Google DNS range - public, no overlap
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
 
 	require.Len(t, np.Spec.Egress, 1)
@@ -198,18 +160,18 @@ func TestBuildNetworkPolicy_DoesNotBlockNonOverlappingCIDRs(t *testing.T) {
 	assert.Empty(t, ipBlock.Except)
 }
 
-func TestBuildNetworkPolicy_WithDNSServers_SingleIP(t *testing.T) {
+func TestBuildNetworkPolicy_WithNameservers_SingleIP(t *testing.T) {
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSServers: []string{"8.8.8.8"},
+			Nameservers: []string{"8.8.8.8"},
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
 
 	require.Len(t, np.Spec.Egress, 1)
@@ -233,18 +195,18 @@ func TestBuildNetworkPolicy_WithDNSServers_SingleIP(t *testing.T) {
 	assert.True(t, hasTCP, "should have TCP port 53")
 }
 
-func TestBuildNetworkPolicy_WithDNSServers_MultipleIPs(t *testing.T) {
+func TestBuildNetworkPolicy_WithNameservers_MultipleIPs(t *testing.T) {
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSServers: []string{"8.8.8.8", "1.1.1.1"},
+			Nameservers: []string{"8.8.8.8", "1.1.1.1"},
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
 
 	require.Len(t, np.Spec.Egress, 1)
@@ -259,18 +221,18 @@ func TestBuildNetworkPolicy_WithDNSServers_MultipleIPs(t *testing.T) {
 	require.Len(t, dnsRule.Ports, 2)
 }
 
-func TestBuildNetworkPolicy_WithDNSServers_IPv6(t *testing.T) {
+func TestBuildNetworkPolicy_WithNameservers_IPv6(t *testing.T) {
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSServers: []string{"2001:4860:4860::8888"},
+			Nameservers: []string{"2001:4860:4860::8888"},
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
 
 	require.Len(t, np.Spec.Egress, 1)
@@ -281,19 +243,19 @@ func TestBuildNetworkPolicy_WithDNSServers_IPv6(t *testing.T) {
 	assert.Equal(t, "2001:4860:4860::8888/128", dnsRule.To[0].IPBlock.CIDR)
 }
 
-func TestBuildNetworkPolicy_WithDNSServers_Empty_NoDNSRule(t *testing.T) {
+func TestBuildNetworkPolicy_WithNameservers_Empty_NoDNSRule(t *testing.T) {
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSServers:    []string{}, // Explicitly empty
-			AllowedEgress: []string{"8.8.8.0/24"},
+			Nameservers:        []string{}, // Explicitly empty
+			AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
 
 	// Should have exactly 1 egress rule (CIDR only, no DNS)
@@ -301,42 +263,26 @@ func TestBuildNetworkPolicy_WithDNSServers_Empty_NoDNSRule(t *testing.T) {
 
 	// Verify no DNS rule exists (no port 53)
 	dnsRule := findDNSEgressRule(np.Spec.Egress)
-	assert.Nil(t, dnsRule, "should not have DNS rule when DNSServers is empty")
+	assert.Nil(t, dnsRule, "should not have DNS rule when Nameservers is empty")
 
 	// Verify the only rule is our CIDR
 	assert.Equal(t, "8.8.8.0/24", np.Spec.Egress[0].To[0].IPBlock.CIDR)
 }
 
-func TestBuildNetworkPolicy_WithDNSServers_Invalid_ReturnsError(t *testing.T) {
+func TestBuildNetworkPolicy_WithNameservers_Invalid_ReturnsError(t *testing.T) {
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSServers: []string{"not-an-ip"},
+			Nameservers: []string{"not-an-ip"},
 		},
 	}
 
-	_, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	_, err := BuildNetworkPolicy(template)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid DNS server IP")
-}
-
-func TestBuildNetworkPolicy_InvalidCIDRReturnsError(t *testing.T) {
-	template := &sandboxv1alpha1.NetworkTemplate{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-template",
-			Namespace: "default",
-		},
-		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedIngress: []string{"invalid-cidr"},
-		},
-	}
-
-	_, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid CIDR")
 }
 
 func TestBuildNetworkPolicy_InvalidEgressCIDRReturnsError(t *testing.T) {
@@ -346,11 +292,11 @@ func TestBuildNetworkPolicy_InvalidEgressCIDRReturnsError(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedEgress: []string{"also-invalid"},
+			AllowedEgressCIDRs: []string{"also-invalid"},
 		},
 	}
 
-	_, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	_, err := BuildNetworkPolicy(template)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid CIDR")
 }
@@ -391,11 +337,11 @@ func TestBuildNetworkPolicy_BlockedEgressCIDRReturnsError(t *testing.T) {
 					Namespace: "default",
 				},
 				Spec: sandboxv1alpha1.NetworkTemplateSpec{
-					AllowedEgress: []string{tt.cidr},
+					AllowedEgressCIDRs: []string{tt.cidr},
 				},
 			}
 
-			_, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+			_, err := BuildNetworkPolicy(template)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.errorContains)
 		})
@@ -403,24 +349,19 @@ func TestBuildNetworkPolicy_BlockedEgressCIDRReturnsError(t *testing.T) {
 }
 
 func TestBuildNetworkPolicy_CanonicalizesNonCanonicalCIDR(t *testing.T) {
-	// Non-canonical input: 8.8.8.8/24 should become 8.8.8.0/24
+	// Non-canonical input: 1.2.3.4/16 should become 1.2.0.0/16
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedIngress: []string{"8.8.8.8/24"},
-			AllowedEgress:  []string{"1.2.3.4/16"},
+			AllowedEgressCIDRs: []string{"1.2.3.4/16"},
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
-
-	// Check ingress CIDR is canonicalized
-	require.Len(t, np.Spec.Ingress, 2)
-	assert.Equal(t, "8.8.8.0/24", np.Spec.Ingress[1].From[0].IPBlock.CIDR)
 
 	// Check egress CIDR is canonicalized
 	require.Len(t, np.Spec.Egress, 1)
@@ -434,17 +375,16 @@ func TestBuildNetworkPolicy_FullTemplate(t *testing.T) {
 			Namespace: "sandbox-ns",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedIngress: []string{"10.0.0.0/8"},
-			AllowedEgress:  []string{"0.0.0.0/0"},
-			DNSServers:     []string{"8.8.8.8"},
+			AllowedEgressCIDRs: []string{"0.0.0.0/0"},
+			Nameservers:        []string{"8.8.8.8"},
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
 
-	// Verify all ingress rules present: controller + CIDR
-	assert.Len(t, np.Spec.Ingress, 2)
+	// Ingress is nil (handled by Helm-installed NetworkPolicy)
+	assert.Nil(t, np.Spec.Ingress)
 
 	// Verify all egress rules present: DNS + CIDR
 	assert.Len(t, np.Spec.Egress, 2)
@@ -469,62 +409,276 @@ func TestBuildNetworkPolicy_FullTemplate(t *testing.T) {
 }
 
 // =============================================================================
-// Order-agnostic helper functions for rule matching
+// AllowedEgressPods tests
 // =============================================================================
 
-// findIngressRuleWithCIDRs finds an ingress rule containing all specified CIDRs (order-agnostic).
-func findIngressRuleWithCIDRs(rules []networkingv1.NetworkPolicyIngressRule, cidrs ...string) *networkingv1.NetworkPolicyIngressRule {
-	cidrSet := make(map[string]bool)
-	for _, c := range cidrs {
-		cidrSet[c] = true
+func TestBuildNetworkPolicy_WithEgressPods_BasicPodSelector(t *testing.T) {
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-template",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{
+			AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
+				{
+					Namespace: "kube-system",
+					PodSelector: metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"k8s-app": "kube-dns",
+						},
+					},
+				},
+			},
+		},
 	}
 
-	for i := range rules {
-		rule := &rules[i]
-		found := make(map[string]bool)
-		for _, from := range rule.From {
-			if from.IPBlock != nil {
-				found[from.IPBlock.CIDR] = true
-			}
-		}
-		if len(found) == len(cidrSet) {
-			match := true
-			for c := range cidrSet {
-				if !found[c] {
-					match = false
-					break
-				}
-			}
-			if match {
-				return rule
-			}
-		}
-	}
-	return nil
+	np, err := BuildNetworkPolicy(template)
+	require.NoError(t, err)
+
+	require.Len(t, np.Spec.Egress, 1)
+	egressRule := np.Spec.Egress[0]
+
+	require.Len(t, egressRule.To, 1)
+	peer := egressRule.To[0]
+
+	// Verify namespace selector
+	require.NotNil(t, peer.NamespaceSelector)
+	assert.Equal(t, "kube-system", peer.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"])
+
+	// Verify pod selector
+	require.NotNil(t, peer.PodSelector)
+	assert.Equal(t, "kube-dns", peer.PodSelector.MatchLabels["k8s-app"])
+
+	// No ports specified = all ports allowed
+	assert.Empty(t, egressRule.Ports)
 }
 
-// findEgressRuleWithCIDR finds an egress rule with the specified CIDR (order-agnostic).
-func findEgressRuleWithCIDR(rules []networkingv1.NetworkPolicyEgressRule, cidr string) *networkingv1.NetworkPolicyEgressRule {
-	for i := range rules {
-		for _, to := range rules[i].To {
-			if to.IPBlock != nil && to.IPBlock.CIDR == cidr {
-				return &rules[i]
-			}
+func TestBuildNetworkPolicy_WithEgressPods_WithPorts(t *testing.T) {
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-template",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{
+			AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
+				{
+					Namespace: "kube-system",
+					PodSelector: metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"k8s-app": "kube-dns",
+						},
+					},
+					Ports: []sandboxv1alpha1.NetworkPort{
+						{Protocol: corev1.ProtocolUDP, Port: 53},
+						{Protocol: corev1.ProtocolTCP, Port: 53},
+					},
+				},
+			},
+		},
+	}
+
+	np, err := BuildNetworkPolicy(template)
+	require.NoError(t, err)
+
+	require.Len(t, np.Spec.Egress, 1)
+	egressRule := np.Spec.Egress[0]
+
+	// Verify ports
+	require.Len(t, egressRule.Ports, 2)
+
+	var hasUDP, hasTCP bool
+	for _, port := range egressRule.Ports {
+		if *port.Protocol == corev1.ProtocolUDP && port.Port.IntVal == 53 {
+			hasUDP = true
+		}
+		if *port.Protocol == corev1.ProtocolTCP && port.Port.IntVal == 53 {
+			hasTCP = true
 		}
 	}
-	return nil
+	assert.True(t, hasUDP, "should have UDP port 53")
+	assert.True(t, hasTCP, "should have TCP port 53")
 }
 
-// findDNSEgressRule finds an egress rule with port 53 (DNS rule).
-func findDNSEgressRule(rules []networkingv1.NetworkPolicyEgressRule) *networkingv1.NetworkPolicyEgressRule {
-	for i := range rules {
-		for _, port := range rules[i].Ports {
-			if port.Port != nil && port.Port.IntVal == 53 {
-				return &rules[i]
+func TestBuildNetworkPolicy_WithEgressPods_DefaultProtocol(t *testing.T) {
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-template",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{
+			AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
+				{
+					Namespace: "my-namespace",
+					PodSelector: metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "my-service",
+						},
+					},
+					Ports: []sandboxv1alpha1.NetworkPort{
+						{Port: 8080}, // No protocol specified - should default to TCP
+					},
+				},
+			},
+		},
+	}
+
+	np, err := BuildNetworkPolicy(template)
+	require.NoError(t, err)
+
+	require.Len(t, np.Spec.Egress, 1)
+	egressRule := np.Spec.Egress[0]
+
+	require.Len(t, egressRule.Ports, 1)
+	assert.Equal(t, corev1.ProtocolTCP, *egressRule.Ports[0].Protocol)
+	assert.Equal(t, int32(8080), egressRule.Ports[0].Port.IntVal)
+}
+
+func TestBuildNetworkPolicy_WithEgressPods_MultipleRules(t *testing.T) {
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-template",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{
+			AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
+				{
+					Namespace: "kube-system",
+					PodSelector: metav1.LabelSelector{
+						MatchLabels: map[string]string{"k8s-app": "kube-dns"},
+					},
+					Ports: []sandboxv1alpha1.NetworkPort{
+						{Protocol: corev1.ProtocolUDP, Port: 53},
+					},
+				},
+				{
+					Namespace: "localstack",
+					PodSelector: metav1.LabelSelector{
+						MatchLabels: map[string]string{"app.kubernetes.io/name": "localstack"},
+					},
+					Ports: []sandboxv1alpha1.NetworkPort{
+						{Protocol: corev1.ProtocolTCP, Port: 4566},
+					},
+				},
+			},
+		},
+	}
+
+	np, err := BuildNetworkPolicy(template)
+	require.NoError(t, err)
+
+	// Should have 2 egress rules (one per pod rule)
+	require.Len(t, np.Spec.Egress, 2)
+
+	// Find kube-dns rule
+	var kubeDNSRule, localstackRule *networkingv1.NetworkPolicyEgressRule
+	for i := range np.Spec.Egress {
+		rule := &np.Spec.Egress[i]
+		if len(rule.To) > 0 && rule.To[0].NamespaceSelector != nil {
+			switch rule.To[0].NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"] {
+			case "kube-system":
+				kubeDNSRule = rule
+			case "localstack":
+				localstackRule = rule
 			}
 		}
 	}
-	return nil
+
+	require.NotNil(t, kubeDNSRule, "should have kube-dns egress rule")
+	require.NotNil(t, localstackRule, "should have localstack egress rule")
+
+	// Verify kube-dns rule
+	assert.Equal(t, "kube-dns", kubeDNSRule.To[0].PodSelector.MatchLabels["k8s-app"])
+	require.Len(t, kubeDNSRule.Ports, 1)
+	assert.Equal(t, int32(53), kubeDNSRule.Ports[0].Port.IntVal)
+
+	// Verify localstack rule
+	assert.Equal(t, "localstack", localstackRule.To[0].PodSelector.MatchLabels["app.kubernetes.io/name"])
+	require.Len(t, localstackRule.Ports, 1)
+	assert.Equal(t, int32(4566), localstackRule.Ports[0].Port.IntVal)
+}
+
+func TestBuildNetworkPolicy_WithEgressPods_EmptyPodSelector(t *testing.T) {
+	// Empty pod selector should match all pods in the namespace
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-template",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{
+			AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
+				{
+					Namespace:   "my-namespace",
+					PodSelector: metav1.LabelSelector{}, // Empty = all pods
+				},
+			},
+		},
+	}
+
+	np, err := BuildNetworkPolicy(template)
+	require.NoError(t, err)
+
+	require.Len(t, np.Spec.Egress, 1)
+	egressRule := np.Spec.Egress[0]
+
+	require.Len(t, egressRule.To, 1)
+	peer := egressRule.To[0]
+
+	// Namespace should be set
+	require.NotNil(t, peer.NamespaceSelector)
+	assert.Equal(t, "my-namespace", peer.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"])
+
+	// Pod selector should be empty (matches all pods)
+	require.NotNil(t, peer.PodSelector)
+	assert.Empty(t, peer.PodSelector.MatchLabels)
+	assert.Empty(t, peer.PodSelector.MatchExpressions)
+}
+
+func TestBuildNetworkPolicy_CombinedEgressRules(t *testing.T) {
+	// Test combining Nameservers, AllowedEgressPods, and AllowedEgressCIDRs
+	template := &sandboxv1alpha1.NetworkTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-template",
+			Namespace: "default",
+		},
+		Spec: sandboxv1alpha1.NetworkTemplateSpec{
+			Nameservers: []string{"8.8.8.8"},
+			AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
+				{
+					Namespace: "kube-system",
+					PodSelector: metav1.LabelSelector{
+						MatchLabels: map[string]string{"k8s-app": "kube-dns"},
+					},
+				},
+			},
+			AllowedEgressCIDRs: []string{"1.1.1.0/24"},
+		},
+	}
+
+	np, err := BuildNetworkPolicy(template)
+	require.NoError(t, err)
+
+	// Should have 3 egress rules: DNS IP + pod selector + CIDR
+	require.Len(t, np.Spec.Egress, 3)
+
+	// Verify DNS rule exists (by port 53)
+	dnsRule := findDNSEgressRule(np.Spec.Egress)
+	require.NotNil(t, dnsRule)
+	assert.Equal(t, "8.8.8.8/32", dnsRule.To[0].IPBlock.CIDR)
+
+	// Verify pod selector rule exists
+	var podRule *networkingv1.NetworkPolicyEgressRule
+	for i := range np.Spec.Egress {
+		rule := &np.Spec.Egress[i]
+		if len(rule.To) > 0 && rule.To[0].PodSelector != nil {
+			podRule = rule
+			break
+		}
+	}
+	require.NotNil(t, podRule, "should have pod selector egress rule")
+
+	// Verify CIDR rule exists
+	cidrRule := findEgressRuleWithCIDR(np.Spec.Egress, "1.1.1.0/24")
+	require.NotNil(t, cidrRule, "should have CIDR egress rule")
 }
 
 // =============================================================================
@@ -539,11 +693,11 @@ func TestBuildNetworkPolicy_IPv6InternetAllowYieldsExceptions(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedEgress: []string{"::/0"},
+			AllowedEgressCIDRs: []string{"::/0"},
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
 
 	require.Len(t, np.Spec.Egress, 1)
@@ -572,11 +726,11 @@ func TestBuildNetworkPolicy_PartialSupersetContainment(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedEgress: []string{"10.0.0.0/7"},
+			AllowedEgressCIDRs: []string{"10.0.0.0/7"},
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
 
 	require.Len(t, np.Spec.Egress, 1)
@@ -600,19 +754,12 @@ func TestBuildNetworkPolicy_DeduplicatesCIDRs(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedIngress: []string{"8.8.8.0/24", "8.8.8.0/24", "1.1.1.0/24", "8.8.8.0/24"},
-			AllowedEgress:  []string{"8.8.8.0/24", "8.8.8.0/24", "1.1.1.0/24"},
+			AllowedEgressCIDRs: []string{"8.8.8.0/24", "8.8.8.0/24", "1.1.1.0/24"},
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
-
-	// Ingress: controller rule + 1 CIDR rule with 2 unique CIDRs
-	require.Len(t, np.Spec.Ingress, 2)
-	cidrIngressRule := findIngressRuleWithCIDRs(np.Spec.Ingress, "8.8.8.0/24", "1.1.1.0/24")
-	require.NotNil(t, cidrIngressRule, "should have ingress rule with both unique CIDRs")
-	assert.Len(t, cidrIngressRule.From, 2, "should have exactly 2 unique CIDRs, not 4")
 
 	// Egress: 2 rules (one per unique CIDR)
 	require.Len(t, np.Spec.Egress, 2)
@@ -625,62 +772,49 @@ func TestBuildNetworkPolicy_DeduplicatesCIDRs(t *testing.T) {
 }
 
 func TestBuildNetworkPolicy_DeduplicatesNonCanonicalDuplicates(t *testing.T) {
-	// 8.8.8.8/24 and 8.8.8.0/24 should dedupe to single rule (same canonical form)
+	// 1.2.3.4/16 and 1.2.0.0/16 should dedupe to single rule (same canonical form)
 	template := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-template",
 			Namespace: "default",
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedIngress: []string{"8.8.8.8/24", "8.8.8.0/24"},
-			AllowedEgress:  []string{"1.2.3.4/16", "1.2.0.0/16"},
+			AllowedEgressCIDRs: []string{"1.2.3.4/16", "1.2.0.0/16"},
 		},
 	}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
+	np, err := BuildNetworkPolicy(template)
 	require.NoError(t, err)
-
-	// Ingress: controller + 1 CIDR rule with single unique CIDR
-	require.Len(t, np.Spec.Ingress, 2)
-	var cidrRule *networkingv1.NetworkPolicyIngressRule
-	for i := range np.Spec.Ingress {
-		for _, from := range np.Spec.Ingress[i].From {
-			if from.IPBlock != nil {
-				cidrRule = &np.Spec.Ingress[i]
-				break
-			}
-		}
-	}
-	require.NotNil(t, cidrRule)
-	assert.Len(t, cidrRule.From, 1, "non-canonical duplicates should be deduped")
-	assert.Equal(t, "8.8.8.0/24", cidrRule.From[0].IPBlock.CIDR)
 
 	// Egress: single rule
 	require.Len(t, np.Spec.Egress, 1)
 	assert.Equal(t, "1.2.0.0/16", np.Spec.Egress[0].To[0].IPBlock.CIDR)
 }
 
-func TestBuildNetworkPolicy_WithIngressCIDRs_OrderAgnostic(t *testing.T) {
-	// Refactored version of TestBuildNetworkPolicy_WithAllowedIngressCIDRs
-	// that doesn't assume rule ordering
-	template := &sandboxv1alpha1.NetworkTemplate{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-template",
-			Namespace: "default",
-		},
-		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			AllowedIngress: []string{"10.0.0.0/8", "192.168.0.0/16"},
-		},
+// =============================================================================
+// Helper functions for rule matching
+// =============================================================================
+
+// findEgressRuleWithCIDR finds an egress rule with the specified CIDR (order-agnostic).
+func findEgressRuleWithCIDR(rules []networkingv1.NetworkPolicyEgressRule, cidr string) *networkingv1.NetworkPolicyEgressRule {
+	for i := range rules {
+		for _, to := range rules[i].To {
+			if to.IPBlock != nil && to.IPBlock.CIDR == cidr {
+				return &rules[i]
+			}
+		}
 	}
+	return nil
+}
 
-	np, err := BuildNetworkPolicy(template, "isola-system", map[string]string{"app": "controller"})
-	require.NoError(t, err)
-
-	// Should have controller ingress + CIDR ingress
-	require.Len(t, np.Spec.Ingress, 2)
-
-	// Find CIDR rule (order-agnostic)
-	cidrRule := findIngressRuleWithCIDRs(np.Spec.Ingress, "10.0.0.0/8", "192.168.0.0/16")
-	require.NotNil(t, cidrRule, "should have ingress rule with both CIDRs")
-	assert.Len(t, cidrRule.From, 2)
+// findDNSEgressRule finds an egress rule with port 53 (DNS rule).
+func findDNSEgressRule(rules []networkingv1.NetworkPolicyEgressRule) *networkingv1.NetworkPolicyEgressRule {
+	for i := range rules {
+		for _, port := range rules[i].Ports {
+			if port.Port != nil && port.Port.IntVal == 53 {
+				return &rules[i]
+			}
+		}
+	}
+	return nil
 }

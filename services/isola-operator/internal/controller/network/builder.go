@@ -100,9 +100,6 @@ const (
 	NetworkPolicySuffix = "-netpol"
 
 	NetworkTemplateLabelKey = "sandbox.isola.run/network-template"
-
-	// the port used by the isola-agent sidecar
-	isolaAgentIngressPort = 8080
 )
 
 func GetNetworkPolicyName(templateName string) string {
@@ -118,39 +115,22 @@ type egressCIDR struct {
 // BuildNetworkPolicy creates a K8s NetworkPolicy from a NetworkTemplate.
 // The policy selects pods with the label {NetworkTemplateLabelKey}={template-name}.
 //
-// Parameters:
-//   - template: The NetworkTemplate to build the policy from
-//   - isolaGatewayNamespace: The namespace where the isola isola-gateway runs
-//   - isolaGatewayLabels: Labels to select isola-gateway pods for ingress
+// The generated policy enforces:
+// - Default deny for both ingress and egress
+// - Egress rules based on AllowedEgressCIDRs, AllowedEgressPods, and Nameservers
+//
+// Note: Ingress from isola-gw is handled by a separate Helm-installed NetworkPolicy
+// that selects pods with label `app: isola-sandbox`.
 //
 // Returns error if CIDRs are invalid or if egress CIDRs completely overlap with blocked ranges.
-func BuildNetworkPolicy(
-	template *sandboxv1alpha1.NetworkTemplate,
-	isolaGatewayNamespace string,
-	isolaGatewayLabels map[string]string,
-) (*networkingv1.NetworkPolicy, error) {
+func BuildNetworkPolicy(template *sandboxv1alpha1.NetworkTemplate) (*networkingv1.NetworkPolicy, error) {
 	spec := &template.Spec
 
-	// Parse and validate all CIDRs upfront, collecting canonical prefixes.
+	// Parse and validate egress CIDRs, collecting canonical prefixes.
 	// Deduplicate to avoid redundant rules (uses canonical string as key).
-	ingressPrefixes := make([]netip.Prefix, 0, len(spec.AllowedIngress))
-	seenIngress := make(map[string]bool)
-	for _, cidrStr := range spec.AllowedIngress {
-		prefix, err := cidr.ParsePrefix(cidrStr)
-		if err != nil {
-			return nil, err
-		}
-		key := prefix.String()
-		if seenIngress[key] {
-			continue
-		}
-		seenIngress[key] = true
-		ingressPrefixes = append(ingressPrefixes, prefix)
-	}
-
-	egressCIDRs := make([]egressCIDR, 0, len(spec.AllowedEgress))
+	egressCIDRs := make([]egressCIDR, 0, len(spec.AllowedEgressCIDRs))
 	seenEgress := make(map[string]bool)
-	for _, cidrStr := range spec.AllowedEgress {
+	for _, cidrStr := range spec.AllowedEgressCIDRs {
 		prefix, err := cidr.ParsePrefix(cidrStr)
 		if err != nil {
 			return nil, err
@@ -167,8 +147,9 @@ func BuildNetworkPolicy(
 		egressCIDRs = append(egressCIDRs, egressCIDR{Prefix: prefix, Except: except})
 	}
 
+	// Parse nameserver IPs - egress to these IPs is automatically allowed on port 53
 	var dnsAddrs []netip.Addr
-	for _, ipStr := range spec.DNSServers {
+	for _, ipStr := range spec.Nameservers {
 		addr, err := cidr.ParseDNSServerIP(ipStr)
 		if err != nil {
 			return nil, err
@@ -199,76 +180,31 @@ func BuildNetworkPolicy(
 		},
 	}
 
-	np.Spec.Ingress = buildIngressRules(ingressPrefixes, isolaGatewayNamespace, isolaGatewayLabels)
-	np.Spec.Egress = buildEgressRules(egressCIDRs, dnsAddrs)
+	// Ingress: empty (default deny) - ingress from isola-gw is handled by the
+	// Helm-installed NetworkPolicy "allow-isola-gw-ingress" in the sandbox namespace.
+	np.Spec.Ingress = nil
+	np.Spec.Egress = buildEgressRules(egressCIDRs, dnsAddrs, spec.AllowedEgressPods)
 
 	return np, nil
 }
 
-// buildIngressRules creates NetworkPolicy ingress rules.
-// Accepts pre-validated, canonical prefixes from BuildNetworkPolicy.
-func buildIngressRules(
-	allowedPrefixes []netip.Prefix,
-	isolaGatewayNamespace string,
-	isolaGatewayLabels map[string]string,
-) []networkingv1.NetworkPolicyIngressRule {
-	var rules []networkingv1.NetworkPolicyIngressRule
-
-	// add isola-gateway allow ingress rule - This is required for isola-gateway->sandbox communication
-	rules = append(rules, buildAllowIsolaGatewayIngressRule(isolaGatewayNamespace, isolaGatewayLabels))
-
-	// Add CIDR-based rules
-	if len(allowedPrefixes) > 0 {
-		peers := make([]networkingv1.NetworkPolicyPeer, 0, len(allowedPrefixes))
-		for _, prefix := range allowedPrefixes {
-			peers = append(peers, networkingv1.NetworkPolicyPeer{
-				IPBlock: &networkingv1.IPBlock{
-					CIDR: prefix.String(),
-				},
-			})
-		}
-		rules = append(rules, networkingv1.NetworkPolicyIngressRule{
-			From: peers,
-		})
-	}
-
-	return rules
-}
-
-func buildAllowIsolaGatewayIngressRule(controllerNamespace string, controllerLabels map[string]string) networkingv1.NetworkPolicyIngressRule {
-	tcpProtocol := corev1.ProtocolTCP
-	port := intstr.FromInt(isolaAgentIngressPort)
-
-	return networkingv1.NetworkPolicyIngressRule{
-		From: []networkingv1.NetworkPolicyPeer{
-			{
-				NamespaceSelector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"kubernetes.io/metadata.name": controllerNamespace,
-					},
-				},
-				PodSelector: &metav1.LabelSelector{
-					MatchLabels: controllerLabels,
-				},
-			},
-		},
-		Ports: []networkingv1.NetworkPolicyPort{
-			{Protocol: &tcpProtocol, Port: &port},
-		},
-	}
-}
-
-// buildEgressRules creates NetworkPolicy egress rules from pre-computed CIDRs.
+// buildEgressRules creates NetworkPolicy egress rules from pre-computed CIDRs and pod selectors.
 // If dnsServers is non-empty, adds a rule to allow DNS traffic to those IPs.
+// If egressPodRules is non-empty, adds rules to allow traffic to those pods.
 // Accepts fully validated and computed egressCIDRs from BuildNetworkPolicy.
 func buildEgressRules(
 	egressCIDRs []egressCIDR,
 	dnsServers []netip.Addr,
+	egressPodRules []sandboxv1alpha1.EgressPodRule,
 ) []networkingv1.NetworkPolicyEgressRule {
 	var rules []networkingv1.NetworkPolicyEgressRule
 
 	if len(dnsServers) > 0 {
 		rules = append(rules, buildDNSServerEgressRule(dnsServers))
+	}
+
+	for _, podRule := range egressPodRules {
+		rules = append(rules, buildPodSelectorEgressRule(podRule))
 	}
 
 	for _, ecidr := range egressCIDRs {
@@ -289,6 +225,39 @@ func buildEgressRules(
 	}
 
 	return rules
+}
+
+func buildPodSelectorEgressRule(rule sandboxv1alpha1.EgressPodRule) networkingv1.NetworkPolicyEgressRule {
+	egressRule := networkingv1.NetworkPolicyEgressRule{
+		To: []networkingv1.NetworkPolicyPeer{
+			{
+				// Select namespace by the standard kubernetes.io/metadata.name label
+				NamespaceSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"kubernetes.io/metadata.name": rule.Namespace,
+					},
+				},
+				PodSelector: &rule.PodSelector,
+			},
+		},
+	}
+
+	if len(rule.Ports) > 0 {
+		egressRule.Ports = make([]networkingv1.NetworkPolicyPort, 0, len(rule.Ports))
+		for _, p := range rule.Ports {
+			protocol := p.Protocol
+			if protocol == "" {
+				protocol = corev1.ProtocolTCP
+			}
+			port := intstr.FromInt32(p.Port)
+			egressRule.Ports = append(egressRule.Ports, networkingv1.NetworkPolicyPort{
+				Protocol: &protocol,
+				Port:     &port,
+			})
+		}
+	}
+
+	return egressRule
 }
 
 // buildDNSServerEgressRule creates an egress rule allowing traffic to DNS server IPs on port 53.
