@@ -323,7 +323,7 @@ func (m *Manager) GetSandboxStatus(ctx context.Context, sandboxID string) (*Sand
 
 	log.Printf("Fetching sandbox status for '%s' from CR conditions", sandboxID)
 
-	// Get the Sandbox CR - this is the source of truth
+	// Get the Sandbox CR
 	sandbox, err := m.GetSandboxCR(ctx, sandboxID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sandbox CR: %w", err)
@@ -332,7 +332,7 @@ func (m *Manager) GetSandboxStatus(ctx context.Context, sandboxID string) (*Sand
 		return nil, nil // Sandbox not found
 	}
 
-	// Parse state from CR conditions (maintained by the controller)
+	// Parse state from CR conditions
 	state, errorReason := m.parseStateFromConditions(sandbox)
 
 	// Construct DNS address for the agent
