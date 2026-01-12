@@ -59,51 +59,45 @@ echo ""
 if [ "$LARGE_FILE" = true ]; then
   download_large_file
 else
-  # Small file download (direct)
+  # Small file download (direct streaming)
   echo "=== Small File Download (direct) ==="
   
   # URL encode the path
   ENCODED_PATH=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${FILE_PATH}'))")
   
   echo "Requesting file..."
-  RESPONSE=$(curl -s -X GET "${BASE_URL}/sandboxes/${SANDBOX_ID}/files?path=${ENCODED_PATH}" \
+  
+  # Download file directly - response is now raw bytes (not JSON)
+  # Use -w to get HTTP status code, -o to save body to file
+  HTTP_CODE=$(curl -s -w "%{http_code}" -o "${OUTPUT_FILE}" \
+    -X GET "${BASE_URL}/sandboxes/${SANDBOX_ID}/files?path=${ENCODED_PATH}" \
     -H "X-API-Key: ${API_KEY}")
 
-  echo "Raw response: $RESPONSE"
-  echo ""
-
-  # Check for error
-  ERROR=$(echo "$RESPONSE" | jq -r '.error // empty')
-  if [ -n "$ERROR" ]; then
-    MESSAGE=$(echo "$RESPONSE" | jq -r '.message // empty')
+  echo "HTTP status: $HTTP_CODE"
+  
+  if [ "$HTTP_CODE" != "200" ]; then
+    # Error response is JSON - read it from the output file
+    echo "Error downloading file:"
+    cat "${OUTPUT_FILE}"
+    echo ""
     
     # Check if it's a file size limit error - fall back to S3 download
-    if echo "$MESSAGE" | grep -q "exceeds direct download limit"; then
-      echo "Error: $ERROR"
-      echo "$RESPONSE" | jq .
+    if grep -q "exceeds" "${OUTPUT_FILE}" 2>/dev/null; then
       echo ""
       echo "File too large for direct download, falling back to S3..."
       echo ""
       download_large_file
     else
-      echo "Error: $ERROR"
-      echo "$RESPONSE" | jq .
+      rm -f "${OUTPUT_FILE}"
       exit 1
     fi
   else
-    # Extract and decode base64 content
-    CONTENT=$(echo "$RESPONSE" | jq -r '.content')
-    SIZE=$(echo "$RESPONSE" | jq -r '.size')
-    PATH_RESP=$(echo "$RESPONSE" | jq -r '.path')
-    
-    echo "File path: $PATH_RESP"
-    echo "File size: $SIZE bytes"
-    
-    # Decode base64 content and save to file
-    echo "$CONTENT" | base64 -d > "${OUTPUT_FILE}"
-    
     echo "File saved to: ${OUTPUT_FILE}"
     ls -la "${OUTPUT_FILE}"
+    echo ""
+    echo "Content preview:"
+    head -c 200 "${OUTPUT_FILE}"
+    echo ""
   fi
 fi
 
