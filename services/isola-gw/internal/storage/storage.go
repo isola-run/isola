@@ -6,6 +6,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"time"
@@ -104,6 +105,41 @@ func (b *BucketWrapper) GeneratePresignedDownloadURL(ctx context.Context, key st
 // DeleteObject deletes an object from the bucket.
 func (b *BucketWrapper) DeleteObject(ctx context.Context, key string) error {
 	return b.bucket.Delete(ctx, key)
+}
+
+// ObjectExists checks if an object exists in the bucket.
+func (b *BucketWrapper) ObjectExists(ctx context.Context, key string) (bool, error) {
+	return b.bucket.Exists(ctx, key)
+}
+
+// ObjectExistsWithPrefix checks if any object exists with the given prefix.
+func (b *BucketWrapper) ObjectExistsWithPrefix(ctx context.Context, prefix string) (bool, error) {
+	iter := b.bucket.List(&blob.ListOptions{Prefix: prefix})
+	obj, err := iter.Next(ctx)
+	if err != nil {
+		if err == io.EOF {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to list objects with prefix %q: %w", prefix, err)
+	}
+	return obj != nil, nil
+}
+
+// GetFirstObjectWithPrefix returns the key of the first object with the given prefix.
+// Returns empty string if no object is found.
+func (b *BucketWrapper) GetFirstObjectWithPrefix(ctx context.Context, prefix string) (string, error) {
+	iter := b.bucket.List(&blob.ListOptions{Prefix: prefix})
+	obj, err := iter.Next(ctx)
+	if err != nil {
+		if err == io.EOF {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to list objects with prefix %q: %w", prefix, err)
+	}
+	if obj == nil {
+		return "", nil
+	}
+	return obj.Key, nil
 }
 
 // Close closes the underlying bucket.

@@ -66,7 +66,7 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		log.Printf("Starting isola-gw server on %s", addr)
+		log.Printf("Starting isola-gw server on %s ~~~~~~~~~~", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
@@ -75,7 +75,7 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server...")
+	log.Println("Shutting down server....")
 
 	// Graceful shutdown
 	// TODO: __OMER__ Configure pod terminationGracePeriodSeconds in deployment.yaml to match this timeout

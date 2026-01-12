@@ -53,3 +53,19 @@ type FileDownloadResponse struct {
 	Size    int64  `json:"size"`
 	Content string `json:"content"`
 }
+
+// LargeFileDownloadResponse is returned when a large file download is initiated.
+// The client should poll using the download_id until status becomes "ready".
+type LargeFileDownloadResponse struct {
+	DownloadID string `json:"download_id"`
+	Status     string `json:"status"` // "uploading" or "ready"
+	Path       string `json:"path"`
+}
+
+// DownloadReadyResponse is returned when a large file download is ready.
+type DownloadReadyResponse struct {
+	DownloadID  string `json:"download_id"`
+	Status      string `json:"status"` // "ready"
+	DownloadURL string `json:"download_url"`
+	ExpiresIn   int    `json:"expires_in"`
+}
