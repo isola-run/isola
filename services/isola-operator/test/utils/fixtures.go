@@ -152,10 +152,10 @@ func WithNameservers(servers ...string) NetworkTemplateOption {
 	}
 }
 
-// WithDNSPolicy sets the DNS policy for the network template
-func WithDNSPolicy(policy corev1.DNSPolicy) NetworkTemplateOption {
+// WithAllowInClusterEgress sets whether in-cluster egress is allowed
+func WithAllowInClusterEgress(allow bool) NetworkTemplateOption {
 	return func(nt *sandboxv1alpha1.NetworkTemplate) {
-		nt.Spec.DNSPolicy = policy
+		nt.Spec.AllowInClusterEgress = allow
 	}
 }
 
@@ -167,7 +167,7 @@ func WithAllowedEgressPods(rules ...sandboxv1alpha1.EgressPodRule) NetworkTempla
 }
 
 // NewTestNetworkTemplate creates a new NetworkTemplate for testing.
-// By default, uses DNSPolicy: None with external DNS.
+// By default, uses AllowInClusterEgress: false (DNSPolicy=None) with external DNS.
 // Use WithNameservers() to override or omit nameservers (empty = sink nameserver).
 func NewTestNetworkTemplate(name, namespace string, opts ...NetworkTemplateOption) *sandboxv1alpha1.NetworkTemplate {
 	nt := &sandboxv1alpha1.NetworkTemplate{
@@ -176,8 +176,8 @@ func NewTestNetworkTemplate(name, namespace string, opts ...NetworkTemplateOptio
 			Namespace: namespace,
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSPolicy:   corev1.DNSNone,
-			Nameservers: []string{"8.8.8.8"},
+			AllowInClusterEgress: false,
+			Nameservers:          []string{"8.8.8.8"},
 		},
 	}
 

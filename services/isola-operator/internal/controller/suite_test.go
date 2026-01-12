@@ -174,15 +174,15 @@ var _ = BeforeSuite(func() {
 	Expect(k8sClient.Create(ctx, priorityClass)).To(Succeed())
 
 	// Create and reconcile the default NetworkTemplate that all sandboxes use
-	// The isolated template uses DNSPolicy: None with external DNS to avoid cluster network access
+	// The isolated template uses AllowInClusterEgress: false (DNSPolicy=None) with external DNS
 	defaultNetworkTemplate := &sandboxv1alpha1.NetworkTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      sandboxv1alpha1.DefaultNetworkTemplate,
 			Namespace: testNamespace,
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSPolicy:   corev1.DNSNone,
-			Nameservers: []string{"8.8.8.8"},
+			AllowInClusterEgress: false,
+			Nameservers:          []string{"8.8.8.8"},
 		},
 	}
 	Expect(k8sClient.Create(ctx, defaultNetworkTemplate)).To(Succeed())

@@ -118,11 +118,13 @@ type egressCIDR struct {
 // The generated policy enforces:
 // - Default deny for both ingress and egress
 // - Egress rules based on AllowedEgressCIDRs, AllowedEgressPods, and Nameservers
+// - When AllowInClusterEgress is false, private IP ranges are added as exceptions to CIDR rules
+// - When AllowInClusterEgress is true, no exceptions are added (cluster IPs reachable via CIDRs)
 //
 // Note: Ingress from isola-gw is handled by a separate Helm-installed NetworkPolicy
 // that selects pods with label `app: isola-sandbox`.
 //
-// Returns error if CIDRs are invalid or if egress CIDRs completely overlap with blocked ranges.
+// Returns error if CIDRs are invalid or (when AllowInClusterEgress=false) if CIDRs overlap blocked ranges.
 func BuildNetworkPolicy(template *sandboxv1alpha1.NetworkTemplate) (*networkingv1.NetworkPolicy, error) {
 	spec := &template.Spec
 
@@ -140,9 +142,14 @@ func BuildNetworkPolicy(template *sandboxv1alpha1.NetworkTemplate) (*networkingv
 			continue
 		}
 		seenEgress[key] = true
-		except, err := cidr.ComputeExcept(prefix)
-		if err != nil {
-			return nil, err
+
+		// Only compute exceptions (block private ranges) when AllowInClusterEgress is false
+		var except []netip.Prefix
+		if !spec.AllowInClusterEgress {
+			except, err = cidr.ComputeExcept(prefix)
+			if err != nil {
+				return nil, err
+			}
 		}
 		egressCIDRs = append(egressCIDRs, egressCIDR{Prefix: prefix, Except: except})
 	}
