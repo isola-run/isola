@@ -201,10 +201,8 @@ func main() {
 	// NetworkTemplateReconciler manages the lifecycle for NetworkTemplates.
 	// It creates/updates policies and sets the Ready condition that SandboxReconciler checks.
 	if err := (&controller.NetworkTemplateReconciler{
-		Client:                mgr.GetClient(),
-		Scheme:                mgr.GetScheme(),
-		IsolaGatewayNamespace: isolaGatewayNamespace,
-		IsolaGatewayLabels:    map[string]string{"app.kubernetes.io/name": isolaGatewayLabelName},
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "NetworkTemplate")
 		os.Exit(1)

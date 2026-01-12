@@ -384,25 +384,10 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	// sandboxPod.Annotations["dev.gvisor.tar.rootfs.upper.todobenl"] = "/tmp/rootfs-sandbox-870e5846-1766869560.tar"
 
-	// Configure DNS for network-isolated sandboxes.
-	// Always set dnsPolicy: None to prevent cluster DNS access and prevent leaking information from kube-dns.
-	// When DNSServers is empty, use 127.0.0.1 as a sink (DNS won't work).
-	// Note: Kubernetes requires at least one nameserver when dnsPolicy is None.
-	sandboxPod.Spec.DNSPolicy = corev1.DNSNone
-	nameservers := networkTemplate.Spec.DNSServers
-	var dnsOptions []corev1.PodDNSConfigOption
-	if len(nameservers) == 0 { // nameservers must be at least 1 https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-dns-config
-		nameservers = []string{"127.0.0.1"} // Sink - DNS queries will fail
-		// Fast-fail options: minimize time wasted on DNS queries that will never succeed
-		dnsOptions = []corev1.PodDNSConfigOption{
-			{Name: "timeout", Value: ptr.To("1")},
-			{Name: "attempts", Value: ptr.To("1")},
-			{Name: "ndots", Value: ptr.To("1")},
-		}
-	}
-	sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{
-		Nameservers: nameservers,
-		Options:     dnsOptions,
+	// Configure DNS for sandbox pods based on NetworkTemplate settings.
+	if err := configureDNS(sandboxPod, networkTemplate); err != nil {
+		log.Error(err, "Failed to configure DNS")
+		return err
 	}
 
 	if err := r.injectSidecar(sandboxPod); err != nil {
@@ -461,6 +446,51 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	}); err != nil {
 		log.Error(err, "Failed to update Sandbox status")
 		return err
+	}
+
+	return nil
+}
+
+// configureDNS sets up DNS configuration for the sandbox pod based on the NetworkTemplate.
+// - DNSPolicy None: Uses only the specified nameservers. If empty, uses 127.0.0.1 sink with fast-fail options.
+// - DNSPolicy ClusterFirst: Uses cluster DNS with optional additional nameservers.
+func configureDNS(sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.NetworkTemplate) error {
+	dnsPolicy := networkTemplate.Spec.DNSPolicy
+
+	switch dnsPolicy {
+	case corev1.DNSNone:
+		sandboxPod.Spec.DNSPolicy = corev1.DNSNone
+		nameservers := networkTemplate.Spec.Nameservers
+		dnsOptions := []corev1.PodDNSConfigOption{
+			// ndots:1 - external domains are tried directly without search domain suffix
+			{Name: "ndots", Value: ptr.To("1")},
+		}
+		if len(nameservers) == 0 {
+			// Sink nameserver - DNS queries will fail fast
+			nameservers = []string{"127.0.0.1"}
+			dnsOptions = []corev1.PodDNSConfigOption{
+				{Name: "timeout", Value: ptr.To("1")},
+				{Name: "attempts", Value: ptr.To("1")},
+				{Name: "ndots", Value: ptr.To("1")},
+			}
+		}
+		sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{
+			Nameservers: nameservers,
+			Options:     dnsOptions,
+		}
+
+	case corev1.DNSClusterFirst, "":
+		sandboxPod.Spec.DNSPolicy = corev1.DNSClusterFirst
+		if len(networkTemplate.Spec.Nameservers) > 0 {
+			if sandboxPod.Spec.DNSConfig == nil {
+				sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{}
+			}
+			sandboxPod.Spec.DNSConfig.Nameservers = networkTemplate.Spec.Nameservers
+		}
+		// When no additional nameservers, don't modify DNSConfig - use pod template defaults
+
+	default:
+		return fmt.Errorf("unsupported DNS policy: %q", dnsPolicy)
 	}
 
 	return nil
