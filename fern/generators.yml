@@ -1,0 +1,24 @@
+api:
+  specs:
+    - openapi: openapi/openapi.yaml
+
+default-group: local
+groups:
+  local:
+    generators:
+      - name: fernapi/fern-python-sdk
+        version: 4.0.0
+        output:
+          location: local-file-system
+          path: ../sdks/python
+        config:
+          package_name: isola
+          client_class_name: Isola
+      - name: fernapi/fern-typescript-node-sdk
+        version: 1.0.0
+        output:
+          location: local-file-system
+          path: ../sdks/typescript
+        config:
+          namespaceExport: Isola
+
