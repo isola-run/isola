@@ -168,10 +168,10 @@ func createNetworkTemplate(ctx context.Context, name string, opts ...func(*sandb
 			Namespace: testNamespace,
 		},
 		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			// Default to isolated mode (DNSPolicy: None with external DNS)
+			// Default to isolated mode (allowInClusterEgress=false implies DNSPolicy=None)
 			// This satisfies CEL validation without requiring cluster DNS access
-			DNSPolicy:   corev1.DNSNone,
-			Nameservers: []string{"8.8.8.8"},
+			AllowInClusterEgress: false,
+			Nameservers:          []string{"8.8.8.8"},
 		},
 	}
 	for _, opt := range opts {
@@ -2631,9 +2631,9 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should create owned NetworkTemplate when sandbox has embedded network spec", func() {
 			// Create sandbox with embedded network spec
 			networkSpec := sandboxv1alpha1.NetworkTemplateSpec{
-				DNSPolicy:          corev1.DNSNone,
-				Nameservers:        []string{"8.8.8.8"},
-				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
+				AllowInClusterEgress: false,
+				Nameservers:          []string{"8.8.8.8"},
+				AllowedEgressCIDRs:   []string{"8.8.8.0/24"},
 			}
 			createSandboxWithNetworkSpec(sandboxName, templateName, networkSpec)
 			defer deleteSandbox(ctx, sandboxName)
@@ -2673,9 +2673,9 @@ var _ = Describe("Sandbox Controller", func() {
 
 			// Create sandbox with embedded network spec
 			networkSpec := sandboxv1alpha1.NetworkTemplateSpec{
-				DNSPolicy:          corev1.DNSNone,
-				Nameservers:        []string{"8.8.8.8"},
-				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
+				AllowInClusterEgress: false,
+				Nameservers:          []string{"8.8.8.8"},
+				AllowedEgressCIDRs:   []string{"8.8.8.0/24"},
 			}
 			createSandboxWithNetworkSpec(sandboxName, templateName, networkSpec)
 			defer deleteSandbox(ctx, sandboxName)
@@ -2721,9 +2721,9 @@ var _ = Describe("Sandbox Controller", func() {
 					Namespace: testNamespace,
 				},
 				Spec: sandboxv1alpha1.NetworkTemplateSpec{
-					DNSPolicy:          corev1.DNSNone,
-					Nameservers:        []string{"8.8.8.8"},
-					AllowedEgressCIDRs: []string{"0.0.0.0/0"},
+					AllowInClusterEgress: false,
+					Nameservers:          []string{"8.8.8.8"},
+					AllowedEgressCIDRs:   []string{"0.0.0.0/0"},
 				},
 			}
 			err := k8sClient.Create(ctx, conflictingNT)
@@ -2735,9 +2735,9 @@ var _ = Describe("Sandbox Controller", func() {
 
 			// Create sandbox that would use the conflicting name
 			networkSpec := sandboxv1alpha1.NetworkTemplateSpec{
-				DNSPolicy:          corev1.DNSNone,
-				Nameservers:        []string{"8.8.8.8"},
-				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
+				AllowInClusterEgress: false,
+				Nameservers:          []string{"8.8.8.8"},
+				AllowedEgressCIDRs:   []string{"8.8.8.0/24"},
 			}
 			createSandboxWithNetworkSpec(sandboxName, templateName, networkSpec)
 			defer deleteSandbox(ctx, sandboxName)
@@ -2762,9 +2762,9 @@ var _ = Describe("Sandbox Controller", func() {
 					Namespace: testNamespace,
 				},
 				Spec: sandboxv1alpha1.NetworkTemplateSpec{
-					DNSPolicy:          corev1.DNSNone,
-					Nameservers:        []string{"8.8.8.8"},
-					AllowedEgressCIDRs: []string{"0.0.0.0/0"},
+					AllowInClusterEgress: false,
+					Nameservers:          []string{"8.8.8.8"},
+					AllowedEgressCIDRs:   []string{"0.0.0.0/0"},
 				},
 			}
 			err := k8sClient.Create(ctx, sharedNT)
@@ -2778,9 +2778,9 @@ var _ = Describe("Sandbox Controller", func() {
 			// Create sandbox1 with embedded spec
 			sandbox1Name := sandboxName + "-1"
 			networkSpec := sandboxv1alpha1.NetworkTemplateSpec{
-				DNSPolicy:          corev1.DNSNone,
-				Nameservers:        []string{"8.8.8.8"},
-				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
+				AllowInClusterEgress: false,
+				Nameservers:          []string{"8.8.8.8"},
+				AllowedEgressCIDRs:   []string{"8.8.8.0/24"},
 			}
 			createSandboxWithNetworkSpec(sandbox1Name, templateName, networkSpec)
 			defer deleteSandbox(ctx, sandbox1Name)
@@ -2925,14 +2925,14 @@ var _ = Describe("Sandbox Controller", func() {
 			)
 		})
 
-		It("should configure ClusterFirst DNS when dnsPolicy is ClusterFirst", func() {
+		It("should configure ClusterFirst DNS when allowInClusterEgress is true", func() {
 			sandboxName := fmt.Sprintf("sandbox-dns-cluster-%d", time.Now().UnixNano())
 			podName := sandboxName + "-pod"
 			networkTemplateName := fmt.Sprintf("dns-cluster-template-%d", time.Now().UnixNano())
 
-			// Create network template with ClusterFirst - needs egress to DNS pods
+			// Create network template with allowInClusterEgress=true (implies ClusterFirst DNS)
 			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.DNSPolicy = corev1.DNSClusterFirst
+				nt.Spec.AllowInClusterEgress = true
 				nt.Spec.Nameservers = nil // Clear default nameservers
 				nt.Spec.AllowedEgressPods = []sandboxv1alpha1.EgressPodRule{
 					{
@@ -2960,13 +2960,13 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.DNSConfig).To(BeNil())
 		})
 
-		It("should configure DNS None with ndots:1 when dnsPolicy is None", func() {
+		It("should configure DNS None with ndots:1 when allowInClusterEgress is false", func() {
 			sandboxName := fmt.Sprintf("sandbox-dns-none-%d", time.Now().UnixNano())
 			podName := sandboxName + "-pod"
 			networkTemplateName := fmt.Sprintf("dns-none-template-%d", time.Now().UnixNano())
 
 			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.DNSPolicy = corev1.DNSNone
+				nt.Spec.AllowInClusterEgress = false
 				nt.Spec.Nameservers = []string{"8.8.8.8", "1.1.1.1"}
 			})
 			reconcileNetworkTemplate(ctx, networkTemplateName)
@@ -2984,19 +2984,19 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
 			Expect(pod.Spec.DNSConfig).NotTo(BeNil())
 			Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
-			// ndots:1 is hard-coded for DNSPolicy None
+			// ndots:1 is hard-coded for allowInClusterEgress=false (DNSPolicy None)
 			Expect(pod.Spec.DNSConfig.Options).To(HaveLen(1))
 			Expect(pod.Spec.DNSConfig.Options[0].Name).To(Equal("ndots"))
 			Expect(*pod.Spec.DNSConfig.Options[0].Value).To(Equal("1"))
 		})
 
-		It("should use sink nameserver with fast-fail options when dnsPolicy is None and nameservers is empty", func() {
+		It("should use sink nameserver with fast-fail options when allowInClusterEgress is false and nameservers is empty", func() {
 			sandboxName := fmt.Sprintf("sandbox-dns-sink-%d", time.Now().UnixNano())
 			podName := sandboxName + "-pod"
 			networkTemplateName := fmt.Sprintf("dns-sink-template-%d", time.Now().UnixNano())
 
 			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.DNSPolicy = corev1.DNSNone
+				nt.Spec.AllowInClusterEgress = false
 				nt.Spec.Nameservers = []string{} // Empty - should use sink nameserver
 			})
 			reconcileNetworkTemplate(ctx, networkTemplateName)
@@ -3028,7 +3028,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(optionMap["ndots"]).To(Equal("1"))
 		})
 
-		It("should preserve existing DNSConfig options when adding nameservers for ClusterFirst", func() {
+		It("should preserve existing DNSConfig options when adding nameservers for allowInClusterEgress=true", func() {
 			sandboxName := fmt.Sprintf("sandbox-dns-preserve-%d", time.Now().UnixNano())
 			podName := sandboxName + "-pod"
 			networkTemplateName := fmt.Sprintf("dns-preserve-template-%d", time.Now().UnixNano())
@@ -3063,9 +3063,9 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(k8sClient.Create(ctx, customTemplate)).To(Succeed())
 			defer deleteTemplate(ctx, customTemplateName)
 
-			// Create network template with ClusterFirst + additional nameservers
+			// Create network template with allowInClusterEgress=true + additional nameservers
 			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.DNSPolicy = corev1.DNSClusterFirst
+				nt.Spec.AllowInClusterEgress = true
 				nt.Spec.Nameservers = []string{"8.8.8.8"}
 				nt.Spec.AllowedEgressPods = []sandboxv1alpha1.EgressPodRule{
 					{
@@ -3199,7 +3199,7 @@ var _ = Describe("Sandbox Controller", func() {
 })
 
 var _ = Describe("configureDNS function", func() {
-	It("should return error for unsupported DNS policy", func() {
+	It("should configure DNSPolicy None when allowInClusterEgress is false", func() {
 		pod := &corev1.Pod{
 			Spec: corev1.PodSpec{
 				Containers: []corev1.Container{
@@ -3210,17 +3210,18 @@ var _ = Describe("configureDNS function", func() {
 
 		networkTemplate := &sandboxv1alpha1.NetworkTemplate{
 			Spec: sandboxv1alpha1.NetworkTemplateSpec{
-				DNSPolicy: corev1.DNSPolicy("InvalidPolicy"),
+				AllowInClusterEgress: false,
+				Nameservers:          []string{"8.8.8.8"},
 			},
 		}
 
-		err := configureDNS(pod, networkTemplate)
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("unsupported DNS policy"))
-		Expect(err.Error()).To(ContainSubstring("InvalidPolicy"))
+		configureDNS(pod, networkTemplate)
+		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
+		Expect(pod.Spec.DNSConfig).NotTo(BeNil())
+		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8"}))
 	})
 
-	It("should not return error for empty DNS policy (defaults to ClusterFirst)", func() {
+	It("should configure DNSPolicy ClusterFirst when allowInClusterEgress is true", func() {
 		pod := &corev1.Pod{
 			Spec: corev1.PodSpec{
 				Containers: []corev1.Container{
@@ -3231,12 +3232,11 @@ var _ = Describe("configureDNS function", func() {
 
 		networkTemplate := &sandboxv1alpha1.NetworkTemplate{
 			Spec: sandboxv1alpha1.NetworkTemplateSpec{
-				DNSPolicy: "", // Empty should default to ClusterFirst
+				AllowInClusterEgress: true,
 			},
 		}
 
-		err := configureDNS(pod, networkTemplate)
-		Expect(err).NotTo(HaveOccurred())
+		configureDNS(pod, networkTemplate)
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
 	})
 })

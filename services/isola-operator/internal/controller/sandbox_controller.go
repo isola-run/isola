@@ -385,10 +385,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// sandboxPod.Annotations["dev.gvisor.tar.rootfs.upper.todobenl"] = "/tmp/rootfs-sandbox-870e5846-1766869560.tar"
 
 	// Configure DNS for sandbox pods based on NetworkTemplate settings.
-	if err := configureDNS(sandboxPod, networkTemplate); err != nil {
-		log.Error(err, "Failed to configure DNS")
-		return err
-	}
+	configureDNS(sandboxPod, networkTemplate)
 
 	if err := r.injectSidecar(sandboxPod); err != nil {
 		log.Error(err, "Failed to inject sidecar")
@@ -452,13 +449,22 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 }
 
 // configureDNS sets up DNS configuration for the sandbox pod based on the NetworkTemplate.
-// - DNSPolicy None: Uses only the specified nameservers. If empty, uses 127.0.0.1 sink with fast-fail options.
-// - DNSPolicy ClusterFirst: Uses cluster DNS with optional additional nameservers.
-func configureDNS(sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.NetworkTemplate) error {
-	dnsPolicy := networkTemplate.Spec.DNSPolicy
-
-	switch dnsPolicy {
-	case corev1.DNSNone:
+// DNS policy is derived from AllowInClusterEgress:
+// - AllowInClusterEgress=false: DNSPolicy None with specified nameservers or sink (127.0.0.1)
+// - AllowInClusterEgress=true: DNSPolicy ClusterFirst with optional additional nameservers
+func configureDNS(sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.NetworkTemplate) {
+	if networkTemplate.Spec.AllowInClusterEgress {
+		// ClusterFirst: use cluster DNS with optional additional nameservers
+		sandboxPod.Spec.DNSPolicy = corev1.DNSClusterFirst
+		if len(networkTemplate.Spec.Nameservers) > 0 {
+			if sandboxPod.Spec.DNSConfig == nil {
+				sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{}
+			}
+			sandboxPod.Spec.DNSConfig.Nameservers = networkTemplate.Spec.Nameservers
+		}
+		// When no additional nameservers, don't modify DNSConfig - use pod template defaults
+	} else {
+		// None: use only specified nameservers or sink
 		sandboxPod.Spec.DNSPolicy = corev1.DNSNone
 		nameservers := networkTemplate.Spec.Nameservers
 		dnsOptions := []corev1.PodDNSConfigOption{
@@ -478,22 +484,7 @@ func configureDNS(sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.Netwo
 			Nameservers: nameservers,
 			Options:     dnsOptions,
 		}
-
-	case corev1.DNSClusterFirst, "":
-		sandboxPod.Spec.DNSPolicy = corev1.DNSClusterFirst
-		if len(networkTemplate.Spec.Nameservers) > 0 {
-			if sandboxPod.Spec.DNSConfig == nil {
-				sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{}
-			}
-			sandboxPod.Spec.DNSConfig.Nameservers = networkTemplate.Spec.Nameservers
-		}
-		// When no additional nameservers, don't modify DNSConfig - use pod template defaults
-
-	default:
-		return fmt.Errorf("unsupported DNS policy: %q", dnsPolicy)
 	}
-
-	return nil
 }
 
 // todo benl: extract snapshotting to a separate controller that manages the FSSnapshotter CRD

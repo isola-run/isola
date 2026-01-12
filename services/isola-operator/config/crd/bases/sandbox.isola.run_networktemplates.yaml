@@ -54,12 +54,31 @@ spec:
           spec:
             description: spec defines the network isolation rules
             properties:
+              allowInClusterEgress:
+                default: false
+                description: |-
+                  AllowInClusterEgress controls whether egress to cluster-internal IPs is permitted
+                  and determines the DNS policy for sandbox pods.
+
+                  When false (default):
+                  - Private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, etc.) are blocked from CIDR rules
+                  - Pod DNS policy is set to "None" - uses only nameservers field (or sink 127.0.0.1 if empty)
+                  - Sandboxes can only reach external IPs (via allowedEgressCIDRs) or specific pods (via allowedEgressPods)
+
+                  When true:
+                  - No CIDR exceptions are added; cluster IPs are reachable if covered by allowedEgressCIDRs
+                  - Pod DNS policy is set to "ClusterFirst" to use cluster DNS (kube-dns/CoreDNS)
+                  - Requires allowedEgressCIDRs or allowedEgressPods to ensure cluster DNS is reachable
+
+                  Note: allowedEgressPods always works regardless of this setting, enabling selective
+                  cluster access (e.g., kube-dns only) even when allowInClusterEgress is false.
+                type: boolean
               allowedEgressCIDRs:
                 description: |-
                   AllowedEgressCIDRs is a list of CIDRs the sandbox is allowed to connect to (outbound traffic).
                   If empty, no CIDR-based egress is allowed (but allowedEgressPods rules may still permit traffic).
-                  Risky IPs (cloud metadata 169.254.0.0/16, private ranges, IPv6 link-local fe80::/10) are
-                  automatically blocked when the specified CIDR would otherwise allow them.
+                  When allowInClusterEgress is false, private IP ranges are automatically blocked
+                  (added as exceptions) even if the specified CIDR would otherwise include them.
                 items:
                   pattern: ^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$
                   type: string
@@ -67,14 +86,14 @@ spec:
               allowedEgressPods:
                 description: |-
                   AllowedEgressPods specifies pods the sandbox can connect to via label selectors.
-                  Useful for allowing access to in-cluster services like kube-dns.
-                  When using ClusterFirst DNS policy, you must add a rule here to allow egress to DNS.
+                  These rules work regardless of allowInClusterEgress setting, enabling selective
+                  cluster access even when general cluster egress is blocked.
 
                   Example for kube-dns/CoreDNS:
                     - namespace: kube-system
                       podSelector:
                         matchLabels:
-                          k8s-app: kube-dns  # or k8s-app: coredns depending on cluster
+                          k8s-app: kube-dns
                       ports:
                         - port: 53
                           protocol: UDP
@@ -168,27 +187,15 @@ spec:
                   - podSelector
                   type: object
                 type: array
-              dnsPolicy:
-                default: ClusterFirst
-                description: |
-                  DNSPolicy specifies the DNS policy for sandbox pods.
-                  - "None": Pod uses only the nameservers from the nameservers field (fully isolated from cluster DNS).
-                    If no nameservers are specified, a sink nameserver (127.0.0.1) is used and DNS queries will fail.
-                    The pod's resolv.conf will have ndots:1 for faster resolution of external domains.
-                  - "ClusterFirst": Pod uses cluster DNS, with nameservers combined (duplicates removed).
-                    When using ClusterFirst, you must also add an egress rule via allowedEgressPods to permit
-                    traffic to kube-dns (typically namespace=kube-system, label k8s-app=kube-dns or k8s-app=coredns).
-                enum:
-                - None
-                - ClusterFirst
-                type: string
               nameservers:
                 description: |-
                   Nameservers is a list of DNS server IP addresses.
-                  - When dnsPolicy is "None": optional. If empty, 127.0.0.1 is used as a sink (DNS queries fail).
-                    If specified, these are the only nameservers available, and egress to their IPs is automatically allowed.
-                  - When dnsPolicy is "ClusterFirst": optional, combined with cluster DNS (duplicates removed by k8s).
-                    If specified, egress to their IPs is automatically allowed.
+                  When allowInClusterEgress is false (DNSPolicy=None):
+                  - If empty, 127.0.0.1 is used as a sink (DNS queries fail fast with ndots:1)
+                  - If specified, these are the only nameservers available
+                  When allowInClusterEgress is true (DNSPolicy=ClusterFirst):
+                  - If specified, combined with cluster DNS (duplicates removed by k8s)
+                  Egress to specified nameserver IPs is automatically allowed on port 53.
                   MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
                 items:
                   type: string
@@ -199,10 +206,10 @@ spec:
                   rule: self.all(s, isIP(s))
             type: object
             x-kubernetes-validations:
-            - message: allowedEgressPods is required when dnsPolicy is ClusterFirst
-                (must allow egress to cluster DNS)
-              rule: self.dnsPolicy != 'ClusterFirst' || size(self.allowedEgressPods)
-                > 0
+            - message: allowInClusterEgress requires allowedEgressCIDRs or allowedEgressPods
+                (for cluster DNS access)
+              rule: '!self.allowInClusterEgress || size(self.allowedEgressCIDRs) >
+                0 || size(self.allowedEgressPods) > 0'
           status:
             description: status defines the observed state of NetworkTemplate
             properties:

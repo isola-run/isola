@@ -58,9 +58,12 @@ cd services/isola-operator && make generate manifests && \
 **Network isolation architecture:**
 - Each NetworkTemplate creates a NetworkPolicy that controls egress
 - Ingress from isola-gw is allowed by `allow-isola-gw-ingress` NetworkPolicy (Helm-installed, not per-template)
+- `allowInClusterEgress` controls cluster access and DNS policy:
+  - `false` (default): Blocks private IP ranges via CIDR exceptions, uses DNSPolicy=None
+  - `true`: No CIDR exceptions (cluster IPs reachable), uses DNSPolicy=ClusterFirst
 - Built-in templates in `charts/isola-operator/templates/network-templates.yaml`:
-  - `isola-isolated`: Default, denies all traffic. Uses DNSPolicy: None with sink nameserver (127.0.0.1)
-  - `isola-egress-only`: Allows internet egress (0.0.0.0/0) with external DNS (8.8.8.8, 1.1.1.1)
+  - `isola-isolated`: Default, denies all traffic. Uses allowInClusterEgress=false with sink nameserver (127.0.0.1)
+  - `isola-egress-only`: Allows internet egress (0.0.0.0/0) with external DNS (8.8.8.8, 1.1.1.1), blocks cluster
 
 **Finalizers:** `sandbox.isola.run/cleanup` ensures cleanup before sandbox deletion.
 
