@@ -42,9 +42,8 @@ import (
 )
 
 const (
-	RootfsSnapshotFinalizer = "rootfssnapshot.isola.run/cleanup"
-
 	defaultActiveDeadlineSecondsSnapshot int64 = 300
+	defaultTTLSecondsAfterFinished       int32 = 300
 )
 
 type RootfsSnapshotReconciler struct {
@@ -61,26 +60,14 @@ func (r *RootfsSnapshotReconciler) clock() Clock {
 	return RealClock{}
 }
 
-func (r *RootfsSnapshotReconciler) patchStatus(ctx context.Context, baseSnap *sandboxv1alpha1.RootfsSnapshot, snap *sandboxv1alpha1.RootfsSnapshot, conditions []metav1.Condition) error {
-	if snap.Status.Conditions == nil {
-		snap.Status.Conditions = []metav1.Condition{}
-	}
-	for _, cond := range conditions {
-		meta.SetStatusCondition(&snap.Status.Conditions, cond)
-	}
-	return r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap))
-}
-
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots/finalizers,verbs=update
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups=node.k8s.io,resources=runtimeclasses,verbs=get;list;watch
 
 func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithValues("rootfssnapshot", req.NamespacedName)
-
 	log.Info("Reconciling RootfsSnapshot")
 
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
@@ -91,34 +78,20 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	baseSnap := snap.DeepCopy()
-
-	// Handle TTL cleanup for finished snapshots
-	ttlResult, ttlDone := r.handleTTLCleanup(ctx, snap)
-	if ttlDone {
-		return ttlResult, nil
-	}
-
-	// Handle deletion
-	if !snap.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, snap)
-	}
-
-	// Ensure finalizer
-	if !controllerutil.ContainsFinalizer(snap, RootfsSnapshotFinalizer) {
-		controllerutil.AddFinalizer(snap, RootfsSnapshotFinalizer)
-		if err := r.Update(ctx, snap); err != nil {
-			return ctrl.Result{}, err
+	// Handle TTL cleanup for completed snapshots
+	if snap.Status.CompletedAt != nil {
+		ttlDone, requeueAfter := r.handleTTLCleanup(ctx, snap)
+		if ttlDone {
+			return ctrl.Result{}, nil
 		}
-		baseSnap = snap.DeepCopy()
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
 
-	// Check if already completed
+	// Already finished?
 	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
 	if readyCond != nil && (readyCond.Reason == sandboxv1alpha1.ReasonRootfsSnapshotSucceeded ||
 		readyCond.Reason == sandboxv1alpha1.ReasonRootfsSnapshotFailed) {
-		// Already finished - return TTL requeue result if TTL is set
-		return ttlResult, nil
+		return ctrl.Result{}, nil
 	}
 
 	// Get the sandbox pod
@@ -127,9 +100,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: snap.Namespace}, pod); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Pod not found", "pod", podName)
-			return r.setFailedStatus(ctx, snap, baseSnap,
-				sandboxv1alpha1.ReasonRootfsSnapshotFailed,
-				fmt.Sprintf("Pod %q not found", podName))
+			return r.setFailed(ctx, snap, fmt.Sprintf("Pod %q not found", podName))
 		}
 		return ctrl.Result{}, err
 	}
@@ -137,222 +108,70 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// Check runtime support
 	supported, retryable, err := snapshot.CheckRootfsSnapshotSupport(ctx, r.Client, pod)
 	if err != nil {
-		log.Error(err, "Failed to check runtime support")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{}, err
 	}
-
 	if !supported {
 		if retryable {
 			log.Info("Pod not ready for snapshotting, will retry")
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
-		log.Info("Runtime not supported for snapshotting")
-		return r.setRuntimeNotSupported(ctx, snap, baseSnap)
+		return r.setFailed(ctx, snap, "Runtime does not support rootfs snapshotting")
 	}
 
-	// Runtime is supported - set condition
-	if err := r.patchStatus(ctx, baseSnap, snap, []metav1.Condition{
-		{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotRuntimeSupported),
-			Status:             metav1.ConditionTrue,
-			Reason:             sandboxv1alpha1.ReasonRuntimeSupported,
-			Message:            "Runtime supports rootfs snapshotting",
-			ObservedGeneration: snap.Generation,
-		},
-	}); err != nil {
-		return ctrl.Result{}, err
-	}
-	baseSnap = snap.DeepCopy()
-
-	// Determine which containers to snapshot
+	// Determine containers to snapshot
 	containerNames := snap.Spec.ContainerNames
 	if len(containerNames) == 0 {
-		containerNames = snapshot.GetSnapshotableContainers(pod)
+		containerNames = podutil.GetSnapshotableContainers(pod)
 	}
-
 	if len(containerNames) == 0 {
-		log.Info("No containers to snapshot")
-		return r.setFailedStatus(ctx, snap, baseSnap,
-			sandboxv1alpha1.ReasonRootfsSnapshotFailed,
-			"No containers found to snapshot")
+		return r.setFailed(ctx, snap, "No containers found to snapshot")
 	}
 
-	// Initialize container snapshot statuses if needed
-	if len(snap.Status.ContainerSnapshots) == 0 {
-		snap.Status.ContainerSnapshots = make([]sandboxv1alpha1.ContainerSnapshotStatus, 0, len(containerNames))
-		for _, name := range containerNames {
-			snap.Status.ContainerSnapshots = append(snap.Status.ContainerSnapshots, sandboxv1alpha1.ContainerSnapshotStatus{
-				ContainerName: name,
-				Conditions:    []metav1.Condition{},
-			})
-		}
-		if err := r.patchStatus(ctx, baseSnap, snap, nil); err != nil {
-			return ctrl.Result{}, err
-		}
-		baseSnap = snap.DeepCopy()
-	}
-
-	// Process each container
-	nodeName := pod.Spec.NodeName
-	allSucceeded := true
-	anyFailed := false
-	anyPending := false
-
-	for i := range snap.Status.ContainerSnapshots {
-		cs := &snap.Status.ContainerSnapshots[i]
-
-		// Check current condition
-		readyCond := meta.FindStatusCondition(cs.Conditions, string(sandboxv1alpha1.ContainerSnapshotReady))
-		if readyCond != nil && readyCond.Status == metav1.ConditionTrue {
-			continue // Already succeeded
-		}
-		if readyCond != nil && readyCond.Reason == sandboxv1alpha1.ReasonContainerFailed {
-			anyFailed = true
-			allSucceeded = false
-			continue // Already failed
-		}
-
-		// Get or create job for this container
-		result, err := r.reconcileContainerSnapshot(ctx, snap, baseSnap, pod, cs, nodeName)
-		if err != nil {
-			return result, err
-		}
-
-		// Re-check condition after reconcile
-		readyCond = meta.FindStatusCondition(cs.Conditions, string(sandboxv1alpha1.ContainerSnapshotReady))
-		if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
-			allSucceeded = false
-			if readyCond != nil && readyCond.Reason == sandboxv1alpha1.ReasonContainerFailed {
-				anyFailed = true
-			} else {
-				anyPending = true
-			}
-		}
-	}
-
-	// Update aggregate Ready condition
-	baseSnap = snap.DeepCopy()
-	now := metav1.NewTime(r.clock().Now())
-
-	if allSucceeded {
-		snap.Status.CompletedAt = &now
-		if err := r.patchStatus(ctx, baseSnap, snap, []metav1.Condition{
-			{
-				Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-				Status:             metav1.ConditionTrue,
-				Reason:             sandboxv1alpha1.ReasonRootfsSnapshotSucceeded,
-				Message:            "All container snapshots completed successfully",
-				ObservedGeneration: snap.Generation,
-			},
-		}); err != nil {
-			return ctrl.Result{}, err
-		}
-		r.Recorder.Event(snap, corev1.EventTypeNormal, "SnapshotComplete", "All container rootfs snapshots completed")
-		log.Info("All container snapshots completed")
-		return ctrl.Result{}, nil
-	}
-
-	if anyFailed && !anyPending {
-		// All done, but some failed
-		snap.Status.CompletedAt = &now
-		if err := r.patchStatus(ctx, baseSnap, snap, []metav1.Condition{
-			{
-				Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-				Status:             metav1.ConditionFalse,
-				Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
-				Message:            "One or more container snapshots failed",
-				ObservedGeneration: snap.Generation,
-			},
-		}); err != nil {
-			return ctrl.Result{}, err
-		}
-		r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", "One or more container snapshots failed")
-		return ctrl.Result{}, nil
-	}
-
-	// Still in progress
-	if err := r.patchStatus(ctx, baseSnap, snap, []metav1.Condition{
-		{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-			Status:             metav1.ConditionFalse,
-			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotInProgress,
-			Message:            "Container snapshots in progress",
-			ObservedGeneration: snap.Generation,
-		},
-	}); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	// Get or create the snapshot job (single job for the first container for now)
+	// TODO: support multiple containers by iterating
+	containerName := containerNames[0]
+	return r.reconcileSnapshotJob(ctx, snap, pod, containerName)
 }
 
-func (r *RootfsSnapshotReconciler) reconcileContainerSnapshot(
+func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 	ctx context.Context,
 	snap *sandboxv1alpha1.RootfsSnapshot,
-	baseSnap *sandboxv1alpha1.RootfsSnapshot,
 	pod *corev1.Pod,
-	cs *sandboxv1alpha1.ContainerSnapshotStatus,
-	nodeName string,
+	containerName string,
 ) (ctrl.Result, error) {
-	log := logf.FromContext(ctx).WithValues("container", cs.ContainerName)
+	log := logf.FromContext(ctx).WithValues("container", containerName)
 
-	jobName := r.getJobName(snap, cs.ContainerName)
-
-	// Check if job exists
+	jobName := fmt.Sprintf("%s-%s", snap.Name, containerName)
 	job := &batchv1.Job{}
 	err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: snap.Namespace}, job)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return ctrl.Result{}, err
-	}
 
 	if apierrors.IsNotFound(err) {
-		// Need to create the job
-		containerID, err := snapshot.ExtractContainerID(pod, cs.ContainerName)
+		// Create the job
+		containerID, err := podutil.ExtractContainerID(pod, containerName)
 		if err != nil {
 			log.Error(err, "Failed to extract container ID")
-			r.updateContainerCondition(cs, metav1.ConditionFalse,
-				sandboxv1alpha1.ReasonContainerFailed, err.Error(), snap.Generation)
-			if err := r.patchStatus(ctx, baseSnap, snap, nil); err != nil {
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{}, nil
+			return r.setFailed(ctx, snap, fmt.Sprintf("Failed to extract container ID: %v", err))
 		}
 
-		cs.ContainerID = containerID
-		job, err = r.createSnapshotJob(ctx, snap, cs, nodeName, containerID)
+		_, err = r.createSnapshotJob(ctx, snap, pod.Spec.NodeName, containerName, containerID)
 		if err != nil {
-			return ctrl.Result{}, err
-		}
-
-		cs.JobName = job.Name
-		cs.SnapshotPath = r.getSnapshotPath(snap.Spec.SandboxName, cs.ContainerName)
-
-		// Set StartedAt if this is the first job
-		if snap.Status.StartedAt == nil {
-			now := metav1.NewTime(r.clock().Now())
-			snap.Status.StartedAt = &now
-		}
-
-		r.updateContainerCondition(cs, metav1.ConditionFalse,
-			sandboxv1alpha1.ReasonContainerJobCreated, "Snapshot job created", snap.Generation)
-
-		if err := r.patchStatus(ctx, baseSnap, snap, nil); err != nil {
 			return ctrl.Result{}, err
 		}
 
 		log.Info("Created snapshot job", "job", jobName)
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		r.Recorder.Event(snap, corev1.EventTypeNormal, "JobCreated", fmt.Sprintf("Created snapshot job for container %s", containerName))
+
+		return r.setInProgress(ctx, snap, containerName, containerID)
+	}
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
-	// Job exists, check its status
+	// Job exists, check status
 	if podutil.IsJobComplete(job) {
 		log.Info("Snapshot job completed", "job", jobName)
-		r.updateContainerCondition(cs, metav1.ConditionTrue,
-			sandboxv1alpha1.ReasonContainerSucceeded, "Snapshot completed successfully", snap.Generation)
-		if err := r.patchStatus(ctx, baseSnap, snap, nil); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
+		r.Recorder.Event(snap, corev1.EventTypeNormal, "SnapshotComplete", "Snapshot completed successfully")
+		return r.setSucceeded(ctx, snap)
 	}
 
 	if podutil.IsJobFailed(job) {
@@ -361,35 +180,23 @@ func (r *RootfsSnapshotReconciler) reconcileContainerSnapshot(
 			message = fmt.Sprintf("Snapshot job failed: %s", condMsg)
 		}
 		log.Info(message, "job", jobName)
-		r.updateContainerCondition(cs, metav1.ConditionFalse,
-			sandboxv1alpha1.ReasonContainerFailed, message, snap.Generation)
-		if err := r.patchStatus(ctx, baseSnap, snap, nil); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
+		r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
+		return r.setFailed(ctx, snap, message)
 	}
 
-	// Job still running
-	r.updateContainerCondition(cs, metav1.ConditionFalse,
-		sandboxv1alpha1.ReasonContainerJobRunning, "Snapshot job running", snap.Generation)
-	if err := r.patchStatus(ctx, baseSnap, snap, nil); err != nil {
-		return ctrl.Result{}, err
-	}
-
+	// Still running
 	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 }
 
 func (r *RootfsSnapshotReconciler) createSnapshotJob(
 	ctx context.Context,
 	snap *sandboxv1alpha1.RootfsSnapshot,
-	cs *sandboxv1alpha1.ContainerSnapshotStatus,
-	nodeName string,
-	containerID string,
+	nodeName, containerName, containerID string,
 ) (*batchv1.Job, error) {
 	log := logf.FromContext(ctx)
 
-	jobName := r.getJobName(snap, cs.ContainerName)
-	snapshotPath := r.getSnapshotPath(snap.Spec.SandboxName, cs.ContainerName)
+	jobName := fmt.Sprintf("%s-%s", snap.Name, containerName)
+	snapshotPath := fmt.Sprintf("/tmp/rootfs-%s-%s.tar", snap.Spec.SandboxName, containerName)
 
 	activeDeadlineSeconds := defaultActiveDeadlineSecondsSnapshot
 	if snap.Spec.ActiveDeadlineSeconds != nil {
@@ -406,12 +213,13 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 			Namespace: snap.Namespace,
 			Labels: map[string]string{
 				"sandbox.isola.run/rootfs-snapshot": snap.Name,
-				"sandbox.isola.run/container":       cs.ContainerName,
+				"sandbox.isola.run/container":       containerName,
 			},
 		},
 		Spec: batchv1.JobSpec{
-			BackoffLimit:            ptr.To(int32(0)),
-			ActiveDeadlineSeconds:   &activeDeadlineSeconds,
+			BackoffLimit:          ptr.To(int32(0)),
+			ActiveDeadlineSeconds: &activeDeadlineSeconds,
+			// Job is an implementation detail, clean up quickly
 			TTLSecondsAfterFinished: ptr.To(int32(60)),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
@@ -429,20 +237,9 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 								Privileged: &privileged,
 							},
 							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "runsc-bin",
-									MountPath: "/usr/local/bin/runsc",
-									ReadOnly:  true,
-								},
-								{
-									Name:      "runsc-state",
-									MountPath: "/run/containerd/runsc/k8s.io",
-									ReadOnly:  true,
-								},
-								{
-									Name:      "tmp-output",
-									MountPath: "/tmp",
-								},
+								{Name: "runsc-bin", MountPath: "/usr/local/bin/runsc", ReadOnly: true},
+								{Name: "runsc-state", MountPath: "/run/containerd/runsc/k8s.io", ReadOnly: true},
+								{Name: "tmp-output", MountPath: "/tmp"},
 							},
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
@@ -460,28 +257,19 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 						{
 							Name: "runsc-bin",
 							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/usr/bin/runsc",
-									Type: &hostPathFile,
-								},
+								HostPath: &corev1.HostPathVolumeSource{Path: "/usr/bin/runsc", Type: &hostPathFile},
 							},
 						},
 						{
 							Name: "runsc-state",
 							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/run/containerd/runsc/k8s.io",
-									Type: &hostPathDirectory,
-								},
+								HostPath: &corev1.HostPathVolumeSource{Path: "/run/containerd/runsc/k8s.io", Type: &hostPathDirectory},
 							},
 						},
 						{
 							Name: "tmp-output",
 							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/tmp",
-									Type: &hostPathDirectory,
-								},
+								HostPath: &corev1.HostPathVolumeSource{Path: "/tmp", Type: &hostPathDirectory},
 							},
 						},
 					},
@@ -490,7 +278,6 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 		},
 	}
 
-	// Set owner reference to RootfsSnapshot
 	if err := controllerutil.SetControllerReference(snap, job, r.Scheme); err != nil {
 		log.Error(err, "Failed to set controller reference for job")
 		return nil, err
@@ -498,163 +285,109 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 
 	if err := r.Create(ctx, job); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			// Race condition, job already exists
-			existingJob := &batchv1.Job{}
-			if err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: snap.Namespace}, existingJob); err != nil {
+			existing := &batchv1.Job{}
+			if err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: snap.Namespace}, existing); err != nil {
 				return nil, err
 			}
-			return existingJob, nil
+			return existing, nil
 		}
 		log.Error(err, "Failed to create snapshot job")
 		return nil, err
 	}
 
-	r.Recorder.Event(snap, corev1.EventTypeNormal, "JobCreated",
-		fmt.Sprintf("Created snapshot job for container %s", cs.ContainerName))
-
 	return job, nil
 }
 
-func (r *RootfsSnapshotReconciler) getJobName(snap *sandboxv1alpha1.RootfsSnapshot, containerName string) string {
-	return fmt.Sprintf("%s-%s", snap.Name, containerName)
-}
-
-func (r *RootfsSnapshotReconciler) getSnapshotPath(sandboxName, containerName string) string {
-	return fmt.Sprintf("/tmp/rootfs-%s-%s.tar", sandboxName, containerName)
-}
-
-func (r *RootfsSnapshotReconciler) updateContainerCondition(
-	cs *sandboxv1alpha1.ContainerSnapshotStatus,
-	status metav1.ConditionStatus,
-	reason, message string,
-	generation int64,
-) {
-	meta.SetStatusCondition(&cs.Conditions, metav1.Condition{
-		Type:               string(sandboxv1alpha1.ContainerSnapshotReady),
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: generation,
+func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot, containerName, containerID string) (ctrl.Result, error) {
+	now := metav1.NewTime(r.clock().Now())
+	snap.Status.StartedAt = &now
+	snap.Status.ContainerSnapshots = []sandboxv1alpha1.ContainerSnapshotStatus{
+		{
+			ContainerName: containerName,
+			ContainerID:   containerID,
+			SnapshotPath:  fmt.Sprintf("/tmp/rootfs-%s-%s.tar", snap.Spec.SandboxName, containerName),
+		},
+	}
+	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
+		Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+		Status:             metav1.ConditionFalse,
+		Reason:             sandboxv1alpha1.ReasonRootfsSnapshotInProgress,
+		Message:            "Snapshot job running",
+		ObservedGeneration: snap.Generation,
 	})
+	if err := r.Status().Update(ctx, snap); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 }
 
-func (r *RootfsSnapshotReconciler) handleDeletion(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	if !controllerutil.ContainsFinalizer(snap, RootfsSnapshotFinalizer) {
-		return ctrl.Result{}, nil
-	}
-
-	// Delete all owned jobs
-	for _, cs := range snap.Status.ContainerSnapshots {
-		if cs.JobName == "" {
-			continue
-		}
-		job := &batchv1.Job{}
-		err := r.Get(ctx, types.NamespacedName{Name: cs.JobName, Namespace: snap.Namespace}, job)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			return ctrl.Result{}, err
-		}
-		propagationPolicy := metav1.DeletePropagationBackground
-		if err := r.Delete(ctx, job, &client.DeleteOptions{PropagationPolicy: &propagationPolicy}); err != nil && !apierrors.IsNotFound(err) {
-			return ctrl.Result{}, err
-		}
-		log.Info("Deleted snapshot job during cleanup", "job", cs.JobName)
-	}
-
-	controllerutil.RemoveFinalizer(snap, RootfsSnapshotFinalizer)
-	if err := r.Update(ctx, snap); err != nil {
+func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot) (ctrl.Result, error) {
+	now := metav1.NewTime(r.clock().Now())
+	snap.Status.CompletedAt = &now
+	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
+		Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+		Status:             metav1.ConditionTrue,
+		Reason:             sandboxv1alpha1.ReasonRootfsSnapshotSucceeded,
+		Message:            "Snapshot completed successfully",
+		ObservedGeneration: snap.Generation,
+	})
+	if err := r.Status().Update(ctx, snap); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	// Requeue to handle TTL cleanup
+	ttl := defaultTTLSecondsAfterFinished
+	if snap.Spec.TTLSecondsAfterFinished != nil {
+		ttl = *snap.Spec.TTLSecondsAfterFinished
+	}
+	return ctrl.Result{RequeueAfter: time.Duration(ttl) * time.Second}, nil
 }
 
-func (r *RootfsSnapshotReconciler) handleTTLCleanup(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot) (ctrl.Result, bool) {
-	if snap.Spec.TTLSecondsAfterFinished == nil {
-		return ctrl.Result{}, false
+func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot, message string) (ctrl.Result, error) {
+	now := metav1.NewTime(r.clock().Now())
+	snap.Status.CompletedAt = &now
+	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
+		Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+		Status:             metav1.ConditionFalse,
+		Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
+		Message:            message,
+		ObservedGeneration: snap.Generation,
+	})
+	r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
+	if err := r.Status().Update(ctx, snap); err != nil {
+		return ctrl.Result{}, err
 	}
 
-	if snap.Status.CompletedAt == nil {
-		return ctrl.Result{}, false
+	// Requeue to handle TTL cleanup
+	ttl := defaultTTLSecondsAfterFinished
+	if snap.Spec.TTLSecondsAfterFinished != nil {
+		ttl = *snap.Spec.TTLSecondsAfterFinished
+	}
+	return ctrl.Result{RequeueAfter: time.Duration(ttl) * time.Second}, nil
+}
+
+func (r *RootfsSnapshotReconciler) handleTTLCleanup(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot) (deleted bool, requeueAfter time.Duration) {
+	log := logf.FromContext(ctx)
+
+	ttlSeconds := defaultTTLSecondsAfterFinished
+	if snap.Spec.TTLSecondsAfterFinished != nil {
+		ttlSeconds = *snap.Spec.TTLSecondsAfterFinished
 	}
 
-	ttl := time.Duration(*snap.Spec.TTLSecondsAfterFinished) * time.Second
+	ttl := time.Duration(ttlSeconds) * time.Second
 	deleteAt := snap.Status.CompletedAt.Add(ttl)
 	now := r.clock().Now()
 
 	if now.After(deleteAt) {
-		log := logf.FromContext(ctx)
 		log.Info("TTL expired, deleting RootfsSnapshot")
 		if err := r.Delete(ctx, snap); err != nil && !apierrors.IsNotFound(err) {
 			log.Error(err, "Failed to delete RootfsSnapshot after TTL")
-			return ctrl.Result{RequeueAfter: time.Second}, true
+			return false, time.Second
 		}
-		return ctrl.Result{}, true
+		return true, 0
 	}
 
-	// Requeue for TTL
-	remaining := deleteAt.Sub(now)
-	return ctrl.Result{RequeueAfter: remaining}, false
-}
-
-func (r *RootfsSnapshotReconciler) setFailedStatus(
-	ctx context.Context,
-	snap *sandboxv1alpha1.RootfsSnapshot,
-	baseSnap *sandboxv1alpha1.RootfsSnapshot,
-	reason, message string,
-) (ctrl.Result, error) {
-	now := metav1.NewTime(r.clock().Now())
-	snap.Status.CompletedAt = &now
-	if err := r.patchStatus(ctx, baseSnap, snap, []metav1.Condition{
-		{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-			Status:             metav1.ConditionFalse,
-			Reason:             reason,
-			Message:            message,
-			ObservedGeneration: snap.Generation,
-		},
-	}); err != nil {
-		return ctrl.Result{}, err
-	}
-	r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
-	return ctrl.Result{}, nil
-}
-
-func (r *RootfsSnapshotReconciler) setRuntimeNotSupported(
-	ctx context.Context,
-	snap *sandboxv1alpha1.RootfsSnapshot,
-	baseSnap *sandboxv1alpha1.RootfsSnapshot,
-) (ctrl.Result, error) {
-	message := "Runtime does not support rootfs snapshotting"
-
-	now := metav1.NewTime(r.clock().Now())
-	snap.Status.CompletedAt = &now
-
-	if err := r.patchStatus(ctx, baseSnap, snap, []metav1.Condition{
-		{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotRuntimeSupported),
-			Status:             metav1.ConditionFalse,
-			Reason:             sandboxv1alpha1.ReasonRuntimeNotSupported,
-			Message:            message,
-			ObservedGeneration: snap.Generation,
-		},
-		{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-			Status:             metav1.ConditionFalse,
-			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
-			Message:            message,
-			ObservedGeneration: snap.Generation,
-		},
-	}); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	r.Recorder.Event(snap, corev1.EventTypeWarning, "RuntimeNotSupported", message)
-	return ctrl.Result{}, nil
+	return false, deleteAt.Sub(now)
 }
 
 func (r *RootfsSnapshotReconciler) SetupWithManager(mgr ctrl.Manager) error {

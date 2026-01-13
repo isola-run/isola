@@ -69,7 +69,6 @@ rules:
   - sandbox.isola.run
   resources:
   - networktemplates/finalizers
-  - rootfssnapshots/finalizers
   - sandboxes/finalizers
   verbs:
   - update

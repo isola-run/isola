@@ -997,7 +997,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			// in case of some very bad luck where the timeout shifted right after we checked for it
 			timeUntilTimeout = time.Millisecond
 		}
-	} else {
+	} else { // no timeout
 		timeUntilTimeout = 0 // ctrl.Result{0} is effectively ctrl.Result{} (no scheduled requeue)
 	}
 
