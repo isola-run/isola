@@ -332,7 +332,6 @@ func (h *Handler) ReadFile(c *gin.Context) {
 	c.DataFromReader(http.StatusOK, fileSize, "application/octet-stream", file, nil)
 }
 
-// FileInfo returns metadata about a file in the main container's filesystem.
 func (h *Handler) FileInfo(c *gin.Context) {
 	targetPath := c.Query("path")
 	if targetPath == "" {
@@ -373,7 +372,6 @@ func (h *Handler) FileInfo(c *gin.Context) {
 	})
 }
 
-// UploadToStorage handles POST /upload-to-storage requests.
 // Uploads a file from the sandbox filesystem to a presigned storage URL in the background.
 func (h *Handler) UploadToStorage(c *gin.Context) {
 	var req UploadToStorageRequest
@@ -425,7 +423,7 @@ func (h *Handler) UploadToStorage(c *gin.Context) {
 
 // uploadFileToStorage uploads a file to a presigned URL in the background.
 func (h *Handler) uploadFileToStorage(fullPath, originalPath, uploadURL string, fileSize int64) {
-	file, err := os.Open(fullPath) //nolint:gosec // path is resolved via procfs in sandboxed environment
+	file, err := os.Open(fullPath) //nolint:gosec
 	if err != nil {
 		log.Printf("Background upload failed - could not open file %s: %v", fullPath, err)
 		return
