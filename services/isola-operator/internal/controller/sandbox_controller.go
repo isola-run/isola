@@ -365,8 +365,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	if r.RuntimeClassName != "" {
 		sandboxPod.Spec.RuntimeClassName = &r.RuntimeClassName
 
-		// Configure gvisor overlay2 for rootfs. This enables copy-on-write overlay
-		// filesystem which is required for filesystem snapshotting.
+		// Configure gvisor overlay2 for rootfs ("root"), backed by a file ("self").
 		// References:
 		//   - https://github.com/google/gvisor/issues/3494 (per-sandbox flag overrides)
 		//   - https://github.com/google/gvisor/commit/a53b22ad5283b00b766178eff847c3193c1293b7 (overlay2 self medium)

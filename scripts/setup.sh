@@ -56,10 +56,6 @@ install_gvisor_in_node() {
         docker exec "$node" sh -c 'cat >> /etc/containerd/config.toml << "TOML"
 
 # gVisor (runsc) runtime configuration
-# References:
-#   - https://gvisor.dev/docs/user_guide/containerd/configuration/
-#   - https://github.com/google/gvisor/issues/3494 (per-sandbox flag overrides via annotations)
-#   - https://github.com/google/gvisor/commit/a53b22ad5283b00b766178eff847c3193c1293b7 (overlay2 self medium)
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
   runtime_type = "io.containerd.runsc.v1"
   # Allow gVisor annotations to pass through to runsc.
