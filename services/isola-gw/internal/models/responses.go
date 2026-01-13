@@ -62,3 +62,11 @@ type LargeFileDownloadResponse struct {
 	ExpiresIn   int    `json:"expires_in,omitempty"`   // Only present when ready is true
 	Path        string `json:"path,omitempty"`
 }
+
+// FileInfo represents file metadata returned by the agent's /file-info endpoint.
+type FileInfo struct {
+	Path   string `json:"path"`
+	Size   int64  `json:"size"`
+	Exists bool   `json:"exists"`
+	IsDir  bool   `json:"is_dir"`
+}

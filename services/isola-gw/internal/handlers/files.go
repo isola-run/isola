@@ -303,7 +303,6 @@ func (h *Handler) UploadFile(c *gin.Context) {
 
 // DownloadFile handles GET /sandboxes/:id/files
 // Checks file size and returns the file directly if small, or initiates S3 upload for large files.
-// For large files, use GET /sandboxes/:id/downloads/:download_id to poll for the presigned URL.
 func (h *Handler) DownloadFile(c *gin.Context) {
 	sandboxID := c.Param("id")
 	targetPath := c.Query("path")
@@ -364,16 +363,7 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 	h.initiateLargeFileDownload(c, ctx, tenantIDStr, sandboxID, agentAddress, targetPath, fileInfo.Size)
 }
 
-// fileInfoResult holds the result from the agent's /file-info endpoint.
-type fileInfoResult struct {
-	Path   string `json:"path"`
-	Size   int64  `json:"size"`
-	Exists bool   `json:"exists"`
-	IsDir  bool   `json:"is_dir"`
-}
-
-// getFileInfo calls the agent's /file-info endpoint to get file metadata.
-func (h *Handler) getFileInfo(ctx context.Context, agentAddress, path string) (*fileInfoResult, error) {
+func (h *Handler) getFileInfo(ctx context.Context, agentAddress, path string) (*models.FileInfo, error) {
 	agentURL := fmt.Sprintf("http://%s:%d/file-info?path=%s", agentAddress, agentSidecarPort, url.QueryEscape(path))
 
 	req, err := http.NewRequestWithContext(ctx, "GET", agentURL, nil)
@@ -407,7 +397,7 @@ func (h *Handler) getFileInfo(ctx context.Context, agentAddress, path string) (*
 		return nil, fmt.Errorf("agent returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var result fileInfoResult
+	var result models.FileInfo
 	if err := json.Unmarshal(bodyBytes, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
