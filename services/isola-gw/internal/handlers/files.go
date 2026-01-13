@@ -33,6 +33,7 @@ func buildObjectKey(objectType string, tenantID string, sandboxID string, id str
 
 // generateDownloadID creates a deterministic download ID from tenant, sandbox, and path.
 // Same file always gets the same ID, enabling stateless operation.
+// TODO: __OMER__ verify if there's a token to download with it.
 func generateDownloadID(tenantID, sandboxID, path string) string {
 	h := sha256.New()
 	h.Write([]byte(tenantID + sandboxID + path))
@@ -295,13 +296,11 @@ func (h *Handler) UploadFile(c *gin.Context) {
 }
 
 // DownloadFile handles GET /sandboxes/:id/files
-// Supports two modes:
-//   - With path param: Check file size, return directly if small, or initiate S3 upload if large
-//   - With download_id param: Check S3 for object, return presigned download URL or "uploading" status
+// Checks file size and returns the file directly if small, or initiates S3 upload for large files.
+// For large files, use GET /sandboxes/:id/downloads/:download_id to poll for the presigned URL.
 func (h *Handler) DownloadFile(c *gin.Context) {
 	sandboxID := c.Param("id")
 	targetPath := c.Query("path")
-	downloadID := c.Query("download_id")
 
 	// Get tenant ID from context
 	tenantID, _ := c.Get("tenant_id")
@@ -309,17 +308,10 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Mode 2: Polling for download status using download_id
-	if downloadID != "" {
-		h.handleDownloadStatus(c, ctx, tenantIDStr, sandboxID, downloadID)
-		return
-	}
-
-	// Mode 1: Initiate download using path
 	if targetPath == "" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "BadRequest",
-			Message: "path or download_id query parameter is required",
+			Message: "path query parameter is required",
 		})
 		return
 	}
@@ -567,6 +559,21 @@ func (h *Handler) triggerAgentUploadToStorage(ctx context.Context, agentAddress,
 	}
 
 	return nil
+}
+
+// GetDownloadStatus handles GET /sandboxes/:id/downloads/:download_id
+// Checks if a large file download is ready and returns a presigned URL when available.
+func (h *Handler) GetDownloadStatus(c *gin.Context) {
+	sandboxID := c.Param("id")
+	downloadID := c.Param("download_id")
+
+	// Get tenant ID from context
+	tenantID, _ := c.Get("tenant_id")
+	tenantIDStr := tenantID.(string)
+
+	ctx := c.Request.Context()
+
+	h.handleDownloadStatus(c, ctx, tenantIDStr, sandboxID, downloadID)
 }
 
 // handleDownloadStatus checks if a large file download is ready and returns the presigned URL.

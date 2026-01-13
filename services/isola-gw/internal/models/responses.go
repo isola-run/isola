@@ -54,7 +54,6 @@ type FileDownloadResponse struct {
 	Content string `json:"content"`
 }
 
-// LargeFileDownloadResponse is returned when a large file download is initiated.
 // The client should poll using the download_id until status becomes "ready".
 type LargeFileDownloadResponse struct {
 	DownloadID string `json:"download_id"`

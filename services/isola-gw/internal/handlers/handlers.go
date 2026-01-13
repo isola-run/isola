@@ -46,6 +46,9 @@ func (h *Handler) SetupRoutes(r *gin.Engine) {
 		api.POST("/sandboxes/:id/files", h.UploadFile)
 		api.POST("/sandboxes/:id/files/upload-url", h.GenerateUploadUrl)
 		api.POST("/sandboxes/:id/files/confirm", h.ConfirmUpload)
+
+		// Download status (for large file downloads)
+		api.GET("/sandboxes/:id/downloads/:download_id", h.GetDownloadStatus)
 	}
 }
 
