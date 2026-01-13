@@ -101,64 +101,64 @@ func TestCheckRootfsSnapshotSupport(t *testing.T) {
 	}
 
 	tests := []struct {
-		name            string
-		pod             *corev1.Pod
-		runtimeClasses  []runtime.Object
-		wantSupported   bool
-		wantReason      string
-		wantErrContains string
+		name           string
+		pod            *corev1.Pod
+		runtimeClasses []runtime.Object
+		wantSupported  bool
+		wantRetryable  bool
+		wantErr        bool
 	}{
 		{
 			name:          "nil pod",
 			pod:           nil,
 			wantSupported: false,
-			wantReason:    ReasonPodDoesNotExist,
+			wantRetryable: false,
 		},
 		{
-			name:          "pod not ready",
+			name:          "pod not ready - retryable",
 			pod:           pendingPod(&runscName),
 			wantSupported: false,
-			wantReason:    ReasonPodNotReady,
+			wantRetryable: true,
 		},
 		{
 			name:          "no runtime class",
 			pod:           readyPod(nil),
 			wantSupported: false,
-			wantReason:    ReasonRuntimeClassMissing,
+			wantRetryable: false,
 		},
 		{
 			name:          "empty runtime class",
 			pod:           readyPod(func() *string { s := ""; return &s }()),
 			wantSupported: false,
-			wantReason:    ReasonRuntimeClassMissing,
+			wantRetryable: false,
 		},
 		{
-			name:            "runtime class not found",
-			pod:             readyPod(&nonexistentName),
-			wantSupported:   false,
-			wantReason:      ReasonRuntimeClassNotFound,
-			wantErrContains: "not found",
+			name:          "runtime class not found",
+			pod:           readyPod(&nonexistentName),
+			wantSupported: false,
+			wantRetryable: false,
+			wantErr:       false, // not-found is not an error, just unsupported
 		},
 		{
 			name:           "runsc runtime - supported",
 			pod:            readyPod(&runscName),
 			runtimeClasses: []runtime.Object{runscRuntimeClass},
 			wantSupported:  true,
-			wantReason:     ReasonSupported,
+			wantRetryable:  false,
 		},
 		{
 			name:           "gvisor runtime - supported",
 			pod:            readyPod(&gvisorName),
 			runtimeClasses: []runtime.Object{gvisorRuntimeClass},
 			wantSupported:  true,
-			wantReason:     ReasonSupported,
+			wantRetryable:  false,
 		},
 		{
 			name:           "runc runtime - unsupported",
 			pod:            readyPod(&runcName),
 			runtimeClasses: []runtime.Object{runcRuntimeClass},
 			wantSupported:  false,
-			wantReason:     ReasonRuntimeUnsupported,
+			wantRetryable:  false,
 		},
 	}
 
@@ -167,11 +167,11 @@ func TestCheckRootfsSnapshotSupport(t *testing.T) {
 			objs := tt.runtimeClasses
 			c := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objs...).Build()
 
-			supported, reason, err := CheckRootfsSnapshotSupport(context.Background(), c, tt.pod)
+			supported, retryable, err := CheckRootfsSnapshotSupport(context.Background(), c, tt.pod)
 
-			if tt.wantErrContains != "" {
-				if err == nil || !contains(err.Error(), tt.wantErrContains) {
-					t.Errorf("CheckRootfsSnapshotSupport() error = %v, want error containing %q", err, tt.wantErrContains)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("CheckRootfsSnapshotSupport() expected error, got nil")
 				}
 			} else if err != nil {
 				t.Errorf("CheckRootfsSnapshotSupport() unexpected error = %v", err)
@@ -181,8 +181,8 @@ func TestCheckRootfsSnapshotSupport(t *testing.T) {
 				t.Errorf("CheckRootfsSnapshotSupport() supported = %v, want %v", supported, tt.wantSupported)
 			}
 
-			if reason != tt.wantReason {
-				t.Errorf("CheckRootfsSnapshotSupport() reason = %q, want %q", reason, tt.wantReason)
+			if retryable != tt.wantRetryable {
+				t.Errorf("CheckRootfsSnapshotSupport() retryable = %v, want %v", retryable, tt.wantRetryable)
 			}
 		})
 	}
@@ -404,18 +404,4 @@ func TestGetSnapshotableContainers(t *testing.T) {
 			}
 		})
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

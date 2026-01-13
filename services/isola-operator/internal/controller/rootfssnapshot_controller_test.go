@@ -245,7 +245,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonPodNotFound))
+			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
 		})
 
 		It("should fail when runtime class is not gvisor", func() {
