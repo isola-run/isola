@@ -21,6 +21,17 @@ check_tool() {
     echo "  [OK] $tool found"
 }
 
+check_optional_tool() {
+    local tool="$1"
+    local hint="$2"
+
+    if ! command -v "$tool" &> /dev/null; then
+        echo "  [SKIP] $tool not found (optional). $hint"
+        return 1
+    fi
+    echo "  [OK] $tool found"
+}
+
 # Install gVisor (runsc) in a Kind node and configure containerd
 # https://gvisor.dev/docs/user_guide/install/
 # https://gvisor.dev/docs/user_guide/containerd/quick_start/
@@ -84,6 +95,8 @@ check_tool "kind" "Install Kind: https://kind.sigs.k8s.io/docs/user/quick-start/
 check_tool "kubectl" "Install kubectl: https://kubernetes.io/docs/tasks/tools/"
 check_tool "helm" "Install Helm: https://helm.sh/docs/intro/install/"
 check_tool "tilt" "Install Tilt: https://docs.tilt.dev/install.html"
+check_optional_tool "golangci-lint" "Install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"
+check_optional_tool "lefthook" "Install: go install github.com/evilmartians/lefthook/v2@latest" && HAS_LEFTHOOK=1
 
 # https://kind.sigs.k8s.io/docs/user/local-registry/
 echo ""
@@ -163,22 +176,11 @@ echo ""
 echo "Setting kubectl context..."
 kubectl config use-context "kind-${KIND_CLUSTER_NAME}"
 
-echo ""
-echo "Setting up pre-commit hooks (must be run per-clone)..."
-LEFTHOOK_BIN="${GOPATH:-$(go env GOPATH)}/bin/lefthook"
-if command -v lefthook &> /dev/null; then
-    LEFTHOOK_BIN="lefthook"
-fi
-if [ -x "$LEFTHOOK_BIN" ]; then
-    if [ -f "${ROOT_DIR}/.lefthook.yml" ]; then
-        cd "${ROOT_DIR}"
-        "$LEFTHOOK_BIN" install
-        echo "  [OK] Lefthook hooks installed"
-    fi
-else
-    echo "  [WARN] lefthook not found - pre-commit hooks will not be available"
-    echo "  To install: go install github.com/evilmartians/lefthook/v2@v2.0.13"
-    echo "  Then run: \$(go env GOPATH)/bin/lefthook install"
+if [ "${HAS_LEFTHOOK:-}" = "1" ]; then
+    echo ""
+    echo "Setting up pre-commit hooks..."
+    cd "${ROOT_DIR}" && lefthook install
+    echo "  [OK] Lefthook hooks installed"
 fi
 
 echo ""
