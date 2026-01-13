@@ -11,6 +11,8 @@ spec:
     kind: RootfsSnapshot
     listKind: RootfsSnapshotList
     plural: rootfssnapshots
+    shortNames:
+    - rfs
     singular: rootfssnapshot
   scope: Namespaced
   versions:
