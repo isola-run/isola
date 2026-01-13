@@ -38,7 +38,7 @@ spec:
         description: |-
           RootfsSnapshot represents a request to snapshot a sandbox's container root filesystems.
           The controller creates Jobs that use gvisor's runsc to tar the overlay2 upper layer.
-          Each container in the sandbox gets its own snapshot Job.
+          Each container in the sandbox gets its own rootfs snapshot Job.
         properties:
           apiVersion:
             description: |-
