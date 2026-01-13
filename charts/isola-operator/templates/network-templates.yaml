@@ -1,6 +1,7 @@
 # Built-in NetworkTemplates for sandbox network isolation
 ---
-# isola-isolated: Deny all network traffic (except controller ingress)
+# isola-isolated: Deny all network traffic (except isola-gw ingress via allow-isola-gw-ingress NetworkPolicy)
+# Uses dnsPolicy: None with no nameservers (sink nameserver 127.0.0.1) - DNS queries fail fast
 apiVersion: sandbox.isola.run/v1alpha1
 kind: NetworkTemplate
 metadata:
@@ -10,11 +11,11 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: network-template
     isola.run/builtin: "true"
-spec: {}
-# Empty spec = deny all traffic
-# The NetworkPolicy builder always allows isola controller ingress
+spec:
+  dnsPolicy: None
+  # No nameservers = sink nameserver (127.0.0.1) with fast-fail DNS options
 ---
-# isola-egress-only: Allow internet egress
+# isola-egress-only: Allow internet egress with external DNS
 apiVersion: sandbox.isola.run/v1alpha1
 kind: NetworkTemplate
 metadata:
@@ -25,5 +26,9 @@ metadata:
     app.kubernetes.io/component: network-template
     isola.run/builtin: "true"
 spec:
-  allowedEgress:
+  dnsPolicy: None
+  nameservers:
+    - "8.8.8.8"
+    - "1.1.1.1"
+  allowedEgressCIDRs:
     - "0.0.0.0/0"

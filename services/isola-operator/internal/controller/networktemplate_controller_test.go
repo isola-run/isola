@@ -33,6 +33,18 @@ import (
 	"github.com/omereli/dev-isola/services/isola-operator/test/utils"
 )
 
+// findEgressRuleWithCIDR finds an egress rule with the specified CIDR.
+func findEgressRuleWithCIDR(rules []networkingv1.NetworkPolicyEgressRule, cidr string) *networkingv1.NetworkPolicyEgressRule {
+	for i := range rules {
+		for _, to := range rules[i].To {
+			if to.IPBlock != nil && to.IPBlock.CIDR == cidr {
+				return &rules[i]
+			}
+		}
+	}
+	return nil
+}
+
 var _ = Describe("NetworkTemplate Controller", func() {
 	var (
 		reconciler *NetworkTemplateReconciler
@@ -113,7 +125,7 @@ var _ = Describe("NetworkTemplate Controller", func() {
 	Context("NetworkPolicy Creation", func() {
 		It("should create NetworkPolicy and set Ready=True on first reconcile", func() {
 			name := "nt-create-policy"
-			createNetworkTemplate(name, utils.WithAllowedEgress("8.8.8.0/24"))
+			createNetworkTemplate(name, utils.WithAllowedEgressCIDRs("8.8.8.0/24"))
 			defer deleteNetworkTemplate(name)
 			defer deleteNetworkPolicy(name)
 
@@ -122,8 +134,20 @@ var _ = Describe("NetworkTemplate Controller", func() {
 
 			np := getNetworkPolicy(name)
 			Expect(np).NotTo(BeNil())
-			Expect(np.Spec.Egress).To(HaveLen(1))
-			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
+			// 2 egress rules: DNS (from default Nameservers) + CIDR
+			Expect(np.Spec.Egress).To(HaveLen(2))
+			// Find the CIDR rule (not the DNS rule)
+			var cidrRule *networkingv1.NetworkPolicyEgressRule
+			for i := range np.Spec.Egress {
+				for _, to := range np.Spec.Egress[i].To {
+					if to.IPBlock != nil && to.IPBlock.CIDR == "8.8.8.0/24" {
+						cidrRule = &np.Spec.Egress[i]
+						break
+					}
+				}
+			}
+			Expect(cidrRule).NotTo(BeNil())
+			Expect(cidrRule.To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
 
 			nt := getNetworkTemplate(name)
 			readyCond := meta.FindStatusCondition(nt.Status.Conditions, string(sandboxv1alpha1.NetworkTemplateReady))
@@ -137,7 +161,7 @@ var _ = Describe("NetworkTemplate Controller", func() {
 			nt := &sandboxv1alpha1.NetworkTemplate{
 				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
 				Spec: sandboxv1alpha1.NetworkTemplateSpec{
-					AllowedEgress: []string{"not-a-valid-cidr"},
+					AllowedEgressCIDRs: []string{"not-a-valid-cidr"},
 				},
 			}
 			// CRD validation rejects invalid CIDRs at admission
@@ -148,7 +172,7 @@ var _ = Describe("NetworkTemplate Controller", func() {
 
 		It("should be idempotent across multiple reconciles", func() {
 			name := "nt-idempotent"
-			createNetworkTemplate(name, utils.WithAllowedEgress("1.1.1.0/24"))
+			createNetworkTemplate(name, utils.WithAllowedEgressCIDRs("1.1.1.0/24"))
 			defer deleteNetworkTemplate(name)
 			defer deleteNetworkPolicy(name)
 
@@ -169,7 +193,7 @@ var _ = Describe("NetworkTemplate Controller", func() {
 	Context("Immutability", func() {
 		It("should ignore spec updates - NetworkPolicy remains unchanged", func() {
 			name := "nt-immutable"
-			createNetworkTemplate(name, utils.WithAllowedEgress("8.8.8.0/24"))
+			createNetworkTemplate(name, utils.WithAllowedEgressCIDRs("8.8.8.0/24"))
 			defer deleteNetworkTemplate(name)
 			defer deleteNetworkPolicy(name)
 
@@ -177,11 +201,12 @@ var _ = Describe("NetworkTemplate Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			np := getNetworkPolicy(name)
-			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
+			cidrRule := findEgressRuleWithCIDR(np.Spec.Egress, "8.8.8.0/24")
+			Expect(cidrRule).NotTo(BeNil())
 
 			// Update the spec to a different CIDR (also public, so it's valid)
 			nt := getNetworkTemplate(name)
-			nt.Spec.AllowedEgress = []string{"1.1.1.0/24"}
+			nt.Spec.AllowedEgressCIDRs = []string{"1.1.1.0/24"}
 			Expect(k8sClient.Update(ctx, nt)).To(Succeed())
 
 			// Reconcile again - policy should NOT change (immutable)
@@ -189,7 +214,12 @@ var _ = Describe("NetworkTemplate Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			np = getNetworkPolicy(name)
-			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
+			// Original CIDR should still be present (immutable)
+			cidrRule = findEgressRuleWithCIDR(np.Spec.Egress, "8.8.8.0/24")
+			Expect(cidrRule).NotTo(BeNil())
+			// New CIDR should NOT be present
+			newRule := findEgressRuleWithCIDR(np.Spec.Egress, "1.1.1.0/24")
+			Expect(newRule).To(BeNil())
 		})
 	})
 
@@ -279,7 +309,7 @@ var _ = Describe("NetworkTemplate Controller", func() {
 	Context("NetworkPolicy Recreation", func() {
 		It("should recreate NetworkPolicy if deleted out-of-band", func() {
 			name := "nt-recreate-policy"
-			createNetworkTemplate(name, utils.WithAllowedEgress("8.8.8.0/24"))
+			createNetworkTemplate(name, utils.WithAllowedEgressCIDRs("8.8.8.0/24"))
 			defer deleteNetworkTemplate(name)
 			defer deleteNetworkPolicy(name)
 
@@ -299,7 +329,8 @@ var _ = Describe("NetworkTemplate Controller", func() {
 
 			np := getNetworkPolicy(name)
 			Expect(np).NotTo(BeNil())
-			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
+			cidrRule := findEgressRuleWithCIDR(np.Spec.Egress, "8.8.8.0/24")
+			Expect(cidrRule).NotTo(BeNil())
 		})
 	})
 
