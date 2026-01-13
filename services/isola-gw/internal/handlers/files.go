@@ -87,11 +87,6 @@ func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context
 
 func (h *Handler) UploadFile(c *gin.Context) {
 	sandboxID := c.Param("id")
-
-	// Get tenant ID from context
-	tenantID, _ := c.Get("tenant_id")
-	_ = tenantID
-
 	ctx := c.Request.Context()
 
 	agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "UPLOAD")
@@ -157,25 +152,58 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	log.Printf("[UPLOAD] File size: %d bytes, threshold: %d bytes", fileSize, fileSizeThresholdBytes)
 
 	if fileSize >= fileSizeThresholdBytes {
-		log.Printf("[UPLOAD] File too large for direct upload: %d bytes", fileSize)
+		h.handleLargeFileUpload(c, ctx, sandboxID, fileHeader.Filename, targetPath)
+		return
+	}
+
+	h.uploadFileToAgent(c, ctx, agentAddress, sandboxID, fileHeader.Filename, targetPath, content)
+}
+
+// handleLargeFileUpload generates a presigned URL for large file uploads.
+func (h *Handler) handleLargeFileUpload(c *gin.Context, ctx context.Context, sandboxID, filename, targetPath string) {
+	log.Printf("[UPLOAD] File too large for direct upload, generating upload URL")
+
+	if h.storage == nil {
 		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
 			Error:   "NotImplemented",
-			Message: fmt.Sprintf("File size (%d bytes) exceeds direct upload limit (%d bytes). Signed URL upload is not yet implemented.", fileSize, fileSizeThresholdBytes),
+			Message: "Storage not configured. Large file uploads are not available.",
 		})
 		return
 	}
 
+	tenantID, _ := c.Get("tenant_id")
+	tenantIDStr := tenantID.(string)
+
+	uploadID := uuid.New().String()
+	objectKey := buildObjectKey("uploads", tenantIDStr, sandboxID, uploadID, filename)
+
+	expiresIn := 900 // 15 minutes
+	uploadURL, err := h.storage.GeneratePresignedUploadURL(ctx, objectKey, expiresIn, "")
+	if err != nil {
+		log.Printf("[UPLOAD] Failed to generate presigned URL: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to generate presigned URL: " + err.Error(),
+		})
+		return
+	}
+
+	log.Printf("[UPLOAD] Generated presigned URL for large file: upload_id=%s, path=%s", uploadID, targetPath)
+
+	c.JSON(http.StatusAccepted, models.UploadUrlResponse{
+		UploadURL: uploadURL,
+		UploadID:  uploadID,
+		ExpiresIn: expiresIn,
+	})
+}
+
+// uploadFileToAgent uploads a file directly to the sandbox agent.
+func (h *Handler) uploadFileToAgent(c *gin.Context, ctx context.Context, agentAddress, sandboxID, filename, targetPath string, content []byte) {
 	agentURL := fmt.Sprintf("http://%s:%d/upload", agentAddress, agentSidecarPort)
 	log.Printf("[UPLOAD] Forwarding to agent at %s", agentURL)
 
-	// Create multipart form for agent
 	formData := &bytes.Buffer{}
 	writer := multipart.NewWriter(formData)
-	defer func() {
-		if err := writer.Close(); err != nil {
-			log.Printf("Warning: failed to close multipart writer: %v", err)
-		}
-	}()
 
 	pathField, err := writer.CreateFormField("path")
 	if err != nil {
@@ -195,7 +223,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	fileField, err := writer.CreateFormFile("file", fileHeader.Filename)
+	fileField, err := writer.CreateFormFile("file", filename)
 	if err != nil {
 		log.Printf("Failed to create file field: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
@@ -222,7 +250,6 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, "POST", agentURL, formData)
 	if err != nil {
 		log.Printf("Failed to create request: %v", err)
@@ -261,13 +288,12 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	// Parse agent response
+	fileSize := int64(len(content))
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	var agentResponse map[string]interface{}
 	if len(bodyBytes) > 0 {
 		if err := json.Unmarshal(bodyBytes, &agentResponse); err != nil {
 			log.Printf("Failed to parse agent response, using defaults: %v", err)
-			// If response parsing fails, return success with default values
 			c.JSON(http.StatusOK, models.FileUploadResponse{
 				Success: true,
 				Path:    targetPath,
@@ -621,70 +647,6 @@ func (h *Handler) handleDownloadStatus(c *gin.Context, ctx context.Context, tena
 		Ready:       true,
 		DownloadURL: downloadURL,
 		ExpiresIn:   expiresIn,
-	})
-}
-
-// findDownloadObject finds the download object key by prefix.
-// Returns empty string if not found.
-func (h *Handler) GenerateUploadUrl(c *gin.Context) {
-	sandboxID := c.Param("id")
-
-	var req models.UploadUrlRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error:   "BadRequest",
-			Message: err.Error(),
-		})
-		return
-	}
-
-	log.Printf("[UPLOAD-URL] Request for sandbox %s: path=%s, filename=%s", sandboxID, req.Path, req.Filename)
-
-	tenantID, _ := c.Get("tenant_id")
-	tenantIDStr := tenantID.(string)
-
-	ctx := c.Request.Context()
-
-	if h.storage == nil {
-		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
-			Error:   "NotImplemented",
-			Message: "Storage not configured. Large file uploads are not available.",
-		})
-		return
-	}
-
-	_, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "UPLOAD-URL")
-	if shouldReturn {
-		return
-	}
-
-	// Generate unique upload ID and object key
-	uploadID := uuid.New().String()
-	objectKey := buildObjectKey("uploads", tenantIDStr, sandboxID, uploadID, req.Filename)
-
-	// Generate presigned upload URL (15 minutes expiration)
-	expiresIn := 900 // 15 minutes
-	contentType := ""
-	if req.ContentType != nil {
-		contentType = *req.ContentType
-	}
-
-	uploadURL, err := h.storage.GeneratePresignedUploadURL(ctx, objectKey, expiresIn, contentType)
-	if err != nil {
-		log.Printf("[UPLOAD-URL] Failed to generate presigned URL: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to generate presigned URL: " + err.Error(),
-		})
-		return
-	}
-
-	log.Printf("[UPLOAD-URL] Generated presigned URL for upload_id=%s, objectKey=%s", uploadID, objectKey)
-
-	c.JSON(http.StatusOK, models.UploadUrlResponse{
-		UploadURL: uploadURL,
-		UploadID:  uploadID,
-		ExpiresIn: expiresIn,
 	})
 }
 
