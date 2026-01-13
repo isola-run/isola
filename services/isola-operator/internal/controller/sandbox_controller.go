@@ -1429,7 +1429,6 @@ func (r *SandboxReconciler) findSandboxesForTemplate(ctx context.Context, templa
 }
 
 func (r *SandboxReconciler) findSandboxesForNetworkTemplate(ctx context.Context, networkTemplate client.Object) []reconcile.Request {
-	// Use field index for efficient lookup (only sandboxes with explicit network config are indexed)
 	sandboxList := &sandboxv1alpha1.SandboxList{}
 	if err := r.List(ctx, sandboxList,
 		client.InNamespace(networkTemplate.GetNamespace()),
