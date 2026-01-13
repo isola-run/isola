@@ -262,6 +262,20 @@ func newTestReconcilerWithRecorder(clock Clock, recorder record.EventRecorder) *
 	}
 }
 
+// newTestReconcilerWithRuntimeClass creates a SandboxReconciler with RuntimeClassName set.
+// Used for testing gvisor-specific features like overlay2 annotation.
+func newTestReconcilerWithRuntimeClass(clock Clock, runtimeClassName string) *SandboxReconciler {
+	rec := record.NewFakeRecorder(100)
+	return &SandboxReconciler{
+		Client:           k8sClient,
+		Scheme:           scheme.Scheme,
+		Recorder:         rec,
+		AgentImage:       "isola-agent:test",
+		Clock:            clock,
+		RuntimeClassName: runtimeClassName,
+	}
+}
+
 // newTestReconcilerWithCache creates a SandboxReconciler using the cached client.
 // Required for testing field index queries like findSandboxesForTemplate.
 func newTestReconcilerWithCache(clock Clock) *SandboxReconciler {
