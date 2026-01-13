@@ -69,6 +69,7 @@ rules:
   - sandbox.isola.run
   resources:
   - networktemplates/finalizers
+  - rootfssnapshots/finalizers
   - sandboxes/finalizers
   verbs:
   - update
@@ -76,6 +77,7 @@ rules:
   - sandbox.isola.run
   resources:
   - networktemplates/status
+  - rootfssnapshots/status
   - sandboxes/status
   verbs:
   - get
@@ -84,6 +86,7 @@ rules:
 - apiGroups:
   - sandbox.isola.run
   resources:
+  - rootfssnapshots
   - sandboxes
   verbs:
   - create

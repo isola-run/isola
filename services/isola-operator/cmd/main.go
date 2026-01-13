@@ -207,6 +207,17 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "NetworkTemplate")
 		os.Exit(1)
 	}
+
+	// RootfsSnapshotReconciler manages RootfsSnapshot resources.
+	// It creates Jobs to snapshot container rootfs using gvisor's runsc tar command.
+	if err := (&controller.RootfsSnapshotReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		Clock:  controller.RealClock{},
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "RootfsSnapshot")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

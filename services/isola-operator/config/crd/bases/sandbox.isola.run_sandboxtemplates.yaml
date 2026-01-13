@@ -61,7 +61,7 @@ spec:
                     description: |-
                       ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
                       that the snapshot job may be active before the system tries to terminate it.
-                      Only used when Policy is SnapshotFilesystem.
+                      Only used when Policy is SnapshotRootfs.
                     format: int64
                     minimum: 1
                     type: integer
@@ -69,10 +69,10 @@ spec:
                     allOf:
                     - enum:
                       - Delete
-                      - SnapshotFilesystem
+                      - SnapshotRootfs
                     - enum:
                       - Delete
-                      - SnapshotFilesystem
+                      - SnapshotRootfs
                     default: Delete
                     description: Policy determines the action taken when the sandbox
                       shuts down
