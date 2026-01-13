@@ -38,7 +38,7 @@ spec:
         description: |-
           RootfsSnapshot represents a request to snapshot a sandbox's container root filesystems.
           The controller creates Jobs that use gvisor's runsc to tar the overlay2 upper layer.
-          Each container in the sandbox gets its own snapshot Job.
+          Each container in the sandbox gets its own rootfs snapshot Job.
         properties:
           apiVersion:
             description: |-
@@ -80,17 +80,17 @@ spec:
                 description: |-
                   SandboxName is the name of the sandbox to snapshot.
                   The sandbox must be in the same namespace as this RootfsSnapshot.
-                  The controller derives the pod name as {sandbox-name}-pod.
                 minLength: 1
                 type: string
               ttlSecondsAfterFinished:
+                default: 300
                 description: |-
                   TTLSecondsAfterFinished limits the lifetime of a RootfsSnapshot that has
                   finished execution (either all containers succeeded or any failed).
                   If set, the RootfsSnapshot will be automatically deleted after this many
                   seconds after it finishes.
-                  If not set, the RootfsSnapshot won't be automatically deleted (relies on
-                  owner reference garbage collection if owned by a Sandbox).
+                  If not set, the RootfsSnapshot will be deleted after a default value.
+                  0 means immediate deletion upon completion.
                 format: int32
                 minimum: 0
                 type: integer
@@ -235,20 +235,16 @@ spec:
                       - type
                       x-kubernetes-list-type: map
                     containerID:
-                      description: ContainerID is the container ID that was snapshotted
-                        (without containerd:// prefix)
+                      description: ContainerID is the container ID that is being snapshotted
                       type: string
                     containerName:
                       description: ContainerName is the name of the container being
                         snapshotted
                       type: string
-                    jobName:
-                      description: JobName is the name of the Job that performed this
-                        snapshot
-                      type: string
                     snapshotPath:
-                      description: SnapshotPath is the path where the snapshot tarball
-                        is stored on the node
+                      description: |-
+                        todo benl: change to bucket, not on the node
+                        SnapshotPath is the path where the snapshot tarball is stored on the node
                       type: string
                   required:
                   - containerName

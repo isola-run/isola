@@ -153,9 +153,6 @@ func deleteRootfsSnapshot(ctx context.Context, name string) {
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, snap)
 	if err == nil {
-		// Remove finalizer if present so it can be deleted
-		controllerutil.RemoveFinalizer(snap, RootfsSnapshotFinalizer)
-		_ = k8sClient.Update(ctx, snap)
 		_ = k8sClient.Delete(ctx, snap)
 	}
 }

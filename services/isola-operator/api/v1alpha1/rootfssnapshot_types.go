@@ -56,7 +56,6 @@ const (
 	ReasonRuntimeNotSupported = "NotSupported"
 
 	// Per-container Ready condition reasons
-	ReasonContainerPending    = "Pending"
 	ReasonContainerJobCreated = "JobCreated"
 	ReasonContainerJobRunning = "JobRunning"
 	ReasonContainerSucceeded  = "Succeeded"
@@ -67,7 +66,6 @@ const (
 type RootfsSnapshotSpec struct {
 	// SandboxName is the name of the sandbox to snapshot.
 	// The sandbox must be in the same namespace as this RootfsSnapshot.
-	// The controller derives the pod name as {sandbox-name}-pod.
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	SandboxName string `json:"sandboxName"`
@@ -89,9 +87,10 @@ type RootfsSnapshotSpec struct {
 	// finished execution (either all containers succeeded or any failed).
 	// If set, the RootfsSnapshot will be automatically deleted after this many
 	// seconds after it finishes.
-	// If not set, the RootfsSnapshot won't be automatically deleted (relies on
-	// owner reference garbage collection if owned by a Sandbox).
+	// If not set, the RootfsSnapshot will be deleted after a default value.
+	// 0 means immediate deletion upon completion.
 	// +optional
+	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=0
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
 }
@@ -102,17 +101,14 @@ type ContainerSnapshotStatus struct {
 	// +required
 	ContainerName string `json:"containerName"`
 
-	// ContainerID is the container ID that was snapshotted (without containerd:// prefix)
+	// ContainerID is the container ID that is being snapshotted
 	// +optional
 	ContainerID string `json:"containerID,omitempty"`
 
+	// todo benl: change to bucket, not on the node
 	// SnapshotPath is the path where the snapshot tarball is stored on the node
 	// +optional
 	SnapshotPath string `json:"snapshotPath,omitempty"`
-
-	// JobName is the name of the Job that performed this snapshot
-	// +optional
-	JobName string `json:"jobName,omitempty"`
 
 	// Conditions represent the status of this container's snapshot
 	// +listType=map
@@ -152,7 +148,7 @@ type RootfsSnapshotStatus struct {
 
 // RootfsSnapshot represents a request to snapshot a sandbox's container root filesystems.
 // The controller creates Jobs that use gvisor's runsc to tar the overlay2 upper layer.
-// Each container in the sandbox gets its own snapshot Job.
+// Each container in the sandbox gets its own rootfs snapshot Job.
 type RootfsSnapshot struct {
 	metav1.TypeMeta `json:",inline"`
 

@@ -28,13 +28,10 @@ import (
 	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/podutil"
 )
 
-// Re-export podutil functions for backward compatibility and convenience.
-// These are commonly used together with CheckRootfsSnapshotSupport.
-var (
-	GetSandboxPodName         = podutil.GetSandboxPodName
-	ExtractContainerID        = podutil.ExtractContainerID
-	GetSnapshotableContainers = podutil.GetSnapshotableContainers
-)
+// GetSandboxPodName returns the pod name for a sandbox
+func GetSandboxPodName(sandboxName string) string {
+	return sandboxName + "-pod"
+}
 
 // CheckRootfsSnapshotSupport validates the pod can be snapshotted.
 // Returns:
