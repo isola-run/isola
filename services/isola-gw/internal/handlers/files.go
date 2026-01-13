@@ -631,24 +631,7 @@ func (h *Handler) handleDownloadStatus(c *gin.Context, ctx context.Context, tena
 // findDownloadObject finds the download object key by prefix.
 // Returns empty string if not found.
 func (h *Handler) findDownloadObject(ctx context.Context, prefix string) (string, error) {
-	// Since we're checking for a single file in a specific directory,
-	// we can use ObjectExists with the exact prefix pattern.
-	// However, gocloud's blob.Bucket.Exists needs an exact key.
-	// We'll need to use List to find the object.
-	exists, err := h.storage.ObjectExistsWithPrefix(ctx, prefix)
-	if err != nil {
-		return "", err
-	}
-	if !exists {
-		return "", nil
-	}
-
-	// Get the full object key by listing
-	key, err := h.storage.GetFirstObjectWithPrefix(ctx, prefix)
-	if err != nil {
-		return "", err
-	}
-	return key, nil
+	return h.storage.GetFirstObjectWithPrefix(ctx, prefix)
 }
 
 func (h *Handler) GenerateUploadUrl(c *gin.Context) {
