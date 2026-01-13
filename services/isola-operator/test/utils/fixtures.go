@@ -45,7 +45,7 @@ func WithActiveDeadlineSeconds(seconds int64) TemplateOption {
 	return func(t *sandboxv1alpha1.SandboxTemplate) {
 		if t.Spec.ShutdownPolicy == nil {
 			t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-				Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+				Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 			}
 		}
 		t.Spec.ShutdownPolicy.ActiveDeadlineSeconds = &seconds

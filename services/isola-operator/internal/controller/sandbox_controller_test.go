@@ -23,7 +23,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	nodev1 "k8s.io/api/node/v1"
@@ -32,11 +31,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
+	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/snapshot"
 )
 
 // Helper functions for tests
@@ -142,23 +141,47 @@ func deletePod(ctx context.Context, name string) {
 	}
 }
 
-func getJob(ctx context.Context, name string) *batchv1.Job {
-	job := &batchv1.Job{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, job)
-	if errors.IsNotFound(err) {
+func getRootfsSnapshot(ctx context.Context, name string) *sandboxv1alpha1.RootfsSnapshot {
+	snap := &sandboxv1alpha1.RootfsSnapshot{}
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, snap)
+	if err != nil {
 		return nil
 	}
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	return job
+	return snap
 }
 
-func deleteJob(ctx context.Context, name string) {
-	job := &batchv1.Job{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, job)
+func deleteRootfsSnapshot(ctx context.Context, name string) {
+	snap := &sandboxv1alpha1.RootfsSnapshot{}
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, snap)
 	if err == nil {
-		propagationPolicy := metav1.DeletePropagationBackground
-		_ = k8sClient.Delete(ctx, job, &client.DeleteOptions{PropagationPolicy: &propagationPolicy})
+		// Remove finalizer if present so it can be deleted
+		controllerutil.RemoveFinalizer(snap, RootfsSnapshotFinalizer)
+		_ = k8sClient.Update(ctx, snap)
+		_ = k8sClient.Delete(ctx, snap)
 	}
+}
+
+func setRootfsSnapshotReady(ctx context.Context, name string, ready bool, reason, message string) {
+	snap := getRootfsSnapshot(ctx, name)
+	if snap == nil {
+		return
+	}
+	status := metav1.ConditionTrue
+	if !ready {
+		status = metav1.ConditionFalse
+	}
+	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
+		Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: snap.Generation,
+	})
+	if ready || reason == sandboxv1alpha1.ReasonRootfsSnapshotFailed {
+		now := metav1.Now()
+		snap.Status.CompletedAt = &now
+	}
+	ExpectWithOffset(1, k8sClient.Status().Update(ctx, snap)).To(Succeed())
 }
 
 func createNetworkTemplate(ctx context.Context, name string, opts ...func(*sandboxv1alpha1.NetworkTemplate)) *sandboxv1alpha1.NetworkTemplate {
@@ -1044,7 +1067,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
 			})
 			defer deleteTemplate(ctx, templateName)
@@ -1083,7 +1106,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			Eventually(recorder.Events).Should(Receive(ContainSubstring(ReasonFSSnapshotRuntimeClassMissing)))
+			Eventually(recorder.Events).Should(Receive(ContainSubstring(snapshot.ReasonRuntimeClassMissing)))
 
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(errors.IsNotFound(err)).To(BeTrue())
@@ -1104,7 +1127,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
 				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
@@ -1143,14 +1166,14 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			Eventually(recorder.Events).Should(Receive(ContainSubstring(ReasonFSSnapshotRuntimeUnsupported)))
+			Eventually(recorder.Events).Should(Receive(ContainSubstring(snapshot.ReasonRuntimeUnsupported)))
 
 			// Sandbox deleted after snapshot skipped
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 
-		It("should create snapshotter job for supported runtime (runsc)", func() {
+		It("should create RootfsSnapshot for supported runtime (runsc)", func() {
 			sandboxName := "sandbox-runsc-snapshot"
 			templateName := "template-runsc-snapshot"
 			runtimeClassName := "gvisor-runsc"
@@ -1162,7 +1185,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
 				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
@@ -1172,9 +1195,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			rootfsSnapshotName := sandboxName + "-rootfs-snapshot"
 			defer deletePod(ctx, podName)
-			defer deleteJob(ctx, snapshotterJobName)
+			defer deleteRootfsSnapshot(ctx, rootfsSnapshotName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -1225,10 +1248,10 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshotterJob := &batchv1.Job{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterJobName, Namespace: testNamespace}, snapshotterJob)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(snapshotterJob.Spec.Template.Spec.Containers[0].Name).To(Equal("snapshotter"))
+			// Verify RootfsSnapshot was created
+			rootfsSnapshot := getRootfsSnapshot(ctx, rootfsSnapshotName)
+			Expect(rootfsSnapshot).NotTo(BeNil())
+			Expect(rootfsSnapshot.Spec.SandboxName).To(Equal(sandboxName))
 		})
 
 		It("should set condition when sandbox pod is not found during snapshot", func() {
@@ -1239,7 +1262,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
 			})
 			defer deleteTemplate(ctx, templateName)
@@ -1267,7 +1290,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 
-		It("should mark snapshot complete when snapshotter job succeeds", func() {
+		It("should mark snapshot complete when RootfsSnapshot Ready=True", func() {
 			sandboxName := "sandbox-snapshot-success"
 			templateName := "template-snapshot-success"
 			runtimeClassName := "gvisor-success"
@@ -1282,7 +1305,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
 				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
@@ -1292,9 +1315,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			rootfsSnapshotName := sandboxName + "-rootfs-snapshot"
 			defer deletePod(ctx, podName)
-			defer deleteJob(ctx, snapshotterJobName)
+			defer deleteRootfsSnapshot(ctx, rootfsSnapshotName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -1328,18 +1351,12 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshotterJob := &batchv1.Job{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterJobName, Namespace: testNamespace}, snapshotterJob)
-			Expect(err).NotTo(HaveOccurred())
-			now := metav1.Now()
-			snapshotterJob.Status.StartTime = &now
-			snapshotterJob.Status.CompletionTime = &now
-			snapshotterJob.Status.Succeeded = 1
-			snapshotterJob.Status.Conditions = []batchv1.JobCondition{
-				{Type: batchv1.JobSuccessCriteriaMet, Status: corev1.ConditionTrue},
-				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
-			}
-			Expect(k8sClient.Status().Update(ctx, snapshotterJob)).To(Succeed())
+			// Verify RootfsSnapshot was created
+			rootfsSnapshot := getRootfsSnapshot(ctx, rootfsSnapshotName)
+			Expect(rootfsSnapshot).NotTo(BeNil())
+
+			// Set RootfsSnapshot Ready=True to simulate successful snapshot
+			setRootfsSnapshotReady(ctx, rootfsSnapshotName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -1360,7 +1377,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 
-		It("should mark snapshot failed when snapshotter job fails", func() {
+		It("should mark snapshot failed when RootfsSnapshot fails", func() {
 			sandboxName := "sandbox-snapshot-fail"
 			templateName := "template-snapshot-fail"
 			runtimeClassName := "gvisor-fail"
@@ -1372,7 +1389,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
 				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
@@ -1382,9 +1399,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			rootfsSnapshotName := sandboxName + "-rootfs-snapshot"
 			defer deletePod(ctx, podName)
-			defer deleteJob(ctx, snapshotterJobName)
+			defer deleteRootfsSnapshot(ctx, rootfsSnapshotName)
 
 			// Setup: reconcile to create pod, then replace with pod that has NodeName
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -1409,19 +1426,14 @@ var _ = Describe("Sandbox Controller", func() {
 			fakeClock.Advance(2 * time.Second)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
-			snapshotterJob := &batchv1.Job{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterJobName, Namespace: testNamespace}, snapshotterJob)
-			Expect(err).NotTo(HaveOccurred())
-			now := metav1.Now()
-			snapshotterJob.Status.StartTime = &now
-			snapshotterJob.Status.Failed = 1
-			snapshotterJob.Status.Conditions = []batchv1.JobCondition{
-				{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue},
-				{Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Message: "Job failed"},
-			}
-			Expect(k8sClient.Status().Update(ctx, snapshotterJob)).To(Succeed())
+			// Verify RootfsSnapshot was created
+			rootfsSnapshot := getRootfsSnapshot(ctx, rootfsSnapshotName)
+			Expect(rootfsSnapshot).NotTo(BeNil())
 
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
+			// Set RootfsSnapshot Ready=False with failed reason to simulate failed snapshot
+			setRootfsSnapshotReady(ctx, rootfsSnapshotName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
@@ -1437,7 +1449,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy:                sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					Policy:                sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 					ActiveDeadlineSeconds: &snapshotTimeout,
 				}
 			})
@@ -1465,7 +1477,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 					// ActiveDeadlineSeconds not set - should use default (300)
 				}
 				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
@@ -1476,9 +1488,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			rootfsSnapshotName := sandboxName + "-rootfs-snapshot"
 			defer deletePod(ctx, podName)
-			defer deleteJob(ctx, snapshotterJobName)
+			defer deleteRootfsSnapshot(ctx, rootfsSnapshotName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -1511,11 +1523,11 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Verify snapshotter job was created with default activeDeadlineSeconds (300)
-			snapshotterJob := getJob(ctx, snapshotterJobName)
-			Expect(snapshotterJob).NotTo(BeNil())
-			Expect(snapshotterJob.Spec.ActiveDeadlineSeconds).NotTo(BeNil())
-			Expect(*snapshotterJob.Spec.ActiveDeadlineSeconds).To(Equal(int64(300)), "Should use default activeDeadlineSeconds of 300")
+			// Verify RootfsSnapshot was created with default activeDeadlineSeconds (300)
+			rootfsSnapshot := getRootfsSnapshot(ctx, rootfsSnapshotName)
+			Expect(rootfsSnapshot).NotTo(BeNil())
+			Expect(rootfsSnapshot.Spec.ActiveDeadlineSeconds).NotTo(BeNil())
+			Expect(*rootfsSnapshot.Spec.ActiveDeadlineSeconds).To(Equal(int64(300)), "Should use default activeDeadlineSeconds of 300")
 		})
 
 		It("should handle RuntimeClass not found during snapshot verification", func() {
@@ -1527,7 +1539,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
 				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
@@ -1547,7 +1559,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err.Error()).To(ContainSubstring("RuntimeClass"))
 		})
 
-		It("should create snapshotter job exactly once even if reconciled multiple times", func() {
+		It("should create RootfsSnapshot exactly once even if reconciled multiple times", func() {
 			sandboxName := "sandbox-snapshot-idempotent"
 			templateName := "template-snapshot-idempotent"
 			runtimeClassName := "gvisor-idempotent"
@@ -1559,7 +1571,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
 				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
@@ -1569,9 +1581,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			rootfsSnapshotName := sandboxName + "-rootfs-snapshot"
 			defer deletePod(ctx, podName)
-			defer deleteJob(ctx, snapshotterJobName)
+			defer deleteRootfsSnapshot(ctx, rootfsSnapshotName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -1605,21 +1617,19 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshotterJob := &batchv1.Job{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterJobName, Namespace: testNamespace}, snapshotterJob)
-			Expect(err).NotTo(HaveOccurred())
-			originalUID := snapshotterJob.UID
+			rootfsSnapshot := getRootfsSnapshot(ctx, rootfsSnapshotName)
+			Expect(rootfsSnapshot).NotTo(BeNil())
+			originalUID := rootfsSnapshot.UID
 
-			// Second reconcile while snapshotter running - should be idempotent
+			// Second reconcile while snapshot running - should be idempotent
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshotterJob = &batchv1.Job{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterJobName, Namespace: testNamespace}, snapshotterJob)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(snapshotterJob.UID).To(Equal(originalUID), "Snapshotter job should not be recreated")
+			rootfsSnapshot = getRootfsSnapshot(ctx, rootfsSnapshotName)
+			Expect(rootfsSnapshot).NotTo(BeNil())
+			Expect(rootfsSnapshot.UID).To(Equal(originalUID), "RootfsSnapshot should not be recreated")
 
 			// Third reconcile - still idempotent
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
@@ -1627,10 +1637,9 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshotterJob = &batchv1.Job{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: snapshotterJobName, Namespace: testNamespace}, snapshotterJob)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(snapshotterJob.UID).To(Equal(originalUID), "Snapshotter job should not be recreated on third reconcile")
+			rootfsSnapshot = getRootfsSnapshot(ctx, rootfsSnapshotName)
+			Expect(rootfsSnapshot).NotTo(BeNil())
+			Expect(rootfsSnapshot.UID).To(Equal(originalUID), "RootfsSnapshot should not be recreated on third reconcile")
 		})
 	})
 
@@ -1677,7 +1686,7 @@ var _ = Describe("Sandbox Controller", func() {
 			}, testTimeout, testInterval).Should(BeTrue())
 		})
 
-		It("should record SnapshottingStarted event", func() {
+		It("should record RootfsSnapshotCreated event", func() {
 			sandboxName := "sandbox-event-snapshot-start"
 			templateName := "template-event-snapshot-start"
 			runtimeClassName := "gvisor-event"
@@ -1688,7 +1697,7 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem}
+				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs}
 				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteTemplate(ctx, templateName)
@@ -1697,9 +1706,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			rootfsSnapshotName := sandboxName + "-rootfs-snapshot"
 			defer deletePod(ctx, podName)
-			defer deleteJob(ctx, snapshotterJobName)
+			defer deleteRootfsSnapshot(ctx, rootfsSnapshotName)
 
 			// Create and make pod ready (need to recreate with NodeName)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -1713,11 +1722,11 @@ var _ = Describe("Sandbox Controller", func() {
 			fakeClock.Advance(2 * time.Second)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
-			// Check for SnapshottingStarted event
+			// Check for RootfsSnapshotCreated event
 			Eventually(func() bool {
 				select {
 				case event := <-recorder.Events:
-					return event == "Normal SnapshottingStarted Snapshotter job created"
+					return event == "Normal RootfsSnapshotCreated Created RootfsSnapshot resource"
 				default:
 					return false
 				}
@@ -1735,7 +1744,7 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem}
+				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs}
 				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteTemplate(ctx, templateName)
@@ -1744,9 +1753,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			rootfsSnapshotName := sandboxName + "-rootfs-snapshot"
 			defer deletePod(ctx, podName)
-			defer deleteJob(ctx, snapshotterJobName)
+			defer deleteRootfsSnapshot(ctx, rootfsSnapshotName)
 
 			// Setup - recreate pod with NodeName
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -1766,18 +1775,10 @@ var _ = Describe("Sandbox Controller", func() {
 			fakeClock.Advance(2 * time.Second)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
-			// Mark snapshotter job succeeded
-			snapshotterJob := getJob(ctx, snapshotterJobName)
-			Expect(snapshotterJob).NotTo(BeNil())
-			now := metav1.Now()
-			snapshotterJob.Status.StartTime = &now
-			snapshotterJob.Status.CompletionTime = &now
-			snapshotterJob.Status.Succeeded = 1
-			snapshotterJob.Status.Conditions = []batchv1.JobCondition{
-				{Type: batchv1.JobSuccessCriteriaMet, Status: corev1.ConditionTrue},
-				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
-			}
-			Expect(k8sClient.Status().Update(ctx, snapshotterJob)).To(Succeed())
+			// Mark RootfsSnapshot succeeded
+			rootfsSnapshot := getRootfsSnapshot(ctx, rootfsSnapshotName)
+			Expect(rootfsSnapshot).NotTo(BeNil())
+			setRootfsSnapshotReady(ctx, rootfsSnapshotName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
 		drainEvents2:
 			for {
@@ -1793,7 +1794,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Eventually(func() bool {
 				select {
 				case event := <-recorder.Events:
-					return len(event) > 0 && (event == "Normal SnapshotSucceeded Filesystem snapshot job completed" || len(event) > 20)
+					return len(event) > 0 && (event == "Normal SnapshotSucceeded Rootfs snapshot completed" || len(event) > 20)
 				default:
 					return false
 				}
@@ -1811,7 +1812,7 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem}
+				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs}
 				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteTemplate(ctx, templateName)
@@ -1820,9 +1821,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			rootfsSnapshotName := sandboxName + "-rootfs-snapshot"
 			defer deletePod(ctx, podName)
-			defer deleteJob(ctx, snapshotterJobName)
+			defer deleteRootfsSnapshot(ctx, rootfsSnapshotName)
 
 			// Setup - recreate pod with NodeName
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -1832,17 +1833,10 @@ var _ = Describe("Sandbox Controller", func() {
 			fakeClock.Advance(2 * time.Second)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
-			// Mark snapshotter job failed
-			snapshotterJob := getJob(ctx, snapshotterJobName)
-			Expect(snapshotterJob).NotTo(BeNil())
-			now := metav1.Now()
-			snapshotterJob.Status.StartTime = &now
-			snapshotterJob.Status.Failed = 1
-			snapshotterJob.Status.Conditions = []batchv1.JobCondition{
-				{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue},
-				{Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Message: "Job failed"},
-			}
-			Expect(k8sClient.Status().Update(ctx, snapshotterJob)).To(Succeed())
+			// Mark RootfsSnapshot failed
+			rootfsSnapshot := getRootfsSnapshot(ctx, rootfsSnapshotName)
+			Expect(rootfsSnapshot).NotTo(BeNil())
+			setRootfsSnapshotReady(ctx, rootfsSnapshotName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
 
 			// Drain previous events
 		drainEvents3:
@@ -2080,7 +2074,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 
-		It("should execute SnapshotFilesystem policy on deletion", func() {
+		It("should execute SnapshotRootfs policy on deletion", func() {
 			sandboxName := "sandbox-snapshot-delete"
 			templateName := "template-snapshot-delete"
 			runtimeClassName := "gvisor-delete"
@@ -2093,7 +2087,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy: sandboxv1alpha1.ShutdownPolicySnapshotFilesystem,
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
 				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
@@ -2102,9 +2096,9 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 
 			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			rootfsSnapshotName := sandboxName + "-rootfs-snapshot"
 			defer deletePod(ctx, podName)
-			defer deleteJob(ctx, snapshotterJobName)
+			defer deleteRootfsSnapshot(ctx, rootfsSnapshotName)
 
 			// First reconcile - creates pod and adds finalizer
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -2143,27 +2137,19 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
 
-			// Reconcile - should create snapshotter job
+			// Reconcile - should create RootfsSnapshot
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Verify snapshotter job was created
-			snapshotterJob := getJob(ctx, snapshotterJobName)
-			Expect(snapshotterJob).NotTo(BeNil())
-			Expect(snapshotterJob.Spec.Template.Spec.Containers[0].Name).To(Equal("snapshotter"))
+			// Verify RootfsSnapshot was created
+			rootfsSnapshot := getRootfsSnapshot(ctx, rootfsSnapshotName)
+			Expect(rootfsSnapshot).NotTo(BeNil())
+			Expect(rootfsSnapshot.Spec.SandboxName).To(Equal(sandboxName))
 
-			// Mark snapshotter job as complete
-			now := metav1.Now()
-			snapshotterJob.Status.StartTime = &now
-			snapshotterJob.Status.CompletionTime = &now
-			snapshotterJob.Status.Succeeded = 1
-			snapshotterJob.Status.Conditions = []batchv1.JobCondition{
-				{Type: batchv1.JobSuccessCriteriaMet, Status: corev1.ConditionTrue},
-				{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
-			}
-			Expect(k8sClient.Status().Update(ctx, snapshotterJob)).To(Succeed())
+			// Mark RootfsSnapshot as complete
+			setRootfsSnapshotReady(ctx, rootfsSnapshotName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
 			// Reconcile - should complete deletion
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{

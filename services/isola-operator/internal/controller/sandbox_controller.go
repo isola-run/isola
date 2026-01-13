@@ -18,18 +18,13 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
-	"strings"
 	"time"
 
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	nodev1 "k8s.io/api/node/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -43,6 +38,7 @@ import (
 
 	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
 	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/network"
+	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/snapshot"
 	"k8s.io/client-go/tools/record"
 )
 
@@ -50,11 +46,10 @@ const (
 	// Summary condition
 	SandboxReadyCondition = "Ready"
 
-	SandboxTemplateReadyCondition = "TemplateReady"
-	SandboxPodReadyCondition      = "PodReady"
-	SandboxNetworkReadyCondition  = "NetworkConfigured"
-	// todo benl: maybe keep just sandbox.Status.Snapshot and no snapshotting condition on sandbox (consider custom CRD for snapshotting)
-	SandboxFilesystemSnapshotCondition = "FilesystemSnapshot"
+	SandboxTemplateReadyCondition  = "TemplateReady"
+	SandboxPodReadyCondition       = "PodReady"
+	SandboxNetworkReadyCondition   = "NetworkConfigured"
+	SandboxRootfsSnapshotCondition = "RootfsSnapshot"
 )
 
 const (
@@ -195,114 +190,6 @@ func isPodTerminated(pod *corev1.Pod) bool {
 		return false
 	}
 	return pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed
-}
-
-func isJobComplete(job *batchv1.Job) bool {
-	if job == nil {
-		return false
-	}
-	for _, condition := range job.Status.Conditions {
-		if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
-			return true
-		}
-	}
-	return false
-}
-
-func isJobFailed(job *batchv1.Job) bool {
-	if job == nil {
-		return false
-	}
-	for _, condition := range job.Status.Conditions {
-		if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
-			return true
-		}
-	}
-	return false
-}
-
-func getJobConditionMessage(job *batchv1.Job, conditionType batchv1.JobConditionType) string {
-	if job == nil {
-		return ""
-	}
-	for _, cond := range job.Status.Conditions {
-		if cond.Type == conditionType && cond.Status == corev1.ConditionTrue {
-			return cond.Message
-		}
-	}
-	return ""
-}
-
-// extractContainerID extracts the container ID from a pod's container status
-// Returns the raw ID without the containerd:// prefix
-func extractContainerID(sandboxPod *corev1.Pod) (string, error) {
-	if sandboxPod == nil {
-		return "", fmt.Errorf("pod is nil")
-	}
-	if sandboxPod.Status.ContainerStatuses == nil {
-		return "", fmt.Errorf("pod has no container statuses")
-	}
-	// todo benl: currently we only allow and assume a single application container in the pod
-	if len(sandboxPod.Status.ContainerStatuses) != 1 {
-		return "", fmt.Errorf("pod has %d container statuses, expected 1", len(sandboxPod.Status.ContainerStatuses))
-	}
-	cs := sandboxPod.Status.ContainerStatuses[0]
-	// containerID format: containerd://abc123...
-	if cs.ContainerID == "" {
-		return "", fmt.Errorf("container has no containerID yet")
-	}
-	parts := strings.SplitN(cs.ContainerID, "://", 2)
-	if len(parts) != 2 {
-		return "", fmt.Errorf("unexpected containerID format: %s", cs.ContainerID)
-	}
-	return parts[1], nil
-}
-
-var (
-	ErrSandboxPodNotFound  = errors.New("sandbox pod not found")
-	ErrSandboxPodNotReady  = errors.New("sandbox pod is not ready")
-	ErrRuntimeClassMissing = errors.New("runtimeClassName is not set")
-	ErrRuntimeUnsupported  = errors.New("runtime class does not support snapshotting")
-)
-
-const (
-	ReasonFSSnapshotSupported           = "SnapshotSupported"
-	ReasonFSSnapshotPodDoesNotExist     = "PodDoesNotExist"
-	ReasonFSSnapshotRuntimeClassMissing = "RuntimeClassMissing"
-	ReasonFSSnapshotRuntimeUnsupported  = "RuntimeUnsupported"
-	ReasonFSSnapshotTargetNotFound      = "TargetNotFound"
-	ReasonFSSnapshotPodNotReady         = "SnapshotPodNotReady"
-	ReasonFSSnapshotSnapshotting        = "Snapshotting"
-	ReasonFSSnapshotNotSnapshotting     = "NotSnapshotting"
-)
-
-func (r *SandboxReconciler) verifySnapshottingCapability(ctx context.Context, sandboxPod *corev1.Pod) (string, error) {
-	if sandboxPod == nil {
-		// can't snapshot if pod doesn't exist
-		return ReasonFSSnapshotPodDoesNotExist, nil
-	}
-	if !isPodReady(sandboxPod) {
-		// can't snapshot if pod is not ready
-		return ReasonFSSnapshotPodNotReady, nil
-	}
-
-	runtimeClassName := sandboxPod.Spec.RuntimeClassName
-	if runtimeClassName == nil || *runtimeClassName == "" {
-		// default runtime class (can't assume it's snapshottable)
-		return ReasonFSSnapshotRuntimeClassMissing, nil
-	}
-
-	// 3. Resolve the RuntimeClass to check the actual Handler
-	runtimeClass := &nodev1.RuntimeClass{}
-	if err := r.Get(ctx, types.NamespacedName{Name: *runtimeClassName}, runtimeClass); err != nil {
-		return ReasonFSSnapshotTargetNotFound, err
-	}
-
-	if runtimeClass.Handler == "runsc" || runtimeClass.Handler == "gvisor" {
-		return ReasonFSSnapshotSupported, nil
-	}
-
-	return ReasonFSSnapshotRuntimeUnsupported, nil
 }
 
 func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandboxv1alpha1.Sandbox, newSandbox *sandboxv1alpha1.Sandbox, newConditions []metav1.Condition) error {
@@ -506,160 +393,6 @@ func configureDNS(sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.Netwo
 	return nil
 }
 
-// todo benl: extract snapshotting to a separate controller that manages the FSSnapshotter CRD
-// CreateSnapshotterJob creates a Job to snapshot the sandbox container's filesystem
-func (r *SandboxReconciler) CreateSnapshotterJob(
-	ctx context.Context,
-	sandbox *sandboxv1alpha1.Sandbox,
-	baseSandbox *sandboxv1alpha1.Sandbox,
-	sandboxPod *corev1.Pod,
-	activeDeadlineSeconds int64,
-) (ctrl.Result, error) {
-	// todo benl: reduce linux capabilities of snapshot job's pod to only what is needed
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
-
-	snapshotterJobName := getFilesystemSnapshotterJobName(sandbox)
-	nodeName := sandboxPod.Spec.NodeName
-	timestamp := r.clock().Now().Unix()
-	snapshotPath := fmt.Sprintf("/tmp/rootfs-%s-%d.tar", sandbox.Name, timestamp)
-
-	containerID, err := extractContainerID(sandboxPod)
-	if err != nil {
-		log.Error(err, "Failed to extract container ID")
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Creating filesystem snapshotter job", "job", snapshotterJobName, "node", nodeName)
-
-	privileged := false
-	hostPathDirectory := corev1.HostPathDirectory
-	hostPathFile := corev1.HostPathFile
-
-	// todo benl: add labels / annotations
-	// todo benl: create a minimal image (possibly with runsc backed in with a fixed version)
-	snapshotJob := &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      snapshotterJobName,
-			Namespace: sandbox.Namespace,
-		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit:            ptr.To(int32(0)),
-			ActiveDeadlineSeconds:   &activeDeadlineSeconds,
-			TTLSecondsAfterFinished: ptr.To(int32(60)),
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					NodeSelector: map[string]string{
-						"kubernetes.io/hostname": nodeName,
-					},
-					RestartPolicy: corev1.RestartPolicyNever,
-					Containers: []corev1.Container{
-						{
-							Name:    "snapshotter",
-							Image:   "debian:stable-slim",
-							Command: []string{"/usr/local/bin/runsc"},
-							Args:    []string{"--root=/run/containerd/runsc/k8s.io", "tar", "rootfs-upper", "--file", snapshotPath, containerID},
-							SecurityContext: &corev1.SecurityContext{
-								Privileged: &privileged,
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "runsc-bin",
-									MountPath: "/usr/local/bin/runsc",
-									ReadOnly:  true,
-								},
-								{
-									Name:      "runsc-state",
-									MountPath: "/run/containerd/runsc/k8s.io",
-									ReadOnly:  true,
-								},
-								// todo benl: upload to bucket instead
-								{
-									Name:      "tmp-output",
-									MountPath: "/tmp",
-								},
-							},
-							// todo benl: adjust resources. Large files might lead to OOM since gvisor loads them to memory?
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("100m"),
-									corev1.ResourceMemory: resource.MustParse("64Mi"),
-								},
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("500m"),
-									corev1.ResourceMemory: resource.MustParse("256Mi"),
-								},
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "runsc-bin",
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/usr/bin/runsc",
-									Type: &hostPathFile,
-								},
-							},
-						},
-						{
-							Name: "runsc-state",
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/run/containerd/runsc/k8s.io",
-									Type: &hostPathDirectory,
-								},
-							},
-						},
-						{
-							Name: "tmp-output",
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/tmp",
-									Type: &hostPathDirectory,
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	// Set owner reference to sandbox for cleanup
-	if err := controllerutil.SetControllerReference(sandbox, snapshotJob, r.Scheme); err != nil {
-		log.Error(err, "Failed to set controller reference for snapshot job")
-		return ctrl.Result{}, err
-	}
-
-	if err := r.Create(ctx, snapshotJob); err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			log.Info("Snapshotter job already exists")
-			return ctrl.Result{}, nil
-		}
-		log.Error(err, "Failed to create snapshotter job")
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Snapshotter job created", "snapshotJob", snapshotterJobName)
-
-	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshottingStarted", "Snapshotter job created")
-
-	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-		{
-			Type:               SandboxFilesystemSnapshotCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshottingInProgress,
-			Message:            "Filesystem snapshotter in progress",
-			ObservedGeneration: sandbox.Generation,
-		},
-	}); err != nil {
-		log.Error(err, "Failed to update Sandbox status for snapshotting")
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{}, nil
-}
-
 func getSandboxPodName(sandbox *sandboxv1alpha1.Sandbox) string {
 	return sandbox.Name + "-pod"
 }
@@ -679,23 +412,20 @@ func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv
 	return sandboxPod, nil
 }
 
-func getFilesystemSnapshotterJobName(sandbox *sandboxv1alpha1.Sandbox) string {
-	return sandbox.Name + "-fssnapshotter"
+func getRootfsSnapshotName(sandbox *sandboxv1alpha1.Sandbox) string {
+	return sandbox.Name + "-rootfs-snapshot"
 }
 
-func (r *SandboxReconciler) getFilesystemSnapshotterJob(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*batchv1.Job, error) {
-	jobName := getFilesystemSnapshotterJobName(sandbox)
-	jobNamespace := sandbox.Namespace
-
-	snapshotterJob := &batchv1.Job{}
-	if err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: jobNamespace}, snapshotterJob); err != nil {
+func (r *SandboxReconciler) getRootfsSnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
+	snapshotName := getRootfsSnapshotName(sandbox)
+	snap := &sandboxv1alpha1.RootfsSnapshot{}
+	if err := r.Get(ctx, types.NamespacedName{Name: snapshotName, Namespace: sandbox.Namespace}, snap); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
-
-	return snapshotterJob, nil
+	return snap, nil
 }
 
 func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.SandboxTemplate, ctrl.Result, error) {
@@ -978,11 +708,11 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	networkCondition := r.determineNetworkCondition(sandbox, networkTemplate)
 	conditions = append(conditions, networkCondition)
 
-	snapshotterJob, err := r.getFilesystemSnapshotterJob(ctx, sandbox)
+	rootfsSnapshot, err := r.getRootfsSnapshot(ctx, sandbox)
 	if err != nil {
 		return err
 	}
-	snapshotCondition := r.determineSnapshotCondition(sandbox, snapshotterJob)
+	snapshotCondition := r.determineSnapshotCondition(sandbox, rootfsSnapshot)
 	conditions = append(conditions, snapshotCondition)
 
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod, networkTemplate)
@@ -1028,46 +758,56 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 	}
 }
 
-func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snapshotterJob *batchv1.Job) metav1.Condition {
-	if snapshotterJob == nil {
+func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, rootfsSnapshot *sandboxv1alpha1.RootfsSnapshot) metav1.Condition {
+	if rootfsSnapshot == nil {
 		return metav1.Condition{
-			Type:               SandboxFilesystemSnapshotCondition,
+			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             ReasonFSSnapshotNotSnapshotting,
-			Message:            "No filesystem snapshot in progress",
+			Reason:             "NotSnapshotting",
+			Message:            "No rootfs snapshot in progress",
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
 
-	if isJobComplete(snapshotterJob) {
+	// Check the RootfsSnapshot's Ready condition
+	readyCond := meta.FindStatusCondition(rootfsSnapshot.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+	if readyCond == nil {
 		return metav1.Condition{
-			Type:               SandboxFilesystemSnapshotCondition,
+			Type:               SandboxRootfsSnapshotCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             CondReasonSnapshottingInProgress,
+			Message:            "Rootfs snapshot is initializing",
+			ObservedGeneration: sandbox.Generation,
+		}
+	}
+
+	if readyCond.Status == metav1.ConditionTrue {
+		return metav1.Condition{
+			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionTrue,
 			Reason:             CondReasonSnapshotComplete,
-			Message:            "Filesystem snapshot completed",
+			Message:            "Rootfs snapshot completed",
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
 
-	if isJobFailed(snapshotterJob) {
-		message := "Filesystem snapshot job failed"
-		if condMsg := getJobConditionMessage(snapshotterJob, batchv1.JobFailed); condMsg != "" {
-			message = fmt.Sprintf("Filesystem snapshot job failed: %s", condMsg)
-		}
+	// Check if it failed
+	if readyCond.Reason == sandboxv1alpha1.ReasonRootfsSnapshotFailed {
 		return metav1.Condition{
-			Type:               SandboxFilesystemSnapshotCondition,
+			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonSnapshotFailed,
-			Message:            message,
+			Message:            readyCond.Message,
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
 
+	// Still in progress
 	return metav1.Condition{
-		Type:               SandboxFilesystemSnapshotCondition,
+		Type:               SandboxRootfsSnapshotCondition,
 		Status:             metav1.ConditionFalse,
-		Reason:             ReasonFSSnapshotSnapshotting,
-		Message:            "Filesystem snapshot job is running",
+		Reason:             CondReasonSnapshottingInProgress,
+		Message:            "Rootfs snapshot is in progress",
 		ObservedGeneration: sandbox.Generation,
 	}
 }
@@ -1156,8 +896,8 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxtemplates,verbs=get;list;watch
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=networktemplates,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=networktemplates/finalizers,verbs=update
+// +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=node.k8s.io,resources=runtimeclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -1398,8 +1138,8 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 	}
 
 	switch template.Spec.ShutdownPolicy.Policy {
-	case sandboxv1alpha1.ShutdownPolicySnapshotFilesystem:
-		return r.handleFilesystemSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, r.getActiveDeadlineSeconds(template))
+	case sandboxv1alpha1.ShutdownPolicySnapshotRootfs:
+		return r.handleRootfsSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, r.getActiveDeadlineSeconds(template))
 	default:
 		log.Info("Unknown shutdown policy; proceeding with deletion", "policy", template.Spec.ShutdownPolicy.Policy)
 		return ctrl.Result{}, true, nil
@@ -1417,7 +1157,7 @@ func (r *SandboxReconciler) calculateSnapshotDeadline(template *sandboxv1alpha1.
 	return r.clock().Now().Add(time.Duration(r.getActiveDeadlineSeconds(template)) * time.Second)
 }
 
-func (r *SandboxReconciler) handleFilesystemSnapshot(
+func (r *SandboxReconciler) handleRootfsSnapshot(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
@@ -1429,13 +1169,13 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 
 	now := r.clock().Now()
 	if now.After(snapshotDeadline) {
-		log.Info("Filesystem snapshot timed out", "deadline", snapshotDeadline)
+		log.Info("Rootfs snapshot timed out", "deadline", snapshotDeadline)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
-				Type:               SandboxFilesystemSnapshotCondition,
+				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
 				Reason:             CondReasonSnapshotTimeout,
-				Message:            "Filesystem snapshot did not complete before deadline",
+				Message:            "Rootfs snapshot did not complete before deadline",
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
@@ -1445,12 +1185,12 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 	}
 
 	if sandboxPod == nil {
-		log.Info("Skipping filesystem snapshot because sandbox pod is missing")
+		log.Info("Skipping rootfs snapshot because sandbox pod is missing")
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
-				Type:               SandboxFilesystemSnapshotCondition,
+				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             ReasonFSSnapshotPodDoesNotExist,
+				Reason:             snapshot.ReasonPodDoesNotExist,
 				Message:            "Sandbox pod no longer exists; snapshot skipped",
 				ObservedGeneration: sandbox.Generation,
 			},
@@ -1460,17 +1200,18 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	reason, err := r.verifySnapshottingCapability(ctx, sandboxPod)
+	// Pre-check runtime support
+	supported, reason, err := snapshot.CheckRootfsSnapshotSupport(ctx, r.Client, sandboxPod)
 	if err != nil {
 		log.Error(err, "Failed to validate snapshotting support")
 		return ctrl.Result{}, false, err
 	}
 
-	if reason != ReasonFSSnapshotSupported {
-		if reason == ReasonFSSnapshotPodNotReady {
+	if !supported {
+		if reason == snapshot.ReasonPodNotReady {
 			if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 				{
-					Type:               SandboxFilesystemSnapshotCondition,
+					Type:               SandboxRootfsSnapshotCondition,
 					Status:             metav1.ConditionFalse,
 					Reason:             CondReasonSnapshottingInProgress,
 					Message:            "Waiting for sandbox pod to become ready for snapshotting",
@@ -1482,15 +1223,15 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 			return ctrl.Result{RequeueAfter: time.Second}, false, nil
 		}
 
-		log.Info("Unable to perform filesystem snapshot", "reason", reason)
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, reason, "Unable to perform filesystem snapshot")
+		log.Info("Unable to perform rootfs snapshot", "reason", reason)
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, reason, "Unable to perform rootfs snapshot")
 
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
-				Type:               SandboxFilesystemSnapshotCondition,
+				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             reason,
-				Message:            "Unable to perform filesystem snapshot",
+				Reason:             CondReasonInvalidRuntime,
+				Message:            fmt.Sprintf("Unable to perform rootfs snapshot: %s", reason),
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
@@ -1499,44 +1240,70 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	snapshotterJob, err := r.getFilesystemSnapshotterJob(ctx, sandbox)
+	// Get or create RootfsSnapshot
+	rootfsSnapshot, err := r.getRootfsSnapshot(ctx, sandbox)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
-	if snapshotterJob == nil {
-		res, createErr := r.CreateSnapshotterJob(ctx, sandbox, baseSandbox, sandboxPod, activeDeadlineSeconds)
-		if res.RequeueAfter == 0 {
-			res.RequeueAfter = time.Second
-		}
-		return res, false, createErr
-	}
 
-	// Avoid waiting forever if we are close to the deadline.
-	if r.clock().Now().After(snapshotDeadline) {
-		log.Info("Filesystem snapshot timed out before completion", "deadline", snapshotDeadline)
+	if rootfsSnapshot == nil {
+		// Create the RootfsSnapshot
+		rootfsSnapshot = &sandboxv1alpha1.RootfsSnapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      getRootfsSnapshotName(sandbox),
+				Namespace: sandbox.Namespace,
+			},
+			Spec: sandboxv1alpha1.RootfsSnapshotSpec{
+				SandboxName:           sandbox.Name,
+				ActiveDeadlineSeconds: &activeDeadlineSeconds,
+				// ContainerNames empty = snapshot all non-init containers
+			},
+		}
+
+		if err := controllerutil.SetControllerReference(sandbox, rootfsSnapshot, r.Scheme); err != nil {
+			log.Error(err, "Failed to set controller reference on RootfsSnapshot")
+			return ctrl.Result{}, false, err
+		}
+
+		if err := r.Create(ctx, rootfsSnapshot); err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				// Race condition - another reconcile created it, just requeue
+				return ctrl.Result{RequeueAfter: time.Second}, false, nil
+			}
+			log.Error(err, "Failed to create RootfsSnapshot")
+			return ctrl.Result{}, false, err
+		}
+
+		log.Info("Created RootfsSnapshot", "name", rootfsSnapshot.Name)
+		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "RootfsSnapshotCreated", "Created RootfsSnapshot resource")
+
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
-				Type:               SandboxFilesystemSnapshotCondition,
+				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshotTimeout,
-				Message:            "Filesystem snapshot did not complete before deadline",
+				Reason:             CondReasonSnapshottingInProgress,
+				Message:            "RootfsSnapshot created, waiting for completion",
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
 			return ctrl.Result{}, false, err
 		}
-		return ctrl.Result{}, true, nil
+
+		return ctrl.Result{RequeueAfter: time.Second}, false, nil
 	}
 
-	if isJobComplete(snapshotterJob) {
-		log.Info("Filesystem snapshot job succeeded")
-		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", "Filesystem snapshot job completed")
+	// Check RootfsSnapshot status
+	readyCond := meta.FindStatusCondition(rootfsSnapshot.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+
+	if readyCond != nil && readyCond.Status == metav1.ConditionTrue {
+		log.Info("Rootfs snapshot succeeded")
+		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", "Rootfs snapshot completed")
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
-				Type:               SandboxFilesystemSnapshotCondition,
+				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionTrue,
 				Reason:             CondReasonSnapshotComplete,
-				Message:            "Filesystem snapshot completed",
+				Message:            "Rootfs snapshot completed",
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
@@ -1545,19 +1312,32 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	if isJobFailed(snapshotterJob) {
-		failureMessage := "Filesystem snapshot job failed"
-		if condMsg := getJobConditionMessage(snapshotterJob, batchv1.JobFailed); condMsg != "" {
-			failureMessage = fmt.Sprintf("Filesystem snapshot job failed: %s", condMsg)
-		}
-		log.Info(failureMessage)
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", failureMessage)
+	if readyCond != nil && readyCond.Reason == sandboxv1alpha1.ReasonRootfsSnapshotFailed {
+		log.Info("Rootfs snapshot failed", "message", readyCond.Message)
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", readyCond.Message)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
-				Type:               SandboxFilesystemSnapshotCondition,
+				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
 				Reason:             CondReasonSnapshotFailed,
-				Message:            failureMessage,
+				Message:            readyCond.Message,
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	}
+
+	// Still in progress - check deadline again
+	if r.clock().Now().After(snapshotDeadline) {
+		log.Info("Rootfs snapshot timed out before completion", "deadline", snapshotDeadline)
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxRootfsSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSnapshotTimeout,
+				Message:            "Rootfs snapshot did not complete before deadline",
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
@@ -1568,10 +1348,10 @@ func (r *SandboxReconciler) handleFilesystemSnapshot(
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
-			Type:               SandboxFilesystemSnapshotCondition,
+			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonSnapshottingInProgress,
-			Message:            "Filesystem snapshotter job is running",
+			Message:            "Rootfs snapshot is running",
 			ObservedGeneration: sandbox.Generation,
 		},
 	}); err != nil {
@@ -1615,7 +1395,7 @@ func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.Sandbox{}).
 		Owns(&corev1.Pod{}).
-		Owns(&batchv1.Job{}).
+		Owns(&sandboxv1alpha1.RootfsSnapshot{}).
 		// Watch SandboxTemplate changes to reconcile affected sandboxes
 		Watches(
 			&sandboxv1alpha1.SandboxTemplate{},
