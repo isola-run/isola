@@ -6,16 +6,22 @@ pre-commit:
   commands:
     # isola-operator - lint on .go, .mod, .sum changes
     lint-operator:
+      skip:
+        - run: "! command -v golangci-lint >/dev/null 2>&1"
       glob: "services/isola-operator/**/*.{go,mod,sum}"
       run: make -C services/isola-operator lint
 
     # isola-gw
     lint-gw:
+      skip:
+        - run: "! command -v golangci-lint >/dev/null 2>&1"
       glob: "services/isola-gw/**/*.{go,mod,sum}"
       run: make -C services/isola-gw lint
 
     # isola-agent
     lint-agent:
+      skip:
+        - run: "! command -v golangci-lint >/dev/null 2>&1"
       glob: "services/isola-agent/**/*.{go,mod,sum}"
       run: make -C services/isola-agent lint
 
