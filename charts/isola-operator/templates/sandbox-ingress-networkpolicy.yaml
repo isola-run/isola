@@ -1,0 +1,26 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-isola-gw-ingress
+  namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: isola-operator
+spec:
+  podSelector:
+    matchLabels:
+      app: isola-sandbox
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: isola-gw
+      ports:
+        - protocol: TCP
+          port: 8080

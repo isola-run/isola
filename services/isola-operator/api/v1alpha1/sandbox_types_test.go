@@ -132,7 +132,7 @@ func TestHasNetworkSpec(t *testing.T) {
 				Spec: SandboxSpec{
 					Network: &NetworkConfig{
 						Spec: &NetworkTemplateSpec{
-							AllowedEgress: []string{},
+							AllowedEgressCIDRs: []string{},
 						},
 					},
 				},

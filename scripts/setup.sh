@@ -164,7 +164,7 @@ echo "Setting kubectl context..."
 kubectl config use-context "kind-${KIND_CLUSTER_NAME}"
 
 echo ""
-echo "Setting up pre-commit hooks..."
+echo "Setting up pre-commit hooks (must be run per-clone)..."
 LEFTHOOK_BIN="${GOPATH:-$(go env GOPATH)}/bin/lefthook"
 if command -v lefthook &> /dev/null; then
     LEFTHOOK_BIN="lefthook"

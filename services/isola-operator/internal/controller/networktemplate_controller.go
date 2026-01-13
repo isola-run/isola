@@ -40,16 +40,6 @@ import (
 type NetworkTemplateReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
-
-	// IsolaGatewayNamespace optionally specifies the namespace where the isola gateway runs.
-	// Used for NetworkPolicy ingress rules to allow gateway-sandbox communication.
-	// If empty, defaults to the NetworkTemplate's namespace (single-namespace deployment).
-	// Set this if the gateway runs in a different namespace than sandboxes.
-	IsolaGatewayNamespace string
-
-	// IsolaGatewayLabels are the labels to select gateway pods for ingress.
-	// Defaults to {"app.kubernetes.io/name": "isola-controller"}.
-	IsolaGatewayLabels map[string]string
 }
 
 const (
@@ -57,22 +47,6 @@ const (
 	CondReasonNetworkTemplateInvalid     = "InvalidNetworkTemplate"
 	CondReasonNetworkTemplatePolicyError = "NetworkPolicyError"
 )
-
-func (r *NetworkTemplateReconciler) getControllerNamespace(template *sandboxv1alpha1.NetworkTemplate) string {
-	if r.IsolaGatewayNamespace != "" {
-		return r.IsolaGatewayNamespace
-	}
-	return template.Namespace
-}
-
-func (r *NetworkTemplateReconciler) getControllerLabels() map[string]string {
-	if len(r.IsolaGatewayLabels) > 0 {
-		return r.IsolaGatewayLabels
-	}
-	return map[string]string{
-		"app.kubernetes.io/name": "isola-gw",
-	}
-}
 
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=networktemplates,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=networktemplates/status,verbs=get;update;patch
@@ -177,11 +151,7 @@ func (r *NetworkTemplateReconciler) reconcileNetworkPolicy(
 		return err
 	}
 
-	desiredNP, err := network.BuildNetworkPolicy(
-		networkTemplate,
-		r.getControllerNamespace(networkTemplate),
-		r.getControllerLabels(),
-	)
+	desiredNP, err := network.BuildNetworkPolicy(networkTemplate)
 	if err != nil {
 		log.Error(err, "Failed to build NetworkPolicy from template")
 		return r.patchStatus(ctx, baseTemplate, networkTemplate, []metav1.Condition{{

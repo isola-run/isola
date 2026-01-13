@@ -47,3 +47,9 @@ type DownloadResponse struct {
 	Path    string `json:"path"`
 	Size    int64  `json:"size"`
 }
+
+type FileDownloadResponse struct {
+	Path    string `json:"path"`
+	Size    int64  `json:"size"`
+	Content string `json:"content"`
+}

@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -52,6 +53,14 @@ const metricsServiceName = "isola-operator-controller-manager-metrics-service"
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "isola-operator-metrics-binding"
 
+func splitImage(image string) (string, string) {
+	idx := strings.LastIndex(image, ":")
+	if idx == -1 {
+		return image, "latest"
+	}
+	return image[:idx], image[idx+1:]
+}
+
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
 
@@ -59,6 +68,8 @@ var _ = Describe("Manager", Ordered, func() {
 	// enforce the restricted security policy to the namespace, installing CRDs,
 	// and deploying the controller.
 	BeforeAll(func() {
+		imageRepo, imageTag := splitImage(projectImage)
+
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
 		_, err := utils.Run(cmd)
@@ -76,7 +87,13 @@ var _ = Describe("Manager", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
 		By("deploying the controller-manager")
-		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
+		cmd = exec.Command(
+			"helm", "upgrade", "--install", "isola-operator", "charts/isola-operator",
+			"--namespace", namespace,
+			"--create-namespace",
+			"--set", fmt.Sprintf("image.repository=%s", imageRepo),
+			"--set", fmt.Sprintf("image.tag=%s", imageTag),
+		)
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
 	})
@@ -89,7 +106,7 @@ var _ = Describe("Manager", Ordered, func() {
 		_, _ = utils.Run(cmd)
 
 		By("undeploying the controller-manager")
-		cmd = exec.Command("make", "undeploy")
+		cmd = exec.Command("helm", "uninstall", "isola-operator", "--namespace", namespace)
 		_, _ = utils.Run(cmd)
 
 		By("uninstalling CRDs")
