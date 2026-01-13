@@ -46,6 +46,12 @@ func buildDownloadObjectKey(tenantID, sandboxID, downloadID, filename string) st
 	return buildObjectKey("downloads", tenantID, sandboxID, downloadID, filename)
 }
 
+// buildDownloadObjectPrefix constructs the S3 prefix for finding download objects.
+// format: downloads/{tenantID}/{sandboxID}/{downloadID}/
+func buildDownloadObjectPrefix(tenantID, sandboxID, downloadID string) string {
+	return fmt.Sprintf("downloads/%s/%s/%s/", tenantID, sandboxID, downloadID)
+}
+
 // getSandboxStatusAndAddress retrieves sandbox status and validates it's running.
 // Returns (agentAddress, shouldReturn) where shouldReturn is true if an error response was sent.
 func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context, sandboxID string, logPrefix string) (string, bool) {
@@ -514,7 +520,7 @@ func (h *Handler) initiateLargeFileDownload(c *gin.Context, ctx context.Context,
 
 	c.JSON(http.StatusAccepted, models.LargeFileDownloadResponse{
 		DownloadID: downloadID,
-		Status:     "uploading",
+		Ready:      false,
 		Path:       targetPath,
 	})
 }
@@ -561,7 +567,6 @@ func (h *Handler) triggerAgentUploadToStorage(ctx context.Context, agentAddress,
 	return nil
 }
 
-// GetDownloadStatus handles GET /sandboxes/:id/downloads/:download_id
 // Checks if a large file download is ready and returns a presigned URL when available.
 func (h *Handler) GetDownloadStatus(c *gin.Context) {
 	sandboxID := c.Param("id")
@@ -586,13 +591,8 @@ func (h *Handler) handleDownloadStatus(c *gin.Context, ctx context.Context, tena
 		return
 	}
 
-	// We need to find the object - we know the prefix but not the filename
-	// For now, we'll use a wildcard approach by checking the downloads prefix
-	// Since downloadID is deterministic, we can look for any file in that directory
-	objectPrefix := fmt.Sprintf("downloads/%s/%s/%s/", tenantID, sandboxID, downloadID)
-
-	// Check if object exists by listing objects with this prefix
-	objectKey, err := h.findDownloadObject(ctx, objectPrefix)
+	objectPrefix := buildDownloadObjectPrefix(tenantID, sandboxID, downloadID)
+	objectKey, err := h.storage.GetFirstObjectWithPrefix(ctx, objectPrefix)
 	if err != nil {
 		log.Printf("[DOWNLOAD] Error checking for download object: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
@@ -607,8 +607,7 @@ func (h *Handler) handleDownloadStatus(c *gin.Context, ctx context.Context, tena
 		log.Printf("[DOWNLOAD] Download %s not ready yet (object not found at prefix %s)", downloadID, objectPrefix)
 		c.JSON(http.StatusOK, models.LargeFileDownloadResponse{
 			DownloadID: downloadID,
-			Status:     "uploading",
-			Path:       "",
+			Ready:      false,
 		})
 		return
 	}
@@ -627,9 +626,9 @@ func (h *Handler) handleDownloadStatus(c *gin.Context, ctx context.Context, tena
 
 	log.Printf("[DOWNLOAD] Download %s ready, generated presigned URL for %s", downloadID, objectKey)
 
-	c.JSON(http.StatusOK, models.DownloadReadyResponse{
+	c.JSON(http.StatusOK, models.LargeFileDownloadResponse{
 		DownloadID:  downloadID,
-		Status:      "ready",
+		Ready:       true,
 		DownloadURL: downloadURL,
 		ExpiresIn:   expiresIn,
 	})
@@ -637,10 +636,6 @@ func (h *Handler) handleDownloadStatus(c *gin.Context, ctx context.Context, tena
 
 // findDownloadObject finds the download object key by prefix.
 // Returns empty string if not found.
-func (h *Handler) findDownloadObject(ctx context.Context, prefix string) (string, error) {
-	return h.storage.GetFirstObjectWithPrefix(ctx, prefix)
-}
-
 func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 	sandboxID := c.Param("id")
 
