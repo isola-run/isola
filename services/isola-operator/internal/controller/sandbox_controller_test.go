@@ -35,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
-	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/snapshot"
 )
 
 // Helper functions for tests
@@ -1106,7 +1105,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			Eventually(recorder.Events).Should(Receive(ContainSubstring(snapshot.ReasonRuntimeClassMissing)))
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("RuntimeNotSupported")))
 
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(errors.IsNotFound(err)).To(BeTrue())
@@ -1166,7 +1165,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			Eventually(recorder.Events).Should(Receive(ContainSubstring(snapshot.ReasonRuntimeUnsupported)))
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("RuntimeNotSupported")))
 
 			// Sandbox deleted after snapshot skipped
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})

@@ -37,6 +37,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
+	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/podutil"
 	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/snapshot"
 )
 
@@ -60,40 +61,14 @@ func (r *RootfsSnapshotReconciler) clock() Clock {
 	return RealClock{}
 }
 
-func isJobComplete(job *batchv1.Job) bool {
-	if job == nil {
-		return false
+func (r *RootfsSnapshotReconciler) patchStatus(ctx context.Context, baseSnap *sandboxv1alpha1.RootfsSnapshot, snap *sandboxv1alpha1.RootfsSnapshot, conditions []metav1.Condition) error {
+	if snap.Status.Conditions == nil {
+		snap.Status.Conditions = []metav1.Condition{}
 	}
-	for _, condition := range job.Status.Conditions {
-		if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
-			return true
-		}
+	for _, cond := range conditions {
+		meta.SetStatusCondition(&snap.Status.Conditions, cond)
 	}
-	return false
-}
-
-func isJobFailed(job *batchv1.Job) bool {
-	if job == nil {
-		return false
-	}
-	for _, condition := range job.Status.Conditions {
-		if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
-			return true
-		}
-	}
-	return false
-}
-
-func getJobConditionMessage(job *batchv1.Job, conditionType batchv1.JobConditionType) string {
-	if job == nil {
-		return ""
-	}
-	for _, cond := range job.Status.Conditions {
-		if cond.Type == conditionType && cond.Status == corev1.ConditionTrue {
-			return cond.Message
-		}
-	}
-	return ""
+	return r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap))
 }
 
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots,verbs=get;list;watch;create;update;patch;delete
@@ -153,29 +128,38 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if apierrors.IsNotFound(err) {
 			log.Info("Pod not found", "pod", podName)
 			return r.setFailedStatus(ctx, snap, baseSnap,
-				sandboxv1alpha1.ReasonPodNotFound,
+				sandboxv1alpha1.ReasonRootfsSnapshotFailed,
 				fmt.Sprintf("Pod %q not found", podName))
 		}
 		return ctrl.Result{}, err
 	}
 
 	// Check runtime support
-	supported, reason, err := snapshot.CheckRootfsSnapshotSupport(ctx, r.Client, pod)
+	supported, retryable, err := snapshot.CheckRootfsSnapshotSupport(ctx, r.Client, pod)
 	if err != nil {
 		log.Error(err, "Failed to check runtime support")
-		if err := r.patchRuntimeCondition(ctx, snap, baseSnap, false, sandboxv1alpha1.ReasonRuntimeCheckFailed, err.Error()); err != nil {
-			return ctrl.Result{}, err
-		}
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	if !supported {
-		log.Info("Runtime not supported for snapshotting", "reason", reason)
-		return r.setRuntimeNotSupported(ctx, snap, baseSnap, reason)
+		if retryable {
+			log.Info("Pod not ready for snapshotting, will retry")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		log.Info("Runtime not supported for snapshotting")
+		return r.setRuntimeNotSupported(ctx, snap, baseSnap)
 	}
 
-	// Runtime is supported
-	if err := r.patchRuntimeCondition(ctx, snap, baseSnap, true, sandboxv1alpha1.ReasonRuntimeSupported, "Runtime supports rootfs snapshotting"); err != nil {
+	// Runtime is supported - set condition
+	if err := r.patchStatus(ctx, baseSnap, snap, []metav1.Condition{
+		{
+			Type:               string(sandboxv1alpha1.RootfsSnapshotRuntimeSupported),
+			Status:             metav1.ConditionTrue,
+			Reason:             sandboxv1alpha1.ReasonRuntimeSupported,
+			Message:            "Runtime supports rootfs snapshotting",
+			ObservedGeneration: snap.Generation,
+		},
+	}); err != nil {
 		return ctrl.Result{}, err
 	}
 	baseSnap = snap.DeepCopy()
@@ -202,7 +186,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				Conditions:    []metav1.Condition{},
 			})
 		}
-		if err := r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap)); err != nil {
+		if err := r.patchStatus(ctx, baseSnap, snap, nil); err != nil {
 			return ctrl.Result{}, err
 		}
 		baseSnap = snap.DeepCopy()
@@ -252,14 +236,15 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if allSucceeded {
 		snap.Status.CompletedAt = &now
-		meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-			Status:             metav1.ConditionTrue,
-			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotSucceeded,
-			Message:            "All container snapshots completed successfully",
-			ObservedGeneration: snap.Generation,
-		})
-		if err := r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap)); err != nil {
+		if err := r.patchStatus(ctx, baseSnap, snap, []metav1.Condition{
+			{
+				Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+				Status:             metav1.ConditionTrue,
+				Reason:             sandboxv1alpha1.ReasonRootfsSnapshotSucceeded,
+				Message:            "All container snapshots completed successfully",
+				ObservedGeneration: snap.Generation,
+			},
+		}); err != nil {
 			return ctrl.Result{}, err
 		}
 		r.Recorder.Event(snap, corev1.EventTypeNormal, "SnapshotComplete", "All container rootfs snapshots completed")
@@ -270,14 +255,15 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if anyFailed && !anyPending {
 		// All done, but some failed
 		snap.Status.CompletedAt = &now
-		meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-			Status:             metav1.ConditionFalse,
-			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
-			Message:            "One or more container snapshots failed",
-			ObservedGeneration: snap.Generation,
-		})
-		if err := r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap)); err != nil {
+		if err := r.patchStatus(ctx, baseSnap, snap, []metav1.Condition{
+			{
+				Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+				Status:             metav1.ConditionFalse,
+				Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
+				Message:            "One or more container snapshots failed",
+				ObservedGeneration: snap.Generation,
+			},
+		}); err != nil {
 			return ctrl.Result{}, err
 		}
 		r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", "One or more container snapshots failed")
@@ -285,14 +271,15 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Still in progress
-	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-		Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-		Status:             metav1.ConditionFalse,
-		Reason:             sandboxv1alpha1.ReasonRootfsSnapshotInProgress,
-		Message:            "Container snapshots in progress",
-		ObservedGeneration: snap.Generation,
-	})
-	if err := r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap)); err != nil {
+	if err := r.patchStatus(ctx, baseSnap, snap, []metav1.Condition{
+		{
+			Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+			Status:             metav1.ConditionFalse,
+			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotInProgress,
+			Message:            "Container snapshots in progress",
+			ObservedGeneration: snap.Generation,
+		},
+	}); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -324,8 +311,8 @@ func (r *RootfsSnapshotReconciler) reconcileContainerSnapshot(
 		if err != nil {
 			log.Error(err, "Failed to extract container ID")
 			r.updateContainerCondition(cs, metav1.ConditionFalse,
-				sandboxv1alpha1.ReasonContainerIDNotFound, err.Error(), snap.Generation)
-			if err := r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap)); err != nil {
+				sandboxv1alpha1.ReasonContainerFailed, err.Error(), snap.Generation)
+			if err := r.patchStatus(ctx, baseSnap, snap, nil); err != nil {
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{}, nil
@@ -349,7 +336,7 @@ func (r *RootfsSnapshotReconciler) reconcileContainerSnapshot(
 		r.updateContainerCondition(cs, metav1.ConditionFalse,
 			sandboxv1alpha1.ReasonContainerJobCreated, "Snapshot job created", snap.Generation)
 
-		if err := r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap)); err != nil {
+		if err := r.patchStatus(ctx, baseSnap, snap, nil); err != nil {
 			return ctrl.Result{}, err
 		}
 
@@ -358,25 +345,25 @@ func (r *RootfsSnapshotReconciler) reconcileContainerSnapshot(
 	}
 
 	// Job exists, check its status
-	if isJobComplete(job) {
+	if podutil.IsJobComplete(job) {
 		log.Info("Snapshot job completed", "job", jobName)
 		r.updateContainerCondition(cs, metav1.ConditionTrue,
 			sandboxv1alpha1.ReasonContainerSucceeded, "Snapshot completed successfully", snap.Generation)
-		if err := r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap)); err != nil {
+		if err := r.patchStatus(ctx, baseSnap, snap, nil); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 
-	if isJobFailed(job) {
+	if podutil.IsJobFailed(job) {
 		message := "Snapshot job failed"
-		if condMsg := getJobConditionMessage(job, batchv1.JobFailed); condMsg != "" {
+		if condMsg := podutil.GetJobConditionMessage(job, batchv1.JobFailed); condMsg != "" {
 			message = fmt.Sprintf("Snapshot job failed: %s", condMsg)
 		}
 		log.Info(message, "job", jobName)
 		r.updateContainerCondition(cs, metav1.ConditionFalse,
 			sandboxv1alpha1.ReasonContainerFailed, message, snap.Generation)
-		if err := r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap)); err != nil {
+		if err := r.patchStatus(ctx, baseSnap, snap, nil); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -385,7 +372,7 @@ func (r *RootfsSnapshotReconciler) reconcileContainerSnapshot(
 	// Job still running
 	r.updateContainerCondition(cs, metav1.ConditionFalse,
 		sandboxv1alpha1.ReasonContainerJobRunning, "Snapshot job running", snap.Generation)
-	if err := r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap)); err != nil {
+	if err := r.patchStatus(ctx, baseSnap, snap, nil); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -622,14 +609,15 @@ func (r *RootfsSnapshotReconciler) setFailedStatus(
 ) (ctrl.Result, error) {
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletedAt = &now
-	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-		Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-		Status:             metav1.ConditionFalse,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: snap.Generation,
-	})
-	if err := r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap)); err != nil {
+	if err := r.patchStatus(ctx, baseSnap, snap, []metav1.Condition{
+		{
+			Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+			Status:             metav1.ConditionFalse,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: snap.Generation,
+		},
+	}); err != nil {
 		return ctrl.Result{}, err
 	}
 	r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
@@ -640,57 +628,33 @@ func (r *RootfsSnapshotReconciler) setRuntimeNotSupported(
 	ctx context.Context,
 	snap *sandboxv1alpha1.RootfsSnapshot,
 	baseSnap *sandboxv1alpha1.RootfsSnapshot,
-	reason string,
 ) (ctrl.Result, error) {
-	message := fmt.Sprintf("Runtime does not support snapshotting: %s", reason)
+	message := "Runtime does not support rootfs snapshotting"
 
-	// Set RuntimeSupported condition
-	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-		Type:               string(sandboxv1alpha1.RootfsSnapshotRuntimeSupported),
-		Status:             metav1.ConditionFalse,
-		Reason:             sandboxv1alpha1.ReasonRuntimeNotSupported,
-		Message:            message,
-		ObservedGeneration: snap.Generation,
-	})
-
-	// Set Ready condition to failed
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletedAt = &now
-	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-		Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-		Status:             metav1.ConditionFalse,
-		Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
-		Message:            message,
-		ObservedGeneration: snap.Generation,
-	})
 
-	if err := r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap)); err != nil {
+	if err := r.patchStatus(ctx, baseSnap, snap, []metav1.Condition{
+		{
+			Type:               string(sandboxv1alpha1.RootfsSnapshotRuntimeSupported),
+			Status:             metav1.ConditionFalse,
+			Reason:             sandboxv1alpha1.ReasonRuntimeNotSupported,
+			Message:            message,
+			ObservedGeneration: snap.Generation,
+		},
+		{
+			Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+			Status:             metav1.ConditionFalse,
+			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
+			Message:            message,
+			ObservedGeneration: snap.Generation,
+		},
+	}); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	r.Recorder.Event(snap, corev1.EventTypeWarning, "RuntimeNotSupported", message)
 	return ctrl.Result{}, nil
-}
-
-func (r *RootfsSnapshotReconciler) patchRuntimeCondition(
-	ctx context.Context,
-	snap *sandboxv1alpha1.RootfsSnapshot,
-	baseSnap *sandboxv1alpha1.RootfsSnapshot,
-	supported bool,
-	reason, message string,
-) error {
-	status := metav1.ConditionFalse
-	if supported {
-		status = metav1.ConditionTrue
-	}
-	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-		Type:               string(sandboxv1alpha1.RootfsSnapshotRuntimeSupported),
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: snap.Generation,
-	})
-	return r.Status().Patch(ctx, snap, client.MergeFrom(baseSnap))
 }
 
 func (r *RootfsSnapshotReconciler) SetupWithManager(mgr ctrl.Manager) error {

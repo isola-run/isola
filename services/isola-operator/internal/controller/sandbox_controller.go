@@ -38,6 +38,7 @@ import (
 
 	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
 	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/network"
+	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/podutil"
 	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/snapshot"
 	"k8s.io/client-go/tools/record"
 )
@@ -167,29 +168,6 @@ func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
 	agentContainer := r.buildAgentContainer()
 	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, agentContainer)
 	return nil
-}
-
-func isPodReady(pod *corev1.Pod) bool {
-	if pod == nil {
-		return false
-	}
-	if pod.Status.Phase != corev1.PodRunning {
-		return false
-	}
-	for i := range pod.Status.Conditions {
-		c := pod.Status.Conditions[i]
-		if c.Type == corev1.PodReady && c.Status == corev1.ConditionTrue {
-			return true
-		}
-	}
-	return false
-}
-
-func isPodTerminated(pod *corev1.Pod) bool {
-	if pod == nil {
-		return false
-	}
-	return pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed
 }
 
 func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandboxv1alpha1.Sandbox, newSandbox *sandboxv1alpha1.Sandbox, newConditions []metav1.Condition) error {
@@ -723,7 +701,7 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 
 // determinePodCondition returns the PodReady condition based on the sandbox pod state.
 func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) metav1.Condition {
-	if isPodReady(sandboxPod) {
+	if podutil.IsPodReady(sandboxPod) {
 		return metav1.Condition{
 			Type:               SandboxPodReadyCondition,
 			Status:             metav1.ConditionTrue,
@@ -733,7 +711,7 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 		}
 	}
 
-	if isPodTerminated(sandboxPod) {
+	if podutil.IsPodTerminated(sandboxPod) {
 		reason := CondReasonPodFailed
 		message := "Pod failed"
 		if sandboxPod.Status.Phase == corev1.PodSucceeded {
@@ -845,7 +823,7 @@ func (r *SandboxReconciler) determineNetworkCondition(sandbox *sandboxv1alpha1.S
 // determineReadyCondition returns the aggregate Ready condition.
 // Sandbox is ready when pod is ready AND network is configured (if network template exists).
 func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.NetworkTemplate) metav1.Condition {
-	if isPodTerminated(sandboxPod) {
+	if podutil.IsPodTerminated(sandboxPod) {
 		reason := CondReasonPodFailed
 		message := "Pod failed"
 		if sandboxPod.Status.Phase == corev1.PodSucceeded {
@@ -861,7 +839,7 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 		}
 	}
 
-	if !isPodReady(sandboxPod) {
+	if !podutil.IsPodReady(sandboxPod) {
 		return metav1.Condition{
 			Type:               SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
@@ -1190,7 +1168,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             snapshot.ReasonPodDoesNotExist,
+				Reason:             CondReasonSnapshotFailed,
 				Message:            "Sandbox pod no longer exists; snapshot skipped",
 				ObservedGeneration: sandbox.Generation,
 			},
@@ -1201,14 +1179,14 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	}
 
 	// Pre-check runtime support
-	supported, reason, err := snapshot.CheckRootfsSnapshotSupport(ctx, r.Client, sandboxPod)
+	supported, retryable, err := snapshot.CheckRootfsSnapshotSupport(ctx, r.Client, sandboxPod)
 	if err != nil {
 		log.Error(err, "Failed to validate snapshotting support")
 		return ctrl.Result{}, false, err
 	}
 
 	if !supported {
-		if reason == snapshot.ReasonPodNotReady {
+		if retryable {
 			if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 				{
 					Type:               SandboxRootfsSnapshotCondition,
@@ -1223,15 +1201,15 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 			return ctrl.Result{RequeueAfter: time.Second}, false, nil
 		}
 
-		log.Info("Unable to perform rootfs snapshot", "reason", reason)
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, reason, "Unable to perform rootfs snapshot")
+		log.Info("Unable to perform rootfs snapshot: runtime not supported")
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "RuntimeNotSupported", "Unable to perform rootfs snapshot")
 
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
 				Reason:             CondReasonInvalidRuntime,
-				Message:            fmt.Sprintf("Unable to perform rootfs snapshot: %s", reason),
+				Message:            "Runtime does not support rootfs snapshotting",
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {

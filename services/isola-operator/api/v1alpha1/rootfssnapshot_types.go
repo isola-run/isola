@@ -29,9 +29,7 @@ const (
 	// False when any snapshot failed or is still in progress.
 	RootfsSnapshotReady RootfsSnapshotConditionType = "Ready"
 
-	// RootfsSnapshotRuntimeSupported indicates whether the pod uses a supported runtime.
-	// True if pod uses gvisor/runsc runtime.
-	// False if runtime doesn't support rootfs snapshotting.
+	// RootfsSnapshotRuntimeSupported indicates whether the pod uses a runtime that supports rootfs snapshotting.
 	RootfsSnapshotRuntimeSupported RootfsSnapshotConditionType = "RuntimeSupported"
 )
 
@@ -47,20 +45,15 @@ const (
 
 // Condition reasons for RootfsSnapshot
 const (
-	// Top-level Ready condition reasons
+	// Ready condition reasons
 	ReasonRootfsSnapshotPending    = "Pending"
 	ReasonRootfsSnapshotInProgress = "InProgress"
 	ReasonRootfsSnapshotSucceeded  = "Succeeded"
 	ReasonRootfsSnapshotFailed     = "Failed"
 
 	// RuntimeSupported condition reasons
-	ReasonRuntimeSupported     = "Supported"
-	ReasonRuntimeNotSupported  = "NotSupported"
-	ReasonRuntimeCheckFailed   = "CheckFailed"
-	ReasonPodNotFound          = "PodNotFound"
-	ReasonPodNotReady          = "PodNotReady"
-	ReasonRuntimeClassMissing  = "RuntimeClassMissing"
-	ReasonRuntimeClassNotFound = "RuntimeClassNotFound"
+	ReasonRuntimeSupported    = "Supported"
+	ReasonRuntimeNotSupported = "NotSupported"
 
 	// Per-container Ready condition reasons
 	ReasonContainerPending    = "Pending"
@@ -68,7 +61,6 @@ const (
 	ReasonContainerJobRunning = "JobRunning"
 	ReasonContainerSucceeded  = "Succeeded"
 	ReasonContainerFailed     = "Failed"
-	ReasonContainerIDNotFound = "ContainerIDNotFound"
 )
 
 // RootfsSnapshotSpec defines the desired state of RootfsSnapshot
