@@ -28,9 +28,6 @@ const (
 	// True when all container snapshots succeeded.
 	// False when any snapshot failed or is still in progress.
 	RootfsSnapshotReady RootfsSnapshotConditionType = "Ready"
-
-	// RootfsSnapshotRuntimeSupported indicates whether the pod uses a runtime that supports rootfs snapshotting.
-	RootfsSnapshotRuntimeSupported RootfsSnapshotConditionType = "RuntimeSupported"
 )
 
 // ContainerSnapshotConditionType defines condition types for per-container status

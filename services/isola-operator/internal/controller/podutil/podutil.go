@@ -24,7 +24,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// IsPodReady returns true if the pod is running and has the Ready condition set to True.
 func IsPodReady(pod *corev1.Pod) bool {
 	if pod == nil {
 		return false
@@ -49,7 +48,6 @@ func IsPodTerminated(pod *corev1.Pod) bool {
 	return pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed
 }
 
-// GetSandboxPodName returns the pod name for a sandbox.
 func GetSandboxPodName(sandboxName string) string {
 	return sandboxName + "-pod"
 }
@@ -81,21 +79,6 @@ func ExtractContainerID(pod *corev1.Pod, containerName string) (string, error) {
 	return "", fmt.Errorf("container %q not found in pod status", containerName)
 }
 
-// GetSnapshotableContainers returns names of all non-init containers in the pod.
-// These are the containers that can be snapshotted.
-func GetSnapshotableContainers(pod *corev1.Pod) []string {
-	if pod == nil {
-		return nil
-	}
-
-	containers := make([]string, 0, len(pod.Spec.Containers))
-	for _, c := range pod.Spec.Containers {
-		containers = append(containers, c.Name)
-	}
-	return containers
-}
-
-// IsJobComplete returns true if the job has completed successfully.
 func IsJobComplete(job *batchv1.Job) bool {
 	if job == nil {
 		return false
@@ -108,7 +91,6 @@ func IsJobComplete(job *batchv1.Job) bool {
 	return false
 }
 
-// IsJobFailed returns true if the job has failed.
 func IsJobFailed(job *batchv1.Job) bool {
 	if job == nil {
 		return false
@@ -121,7 +103,6 @@ func IsJobFailed(job *batchv1.Job) bool {
 	return false
 }
 
-// GetJobConditionMessage returns the message from a job condition of the given type.
 func GetJobConditionMessage(job *batchv1.Job, conditionType batchv1.JobConditionType) string {
 	if job == nil {
 		return ""

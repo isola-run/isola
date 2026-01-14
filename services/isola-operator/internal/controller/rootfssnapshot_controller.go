@@ -60,6 +60,24 @@ func (r *RootfsSnapshotReconciler) clock() Clock {
 	return RealClock{}
 }
 
+func getTTLSeconds(snap *sandboxv1alpha1.RootfsSnapshot) time.Duration {
+	ttl := defaultTTLSecondsAfterFinished
+	if snap.Spec.TTLSecondsAfterFinished != nil {
+		ttl = *snap.Spec.TTLSecondsAfterFinished
+	}
+
+	return time.Duration(ttl) * time.Second
+}
+
+func (r *RootfsSnapshotReconciler) ttlLeft(snap *sandboxv1alpha1.RootfsSnapshot) (ttlLeft time.Duration) {
+	ttl := getTTLSeconds(snap)
+
+	deleteAt := snap.Status.CompletedAt.Add(ttl)
+	now := r.clock().Now()
+
+	return deleteAt.Sub(now)
+}
+
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
@@ -78,35 +96,31 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	// Handle TTL cleanup for completed snapshots
-	if snap.Status.CompletedAt != nil {
-		ttlDone, requeueAfter := r.handleTTLCleanup(ctx, snap)
-		if ttlDone {
+	isComplete := snap.Status.CompletedAt != nil
+	if isComplete {
+		ttlLeft := r.ttlLeft(snap)
+		if ttlLeft <= 0 {
+			if err := r.Delete(ctx, snap); err != nil && !apierrors.IsNotFound(err) {
+				log.Error(err, "Failed to delete RootfsSnapshot after TTL")
+				return ctrl.Result{}, err
+			}
 			return ctrl.Result{}, nil
+		} else {
+			return ctrl.Result{RequeueAfter: ttlLeft}, nil
 		}
-		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
 
-	// Already finished?
-	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
-	if readyCond != nil && (readyCond.Reason == sandboxv1alpha1.ReasonRootfsSnapshotSucceeded ||
-		readyCond.Reason == sandboxv1alpha1.ReasonRootfsSnapshotFailed) {
-		return ctrl.Result{}, nil
-	}
-
-	// Get the sandbox pod
-	podName := snapshot.GetSandboxPodName(snap.Spec.SandboxName)
-	pod := &corev1.Pod{}
-	if err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: snap.Namespace}, pod); err != nil {
+	sandboxPodName := snapshot.GetSandboxPodName(snap.Spec.SandboxName)
+	sandboxPod := &corev1.Pod{}
+	if err := r.Get(ctx, types.NamespacedName{Name: sandboxPodName, Namespace: snap.Namespace}, sandboxPod); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Pod not found", "pod", podName)
-			return r.setFailed(ctx, snap, fmt.Sprintf("Pod %q not found", podName))
+			log.Info("Pod not found", "pod", sandboxPodName)
+			return r.setFailed(ctx, snap, fmt.Sprintf("Pod %q not found", sandboxPodName))
 		}
 		return ctrl.Result{}, err
 	}
 
-	// Check runtime support
-	supported, retryable, err := snapshot.CheckRootfsSnapshotSupport(ctx, r.Client, pod)
+	supported, retryable, err := snapshot.CheckRootfsSnapshotSupport(ctx, r.Client, sandboxPod)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -118,19 +132,15 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, snap, "Runtime does not support rootfs snapshotting")
 	}
 
-	// Determine containers to snapshot
-	containerNames := snap.Spec.ContainerNames
-	if len(containerNames) == 0 {
-		containerNames = podutil.GetSnapshotableContainers(pod)
-	}
-	if len(containerNames) == 0 {
+	containersToSnapshot := snap.Spec.ContainerNames
+	if len(containersToSnapshot) == 0 {
 		return r.setFailed(ctx, snap, "No containers found to snapshot")
 	}
 
 	// Get or create the snapshot job (single job for the first container for now)
 	// TODO: support multiple containers by iterating
-	containerName := containerNames[0]
-	return r.reconcileSnapshotJob(ctx, snap, pod, containerName)
+	containerName := containersToSnapshot[0]
+	return r.reconcileSnapshotJob(ctx, snap, sandboxPod, containerName)
 }
 
 func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
@@ -141,6 +151,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithValues("container", containerName)
 
+	// todo benl: must bound to 63 chars max
 	jobName := fmt.Sprintf("%s-%s", snap.Name, containerName)
 	job := &batchv1.Job{}
 	err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: snap.Namespace}, job)
@@ -335,12 +346,7 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, snap *sandb
 		return ctrl.Result{}, err
 	}
 
-	// Requeue to handle TTL cleanup
-	ttl := defaultTTLSecondsAfterFinished
-	if snap.Spec.TTLSecondsAfterFinished != nil {
-		ttl = *snap.Spec.TTLSecondsAfterFinished
-	}
-	return ctrl.Result{RequeueAfter: time.Duration(ttl) * time.Second}, nil
+	return ctrl.Result{RequeueAfter: getTTLSeconds(snap)}, nil
 }
 
 func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot, message string) (ctrl.Result, error) {
@@ -358,36 +364,7 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, snap *sandboxv
 		return ctrl.Result{}, err
 	}
 
-	// Requeue to handle TTL cleanup
-	ttl := defaultTTLSecondsAfterFinished
-	if snap.Spec.TTLSecondsAfterFinished != nil {
-		ttl = *snap.Spec.TTLSecondsAfterFinished
-	}
-	return ctrl.Result{RequeueAfter: time.Duration(ttl) * time.Second}, nil
-}
-
-func (r *RootfsSnapshotReconciler) handleTTLCleanup(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot) (deleted bool, requeueAfter time.Duration) {
-	log := logf.FromContext(ctx)
-
-	ttlSeconds := defaultTTLSecondsAfterFinished
-	if snap.Spec.TTLSecondsAfterFinished != nil {
-		ttlSeconds = *snap.Spec.TTLSecondsAfterFinished
-	}
-
-	ttl := time.Duration(ttlSeconds) * time.Second
-	deleteAt := snap.Status.CompletedAt.Add(ttl)
-	now := r.clock().Now()
-
-	if now.After(deleteAt) {
-		log.Info("TTL expired, deleting RootfsSnapshot")
-		if err := r.Delete(ctx, snap); err != nil && !apierrors.IsNotFound(err) {
-			log.Error(err, "Failed to delete RootfsSnapshot after TTL")
-			return false, time.Second
-		}
-		return true, 0
-	}
-
-	return false, deleteAt.Sub(now)
+	return ctrl.Result{RequeueAfter: getTTLSeconds(snap)}, nil
 }
 
 func (r *RootfsSnapshotReconciler) SetupWithManager(mgr ctrl.Manager) error {
