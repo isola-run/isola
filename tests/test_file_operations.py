@@ -58,6 +58,79 @@ class TestFileUpload:
         assert exc_info.value.status_code == 404
 
 
+class TestMultipartFileUpload:
+    """Test multipart file upload (streaming upload to agent)."""
+
+    @pytest.mark.smoke
+    def test_upload_small_file(
+        self,
+        sandbox: dict,
+        isola_client: IsolaClient,
+    ) -> None:
+        """Upload a small file via multipart form."""
+        content = b"Hello from multipart upload test!"
+        path = "/tmp/multipart-test.txt"
+
+        result = isola_client.upload_file_multipart(
+            sandbox_id=sandbox["id"],
+            path=path,
+            content=content,
+            filename="test.txt",
+        )
+
+        assert result.get("success") is True
+        assert result.get("path") == path
+
+        # Verify file exists and has correct content
+        verify_result = isola_client.execute_command(
+            sandbox["id"],
+            f"cat {path}",
+        )
+        assert verify_result["exitCode"] == 0
+        assert "Hello from multipart upload test!" in verify_result["stdout"]
+
+    def test_upload_binary_file(
+        self,
+        sandbox: dict,
+        isola_client: IsolaClient,
+    ) -> None:
+        """Upload a binary file via multipart form."""
+        # Create 1KB of pseudo-random binary data
+        content = bytes(range(256)) * 4  # 1024 bytes
+        path = "/tmp/binary-multipart.bin"
+
+        result = isola_client.upload_file_multipart(
+            sandbox_id=sandbox["id"],
+            path=path,
+            content=content,
+            filename="data.bin",
+        )
+
+        assert result.get("success") is True
+
+        # Verify file size
+        verify_result = isola_client.execute_command(
+            sandbox["id"],
+            f"wc -c < {path}",
+        )
+        assert verify_result["exitCode"] == 0
+        assert "1024" in verify_result["stdout"]
+
+    def test_upload_to_nonexistent_sandbox(
+        self,
+        isola_client: IsolaClient,
+    ) -> None:
+        """Upload to non-existent sandbox should fail."""
+        with pytest.raises(IsolaError) as exc_info:
+            isola_client.upload_file_multipart(
+                sandbox_id="nonexistent-id",
+                path="/tmp/test.txt",
+                content=b"test",
+            )
+
+        assert exc_info.value.status_code == 404
+
+
 class TestFileOperationsViaCommands:
     """Test file operations using command execution."""
 

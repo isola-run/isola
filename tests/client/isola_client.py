@@ -211,6 +211,38 @@ class IsolaClient:
         assert result is not None
         return result
 
+    def upload_file_multipart(
+        self,
+        sandbox_id: str,
+        path: str,
+        content: bytes,
+        filename: str = "upload.bin",
+    ) -> dict:
+        """Upload a file using multipart form (streamed to agent)."""
+        url = f"{self.base_url}/api/v1/sandboxes/{sandbox_id}/files/upload"
+        files = {"file": (filename, content)}
+        data = {"path": path}
+        # Don't use session's Content-Type header for multipart
+        headers = {"X-API-Key": self.api_key}
+        response = self.session.post(
+            url,
+            files=files,
+            data=data,
+            headers=headers,
+            timeout=self.timeout,
+        )
+        if not response.ok:
+            try:
+                data = response.json()
+            except ValueError:
+                data = {"raw": response.text}
+            raise IsolaError(
+                message=data.get("message", data.get("error", f"HTTP {response.status_code}")),
+                status_code=response.status_code,
+                response=data,
+            )
+        return response.json()
+
     def generate_upload_url(
         self,
         sandbox_id: str,
