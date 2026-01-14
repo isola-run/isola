@@ -35,6 +35,13 @@ const (
 	defaultShutdown = "Delete"
 )
 
+// sandboxResourceName returns the Kubernetes resource name for a sandbox.
+// Uses the full sandbox ID to avoid collisions (UUIDs are 36 chars, total name is 44 chars,
+// well under the 63 char limit for Kubernetes resource names).
+func sandboxResourceName(sandboxID string) string {
+	return "sandbox-" + sandboxID
+}
+
 type Manager struct {
 	namespace     string
 	clientset     kubernetes.Interface
@@ -135,7 +142,7 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 	}
 
 	// Create Sandbox CR
-	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
+	sandboxName := sandboxResourceName(sandboxID)
 	log.Printf("Creating Sandbox CR '%s' (template=%s) in namespace '%s'",
 		sandboxName, templateName, m.namespace)
 
@@ -179,7 +186,7 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 		return false, &errorMsg
 	}
 
-	log.Printf("Created Sandbox CR 'sandbox-%s' for sandbox %s", sandboxID[:min(8, len(sandboxID))], sandboxID)
+	log.Printf("Created Sandbox CR '%s' for sandbox %s", sandboxName, sandboxID)
 	return true, nil
 }
 
@@ -235,7 +242,7 @@ func (m *Manager) GetSandboxCR(ctx context.Context, sandboxID string) (*unstruct
 		return nil, fmt.Errorf("failed to initialize: %w", err)
 	}
 
-	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
+	sandboxName := sandboxResourceName(sandboxID)
 	gvr := schema.GroupVersionResource{
 		Group:    sandboxGroup,
 		Version:  sandboxVersion,
@@ -284,7 +291,7 @@ func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) (bool, 
 		return false, &errorMsg
 	}
 
-	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
+	sandboxName := sandboxResourceName(sandboxID)
 	log.Printf("Deleting Sandbox CR '%s'", sandboxName)
 
 	gvr := schema.GroupVersionResource{
@@ -348,7 +355,7 @@ func (m *Manager) GetSandboxStatus(ctx context.Context, sandboxID string) (*Sand
 // getAgentAddress constructs the DNS-resolvable address for the sandbox agent.
 // Format: <pod-name>.<headless-service>.<namespace>.svc.cluster.local
 func (m *Manager) getAgentAddress(sandboxID string) string {
-	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
+	sandboxName := sandboxResourceName(sandboxID)
 	podName := sandboxName + "-pod"
 	return fmt.Sprintf("%s.%s.%s.svc.cluster.local", podName, agentServiceName, m.namespace)
 }

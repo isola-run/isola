@@ -220,7 +220,7 @@ func (h *Handler) sandboxCRToModel(cr *unstructured.Unstructured) *models.Sandbo
 		if nameVal, ok := metadata["name"].(string); ok {
 			sandboxName = nameVal
 		} else {
-			sandboxName = "sandbox-" + sandboxID[:min(8, len(sandboxID))]
+			sandboxName = "sandbox-" + sandboxID
 		}
 	}
 
