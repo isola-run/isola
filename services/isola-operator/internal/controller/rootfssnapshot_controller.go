@@ -134,6 +134,9 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	containersToSnapshot := snap.Spec.ContainerNames
 	if len(containersToSnapshot) == 0 {
+		containersToSnapshot = filterSnapshotableContainers(sandboxPod)
+	}
+	if len(containersToSnapshot) == 0 {
 		return r.setFailed(ctx, snap, "No containers found to snapshot")
 	}
 
@@ -365,6 +368,17 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, snap *sandboxv
 	}
 
 	return ctrl.Result{RequeueAfter: getTTLSeconds(snap)}, nil
+}
+
+func filterSnapshotableContainers(pod *corev1.Pod) []string {
+	if pod == nil {
+		return nil
+	}
+	names := make([]string, 0, len(pod.Spec.Containers))
+	for _, c := range pod.Spec.Containers {
+		names = append(names, c.Name)
+	}
+	return names
 }
 
 func (r *RootfsSnapshotReconciler) SetupWithManager(mgr ctrl.Manager) error {
