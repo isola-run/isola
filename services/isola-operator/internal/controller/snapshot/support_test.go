@@ -187,6 +187,3 @@ func TestCheckRootfsSnapshotSupport(t *testing.T) {
 		})
 	}
 }
-
-// Tests for ExtractContainerID and GetSnapshotableContainers are in
-// internal/controller/podutil/podutil_test.go since those functions live there.
