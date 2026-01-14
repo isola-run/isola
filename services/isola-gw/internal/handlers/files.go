@@ -95,6 +95,30 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	}
 
 	fileHeader := files[0]
+
+	pathValues := form.Value["path"]
+	if len(pathValues) == 0 {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "BadRequest",
+			Message: "No path provided",
+		})
+		return
+	}
+	targetPath := pathValues[0]
+
+	// Check file size from header before reading content (avoids OOM on large files)
+	fileSize := fileHeader.Size
+	log.Printf("[UPLOAD] File size: %d bytes, threshold: %d bytes", fileSize, fileSizeThresholdBytes)
+
+	if fileSize >= fileSizeThresholdBytes {
+		log.Printf("[UPLOAD] File too large for direct upload: %d bytes", fileSize)
+		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
+			Error:   "NotImplemented",
+			Message: fmt.Sprintf("File size (%d bytes) exceeds direct upload limit (%d bytes). Signed URL upload is not yet implemented.", fileSize, fileSizeThresholdBytes),
+		})
+		return
+	}
+
 	file, err := fileHeader.Open()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
@@ -109,97 +133,51 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		}
 	}()
 
-	pathValues := form.Value["path"]
-	if len(pathValues) == 0 {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error:   "BadRequest",
-			Message: "No path provided",
-		})
-		return
-	}
-	targetPath := pathValues[0]
-
-	// Read file content to check size
-	content, err := io.ReadAll(file)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error:   "BadRequest",
-			Message: "Failed to read file: " + err.Error(),
-		})
-		return
-	}
-
-	fileSize := int64(len(content))
-	log.Printf("[UPLOAD] File size: %d bytes, threshold: %d bytes", fileSize, fileSizeThresholdBytes)
-
-	if fileSize >= fileSizeThresholdBytes {
-		log.Printf("[UPLOAD] File too large for direct upload: %d bytes", fileSize)
-		c.JSON(http.StatusNotImplemented, models.ErrorResponse{
-			Error:   "NotImplemented",
-			Message: fmt.Sprintf("File size (%d bytes) exceeds direct upload limit (%d bytes). Signed URL upload is not yet implemented.", fileSize, fileSizeThresholdBytes),
-		})
-		return
-	}
-
 	agentURL := fmt.Sprintf("http://%s:%d/upload", agentAddress, agentSidecarPort)
 	log.Printf("[UPLOAD] Forwarding to agent at %s", agentURL)
 
-	// Create multipart form for agent
-	formData := &bytes.Buffer{}
-	writer := multipart.NewWriter(formData)
-	defer func() {
+	// Stream the file to the agent using io.Pipe to avoid buffering the entire file in memory.
+	// The pipe connects the multipart writer (which writes form data) to the HTTP request body.
+	pipeReader, pipeWriter := io.Pipe()
+
+	// Create multipart writer that writes to the pipe
+	writer := multipart.NewWriter(pipeWriter)
+
+	// Write multipart form in a goroutine so we can stream to the request
+	var writeErr error
+	go func() {
+		defer pipeWriter.Close()
+
+		// Write path field
+		pathField, err := writer.CreateFormField("path")
+		if err != nil {
+			writeErr = fmt.Errorf("failed to create path field: %w", err)
+			return
+		}
+		if _, err := pathField.Write([]byte(targetPath)); err != nil {
+			writeErr = fmt.Errorf("failed to write path field: %w", err)
+			return
+		}
+
+		// Write file field - streams from uploaded file directly
+		fileField, err := writer.CreateFormFile("file", fileHeader.Filename)
+		if err != nil {
+			writeErr = fmt.Errorf("failed to create file field: %w", err)
+			return
+		}
+		if _, err := io.Copy(fileField, file); err != nil {
+			writeErr = fmt.Errorf("failed to stream file content: %w", err)
+			return
+		}
+
 		if err := writer.Close(); err != nil {
-			log.Printf("Warning: failed to close multipart writer: %v", err)
+			writeErr = fmt.Errorf("failed to finalize multipart writer: %w", err)
+			return
 		}
 	}()
 
-	pathField, err := writer.CreateFormField("path")
-	if err != nil {
-		log.Printf("Failed to create path field: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to process file upload",
-		})
-		return
-	}
-	if _, err := pathField.Write([]byte(targetPath)); err != nil {
-		log.Printf("Failed to write path field: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to process file upload",
-		})
-		return
-	}
-
-	fileField, err := writer.CreateFormFile("file", fileHeader.Filename)
-	if err != nil {
-		log.Printf("Failed to create file field: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to process file upload",
-		})
-		return
-	}
-	if _, err := fileField.Write(content); err != nil {
-		log.Printf("Failed to write file content: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to process file upload",
-		})
-		return
-	}
-
-	if err := writer.Close(); err != nil {
-		log.Printf("Failed to finalize multipart writer: %v", err)
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error:   "InternalServerError",
-			Message: "Failed to process file upload",
-		})
-		return
-	}
-
-	// Create HTTP request
-	req, err := http.NewRequestWithContext(ctx, "POST", agentURL, formData)
+	// Create HTTP request with streaming body
+	req, err := http.NewRequestWithContext(ctx, "POST", agentURL, pipeReader)
 	if err != nil {
 		log.Printf("Failed to create request: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
@@ -233,6 +211,16 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		c.JSON(resp.StatusCode, models.ErrorResponse{
 			Error:   "InternalServerError",
 			Message: "Agent upload failed: " + string(bodyBytes),
+		})
+		return
+	}
+
+	// Check for errors from the streaming goroutine
+	if writeErr != nil {
+		log.Printf("Failed during streaming upload: %v", writeErr)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Failed to stream file: " + writeErr.Error(),
 		})
 		return
 	}
