@@ -21,7 +21,6 @@ from .types import (
     ExecResult,
     FileDownloadResult,
     FileUploadResult,
-    HealthStatus,
     LargeFileDownloadResult,
     Sandbox,
     SandboxConfig,
@@ -130,29 +129,6 @@ class IsolaClient:
             raise APIError.from_response(response.status_code, error_detail)
 
         return response
-
-    # Health endpoints
-
-    def health(self) -> HealthStatus:
-        """Check the health of the Isola Gateway.
-
-        Returns:
-            HealthStatus with status, timestamp, version, and component health.
-        """
-        response = self._request("GET", "/health")
-        return HealthStatus.from_dict(response.json())
-
-    def ready(self) -> bool:
-        """Check if the Isola Gateway is ready to accept requests.
-
-        Returns:
-            True if ready, False otherwise.
-        """
-        try:
-            response = self._request("GET", "/ready")
-            return response.json().get("status") == "ready"
-        except APIError:
-            return False
 
     # Sandbox CRUD
 
@@ -659,17 +635,6 @@ class AsyncIsolaClient:
             raise APIError.from_response(response.status_code, error_detail)
 
         return response
-
-    async def health(self) -> HealthStatus:
-        response = await self._request("GET", "/health")
-        return HealthStatus.from_dict(response.json())
-
-    async def ready(self) -> bool:
-        try:
-            response = await self._request("GET", "/ready")
-            return response.json().get("status") == "ready"
-        except APIError:
-            return False
 
     async def create_sandbox(self, config: SandboxConfig) -> Sandbox:
         response = await self._request("POST", "/api/v1/sandboxes", json=config.to_dict())

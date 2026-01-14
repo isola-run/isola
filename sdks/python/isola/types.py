@@ -234,25 +234,6 @@ class LargeFileDownloadResult:
 
 
 @dataclass
-class HealthStatus:
-    """Health check response."""
-
-    status: str
-    timestamp: str
-    version: str
-    components: dict[str, str] = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> HealthStatus:
-        return cls(
-            status=data["status"],
-            timestamp=data["timestamp"],
-            version=data["version"],
-            components=data.get("components", {}),
-        )
-
-
-@dataclass
 class ErrorDetail:
     """Error response from the API."""
 

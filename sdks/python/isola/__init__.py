@@ -67,7 +67,6 @@ from .types import (
     ExecResult,
     FileDownloadResult,
     FileUploadResult,
-    HealthStatus,
     LargeFileDownloadResult,
     SandboxConfig,
     SandboxList,
@@ -100,7 +99,6 @@ __all__ = [
     "UploadUrlResult",
     "LargeFileDownloadResult",
     "AttachedVolume",
-    "HealthStatus",
     "ErrorDetail",
     # Exceptions
     "IsolaError",
