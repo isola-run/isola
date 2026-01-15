@@ -3,6 +3,7 @@ module github.com/omereli/dev-isola/services/isola-operator
 go 1.25.5
 
 require (
+	github.com/omereli/dev-isola/pkg/snapshot v0.0.0
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
 	github.com/stretchr/testify v1.10.0
@@ -12,6 +13,8 @@ require (
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
 	sigs.k8s.io/controller-runtime v0.22.4
 )
+
+replace github.com/omereli/dev-isola/pkg/snapshot => ../../pkg/snapshot
 
 require (
 	cel.dev/expr v0.24.0 // indirect

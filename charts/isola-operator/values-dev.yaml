@@ -6,3 +6,15 @@ agentImage: isola-agent:dev
 
 # Use gVisor runtime (installed by setup.sh)
 runtimeClassName: "gvisor"
+
+# Snapshot storage configuration (uses LocalStack in dev)
+# The localstack-credentials secret is created by Tiltfile
+snapshot:
+  storage:
+    bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
+    credentialSecret:
+      name: "localstack-credentials"
+  uploaderImage: "localhost:5001/isola-uploader:dev"
+  serviceAccount:
+    create: true
+    name: "isola-snapshot-job"

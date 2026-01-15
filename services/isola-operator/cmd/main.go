@@ -66,6 +66,10 @@ func main() {
 	var runtimeClassName string
 	var isolaGatewayNamespace string
 	var isolaGatewayLabelName string
+	var snapshotBucketURL string
+	var snapshotCredentialSecret string
+	var snapshotUploaderImage string
+	var snapshotServiceAccount string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -87,6 +91,10 @@ func main() {
 	flag.StringVar(&runtimeClassName, "runtime-class", "", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
 	flag.StringVar(&isolaGatewayNamespace, "gateway-namespace", "isola-system", "Namespace where isola-gw runs (for NetworkPolicy ingress rules)")
 	flag.StringVar(&isolaGatewayLabelName, "gateway-label-name", "isola-gw", "Value of app.kubernetes.io/name label for isola-gw pods")
+	flag.StringVar(&snapshotBucketURL, "snapshot-bucket-url", os.Getenv("ISOLA_SNAPSHOT_BUCKET_URL"), "Bucket URL for snapshot storage (e.g., s3://bucket?region=us-east-1)")
+	flag.StringVar(&snapshotCredentialSecret, "snapshot-credential-secret", os.Getenv("ISOLA_SNAPSHOT_CREDENTIAL_SECRET"), "Secret name for bucket credentials (optional, uses pod identity if not set)")
+	flag.StringVar(&snapshotUploaderImage, "snapshot-uploader-image", os.Getenv("ISOLA_UPLOADER_IMAGE"), "Container image for the snapshot uploader")
+	flag.StringVar(&snapshotServiceAccount, "snapshot-service-account", os.Getenv("ISOLA_SNAPSHOT_SERVICE_ACCOUNT"), "ServiceAccount for snapshot jobs")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -209,11 +217,15 @@ func main() {
 	}
 
 	// RootfsSnapshotReconciler manages RootfsSnapshot resources.
-	// It creates Jobs to snapshot container rootfs using gvisor's runsc tar command.
+	// It creates Jobs to snapshot container rootfs and upload to bucket storage.
 	if err := (&controller.RootfsSnapshotReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Clock:  controller.RealClock{},
+		Client:                 mgr.GetClient(),
+		Scheme:                 mgr.GetScheme(),
+		Clock:                  controller.RealClock{},
+		BucketURL:              snapshotBucketURL,
+		CredentialSecretName:   snapshotCredentialSecret,
+		UploaderImage:          snapshotUploaderImage,
+		SnapshotServiceAccount: snapshotServiceAccount,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RootfsSnapshot")
 		os.Exit(1)

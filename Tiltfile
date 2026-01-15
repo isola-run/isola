@@ -12,8 +12,10 @@ allow_k8s_contexts('kind-isola-dev')
 # Local registry (created by setup.sh)
 default_registry('localhost:5001')
 
-# Suppress warning for isola-agent (it's used as sidecar, injected by operator)
-update_settings(suppress_unused_image_warnings=["isola-agent"])
+# Suppress warning for images that are built but deployed indirectly
+# - isola-agent: used as sidecar, injected by operator
+# - isola-uploader: used by snapshot jobs created by operator
+update_settings(suppress_unused_image_warnings=["isola-agent", "isola-uploader"])
 
 # ==============================================================================
 # LocalStack (S3 storage backend)
@@ -31,9 +33,17 @@ helm_resource(
         '--set', 'service.type=ClusterIP',
         '--set', 'startServices=s3',
         '--set', 'enableStartupScripts=true',
-        '--set-string', 'startupScriptContent=awslocal s3api create-bucket --bucket isola-uploads 2>/dev/null || true',
+        '--set-string', 'startupScriptContent=awslocal s3api create-bucket --bucket isola-uploads 2>/dev/null || true; awslocal s3api create-bucket --bucket isola-snapshots 2>/dev/null || true',
     ],
     resource_deps=['localstack-repo'],
+    labels=['infrastructure'],
+)
+
+# Create LocalStack credentials secret in the sandbox namespace
+# This secret is referenced by snapshot jobs for S3 authentication
+local_resource(
+    'localstack-credentials',
+    cmd='kubectl create namespace isola-sandboxes --dry-run=client -o yaml | kubectl apply -f - && kubectl create secret generic localstack-credentials --namespace=isola-sandboxes --from-literal=AWS_ACCESS_KEY_ID=test --from-literal=AWS_SECRET_ACCESS_KEY=test --from-literal=AWS_REGION=us-east-1 --dry-run=client -o yaml | kubectl apply -f -',
     labels=['infrastructure'],
 )
 
@@ -64,17 +74,35 @@ helm_resource(
         '--set', 'image.repository=isola-operator',
         '--set', 'image.tag=latest',
         '--set', 'agentImage=isola-agent:dev',
+        '--set', 'snapshot.uploaderImage=isola-uploader:dev',
     ],
     # image_deps and image-keys instruct tilt on how to patch the helm charts with the newly built images
     # in values.yaml, new isola-operator image should patch image.{repository, tag}
     # while once a new agentImage is built, the agentImage: (string value) needs to be patched
-    image_deps=['isola-operator', 'isola-agent'],
+    image_deps=['isola-operator', 'isola-agent', 'isola-uploader'],
     image_keys=[
         ('image.repository', 'image.tag'),
         'agentImage',
+        'snapshot.uploaderImage',
     ],
     deps=['charts/isola-operator'],
+    resource_deps=['localstack', 'localstack-credentials'],
     labels=['isola'],
+)
+
+# ==============================================================================
+# isola-uploader (snapshot uploader - built but deployed by operator via Jobs)
+# ==============================================================================
+
+docker_build(
+    'isola-uploader',
+    context='services/isola-uploader',
+    dockerfile='services/isola-uploader/Dockerfile',
+    only=[
+        'cmd/',
+        'go.mod',
+        'go.sum',
+    ]
 )
 
 # ==============================================================================
@@ -96,6 +124,15 @@ docker_build(
 local_resource(
     'rebuild-isola-agent',
     cmd='docker build -t localhost:5001/isola-agent:tilt-build services/isola-agent && docker push localhost:5001/isola-agent:tilt-build',
+    # don't run this on init, only on manual trigger:
+    auto_init=False,
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    labels=['isola'],
+)
+
+local_resource(
+    'rebuild-isola-uploader',
+    cmd='docker build -t localhost:5001/isola-uploader:tilt-build services/isola-uploader && docker push localhost:5001/isola-uploader:tilt-build',
     # don't run this on init, only on manual trigger:
     auto_init=False,
     trigger_mode=TRIGGER_MODE_MANUAL,

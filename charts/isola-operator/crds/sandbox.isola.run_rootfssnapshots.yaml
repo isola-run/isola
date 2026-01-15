@@ -241,15 +241,22 @@ spec:
                       description: ContainerName is the name of the container being
                         snapshotted
                       type: string
-                    snapshotPath:
-                      description: |-
-                        todo benl: change to bucket, not on the node
-                        SnapshotPath is the path where the snapshot tarball is stored on the node
+                    snapshotKey:
+                      description: SnapshotKey is the object key within the bucket
+                        (without the bucket URL prefix)
+                      type: string
+                    snapshotURI:
+                      description: SnapshotURI is the full bucket URI where the snapshot
+                        tarball is stored
                       type: string
                   required:
                   - containerName
                   type: object
                 type: array
+              revision:
+                description: Revision is the snapshot revision number for this sandbox
+                format: int32
+                type: integer
               startedAt:
                 description: StartedAt is when the first snapshot job was created
                 format: date-time

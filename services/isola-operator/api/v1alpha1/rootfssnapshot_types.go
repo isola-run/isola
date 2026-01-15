@@ -102,10 +102,13 @@ type ContainerSnapshotStatus struct {
 	// +optional
 	ContainerID string `json:"containerID,omitempty"`
 
-	// todo benl: change to bucket, not on the node
-	// SnapshotPath is the path where the snapshot tarball is stored on the node
+	// SnapshotURI is the full bucket URI where the snapshot tarball is stored
 	// +optional
-	SnapshotPath string `json:"snapshotPath,omitempty"`
+	SnapshotURI string `json:"snapshotURI,omitempty"`
+
+	// SnapshotKey is the object key within the bucket (without the bucket URL prefix)
+	// +optional
+	SnapshotKey string `json:"snapshotKey,omitempty"`
 
 	// Conditions represent the status of this container's snapshot
 	// +listType=map
@@ -125,6 +128,10 @@ type RootfsSnapshotStatus struct {
 	// ContainerSnapshots tracks the status of each container being snapshotted
 	// +optional
 	ContainerSnapshots []ContainerSnapshotStatus `json:"containerSnapshots,omitempty"`
+
+	// Revision is the snapshot revision number for this sandbox
+	// +optional
+	Revision int32 `json:"revision,omitempty"`
 
 	// StartedAt is when the first snapshot job was created
 	// +optional
