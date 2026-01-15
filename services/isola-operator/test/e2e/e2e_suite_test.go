@@ -28,7 +28,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/omereli/dev-isola/services/isola-operator/test/utils"
+	"github.com/isola-ai/isola-sb/services/isola-operator/test/utils"
 )
 
 var (

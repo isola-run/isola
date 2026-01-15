@@ -3,8 +3,8 @@ package handlers
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/omereli/dev-isola/services/isola-gw/internal/kubernetes"
-	"github.com/omereli/dev-isola/services/isola-gw/internal/storage"
+	"github.com/isola-ai/isola-sb/services/isola-gw/internal/kubernetes"
+	"github.com/isola-ai/isola-sb/services/isola-gw/internal/storage"
 )
 
 const (

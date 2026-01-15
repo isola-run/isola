@@ -28,9 +28,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
-	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/network"
-	"github.com/omereli/dev-isola/services/isola-operator/test/utils"
+	sandboxv1alpha1 "github.com/isola-ai/isola-sb/services/isola-operator/api/v1alpha1"
+	"github.com/isola-ai/isola-sb/services/isola-operator/internal/controller/network"
+	"github.com/isola-ai/isola-sb/services/isola-operator/test/utils"
 )
 
 // findEgressRuleWithCIDR finds an egress rule with the specified CIDR.

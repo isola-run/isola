@@ -1,4 +1,4 @@
-module github.com/omereli/dev-isola/services/isola-gw
+module github.com/isola-ai/isola-sb/services/isola-gw
 
 go 1.25.5
 
