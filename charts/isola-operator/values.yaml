@@ -16,3 +16,28 @@ runtimeClassName: "gvisor"
 
 # Namespace where sandbox pods are created
 sandboxNamespace: isola-sandboxes
+
+# Storage credentials for sandbox jobs (snapshots, file uploads)
+# These credentials are made available to jobs in the sandbox namespace.
+#
+# Three modes of operation:
+#   1. Pod/Workload Identity: Leave all fields empty (recommended for production)
+#   2. Existing Secret: Set existingSecret to reference a pre-created secret (any provider)
+#   3. Chart-managed Secret: Provide accessKeyId/secretAccessKey (AWS/S3-compatible only)
+#
+sandboxCredentials:
+  ## @param sandboxCredentials.existingSecret Name of existing secret containing storage credentials
+  ## Use this for production with any storage provider (AWS, GCP, Azure, S3-compatible).
+  ## The secret can contain any keys your storage backend requires.
+  ## When set, the inline credentials below are ignored.
+  existingSecret: ""
+
+  ## AWS/S3-compatible credentials (only used when existingSecret is empty)
+  ## Convenient for dev/CI with LocalStack or S3-compatible storage.
+  ## Creates a secret with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION keys.
+  ## @param sandboxCredentials.accessKeyId AWS Access Key ID
+  accessKeyId: ""
+  ## @param sandboxCredentials.secretAccessKey AWS Secret Access Key
+  secretAccessKey: ""
+  ## @param sandboxCredentials.region AWS Region
+  region: "us-east-1"
