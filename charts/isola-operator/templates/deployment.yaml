@@ -67,9 +67,9 @@ spec:
         - name: ISOLA_SNAPSHOT_BUCKET_URL
           value: {{ .Values.snapshot.storage.bucketUrl | quote }}
         {{- end }}
-        {{- if .Values.snapshot.storage.credentialSecret.name }}
+        {{- if .Values.snapshot.storage.credentialSecretName }}
         - name: ISOLA_SNAPSHOT_CREDENTIAL_SECRET
-          value: {{ .Values.snapshot.storage.credentialSecret.name | quote }}
+          value: {{ .Values.snapshot.storage.credentialSecretName | quote }}
         {{- end }}
         {{- if .Values.snapshot.uploaderImage }}
         - name: ISOLA_UPLOADER_IMAGE

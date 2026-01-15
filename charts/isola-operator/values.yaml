@@ -27,15 +27,9 @@ snapshot:
     #   gs://bucket-name (Google Cloud Storage)
     #   azblob://container-name (Azure Blob Storage)
     bucketUrl: ""
-    # Optional: Secret containing bucket credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, etc.)
+    # Optional: Name of secret containing bucket credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, etc.)
     # If not set, uses pod identity (IRSA/Workload Identity/Managed Identity)
-    credentialSecret:
-      # Name of the secret (required if using secret-based auth)
-      name: ""
-      # Whether to create the secret (for dev environments)
-      create: false
-      # Secret data (only used if create is true)
-      data: {}
+    credentialSecretName: ""
   # Container image for the snapshot uploader
   uploaderImage: "isola-uploader:latest"
   # ServiceAccount for snapshot jobs (created in sandboxNamespace)

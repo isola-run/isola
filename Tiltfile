@@ -14,7 +14,7 @@ default_registry('localhost:5001')
 
 # Suppress warning for images that are built but deployed indirectly
 # - isola-agent: used as sidecar, injected by operator
-# - isola-uploader: used by snapshot jobs created by operator
+# - isola-uploader: used by triggered snapshot jobs
 update_settings(suppress_unused_image_warnings=["isola-agent", "isola-uploader"])
 
 # ==============================================================================
