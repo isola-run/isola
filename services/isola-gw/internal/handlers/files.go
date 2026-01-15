@@ -15,7 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/omereli/dev-isola/services/isola-gw/internal/models"
+	"github.com/isola-ai/isola-sb/services/isola-gw/internal/models"
 )
 
 const (

@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
-	"github.com/omereli/dev-isola/services/isola-agent/internal/handlers"
+	"github.com/isola-ai/isola-sb/services/isola-agent/internal/handlers"
 )
 
 // Environment variable keys

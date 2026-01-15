@@ -1,4 +1,4 @@
-module github.com/omereli/dev-isola/services/isola-operator
+module github.com/isola-ai/isola-sb/services/isola-operator
 
 go 1.25.5
 

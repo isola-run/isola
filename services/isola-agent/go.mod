@@ -1,4 +1,4 @@
-module github.com/omereli/dev-isola/services/isola-agent
+module github.com/isola-ai/isola-sb/services/isola-agent
 
 go 1.25.5
 

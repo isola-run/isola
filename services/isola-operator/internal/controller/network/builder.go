@@ -92,8 +92,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
-	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/network/cidr"
+	sandboxv1alpha1 "github.com/isola-ai/isola-sb/services/isola-operator/api/v1alpha1"
+	"github.com/isola-ai/isola-sb/services/isola-operator/internal/controller/network/cidr"
 )
 
 const (
