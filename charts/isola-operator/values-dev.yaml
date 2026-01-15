@@ -6,3 +6,9 @@ agentImage: isola-agent:dev
 
 # Use gVisor runtime (installed by setup.sh)
 runtimeClassName: "gvisor"
+
+# LocalStack credentials for dev/CI
+sandboxCredentials:
+  accessKeyId: "test"
+  secretAccessKey: "test"
+  region: "us-east-1"

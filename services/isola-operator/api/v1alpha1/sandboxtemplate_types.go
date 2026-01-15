@@ -107,6 +107,9 @@ type SandboxTemplateStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Timeout",type="integer",JSONPath=".spec.timeoutSeconds",description="Timeout in seconds"
+// +kubebuilder:printcolumn:name="Shutdown",type="string",JSONPath=".spec.shutdownPolicy.policy",description="Shutdown policy"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // SandboxTemplate is the Schema for the sandboxtemplates API
 type SandboxTemplate struct {

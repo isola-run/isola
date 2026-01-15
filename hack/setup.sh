@@ -133,7 +133,7 @@ if kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
     echo "  Cluster '${KIND_CLUSTER_NAME}' already exists"
 else
     echo "  Creating cluster '${KIND_CLUSTER_NAME}'..."
-    kind create cluster --name "${KIND_CLUSTER_NAME}" --config "${ROOT_DIR}/kind-config.yaml"
+    kind create cluster --name "${KIND_CLUSTER_NAME}" --config "${SCRIPT_DIR}/kind-config.yaml"
     echo "  Cluster '${KIND_CLUSTER_NAME}' created."
     if [ "${KIND_CLUSTER_NAME}" != "isola-dev" ]; then
         echo "  If you customized the name, update allow_k8s_contexts in Tiltfile to match 'kind-${KIND_CLUSTER_NAME}'."
@@ -203,6 +203,6 @@ echo "=== Setup Complete ==="
 echo ""
 echo "Next steps:"
 echo "  1. Start development:  tilt up"
-echo "  2. Run tests:    cd tests && uv run pytest"
-echo "  3. Teardown:           kind delete cluster --name isola-dev"
+echo "  2. Run tests:          cd tests && uv run pytest"
+echo "  3. Teardown:           kind delete cluster --name ${KIND_CLUSTER_NAME}"
 echo ""
