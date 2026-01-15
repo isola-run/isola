@@ -62,3 +62,20 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
+        env:
+        {{- if .Values.snapshot.storage.bucketUrl }}
+        - name: ISOLA_SNAPSHOT_BUCKET_URL
+          value: {{ .Values.snapshot.storage.bucketUrl | quote }}
+        {{- end }}
+        {{- if .Values.snapshot.storage.credentialSecret.name }}
+        - name: ISOLA_SNAPSHOT_CREDENTIAL_SECRET
+          value: {{ .Values.snapshot.storage.credentialSecret.name | quote }}
+        {{- end }}
+        {{- if .Values.snapshot.uploaderImage }}
+        - name: ISOLA_UPLOADER_IMAGE
+          value: {{ .Values.snapshot.uploaderImage | quote }}
+        {{- end }}
+        {{- if .Values.snapshot.serviceAccount.name }}
+        - name: ISOLA_SNAPSHOT_SERVICE_ACCOUNT
+          value: {{ .Values.snapshot.serviceAccount.name | quote }}
+        {{- end }}
