@@ -501,14 +501,14 @@ func getCPU(cpu *float64) float64 {
 	if cpu != nil {
 		return *cpu
 	}
-	return 1.0
+	return 0.25 // 250m - reasonable default that won't exhaust cluster resources
 }
 
 func getMemory(mem *float64) float64 {
 	if mem != nil {
 		return *mem
 	}
-	return 1.0
+	return 0.5 // 512Mi - reasonable default for most sandbox workloads
 }
 
 func envToK8sEnv(env map[string]string) []map[string]interface{} {
