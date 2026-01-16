@@ -14,7 +14,7 @@ make generate           # Regenerate DeepCopy methods after CRD changes
 make manifests          # Regenerate CRD YAML after CRD changes
 
 # Local dev
-./scripts/setup.sh      # One-time: Kind cluster + registry
+./hack/setup.sh         # One-time: Kind cluster + registry
 tilt up                 # Start dev environment (http://localhost:10350)
 cd tests && uv run pytest -m smoke  # E2E smoke tests
 ```

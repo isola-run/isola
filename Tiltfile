@@ -9,7 +9,7 @@ load('ext://helm_resource', 'helm_resource', 'helm_repo')
 # For safety, only allow Tilt to run with the following cluster
 allow_k8s_contexts('kind-isola-dev')
 
-# Local registry (created by setup.sh)
+# Local registry (created by hack/setup.sh)
 default_registry('localhost:5001')
 
 # Suppress warning for isola-agent (it's used as sidecar, injected by operator)
@@ -27,11 +27,7 @@ helm_resource(
     namespace='localstack',
     flags=[
         '--create-namespace',
-        # use ClusterIP instead of the default NodePort since only intra-cluster communciation is needed
-        '--set', 'service.type=ClusterIP',
-        '--set', 'startServices=s3',
-        '--set', 'enableStartupScripts=true',
-        '--set-string', 'startupScriptContent=awslocal s3api create-bucket --bucket isola-uploads 2>/dev/null || true',
+        '-f', 'charts/localstack-values.yaml',
     ],
     resource_deps=['localstack-repo'],
     labels=['infrastructure'],

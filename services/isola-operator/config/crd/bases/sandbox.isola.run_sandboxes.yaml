@@ -11,6 +11,8 @@ spec:
     kind: Sandbox
     listKind: SandboxList
     plural: sandboxes
+    shortNames:
+    - sb
     singular: sandbox
   scope: Namespaced
   versions:
@@ -19,13 +21,18 @@ spec:
       jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: Ready
       type: string
-    - description: Reason for Ready condition
-      jsonPath: .status.conditions[?(@.type=='Ready')].reason
-      name: Reason
+    - description: SandboxTemplate reference
+      jsonPath: .spec.templateRef.name
+      name: Template
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
+    - description: Reason for Ready condition
+      jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      priority: 1
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
