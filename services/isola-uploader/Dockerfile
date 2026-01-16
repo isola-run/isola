@@ -3,12 +3,16 @@ FROM golang:1.25.5-bookworm AS builder
 
 WORKDIR /workspace
 
+# Copy shared packages first (referenced by replace directive)
+COPY pkg/snapshot/ /pkg/snapshot/
+
 # Copy go mod files first for caching
-COPY go.mod go.sum* ./
+COPY services/isola-uploader/go.mod go.mod
+COPY services/isola-uploader/go.sum* ./
 RUN go mod download
 
 # Copy source
-COPY . .
+COPY services/isola-uploader/cmd/ cmd/
 
 # Build static binary
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o uploader ./cmd/main.go

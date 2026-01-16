@@ -13,9 +13,14 @@ import pytest
 import requests
 
 from client.isola_client import IsolaClient, IsolaError
+from helpers.k8s import K8S_AVAILABLE
 
 if TYPE_CHECKING:
     from _pytest.fixtures import FixtureRequest
+    from helpers.k8s import K8sHelper
+
+if K8S_AVAILABLE:
+    from helpers.k8s import K8sHelper
 
 logger = logging.getLogger(__name__)
 
@@ -162,3 +167,15 @@ def sandbox_stopped(
 def unique_name() -> str:
     """Generate a unique name for test resources."""
     return f"test-{uuid.uuid4().hex[:8]}"
+
+
+@pytest.fixture(scope="session")
+def k8s_helper() -> "K8sHelper | None":
+    """Create a session-scoped K8s helper. Returns None if k8s not available."""
+    if not K8S_AVAILABLE:
+        return None
+    try:
+        return K8sHelper()
+    except Exception as e:
+        logger.warning(f"Failed to initialize K8sHelper: {e}")
+        return None

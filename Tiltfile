@@ -9,7 +9,7 @@ load('ext://helm_resource', 'helm_resource', 'helm_repo')
 # For safety, only allow Tilt to run with the following cluster
 allow_k8s_contexts('kind-isola-dev')
 
-# Local registry (created by setup.sh)
+# Local registry (created by hack/setup.sh)
 default_registry('localhost:5001')
 
 # Suppress warning for images that are built but deployed indirectly
@@ -29,21 +29,9 @@ helm_resource(
     namespace='localstack',
     flags=[
         '--create-namespace',
-        # use ClusterIP instead of the default NodePort since only intra-cluster communciation is needed
-        '--set', 'service.type=ClusterIP',
-        '--set', 'startServices=s3',
-        '--set', 'enableStartupScripts=true',
-        '--set-string', 'startupScriptContent=awslocal s3api create-bucket --bucket isola-uploads 2>/dev/null || true; awslocal s3api create-bucket --bucket isola-snapshots 2>/dev/null || true',
+        '-f', 'charts/localstack-values.yaml',
     ],
     resource_deps=['localstack-repo'],
-    labels=['infrastructure'],
-)
-
-# Create LocalStack credentials secret in the sandbox namespace
-# This secret is referenced by snapshot jobs for S3 authentication
-local_resource(
-    'localstack-credentials',
-    cmd='kubectl create namespace isola-sandboxes --dry-run=client -o yaml | kubectl apply -f - && kubectl create secret generic localstack-credentials --namespace=isola-sandboxes --from-literal=AWS_ACCESS_KEY_ID=test --from-literal=AWS_SECRET_ACCESS_KEY=test --from-literal=AWS_REGION=us-east-1 --dry-run=client -o yaml | kubectl apply -f -',
     labels=['infrastructure'],
 )
 
@@ -53,14 +41,15 @@ local_resource(
 
 docker_build(
     'isola-operator',
-    context='services/isola-operator',
+    context='.',
     dockerfile='services/isola-operator/Dockerfile',
     only=[
-        'cmd/',
-        'internal/',
-        'api/',
-        'go.mod',
-        'go.sum',
+        'services/isola-operator/cmd/',
+        'services/isola-operator/internal/',
+        'services/isola-operator/api/',
+        'services/isola-operator/go.mod',
+        'services/isola-operator/go.sum',
+        'pkg/snapshot/',
     ]
 )
 
@@ -86,7 +75,7 @@ helm_resource(
         'snapshot.uploaderImage',
     ],
     deps=['charts/isola-operator'],
-    resource_deps=['localstack', 'localstack-credentials'],
+    resource_deps=['localstack'],
     labels=['isola'],
 )
 
@@ -96,12 +85,13 @@ helm_resource(
 
 docker_build(
     'isola-uploader',
-    context='services/isola-uploader',
+    context='.',
     dockerfile='services/isola-uploader/Dockerfile',
     only=[
-        'cmd/',
-        'go.mod',
-        'go.sum',
+        'services/isola-uploader/cmd/',
+        'services/isola-uploader/go.mod',
+        'services/isola-uploader/go.sum',
+        'pkg/snapshot/',
     ]
 )
 

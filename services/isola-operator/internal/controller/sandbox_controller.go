@@ -1211,29 +1211,32 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	// Pre-check runtime support
-	supported, retryable, err := snapshot.CheckRootfsSnapshotSupport(ctx, r.Client, sandboxPod)
+	// Pre-check: pod must be ready and runtime must support snapshotting
+	if !podutil.IsPodReady(sandboxPod) {
+		log.Info("Unable to perform rootfs snapshot: pod not ready")
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "PodNotReady", "Unable to perform rootfs snapshot: pod not ready")
+
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxRootfsSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSnapshotFailed,
+				Message:            "Sandbox pod is not ready",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	}
+
+	supported, err := snapshot.CheckRootfsSnapshotSupport(ctx, r.Client, sandboxPod)
 	if err != nil {
 		log.Error(err, "Failed to validate snapshotting support")
 		return ctrl.Result{}, false, err
 	}
 
 	if !supported {
-		if retryable {
-			if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-				{
-					Type:               SandboxRootfsSnapshotCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonSnapshottingInProgress,
-					Message:            "Waiting for sandbox pod to become ready for snapshotting",
-					ObservedGeneration: sandbox.Generation,
-				},
-			}); err != nil {
-				return ctrl.Result{}, false, err
-			}
-			return ctrl.Result{RequeueAfter: time.Second}, false, nil
-		}
-
 		log.Info("Unable to perform rootfs snapshot: runtime not supported")
 		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "RuntimeNotSupported", "Unable to perform rootfs snapshot")
 
