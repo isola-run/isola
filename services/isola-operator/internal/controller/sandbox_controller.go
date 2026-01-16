@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"sort"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -391,25 +390,23 @@ func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv
 	return sandboxPod, nil
 }
 
-// getSnapshotsForSandbox returns all RootfsSnapshots that reference this sandbox,
-// sorted by creation time (most recent first). This uses label-based discovery,
-// allowing us to find snapshots regardless of who created them.
-func (r *SandboxReconciler) getSnapshotsForSandbox(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) ([]sandboxv1alpha1.RootfsSnapshot, error) {
-	var list sandboxv1alpha1.RootfsSnapshotList
-	if err := r.List(ctx, &list,
-		client.InNamespace(sandbox.Namespace),
-		client.MatchingLabels{LabelSandboxName: sandbox.Name},
-	); err != nil {
+func getShutdownSnapshotName(sandbox *sandboxv1alpha1.Sandbox) string {
+	return sandbox.Name + "-shutdown"
+}
+
+func (r *SandboxReconciler) getShutdownSnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
+	snap := &sandboxv1alpha1.RootfsSnapshot{}
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      getShutdownSnapshotName(sandbox),
+		Namespace: sandbox.Namespace,
+	}, snap)
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
 		return nil, err
 	}
-
-	// Sort by creation time, most recent first
-	snapshots := list.Items
-	sort.Slice(snapshots, func(i, j int) bool {
-		return snapshots[i].CreationTimestamp.After(snapshots[j].CreationTimestamp.Time)
-	})
-
-	return snapshots, nil
+	return snap, nil
 }
 
 func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.SandboxTemplate, ctrl.Result, error) {
@@ -692,11 +689,11 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	networkCondition := r.determineNetworkCondition(sandbox, networkTemplate)
 	conditions = append(conditions, networkCondition)
 
-	snapshots, err := r.getSnapshotsForSandbox(ctx, sandbox)
+	shutdownSnapshot, err := r.getShutdownSnapshot(ctx, sandbox)
 	if err != nil {
 		return err
 	}
-	snapshotCondition := r.determineSnapshotCondition(sandbox, snapshots)
+	snapshotCondition := r.determineSnapshotCondition(sandbox, shutdownSnapshot)
 	conditions = append(conditions, snapshotCondition)
 
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod, networkTemplate)
@@ -742,56 +739,43 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 	}
 }
 
-// determineSnapshotCondition aggregates the status of all RootfsSnapshots for this sandbox.
-// The snapshots slice should be sorted by creation time (most recent first).
-// Logic:
-// - If no snapshots exist: "NoSnapshots"
-// - If any snapshot is in progress: "SnapshotInProgress"
-// - Otherwise, report status of most recent completed snapshot
-func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snapshots []sandboxv1alpha1.RootfsSnapshot) metav1.Condition {
-	if len(snapshots) == 0 {
+func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snap *sandboxv1alpha1.RootfsSnapshot) metav1.Condition {
+	if snap == nil {
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             "NoSnapshots",
-			Message:            "No rootfs snapshots exist for this sandbox",
+			Reason:             "NoSnapshot",
+			Message:            "No shutdown snapshot exists",
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
 
-	// Check for any in-progress snapshots
-	for i := range snapshots {
-		snap := &snapshots[i]
-		if snap.Status.CompletedAt == nil {
-			return metav1.Condition{
-				Type:               SandboxRootfsSnapshotCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshottingInProgress,
-				Message:            fmt.Sprintf("Snapshot %q is in progress", snap.Name),
-				ObservedGeneration: sandbox.Generation,
-			}
-		}
-	}
-
-	// All completed - check most recent (first in slice since sorted by creation time desc)
-	mostRecent := &snapshots[0]
-	readyCond := meta.FindStatusCondition(mostRecent.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
-
-	if readyCond == nil {
-		// Completed but no condition yet - unusual state
+	// Check if in progress (no CompletedAt)
+	if snap.Status.CompletedAt == nil {
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonSnapshottingInProgress,
-			Message:            fmt.Sprintf("Snapshot %q status unknown", mostRecent.Name),
+			Message:            fmt.Sprintf("Snapshot %q is in progress", snap.Name),
+			ObservedGeneration: sandbox.Generation,
+		}
+	}
+
+	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+	if readyCond == nil {
+		return metav1.Condition{
+			Type:               SandboxRootfsSnapshotCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             CondReasonSnapshottingInProgress,
+			Message:            fmt.Sprintf("Snapshot %q status unknown", snap.Name),
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
 
 	if readyCond.Status == metav1.ConditionTrue {
-		message := fmt.Sprintf("Snapshot %q completed", mostRecent.Name)
-		if mostRecent.Status.Revision > 0 {
-			message = fmt.Sprintf("Snapshot %q completed (revision %d)", mostRecent.Name, mostRecent.Status.Revision)
+		message := fmt.Sprintf("Snapshot %q completed", snap.Name)
+		if snap.Status.Revision > 0 {
+			message = fmt.Sprintf("Snapshot %q completed (revision %d)", snap.Name, snap.Status.Revision)
 		}
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
@@ -803,22 +787,11 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 	}
 
 	// Failed
-	if readyCond.Reason == sandboxv1alpha1.ReasonRootfsSnapshotFailed {
-		return metav1.Condition{
-			Type:               SandboxRootfsSnapshotCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshotFailed,
-			Message:            fmt.Sprintf("Snapshot %q failed: %s", mostRecent.Name, readyCond.Message),
-			ObservedGeneration: sandbox.Generation,
-		}
-	}
-
-	// Other non-ready state
 	return metav1.Condition{
 		Type:               SandboxRootfsSnapshotCondition,
 		Status:             metav1.ConditionFalse,
-		Reason:             CondReasonSnapshottingInProgress,
-		Message:            fmt.Sprintf("Snapshot %q: %s", mostRecent.Name, readyCond.Message),
+		Reason:             CondReasonSnapshotFailed,
+		Message:            fmt.Sprintf("Snapshot %q failed: %s", snap.Name, readyCond.Message),
 		ObservedGeneration: sandbox.Generation,
 	}
 }
@@ -1254,89 +1227,55 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	// Query all snapshots for this sandbox (may include user-created ones)
-	snapshots, err := r.getSnapshotsForSandbox(ctx, sandbox)
+	// Get or create the shutdown snapshot using deterministic name
+	snap, err := r.getShutdownSnapshot(ctx, sandbox)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
 
-	// Check if any snapshot completed successfully - we can proceed with deletion
-	for i := range snapshots {
-		snap := &snapshots[i]
-		readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
-		if readyCond != nil && readyCond.Status == metav1.ConditionTrue {
-			log.Info("Found successful snapshot, proceeding with deletion", "snapshot", snap.Name)
-			r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", fmt.Sprintf("Snapshot %q completed", snap.Name))
-			if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-				{
-					Type:               SandboxRootfsSnapshotCondition,
-					Status:             metav1.ConditionTrue,
-					Reason:             CondReasonSnapshotComplete,
-					Message:            fmt.Sprintf("Snapshot %q completed", snap.Name),
-					ObservedGeneration: sandbox.Generation,
-				},
-			}); err != nil {
-				return ctrl.Result{}, false, err
-			}
-			return ctrl.Result{}, true, nil
-		}
+	// If snapshot doesn't exist, create it
+	if snap == nil {
+		return r.createShutdownSnapshot(ctx, sandbox, baseSandbox, activeDeadlineSeconds)
 	}
 
-	// Check if any snapshot is in progress - wait for it
-	for i := range snapshots {
-		snap := &snapshots[i]
-		if snap.Status.CompletedAt == nil {
-			log.Info("Snapshot in progress, waiting", "snapshot", snap.Name)
+	// Snapshot exists - check its status
+	snapshotName := snap.Name
 
-			// Check if this in-progress snapshot failed
-			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
-			if readyCond != nil && readyCond.Reason == sandboxv1alpha1.ReasonRootfsSnapshotFailed {
-				// This shouldn't happen (failed should have CompletedAt set), but handle it
-				log.Info("Snapshot failed", "snapshot", snap.Name, "message", readyCond.Message)
-				continue // Check other snapshots
-			}
-
-			if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-				{
-					Type:               SandboxRootfsSnapshotCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonSnapshottingInProgress,
-					Message:            fmt.Sprintf("Snapshot %q is running", snap.Name),
-					ObservedGeneration: sandbox.Generation,
-				},
-			}); err != nil {
-				return ctrl.Result{}, false, err
-			}
-
-			requeueAfter := r.clock().Until(snapshotDeadline)
-			if requeueAfter <= 0 {
-				requeueAfter = time.Second
-			} else if requeueAfter > 5*time.Second {
-				requeueAfter = 5 * time.Second
-			}
-			return ctrl.Result{RequeueAfter: requeueAfter}, false, nil
-		}
-	}
-
-	// If we have snapshots, but none are in progress (all completed), check if any failed.
-	// A failed snapshot still counts as "done" - we proceed with deletion.
-	if len(snapshots) > 0 {
-		// At this point, all snapshots have CompletedAt set but none are Ready=True.
-		// They must all be failed - proceed with deletion.
-		failedSnap := &snapshots[0]
-		readyCond := meta.FindStatusCondition(failedSnap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
-		message := "Snapshot failed"
-		if readyCond != nil && readyCond.Message != "" {
-			message = readyCond.Message
-		}
-		log.Info("Snapshot failed, proceeding with deletion", "snapshot", failedSnap.Name)
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", message)
+	// Still in progress?
+	if snap.Status.CompletedAt == nil {
+		log.Info("Snapshot in progress, waiting", "snapshot", snapshotName)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshotFailed,
-				Message:            message,
+				Reason:             CondReasonSnapshottingInProgress,
+				Message:            fmt.Sprintf("Snapshot %q is running", snapshotName),
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+
+		requeueAfter := r.clock().Until(snapshotDeadline)
+		if requeueAfter <= 0 {
+			requeueAfter = time.Second
+		} else if requeueAfter > 5*time.Second {
+			requeueAfter = 5 * time.Second
+		}
+		return ctrl.Result{RequeueAfter: requeueAfter}, false, nil
+	}
+
+	// Completed - check if successful
+	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+	if readyCond != nil && readyCond.Status == metav1.ConditionTrue {
+		log.Info("Snapshot completed successfully", "snapshot", snapshotName)
+		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", fmt.Sprintf("Snapshot %q completed", snapshotName))
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxRootfsSnapshotCondition,
+				Status:             metav1.ConditionTrue,
+				Reason:             CondReasonSnapshotComplete,
+				Message:            fmt.Sprintf("Snapshot %q completed", snapshotName),
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
@@ -1345,11 +1284,27 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	// No snapshots exist - create one
-	return r.createShutdownSnapshot(ctx, sandbox, baseSandbox, activeDeadlineSeconds)
+	// Completed but failed - proceed with deletion anyway
+	message := "Snapshot failed"
+	if readyCond != nil && readyCond.Message != "" {
+		message = readyCond.Message
+	}
+	log.Info("Snapshot failed, proceeding with deletion", "snapshot", snapshotName)
+	r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", message)
+	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+		{
+			Type:               SandboxRootfsSnapshotCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             CondReasonSnapshotFailed,
+			Message:            message,
+			ObservedGeneration: sandbox.Generation,
+		},
+	}); err != nil {
+		return ctrl.Result{}, false, err
+	}
+	return ctrl.Result{}, true, nil
 }
 
-// createShutdownSnapshot creates a new RootfsSnapshot for the sandbox shutdown process.
 func (r *SandboxReconciler) createShutdownSnapshot(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
@@ -1358,10 +1313,11 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 
+	snapshotName := getShutdownSnapshotName(sandbox)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: sandbox.Name + "-shutdown-",
-			Namespace:    sandbox.Namespace,
+			Name:      snapshotName,
+			Namespace: sandbox.Namespace,
 			Labels: map[string]string{
 				LabelSandboxName:            sandbox.Name,
 				"sandbox.isola.run/trigger": "shutdown",
@@ -1370,7 +1326,6 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 			SandboxName:           sandbox.Name,
 			ActiveDeadlineSeconds: &activeDeadlineSeconds,
-			// ContainerNames empty = snapshot all non-init containers
 		},
 	}
 
@@ -1434,13 +1389,7 @@ func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.Sandbox{}).
 		Owns(&corev1.Pod{}).
-		// Watch RootfsSnapshots by label selector instead of Owns().
-		// This allows us to track snapshots created by users (not just by this controller),
-		// enabling the Sandbox to reflect status of any snapshot that references it.
-		Watches(
-			&sandboxv1alpha1.RootfsSnapshot{},
-			handler.EnqueueRequestsFromMapFunc(r.findSandboxForSnapshot),
-		).
+		Owns(&sandboxv1alpha1.RootfsSnapshot{}).
 		// Watch SandboxTemplate changes to reconcile affected sandboxes
 		Watches(
 			&sandboxv1alpha1.SandboxTemplate{},
@@ -1455,38 +1404,6 @@ func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		Named("sandbox").
 		Complete(r)
-}
-
-// findSandboxForSnapshot maps a RootfsSnapshot to the Sandbox it references.
-// This enables the Sandbox controller to be notified when any snapshot for a sandbox
-// changes status, regardless of whether the Sandbox controller created it.
-func (r *SandboxReconciler) findSandboxForSnapshot(ctx context.Context, obj client.Object) []reconcile.Request {
-	snap, ok := obj.(*sandboxv1alpha1.RootfsSnapshot)
-	if !ok {
-		return nil
-	}
-
-	// First try the label (preferred, set by RootfsSnapshot controller)
-	sandboxName := ""
-	if snap.Labels != nil {
-		sandboxName = snap.Labels[LabelSandboxName]
-	}
-
-	// Fall back to spec if label not yet set
-	if sandboxName == "" {
-		sandboxName = snap.Spec.SandboxName
-	}
-
-	if sandboxName == "" {
-		return nil
-	}
-
-	return []reconcile.Request{{
-		NamespacedName: types.NamespacedName{
-			Name:      sandboxName,
-			Namespace: snap.Namespace,
-		},
-	}}
 }
 
 func extractTemplateRefName(obj client.Object) []string {
