@@ -138,8 +138,9 @@ type NetworkTemplateStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status",description="NetworkPolicy applied"
-// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason",description="Reason for Ready condition"
+// +kubebuilder:printcolumn:name="DNS",type="string",JSONPath=".spec.dnsPolicy",description="DNS policy"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason",priority=1,description="Reason for Ready condition"
 
 // NetworkTemplate defines network isolation rules that can be shared across multiple Sandboxes.
 // When a Sandbox references a NetworkTemplate, a Kubernetes NetworkPolicy is created that selects

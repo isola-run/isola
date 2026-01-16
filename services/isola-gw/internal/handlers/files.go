@@ -15,7 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/omereli/dev-isola/services/isola-gw/internal/models"
+	"github.com/isola-ai/isola-sb/services/isola-gw/internal/models"
 )
 
 const (
@@ -384,8 +384,22 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 
 	log.Printf("[UPLOAD-URL] Request for sandbox %s: path=%s, filename=%s", sandboxID, req.Path, req.Filename)
 
-	tenantID, _ := c.Get("tenant_id")
-	tenantIDStr := tenantID.(string)
+	tenantID, exists := c.Get("tenant_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+			Error:   "Unauthorized",
+			Message: "Missing tenant ID",
+		})
+		return
+	}
+	tenantIDStr, ok := tenantID.(string)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Invalid tenant ID type",
+		})
+		return
+	}
 
 	ctx := c.Request.Context()
 
@@ -448,8 +462,22 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 	log.Printf("[CONFIRM] Request for sandbox %s: upload_id=%s, filename=%s, path=%s", sandboxID, req.UploadID, req.Filename, req.Path)
 
 	// Get tenant ID from context
-	tenantID, _ := c.Get("tenant_id")
-	tenantIDStr := tenantID.(string)
+	tenantID, exists := c.Get("tenant_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+			Error:   "Unauthorized",
+			Message: "Missing tenant ID",
+		})
+		return
+	}
+	tenantIDStr, ok := tenantID.(string)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Invalid tenant ID type",
+		})
+		return
+	}
 
 	ctx := c.Request.Context()
 

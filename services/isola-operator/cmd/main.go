@@ -35,8 +35,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
-	"github.com/omereli/dev-isola/services/isola-operator/internal/controller"
+	sandboxv1alpha1 "github.com/isola-ai/isola-sb/services/isola-operator/api/v1alpha1"
+	"github.com/isola-ai/isola-sb/services/isola-operator/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 

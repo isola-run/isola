@@ -1,8 +1,7 @@
-# Kind cluster configuration for isola local development
-# Usage: kind create cluster --name isola-dev --config kind-config.yaml
+# Kind cluster configuration for isola
+# Usage: kind create cluster --name <cluster-name> --config kind-config.yaml
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-name: isola-dev
 nodes:
   - role: control-plane
     kubeadmConfigPatches:
@@ -16,7 +15,7 @@ nodes:
       - containerPort: 30080
         hostPort: 30080
         protocol: TCP
-# Configure containerd to use local registry
+# Configure containerd to use local registry (setup.sh configures the registry)
 containerdConfigPatches:
   - |-
     [plugins."io.containerd.grpc.v1.cri".registry]

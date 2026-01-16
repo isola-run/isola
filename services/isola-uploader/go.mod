@@ -1,13 +1,13 @@
-module github.com/omereli/dev-isola/services/isola-uploader
+module github.com/isola-ai/isola-sb/services/isola-uploader
 
 go 1.25.5
 
 require (
-	github.com/omereli/dev-isola/pkg/snapshot v0.0.0
+	github.com/isola-ai/isola-sb/pkg/snapshot v0.0.0
 	gocloud.dev v0.44.0
 )
 
-replace github.com/omereli/dev-isola/pkg/snapshot => ../../pkg/snapshot
+replace github.com/isola-ai/isola-sb/pkg/snapshot => ../../pkg/snapshot
 
 require (
 	cel.dev/expr v0.24.0 // indirect

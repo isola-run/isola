@@ -19,13 +19,18 @@ spec:
       jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: Ready
       type: string
-    - description: Reason for Ready condition
-      jsonPath: .status.conditions[?(@.type=='Ready')].reason
-      name: Reason
+    - description: DNS policy
+      jsonPath: .spec.dnsPolicy
+      name: DNS
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
+    - description: Reason for Ready condition
+      jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      priority: 1
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:

@@ -53,7 +53,7 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/omereli/dev-isola/pkg/snapshot"
+	"github.com/isola-ai/isola-sb/pkg/snapshot"
 	"gocloud.dev/blob"
 	// Import blob drivers - they register themselves via init()
 	_ "gocloud.dev/blob/azureblob" // Azure Blob Storage (azblob://)

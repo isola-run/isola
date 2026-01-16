@@ -1,0 +1,237 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  KIND_CLUSTER_NAME: isola-e2e
+  # Image names (no registry prefix - loaded directly into Kind)
+  OPERATOR_IMAGE: isola-operator
+  GW_IMAGE: isola-gw
+  AGENT_IMAGE: isola-agent
+
+jobs:
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build all images in parallel with caching
+      - name: Build isola-operator image
+        uses: docker/build-push-action@v5
+        with:
+          context: services/isola-operator
+          file: services/isola-operator/Dockerfile
+          load: true
+          tags: ${{ env.OPERATOR_IMAGE }}:ci
+          cache-from: type=gha,scope=operator
+          cache-to: type=gha,mode=max,scope=operator
+
+      - name: Build isola-gw image
+        uses: docker/build-push-action@v5
+        with:
+          context: services/isola-gw
+          file: services/isola-gw/Dockerfile
+          load: true
+          tags: ${{ env.GW_IMAGE }}:ci
+          cache-from: type=gha,scope=gw
+          cache-to: type=gha,mode=max,scope=gw
+
+      - name: Build isola-agent image
+        uses: docker/build-push-action@v5
+        with:
+          context: services/isola-agent
+          file: services/isola-agent/Dockerfile
+          load: true
+          tags: ${{ env.AGENT_IMAGE }}:ci
+          cache-from: type=gha,scope=agent
+          cache-to: type=gha,mode=max,scope=agent
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: ${{ env.KIND_CLUSTER_NAME }}
+          config: hack/kind-config.yaml
+          wait: 120s
+
+      - name: Install gVisor in Kind node
+        run: |
+          set -e
+          NODE="${KIND_CLUSTER_NAME}-control-plane"
+          GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/latest/x86_64"
+
+          echo "Installing gVisor binaries..."
+          docker exec "$NODE" sh -c "
+            set -e
+            curl -fsSL '${GVISOR_URL}/runsc' -o /tmp/runsc
+            curl -fsSL '${GVISOR_URL}/containerd-shim-runsc-v1' -o /tmp/containerd-shim-runsc-v1
+            chmod +x /tmp/runsc /tmp/containerd-shim-runsc-v1
+            mv /tmp/runsc /tmp/containerd-shim-runsc-v1 /usr/local/bin/
+          "
+
+          echo "Configuring containerd for gVisor..."
+          GVISOR_CONFIG='
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+            runtime_type = "io.containerd.runsc.v1"
+            pod_annotations = ["dev.gvisor.*"]
+          '
+          docker exec "$NODE" sh -c "echo '$GVISOR_CONFIG' >> /etc/containerd/config.toml"
+
+          echo "Restarting containerd..."
+          docker exec "$NODE" systemctl restart containerd
+
+          echo "Verifying gVisor installation..."
+          docker exec "$NODE" runsc --version
+
+      - name: Create gVisor RuntimeClass
+        run: |
+          kubectl apply -f - <<EOF
+          apiVersion: node.k8s.io/v1
+          kind: RuntimeClass
+          metadata:
+            name: gvisor
+          handler: runsc
+          EOF
+
+      - name: Load images into Kind
+        run: |
+          kind load docker-image ${{ env.OPERATOR_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.GW_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.AGENT_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Deploy LocalStack
+        run: |
+          helm repo add localstack https://localstack.github.io/helm-charts
+          helm repo update
+          helm install localstack localstack/localstack \
+            --namespace localstack \
+            --create-namespace \
+            -f charts/localstack-values.yaml \
+            --wait --timeout 3m
+
+      - name: Deploy isola-operator
+        run: |
+          helm install isola-operator charts/isola-operator \
+            --namespace isola-system \
+            --create-namespace \
+            -f charts/isola-operator/values-dev.yaml \
+            --set image.tag=ci \
+            --set image.pullPolicy=Never \
+            --set agentImage=${{ env.AGENT_IMAGE }}:ci \
+            --wait --timeout 3m
+
+      - name: Deploy isola-gw
+        run: |
+          helm install isola-gw charts/isola-gw \
+            --namespace isola-system \
+            -f charts/isola-gw/values-dev.yaml \
+            --set image.tag=ci \
+            --set image.pullPolicy=Never \
+            --wait --timeout 3m
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for isola-operator..."
+          kubectl rollout status deployment/isola-operator -n isola-system --timeout=120s
+
+          echo "Waiting for isola-gw..."
+          kubectl rollout status deployment/isola-gw -n isola-system --timeout=120s
+
+          echo "Checking pod status..."
+          kubectl get pods -n isola-system
+
+          echo "Waiting for isola-gw health endpoint..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:30080/health > /dev/null 2>&1; then
+              echo "isola-gw is healthy!"
+              break
+            fi
+            echo "Waiting for isola-gw... ($i/30)"
+            sleep 2
+          done
+
+          # Final health check
+          curl -sf http://localhost:30080/health || (echo "isola-gw health check failed" && exit 1)
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Run E2E tests
+        working-directory: tests
+        run: |
+          uv run pytest -v --tb=short --junitxml=test-results.xml
+        env:
+          ISOLA_BASE_URL: http://localhost:30080
+          ISOLA_API_KEY: iso_sk_demo
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: tests/test-results.xml
+          retention-days: 7
+
+      # Failure diagnostics
+      - name: Export Kind logs on failure
+        if: failure()
+        run: |
+          kind export logs ./kind-logs --name ${{ env.KIND_CLUSTER_NAME }}
+
+      - name: Collect debug info on failure
+        if: failure()
+        run: |
+          mkdir -p ./debug-logs
+
+          echo "=== Pods ===" > ./debug-logs/pods.txt
+          kubectl get pods -A -o wide >> ./debug-logs/pods.txt 2>&1 || true
+
+          echo "=== Events ===" > ./debug-logs/events.txt
+          kubectl get events -A --sort-by='.lastTimestamp' >> ./debug-logs/events.txt 2>&1 || true
+
+          echo "=== isola-operator logs ===" > ./debug-logs/operator.log
+          kubectl logs -l app.kubernetes.io/name=isola-operator -n isola-system --tail=500 >> ./debug-logs/operator.log 2>&1 || true
+
+          echo "=== isola-gw logs ===" > ./debug-logs/gw.log
+          kubectl logs -l app.kubernetes.io/name=isola-gw -n isola-system --tail=500 >> ./debug-logs/gw.log 2>&1 || true
+
+          echo "=== Sandboxes ===" > ./debug-logs/sandboxes.txt
+          kubectl get sandboxes -A -o wide >> ./debug-logs/sandboxes.txt 2>&1 || true
+          kubectl describe sandboxes -A >> ./debug-logs/sandboxes.txt 2>&1 || true
+
+          echo "=== NetworkTemplates ===" > ./debug-logs/networktemplates.txt
+          kubectl get networktemplates -A -o wide >> ./debug-logs/networktemplates.txt 2>&1 || true
+
+          echo "=== Sandbox pods ===" > ./debug-logs/sandbox-pods.log
+          for pod in $(kubectl get pods -n isola-sandboxes -o name 2>/dev/null); do
+            echo "--- $pod ---" >> ./debug-logs/sandbox-pods.log
+            kubectl logs "$pod" -n isola-sandboxes --all-containers --tail=100 >> ./debug-logs/sandbox-pods.log 2>&1 || true
+          done
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-logs-${{ github.run_id }}
+          path: |
+            ./kind-logs
+            ./debug-logs
+          retention-days: 7
