@@ -29,8 +29,10 @@ storage:
 
     ## AWS/S3-compatible credentials (only used when existingSecret is empty)
     ## Convenient for dev/CI with LocalStack or S3-compatible storage.
-    ## Creates a secret with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY keys.
+    ## Creates a secret with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION keys.
     ## @param storage.credentials.accessKeyId AWS Access Key ID
     accessKeyId: ""
     ## @param storage.credentials.secretAccessKey AWS Secret Access Key
     secretAccessKey: ""
+    ## @param storage.credentials.region AWS Region
+    region: ""

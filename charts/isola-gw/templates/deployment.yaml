@@ -84,5 +84,12 @@ spec:
             secretKeyRef:
               name: {{ $credentialSecretName }}
               key: AWS_SECRET_ACCESS_KEY
+        {{- if .Values.storage.credentials.region }}
+        - name: AWS_REGION
+          valueFrom:
+            secretKeyRef:
+              name: {{ $credentialSecretName }}
+              key: AWS_REGION
+        {{- end }}
         {{- end }}
         {{- end }}
