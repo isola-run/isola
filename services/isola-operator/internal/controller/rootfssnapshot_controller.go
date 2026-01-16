@@ -471,7 +471,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 						{
 							Name: "runsc-bin",
 							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{Path: "/usr/bin/runsc", Type: &hostPathFile},
+								HostPath: &corev1.HostPathVolumeSource{Path: "/usr/local/bin/runsc", Type: &hostPathFile},
 							},
 						},
 						{
