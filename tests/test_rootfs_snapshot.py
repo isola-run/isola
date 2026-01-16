@@ -56,7 +56,7 @@ class TestRootfsSnapshotCreation:
     ) -> None:
         """Create a snapshot for a running sandbox and verify it completes."""
         sandbox_id = sandbox["id"]
-        sandbox_k8s_name = f"sandbox-{sandbox_id}"
+        sandbox_k8s_name = f"sandbox-{sandbox_id[:8]}"
 
         # Create a file in the sandbox to verify it gets snapshotted
         isola_client.execute_command(sandbox_id, "echo 'snapshot-test-data' > /tmp/test.txt")
@@ -143,7 +143,7 @@ class TestRootfsSnapshotCreation:
     ) -> None:
         """Snapshot fails when containerNames is empty."""
         sandbox_id = sandbox["id"]
-        sandbox_k8s_name = f"sandbox-{sandbox_id}"
+        sandbox_k8s_name = f"sandbox-{sandbox_id[:8]}"
 
         try:
             k8s.create_rootfs_snapshot(
@@ -184,7 +184,7 @@ class TestRootfsSnapshotLabels:
     ) -> None:
         """Snapshot should have the sandbox discovery label set by controller."""
         sandbox_id = sandbox["id"]
-        sandbox_k8s_name = f"sandbox-{sandbox_id}"
+        sandbox_k8s_name = f"sandbox-{sandbox_id[:8]}"
 
         try:
             k8s.create_rootfs_snapshot(
@@ -214,7 +214,7 @@ class TestRootfsSnapshotLabels:
     ) -> None:
         """Can list snapshots for a specific sandbox using label selector."""
         sandbox_id = sandbox["id"]
-        sandbox_k8s_name = f"sandbox-{sandbox_id}"
+        sandbox_k8s_name = f"sandbox-{sandbox_id[:8]}"
         snap_name_1 = f"snap-list-{uuid.uuid4().hex[:8]}"
         snap_name_2 = f"snap-list-{uuid.uuid4().hex[:8]}"
 
@@ -260,7 +260,7 @@ class TestRootfsSnapshotTTL:
     ) -> None:
         """Snapshot should be auto-deleted after TTL expires."""
         sandbox_id = sandbox["id"]
-        sandbox_k8s_name = f"sandbox-{sandbox_id}"
+        sandbox_k8s_name = f"sandbox-{sandbox_id[:8]}"
         snap_name = f"snap-ttl-{uuid.uuid4().hex[:8]}"
 
         # Create snapshot with very short TTL (5 seconds)
