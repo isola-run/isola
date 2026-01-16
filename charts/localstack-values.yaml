@@ -1,0 +1,12 @@
+# Shared LocalStack configuration for dev and CI
+# Used by: Tiltfile, .github/workflows/e2e.yml
+service:
+  type: ClusterIP
+
+# Only enable S3 for storage backend
+startServices: s3
+
+# Create the uploads bucket on startup
+enableStartupScripts: true
+startupScriptContent: |
+  awslocal s3api create-bucket --bucket isola-uploads 2>/dev/null || true
