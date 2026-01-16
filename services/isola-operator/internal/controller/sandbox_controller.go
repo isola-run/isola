@@ -750,7 +750,6 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 		}
 	}
 
-	// Check if in progress (no CompletedAt)
 	if snap.Status.CompletedAt == nil {
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
@@ -786,7 +785,6 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 		}
 	}
 
-	// Failed
 	return metav1.Condition{
 		Type:               SandboxRootfsSnapshotCondition,
 		Status:             metav1.ConditionFalse,
@@ -1184,7 +1182,6 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	// Pre-check: pod must be ready and runtime must support snapshotting
 	if !podutil.IsPodReady(sandboxPod) {
 		log.Info("Unable to perform rootfs snapshot: pod not ready")
 		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "PodNotReady", "Unable to perform rootfs snapshot: pod not ready")
@@ -1227,21 +1224,16 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	// Get or create the shutdown snapshot using deterministic name
 	snap, err := r.getShutdownSnapshot(ctx, sandbox)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
 
-	// If snapshot doesn't exist, create it
 	if snap == nil {
 		return r.createShutdownSnapshot(ctx, sandbox, baseSandbox, activeDeadlineSeconds)
 	}
 
-	// Snapshot exists - check its status
 	snapshotName := snap.Name
-
-	// Still in progress?
 	if snap.Status.CompletedAt == nil {
 		log.Info("Snapshot in progress, waiting", "snapshot", snapshotName)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -1265,7 +1257,6 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{RequeueAfter: requeueAfter}, false, nil
 	}
 
-	// Completed - check if successful
 	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
 	if readyCond != nil && readyCond.Status == metav1.ConditionTrue {
 		log.Info("Snapshot completed successfully", "snapshot", snapshotName)
