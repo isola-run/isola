@@ -19,3 +19,4 @@ storage:
   credentials:
     accessKeyId: "test"
     secretAccessKey: "test"
+    region: "us-east-1"
