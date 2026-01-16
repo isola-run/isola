@@ -12,6 +12,7 @@ env:
   OPERATOR_IMAGE: isola-operator
   GW_IMAGE: isola-gw
   AGENT_IMAGE: isola-agent
+  UPLOADER_IMAGE: isola-uploader
 
 jobs:
   e2e:
@@ -30,7 +31,7 @@ jobs:
       - name: Build isola-operator image
         uses: docker/build-push-action@v5
         with:
-          context: services/isola-operator
+          context: .
           file: services/isola-operator/Dockerfile
           load: true
           tags: ${{ env.OPERATOR_IMAGE }}:ci
@@ -56,6 +57,16 @@ jobs:
           tags: ${{ env.AGENT_IMAGE }}:ci
           cache-from: type=gha,scope=agent
           cache-to: type=gha,mode=max,scope=agent
+
+      - name: Build isola-uploader image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/isola-uploader/Dockerfile
+          load: true
+          tags: ${{ env.UPLOADER_IMAGE }}:ci
+          cache-from: type=gha,scope=uploader
+          cache-to: type=gha,mode=max,scope=uploader
 
       - name: Create Kind cluster
         uses: helm/kind-action@v1
@@ -108,6 +119,7 @@ jobs:
           kind load docker-image ${{ env.OPERATOR_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.GW_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.AGENT_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.UPLOADER_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -131,6 +143,7 @@ jobs:
             --set image.tag=ci \
             --set image.pullPolicy=Never \
             --set agentImage=${{ env.AGENT_IMAGE }}:ci \
+            --set snapshot.uploaderImage=${{ env.UPLOADER_IMAGE }}:ci \
             --wait --timeout 3m
 
       - name: Deploy isola-gw
