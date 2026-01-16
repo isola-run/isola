@@ -40,4 +40,4 @@ sandboxCredentials:
   ## @param sandboxCredentials.secretAccessKey AWS Secret Access Key
   secretAccessKey: ""
   ## @param sandboxCredentials.region AWS Region
-  region: "us-east-1"
+  region: ""
