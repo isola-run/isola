@@ -8,6 +8,10 @@ REGISTRY_NAME="${REGISTRY_NAME:-kind-registry}"
 REGISTRY_PORT="${REGISTRY_PORT:-5001}"
 GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/latest"
 
+# Tool versions (keep in sync with CI workflows)
+GOLANGCI_LINT_VERSION="v2.8.0"
+GOVULNCHECK_VERSION="v1.1.4"
+
 echo "=== Isola Development Environment Setup ==="
 
 check_tool() {
@@ -95,7 +99,18 @@ check_tool "kind" "Install Kind: https://kind.sigs.k8s.io/docs/user/quick-start/
 check_tool "kubectl" "Install kubectl: https://kubernetes.io/docs/tasks/tools/"
 check_tool "helm" "Install Helm: https://helm.sh/docs/intro/install/"
 check_tool "tilt" "Install Tilt: https://docs.tilt.dev/install.html"
-check_optional_tool "golangci-lint" "Install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"
+if check_optional_tool "golangci-lint" "Install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"; then
+    installed_version=$(golangci-lint version --short 2>/dev/null || echo "unknown")
+    if [ "$installed_version" != "${GOLANGCI_LINT_VERSION#v}" ]; then
+        echo "    [WARN] Version mismatch: installed $installed_version, expected ${GOLANGCI_LINT_VERSION#v}"
+    fi
+fi
+if check_optional_tool "govulncheck" "Install: go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"; then
+    installed_version=$(govulncheck -version 2>&1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
+    if [ "$installed_version" != "$GOVULNCHECK_VERSION" ]; then
+        echo "    [WARN] Version mismatch: installed $installed_version, expected $GOVULNCHECK_VERSION"
+    fi
+fi
 check_optional_tool "lefthook" "Install: go install github.com/evilmartians/lefthook/v2@latest" && HAS_LEFTHOOK=1
 
 # https://kind.sigs.k8s.io/docs/user/local-registry/
@@ -118,7 +133,7 @@ if kind get clusters 2>/dev/null | grep -q "^${KIND_CLUSTER_NAME}$"; then
     echo "  Cluster '${KIND_CLUSTER_NAME}' already exists"
 else
     echo "  Creating cluster '${KIND_CLUSTER_NAME}'..."
-    kind create cluster --name "${KIND_CLUSTER_NAME}" --config "${ROOT_DIR}/kind-config.yaml"
+    kind create cluster --name "${KIND_CLUSTER_NAME}" --config "${SCRIPT_DIR}/kind-config.yaml"
     echo "  Cluster '${KIND_CLUSTER_NAME}' created."
     if [ "${KIND_CLUSTER_NAME}" != "isola-dev" ]; then
         echo "  If you customized the name, update allow_k8s_contexts in Tiltfile to match 'kind-${KIND_CLUSTER_NAME}'."
@@ -188,6 +203,6 @@ echo "=== Setup Complete ==="
 echo ""
 echo "Next steps:"
 echo "  1. Start development:  tilt up"
-echo "  2. Run tests:    cd tests && uv run pytest"
-echo "  3. Teardown:           kind delete cluster --name isola-dev"
+echo "  2. Run tests:          cd tests && uv run pytest"
+echo "  3. Teardown:           kind delete cluster --name ${KIND_CLUSTER_NAME}"
 echo ""

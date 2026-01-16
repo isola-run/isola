@@ -66,10 +66,17 @@ spec:
         {{- if .Values.snapshot.storage.bucketUrl }}
         - name: ISOLA_SNAPSHOT_BUCKET_URL
           value: {{ .Values.snapshot.storage.bucketUrl | quote }}
+        {{- /* Determine which secret to use for snapshot credentials */ -}}
+        {{- $credentialSecretName := "" }}
+        {{- if .Values.snapshot.storage.credentials.existingSecret }}
+        {{- $credentialSecretName = .Values.snapshot.storage.credentials.existingSecret }}
+        {{- else if and .Values.snapshot.storage.credentials.accessKeyId .Values.snapshot.storage.credentials.secretAccessKey }}
+        {{- $credentialSecretName = "isola-snapshot-credentials" }}
         {{- end }}
-        {{- if .Values.snapshot.storage.credentialSecretName }}
+        {{- if $credentialSecretName }}
         - name: ISOLA_SNAPSHOT_CREDENTIAL_SECRET
-          value: {{ .Values.snapshot.storage.credentialSecretName | quote }}
+          value: {{ $credentialSecretName | quote }}
+        {{- end }}
         {{- end }}
         {{- if .Values.snapshot.uploaderImage }}
         - name: ISOLA_UPLOADER_IMAGE

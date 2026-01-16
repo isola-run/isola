@@ -38,10 +38,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	snapshotpkg "github.com/omereli/dev-isola/pkg/snapshot"
-	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
-	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/podutil"
-	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/snapshot"
+	snapshotpkg "github.com/isola-ai/isola-sb/pkg/snapshot"
+	sandboxv1alpha1 "github.com/isola-ai/isola-sb/services/isola-operator/api/v1alpha1"
+	"github.com/isola-ai/isola-sb/services/isola-operator/internal/controller/podutil"
+	"github.com/isola-ai/isola-sb/services/isola-operator/internal/controller/snapshot"
 )
 
 const (

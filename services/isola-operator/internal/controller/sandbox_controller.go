@@ -37,10 +37,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
-	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/network"
-	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/podutil"
-	"github.com/omereli/dev-isola/services/isola-operator/internal/controller/snapshot"
+	sandboxv1alpha1 "github.com/isola-ai/isola-sb/services/isola-operator/api/v1alpha1"
+	"github.com/isola-ai/isola-sb/services/isola-operator/internal/controller/network"
+	"github.com/isola-ai/isola-sb/services/isola-operator/internal/controller/podutil"
+	"github.com/isola-ai/isola-sb/services/isola-operator/internal/controller/snapshot"
 	"k8s.io/client-go/tools/record"
 )
 

@@ -14,7 +14,19 @@ spec:
     singular: sandboxtemplate
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Timeout in seconds
+      jsonPath: .spec.timeoutSeconds
+      name: Timeout
+      type: integer
+    - description: Shutdown policy
+      jsonPath: .spec.shutdownPolicy.policy
+      name: Shutdown
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: SandboxTemplate is the Schema for the sandboxtemplates API
