@@ -298,7 +298,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deletePodHelper(ctx, podName, testNamespace)
 
-			createRootfsSnapshot(ctx, snapName, testNamespace, sandboxName, nil)
+			createRootfsSnapshot(ctx, snapName, testNamespace, sandboxName, []string{"main"})
 			defer deleteRootfsSnapshotHelper(ctx, snapName, testNamespace)
 			defer deleteJobHelper(ctx, snapName+"-main", testNamespace)
 
@@ -614,7 +614,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 	})
 
 	Context("Container Selection", func() {
-		It("should snapshot first container when containerNames is empty", func() {
+		It("should fail when containerNames is empty", func() {
 			snapName := "snap-auto"
 			sandboxName := "sandbox-auto"
 			podName := sandboxName + "-pod"
@@ -635,9 +635,8 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deletePodHelper(ctx, podName, testNamespace)
 
-			createRootfsSnapshot(ctx, snapName, testNamespace, sandboxName, nil) // nil = use first container
+			createRootfsSnapshot(ctx, snapName, testNamespace, sandboxName, nil) // nil = no containers specified
 			defer deleteRootfsSnapshotHelper(ctx, snapName, testNamespace)
-			defer deleteJobHelper(ctx, snapName+"-app", testNamespace)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
@@ -646,12 +645,12 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			snap := getRootfsSnapshotHelper(ctx, snapName, testNamespace)
 			Expect(snap).NotTo(BeNil())
-			Expect(snap.Status.ContainerSnapshots).To(HaveLen(1))
-			Expect(snap.Status.ContainerSnapshots[0].ContainerName).To(Equal("app"))
 
-			// Verify job created for first container
-			appJob := getJobHelper(ctx, snapName+"-app", testNamespace)
-			Expect(appJob).NotTo(BeNil())
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
+			Expect(readyCond.Message).To(ContainSubstring("No containers found"))
 		})
 
 		It("should use first specified container when containerNames is provided", func() {

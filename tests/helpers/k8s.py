@@ -122,3 +122,134 @@ class K8sHelper:
         except ApiException as e:
             logger.error(f"Failed to list pods: {e}")
             return []
+
+    # =========================================================================
+    # RootfsSnapshot operations
+    # =========================================================================
+
+    def create_rootfs_snapshot(
+        self,
+        name: str,
+        sandbox_name: str,
+        container_names: list[str],
+        namespace: str = "isola-sandboxes",
+    ) -> dict:
+        """Create a RootfsSnapshot custom resource."""
+        body = {
+            "apiVersion": "sandbox.isola.run/v1alpha1",
+            "kind": "RootfsSnapshot",
+            "metadata": {
+                "name": name,
+                "namespace": namespace,
+            },
+            "spec": {
+                "sandboxName": sandbox_name,
+                "containerNames": container_names,
+            },
+        }
+        return self.custom.create_namespaced_custom_object(
+            group="sandbox.isola.run",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="rootfssnapshots",
+            body=body,
+        )
+
+    def get_rootfs_snapshot(
+        self,
+        name: str,
+        namespace: str = "isola-sandboxes",
+    ) -> dict | None:
+        """Get a RootfsSnapshot custom resource."""
+        try:
+            return self.custom.get_namespaced_custom_object(
+                group="sandbox.isola.run",
+                version="v1alpha1",
+                namespace=namespace,
+                plural="rootfssnapshots",
+                name=name,
+            )
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
+
+    def delete_rootfs_snapshot(
+        self,
+        name: str,
+        namespace: str = "isola-sandboxes",
+    ) -> None:
+        """Delete a RootfsSnapshot custom resource."""
+        try:
+            self.custom.delete_namespaced_custom_object(
+                group="sandbox.isola.run",
+                version="v1alpha1",
+                namespace=namespace,
+                plural="rootfssnapshots",
+                name=name,
+            )
+        except ApiException as e:
+            if e.status != 404:
+                raise
+
+    def list_rootfs_snapshots(
+        self,
+        namespace: str = "isola-sandboxes",
+        label_selector: str | None = None,
+    ) -> list[dict]:
+        """List RootfsSnapshot custom resources."""
+        kwargs: dict[str, Any] = {
+            "group": "sandbox.isola.run",
+            "version": "v1alpha1",
+            "namespace": namespace,
+            "plural": "rootfssnapshots",
+        }
+        if label_selector:
+            kwargs["label_selector"] = label_selector
+
+        result = self.custom.list_namespaced_custom_object(**kwargs)
+        return result.get("items", [])
+
+    def wait_for_snapshot_condition(
+        self,
+        name: str,
+        condition_type: str,
+        expected_status: str,
+        namespace: str = "isola-sandboxes",
+        timeout: int = 120,
+        poll_interval: float = 2.0,
+    ) -> dict:
+        """Wait for a RootfsSnapshot to reach a specific condition status."""
+        import time
+
+        deadline = time.time() + timeout
+        last_reason = None
+
+        while time.time() < deadline:
+            snap = self.get_rootfs_snapshot(name, namespace)
+            if not snap:
+                time.sleep(poll_interval)
+                continue
+
+            conditions = snap.get("status", {}).get("conditions", [])
+            for cond in conditions:
+                if cond.get("type") == condition_type:
+                    current_status = cond.get("status")
+                    current_reason = cond.get("reason")
+
+                    if current_reason != last_reason:
+                        logger.info(
+                            f"Snapshot {name}: {condition_type}={current_status} "
+                            f"reason={current_reason}"
+                        )
+                        last_reason = current_reason
+
+                    if current_status == expected_status:
+                        return snap
+
+            time.sleep(poll_interval)
+
+        raise TimeoutError(
+            f"Snapshot {name} did not reach {condition_type}={expected_status} "
+            f"within {timeout}s (last reason: {last_reason})"
+        )

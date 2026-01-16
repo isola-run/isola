@@ -87,56 +87,32 @@ func TestCheckRootfsSnapshotSupport(t *testing.T) {
 		}
 	}
 
-	pendingPod := func(runtimeClassName *string) *corev1.Pod {
-		return &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-pod", Namespace: "default"},
-			Spec: corev1.PodSpec{
-				RuntimeClassName: runtimeClassName,
-				Containers:       []corev1.Container{{Name: "main", Image: "busybox"}},
-			},
-			Status: corev1.PodStatus{
-				Phase: corev1.PodPending,
-			},
-		}
-	}
-
 	tests := []struct {
 		name           string
 		pod            *corev1.Pod
 		runtimeClasses []runtime.Object
 		wantSupported  bool
-		wantRetryable  bool
 		wantErr        bool
 	}{
 		{
 			name:          "nil pod",
 			pod:           nil,
 			wantSupported: false,
-			wantRetryable: false,
-		},
-		{
-			name:          "pod not ready - retryable",
-			pod:           pendingPod(&runscName),
-			wantSupported: false,
-			wantRetryable: true,
 		},
 		{
 			name:          "no runtime class",
 			pod:           readyPod(nil),
 			wantSupported: false,
-			wantRetryable: false,
 		},
 		{
 			name:          "empty runtime class",
 			pod:           readyPod(func() *string { s := ""; return &s }()),
 			wantSupported: false,
-			wantRetryable: false,
 		},
 		{
 			name:          "runtime class not found",
 			pod:           readyPod(&nonexistentName),
 			wantSupported: false,
-			wantRetryable: false,
 			wantErr:       false, // not-found is not an error, just unsupported
 		},
 		{
@@ -144,21 +120,18 @@ func TestCheckRootfsSnapshotSupport(t *testing.T) {
 			pod:            readyPod(&runscName),
 			runtimeClasses: []runtime.Object{runscRuntimeClass},
 			wantSupported:  true,
-			wantRetryable:  false,
 		},
 		{
 			name:           "gvisor runtime - supported",
 			pod:            readyPod(&gvisorName),
 			runtimeClasses: []runtime.Object{gvisorRuntimeClass},
 			wantSupported:  true,
-			wantRetryable:  false,
 		},
 		{
 			name:           "runc runtime - unsupported",
 			pod:            readyPod(&runcName),
 			runtimeClasses: []runtime.Object{runcRuntimeClass},
 			wantSupported:  false,
-			wantRetryable:  false,
 		},
 	}
 
@@ -167,7 +140,7 @@ func TestCheckRootfsSnapshotSupport(t *testing.T) {
 			objs := tt.runtimeClasses
 			c := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objs...).Build()
 
-			supported, retryable, err := CheckRootfsSnapshotSupport(context.Background(), c, tt.pod)
+			supported, err := CheckRootfsSnapshotSupport(context.Background(), c, tt.pod)
 
 			if tt.wantErr {
 				if err == nil {
@@ -179,10 +152,6 @@ func TestCheckRootfsSnapshotSupport(t *testing.T) {
 
 			if supported != tt.wantSupported {
 				t.Errorf("CheckRootfsSnapshotSupport() supported = %v, want %v", supported, tt.wantSupported)
-			}
-
-			if retryable != tt.wantRetryable {
-				t.Errorf("CheckRootfsSnapshotSupport() retryable = %v, want %v", retryable, tt.wantRetryable)
 			}
 		})
 	}

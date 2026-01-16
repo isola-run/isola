@@ -54,6 +54,9 @@ const (
 	LabelSandboxName = "sandbox.isola.run/sandbox-name"
 )
 
+// defaultSnapshotSizeLimit is used when the container has no ephemeral storage limit.
+var defaultSnapshotSizeLimit = resource.MustParse("1Gi")
+
 type RootfsSnapshotReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
@@ -97,8 +100,9 @@ func (r *RootfsSnapshotReconciler) ttlLeft(snap *sandboxv1alpha1.RootfsSnapshot)
 
 // ensureLabels ensures the RootfsSnapshot has the sandbox discovery label set.
 // This label enables the Sandbox controller to find all snapshots for a sandbox
-// via a label selector, regardless of who created the snapshot.
-func (r *RootfsSnapshotReconciler) ensureLabels(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot) (updated bool, err error) {
+// via a label selector, regardless of who (user, another controller, etc) created the snapshot.
+// Returns (true, nil) if labels were patched, (false, nil) if no change needed.
+func (r *RootfsSnapshotReconciler) ensureLabels(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot) (bool, error) {
 	expected := snap.Spec.SandboxName
 	if expected == "" {
 		return false, nil
@@ -113,12 +117,13 @@ func (r *RootfsSnapshotReconciler) ensureLabels(ctx context.Context, snap *sandb
 		return false, nil
 	}
 
+	patch := client.MergeFrom(snap.DeepCopy())
 	if snap.Labels == nil {
 		snap.Labels = make(map[string]string)
 	}
 	snap.Labels[LabelSandboxName] = expected
 
-	if err := r.Update(ctx, snap); err != nil {
+	if err := r.Patch(ctx, snap, patch); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -144,13 +149,17 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// Ensure the sandbox discovery label is set. This allows the Sandbox controller
 	// to find all snapshots for a sandbox via label selector.
-	if updated, err := r.ensureLabels(ctx, snap); err != nil {
+	if labelsPatched, err := r.ensureLabels(ctx, snap); err != nil {
 		log.Error(err, "Failed to ensure labels")
 		return ctrl.Result{}, err
-	} else if updated {
-		// Labels were updated, requeue to continue with fresh object
-		return ctrl.Result{Requeue: true}, nil
+	} else if labelsPatched {
+		// Return immediately so the label is visible to other controllers via watch.
+		// The watch will trigger a new reconcile to continue.
+		return ctrl.Result{}, nil
 	}
+
+	// Create base copy for status patches
+	baseSnap := snap.DeepCopy()
 
 	isComplete := snap.Status.CompletedAt != nil
 	if isComplete {
@@ -168,7 +177,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if r.BucketURL == "" {
 		log.Info("Snapshot storage not configured: ISOLA_SNAPSHOT_BUCKET_URL is required")
-		return r.setFailed(ctx, snap, "Snapshot storage not configured: ISOLA_SNAPSHOT_BUCKET_URL is required")
+		return r.setFailed(ctx, baseSnap, snap, "Snapshot storage not configured: ISOLA_SNAPSHOT_BUCKET_URL is required")
 	}
 
 	sandboxPodName := snapshot.GetSandboxPodName(snap.Spec.SandboxName)
@@ -176,40 +185,37 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err := r.Get(ctx, types.NamespacedName{Name: sandboxPodName, Namespace: snap.Namespace}, sandboxPod); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Pod not found", "pod", sandboxPodName)
-			return r.setFailed(ctx, snap, fmt.Sprintf("Pod %q not found", sandboxPodName))
+			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Pod %q not found", sandboxPodName))
 		}
 		return ctrl.Result{}, err
 	}
 
-	supported, retryable, err := snapshot.CheckRootfsSnapshotSupport(ctx, r.Client, sandboxPod)
+	if !podutil.IsPodReady(sandboxPod) {
+		return r.setFailed(ctx, baseSnap, snap, "Sandbox pod is not ready")
+	}
+
+	supported, err := snapshot.CheckRootfsSnapshotSupport(ctx, r.Client, sandboxPod)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	if !supported {
-		if retryable {
-			log.Info("Pod not ready for snapshotting, will retry")
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-		}
-		return r.setFailed(ctx, snap, "Runtime does not support rootfs snapshotting")
+		return r.setFailed(ctx, baseSnap, snap, "Runtime does not support rootfs snapshotting")
 	}
 
 	containersToSnapshot := snap.Spec.ContainerNames
 	if len(containersToSnapshot) == 0 {
-		containersToSnapshot = filterSnapshotableContainers(sandboxPod)
-	}
-	if len(containersToSnapshot) == 0 {
-		return r.setFailed(ctx, snap, "No containers found to snapshot")
+		return r.setFailed(ctx, baseSnap, snap, "No containers found to snapshot")
 	}
 
 	// Get or create the snapshot job (single job for the first container for now)
 	// TODO: support multiple containers by iterating
 	containerName := containersToSnapshot[0]
-	return r.reconcileSnapshotJob(ctx, snap, sandboxPod, containerName)
+	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName)
 }
 
 func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 	ctx context.Context,
-	snap *sandboxv1alpha1.RootfsSnapshot,
+	baseSnap, snap *sandboxv1alpha1.RootfsSnapshot,
 	pod *corev1.Pod,
 	containerName string,
 ) (ctrl.Result, error) {
@@ -224,10 +230,10 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		containerID, err := podutil.ExtractContainerID(pod, containerName)
 		if err != nil {
 			log.Error(err, "Failed to extract container ID")
-			return r.setFailed(ctx, snap, fmt.Sprintf("Failed to extract container ID: %v", err))
+			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Failed to extract container ID: %v", err))
 		}
 
-		_, err = r.createSnapshotJob(ctx, snap, pod.Spec.NodeName, containerName, containerID)
+		err = r.createSnapshotJob(ctx, snap, pod, containerName, containerID)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -235,7 +241,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		log.Info("Created snapshot job", "job", jobName)
 		r.Recorder.Event(snap, corev1.EventTypeNormal, "JobCreated", fmt.Sprintf("Created snapshot job for container %s", containerName))
 
-		return r.setInProgress(ctx, snap, containerName, containerID)
+		return r.setInProgress(ctx, baseSnap, snap, containerName, containerID)
 	}
 	if err != nil {
 		return ctrl.Result{}, err
@@ -258,7 +264,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		// Delete the job now that we've read the results
 		r.deleteJob(ctx, job)
 
-		return r.setSucceeded(ctx, snap, result)
+		return r.setSucceeded(ctx, baseSnap, snap, result)
 	}
 
 	if podutil.IsJobFailed(job) {
@@ -269,14 +275,14 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		log.Info(message, "job", jobName)
 		r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
 
-		// Delete the job - no point keeping failed jobs around
+		// Delete the job - no point keeping failed jobs until we hit to snapshotter TTL
 		r.deleteJob(ctx, job)
 
-		return r.setFailed(ctx, snap, message)
+		return r.setFailed(ctx, baseSnap, snap, message)
 	}
 
-	// Still running
-	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	// Still running - job watch will trigger reconciliation when status changes
+	return ctrl.Result{}, nil
 }
 
 // getUploadResult reads the upload result from the job pod's termination message.
@@ -322,21 +328,35 @@ func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *bat
 	return nil, fmt.Errorf("uploader container not found or not terminated")
 }
 
-// buildSnapshotURI constructs the full bucket URI for a snapshot.
+// buildSnapshotURI constructs a display URI for a snapshot (e.g., s3://bucket/key).
+// BucketURL is validated at controller startup, so parse errors are not expected.
 func (r *RootfsSnapshotReconciler) buildSnapshotURI(snapshotKey string) string {
-	// Parse bucket URL to extract just the scheme and host
-	u, err := url.Parse(r.BucketURL)
-	if err != nil {
-		return fmt.Sprintf("%s/%s", r.BucketURL, snapshotKey)
-	}
+	u, _ := url.Parse(r.BucketURL)
 	return fmt.Sprintf("%s://%s/%s", u.Scheme, u.Host, snapshotKey)
+}
+
+// getSnapshotSizeLimit returns the ephemeral storage limit for a container.
+// With gVisor's root:self overlay2, the rootfs upper layer is stored on disk
+// in the container's root filesystem, so Kubernetes ephemeral storage limits apply directly.
+// Falls back to defaultSnapshotSizeLimit if no limit is set.
+func (r *RootfsSnapshotReconciler) getSnapshotSizeLimit(pod *corev1.Pod, containerName string) *resource.Quantity {
+	for _, c := range pod.Spec.Containers {
+		if c.Name == containerName {
+			if limit, ok := c.Resources.Limits[corev1.ResourceEphemeralStorage]; ok {
+				return &limit
+			}
+			break
+		}
+	}
+	return &defaultSnapshotSizeLimit
 }
 
 func (r *RootfsSnapshotReconciler) createSnapshotJob(
 	ctx context.Context,
 	snap *sandboxv1alpha1.RootfsSnapshot,
-	nodeName, containerName, containerID string,
-) (*batchv1.Job, error) {
+	sandboxPod *corev1.Pod,
+	containerName, containerID string,
+) error {
 	log := logf.FromContext(ctx)
 
 	jobName := fmt.Sprintf("%s-%s", snap.Name, containerName)
@@ -347,12 +367,11 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 		activeDeadlineSeconds = *snap.Spec.ActiveDeadlineSeconds
 	}
 
-	privileged := false
+	snapshotSizeLimit := r.getSnapshotSizeLimit(sandboxPod, containerName)
+
 	hostPathDirectory := corev1.HostPathDirectory
 	hostPathFile := corev1.HostPathFile
 
-	// Build uploader container env vars
-	// The uploader determines the revision by listing the bucket
 	uploaderEnv := []corev1.EnvVar{
 		{Name: "ISOLA_BUCKET_URL", Value: r.BucketURL},
 		{Name: "SNAPSHOT_FILE", Value: localSnapshotPath},
@@ -361,7 +380,6 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 		{Name: "SNAPSHOT_CONTAINER_NAME", Value: containerName},
 	}
 
-	// Build envFrom for credential secret (if configured)
 	var uploaderEnvFrom []corev1.EnvFromSource
 	if r.CredentialSecretName != "" {
 		uploaderEnvFrom = []corev1.EnvFromSource{
@@ -394,7 +412,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 				Spec: corev1.PodSpec{
 					ServiceAccountName: r.SnapshotServiceAccount,
 					NodeSelector: map[string]string{
-						"kubernetes.io/hostname": nodeName,
+						"kubernetes.io/hostname": sandboxPod.Spec.NodeName,
 					},
 					RestartPolicy: corev1.RestartPolicyNever,
 
@@ -406,7 +424,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 							Command: []string{"/usr/local/bin/runsc"},
 							Args:    []string{"--root=/run/containerd/runsc/k8s.io", "tar", "rootfs-upper", "--file", localSnapshotPath, containerID},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged: &privileged,
+								Privileged: ptr.To(bool(false)),
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "runsc-bin", MountPath: "/usr/local/bin/runsc", ReadOnly: true},
@@ -415,12 +433,12 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 							},
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("100m"),
+									corev1.ResourceCPU:    resource.MustParse("50m"),
 									corev1.ResourceMemory: resource.MustParse("64Mi"),
 								},
 								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("500m"),
-									corev1.ResourceMemory: resource.MustParse("256Mi"),
+									corev1.ResourceCPU:    resource.MustParse("200m"),
+									corev1.ResourceMemory: resource.MustParse("128Mi"),
 								},
 							},
 						},
@@ -438,12 +456,12 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 							},
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("100m"),
+									corev1.ResourceCPU:    resource.MustParse("50m"),
 									corev1.ResourceMemory: resource.MustParse("64Mi"),
 								},
 								Limits: corev1.ResourceList{
 									corev1.ResourceCPU:    resource.MustParse("500m"),
-									corev1.ResourceMemory: resource.MustParse("512Mi"),
+									corev1.ResourceMemory: resource.MustParse("256Mi"),
 								},
 							},
 						},
@@ -465,7 +483,9 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 						{
 							Name: "snapshot-data",
 							VolumeSource: corev1.VolumeSource{
-								EmptyDir: &corev1.EmptyDirVolumeSource{},
+								EmptyDir: &corev1.EmptyDirVolumeSource{
+									SizeLimit: snapshotSizeLimit,
+								},
 							},
 						},
 					},
@@ -476,22 +496,17 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 
 	if err := controllerutil.SetControllerReference(snap, job, r.Scheme); err != nil {
 		log.Error(err, "Failed to set controller reference for job")
-		return nil, err
+		return err
 	}
 
 	if err := r.Create(ctx, job); err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			existing := &batchv1.Job{}
-			if err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: snap.Namespace}, existing); err != nil {
-				return nil, err
-			}
-			return existing, nil
+		if !apierrors.IsAlreadyExists(err) {
+			log.Error(err, "Failed to create snapshot job")
+			return err
 		}
-		log.Error(err, "Failed to create snapshot job")
-		return nil, err
 	}
 
-	return job, nil
+	return nil
 }
 
 func (r *RootfsSnapshotReconciler) deleteJob(ctx context.Context, job *batchv1.Job) {
@@ -504,34 +519,44 @@ func (r *RootfsSnapshotReconciler) deleteJob(ctx context.Context, job *batchv1.J
 	}
 }
 
-func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot, containerName, containerID string) (ctrl.Result, error) {
+func (r *RootfsSnapshotReconciler) patchStatus(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, conditions []metav1.Condition) error {
+	if snap.Status.Conditions == nil {
+		snap.Status.Conditions = []metav1.Condition{}
+	}
+	for _, c := range conditions {
+		meta.SetStatusCondition(&snap.Status.Conditions, c)
+	}
+	return r.Status().Patch(ctx, snap, client.MergeFrom(base))
+}
+
+func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, containerName, containerID string) (ctrl.Result, error) {
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.StartedAt = &now
 	snap.Status.ContainerSnapshots = []sandboxv1alpha1.ContainerSnapshotStatus{
 		{
 			ContainerName: containerName,
 			ContainerID:   containerID,
-			// SnapshotKey and SnapshotURI will be set when job completes
 		},
 	}
-	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-		Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-		Status:             metav1.ConditionFalse,
-		Reason:             sandboxv1alpha1.ReasonRootfsSnapshotInProgress,
-		Message:            "Snapshot job running",
-		ObservedGeneration: snap.Generation,
-	})
-	if err := r.Status().Update(ctx, snap); err != nil {
+	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
+		{
+			Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+			Status:             metav1.ConditionFalse,
+			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotInProgress,
+			Message:            "Snapshot job running",
+			ObservedGeneration: snap.Generation,
+		},
+	}); err != nil {
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	// Job watch (via Owns) will trigger reconciliation when job status changes
+	return ctrl.Result{}, nil
 }
 
-func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot, result *snapshotpkg.UploadResult) (ctrl.Result, error) {
+func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, result *snapshotpkg.UploadResult) (ctrl.Result, error) {
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletedAt = &now
 
-	// Update with actual values from uploader if available
 	if result != nil {
 		snap.Status.Revision = result.Revision
 		if len(snap.Status.ContainerSnapshots) > 0 {
@@ -540,47 +565,39 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, snap *sandb
 		}
 	}
 
-	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-		Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-		Status:             metav1.ConditionTrue,
-		Reason:             sandboxv1alpha1.ReasonRootfsSnapshotSucceeded,
-		Message:            "Snapshot completed successfully",
-		ObservedGeneration: snap.Generation,
-	})
-	if err := r.Status().Update(ctx, snap); err != nil {
+	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
+		{
+			Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+			Status:             metav1.ConditionTrue,
+			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotSucceeded,
+			Message:            "Snapshot completed successfully",
+			ObservedGeneration: snap.Generation,
+		},
+	}); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{RequeueAfter: getTTLSeconds(snap)}, nil
 }
 
-func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot, message string) (ctrl.Result, error) {
+func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, message string) (ctrl.Result, error) {
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletedAt = &now
-	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-		Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
-		Status:             metav1.ConditionFalse,
-		Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
-		Message:            message,
-		ObservedGeneration: snap.Generation,
-	})
+
 	r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
-	if err := r.Status().Update(ctx, snap); err != nil {
+	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
+		{
+			Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+			Status:             metav1.ConditionFalse,
+			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
+			Message:            message,
+			ObservedGeneration: snap.Generation,
+		},
+	}); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{RequeueAfter: getTTLSeconds(snap)}, nil
-}
-
-func filterSnapshotableContainers(pod *corev1.Pod) []string {
-	if pod == nil {
-		return nil
-	}
-	names := make([]string, 0, len(pod.Spec.Containers))
-	for _, c := range pod.Spec.Containers {
-		names = append(names, c.Name)
-	}
-	return names
 }
 
 func (r *RootfsSnapshotReconciler) SetupWithManager(mgr ctrl.Manager) error {
