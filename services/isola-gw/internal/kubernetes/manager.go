@@ -278,10 +278,9 @@ func (m *Manager) ListSandboxCRs(ctx context.Context) ([]*unstructured.Unstructu
 	return result, nil
 }
 
-func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) (bool, *string) {
+func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) error {
 	if err := m.Initialize(); err != nil {
-		errorMsg := fmt.Sprintf("Failed to initialize: %v", err)
-		return false, &errorMsg
+		return fmt.Errorf("failed to initialize: %w", err)
 	}
 
 	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
@@ -297,15 +296,14 @@ func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) (bool, 
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Printf("Sandbox CR '%s' already deleted", sandboxName)
-			return true, nil
+			return nil // Idempotent: already gone is success
 		}
 		log.Printf("Failed to delete Sandbox CR '%s': %v", sandboxName, err)
-		errorMsg := fmt.Sprintf("API error: %v", err)
-		return false, &errorMsg
+		return err // Preserve original error for apierrors.IsNotFound() etc.
 	}
 
 	log.Printf("Deleted Sandbox CR '%s'", sandboxName)
-	return true, nil
+	return nil
 }
 
 const agentServiceName = "sandbox-agents"
