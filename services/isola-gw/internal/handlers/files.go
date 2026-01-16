@@ -23,6 +23,7 @@ import (
 
 const (
 	fileSizeThresholdBytes = 5 * 1024 * 1024 // 5MB
+	presignedURLExpiresIn  = 3600            // 1 hour
 )
 
 // buildObjectKey constructs an S3 object key path.
@@ -629,8 +630,7 @@ func (h *Handler) handleDownloadStatus(c *gin.Context, ctx context.Context, tena
 	}
 
 	// Object exists, generate presigned download URL
-	expiresIn := 3600 // 1 hour
-	downloadURL, err := h.storage.GeneratePresignedDownloadURL(ctx, objectKey, expiresIn)
+	downloadURL, err := h.storage.GeneratePresignedDownloadURL(ctx, objectKey, presignedURLExpiresIn)
 	if err != nil {
 		log.Printf("[DOWNLOAD] Failed to generate presigned download URL: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
@@ -689,7 +689,7 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 	targetPath := req.Path
 
 	// Generate presigned download URL for the agent
-	downloadURL, err := h.storage.GeneratePresignedDownloadURL(ctx, objectKey, 900) // 15 minutes
+	downloadURL, err := h.storage.GeneratePresignedDownloadURL(ctx, objectKey, presignedURLExpiresIn)
 	if err != nil {
 		log.Printf("[CONFIRM] Failed to generate presigned download URL: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
