@@ -32,7 +32,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -151,42 +150,14 @@ func getRootfsSnapshot(ctx context.Context, name string) *sandboxv1alpha1.Rootfs
 	return snap
 }
 
-// getSnapshotsForSandbox returns all RootfsSnapshots for a sandbox, queried by label.
-// Results are sorted by creation timestamp (newest first).
-func getSnapshotsForSandbox(ctx context.Context, sandboxName string) []sandboxv1alpha1.RootfsSnapshot {
-	var list sandboxv1alpha1.RootfsSnapshotList
-	err := k8sClient.List(ctx, &list,
-		client.InNamespace(testNamespace),
-		client.MatchingLabels{LabelSandboxName: sandboxName},
-	)
-	if err != nil {
-		return nil
-	}
-	// Sort by creation timestamp, newest first
-	items := list.Items
-	for i := 0; i < len(items)-1; i++ {
-		for j := i + 1; j < len(items); j++ {
-			if items[j].CreationTimestamp.After(items[i].CreationTimestamp.Time) {
-				items[i], items[j] = items[j], items[i]
-			}
-		}
-	}
-	return items
+func getShutdownSnapshot(ctx context.Context, sandboxName string) *sandboxv1alpha1.RootfsSnapshot {
+	return getRootfsSnapshot(ctx, sandboxName+"-shutdown")
 }
 
-// getLatestSnapshotForSandbox returns the most recent RootfsSnapshot for a sandbox.
-func getLatestSnapshotForSandbox(ctx context.Context, sandboxName string) *sandboxv1alpha1.RootfsSnapshot {
-	snapshots := getSnapshotsForSandbox(ctx, sandboxName)
-	if len(snapshots) == 0 {
-		return nil
-	}
-	return &snapshots[0]
-}
-
-// deleteSnapshotsForSandbox deletes all RootfsSnapshots for a sandbox.
-func deleteSnapshotsForSandbox(ctx context.Context, sandboxName string) {
-	for _, snap := range getSnapshotsForSandbox(ctx, sandboxName) {
-		_ = k8sClient.Delete(ctx, &snap)
+func deleteShutdownSnapshot(ctx context.Context, sandboxName string) {
+	snap := getShutdownSnapshot(ctx, sandboxName)
+	if snap != nil {
+		_ = k8sClient.Delete(ctx, snap)
 	}
 }
 
@@ -213,13 +184,8 @@ func setRootfsSnapshotReady(ctx context.Context, name string, ready bool, reason
 	ExpectWithOffset(1, k8sClient.Status().Update(ctx, snap)).To(Succeed())
 }
 
-// setLatestSnapshotReady sets the ready condition on the latest snapshot for a sandbox.
-func setLatestSnapshotReady(ctx context.Context, sandboxName string, ready bool, reason, message string) {
-	snap := getLatestSnapshotForSandbox(ctx, sandboxName)
-	if snap == nil {
-		return
-	}
-	setRootfsSnapshotReady(ctx, snap.Name, ready, reason, message)
+func setShutdownSnapshotReady(ctx context.Context, sandboxName string, ready bool, reason, message string) {
+	setRootfsSnapshotReady(ctx, sandboxName+"-shutdown", ready, reason, message)
 }
 
 func createNetworkTemplate(ctx context.Context, name string, opts ...func(*sandboxv1alpha1.NetworkTemplate)) *sandboxv1alpha1.NetworkTemplate {
@@ -1234,7 +1200,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteSnapshotsForSandbox(ctx, sandboxName)
+			defer deleteShutdownSnapshot(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -1286,7 +1252,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify RootfsSnapshot was created
-			rootfsSnapshot := getLatestSnapshotForSandbox(ctx, sandboxName)
+			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.Spec.SandboxName).To(Equal(sandboxName))
 		})
@@ -1353,7 +1319,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteSnapshotsForSandbox(ctx, sandboxName)
+			defer deleteShutdownSnapshot(ctx, sandboxName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -1388,11 +1354,11 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify RootfsSnapshot was created
-			rootfsSnapshot := getLatestSnapshotForSandbox(ctx, sandboxName)
+			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 
 			// Set RootfsSnapshot Ready=True to simulate successful snapshot
-			setLatestSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
+			setShutdownSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -1436,7 +1402,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteSnapshotsForSandbox(ctx, sandboxName)
+			defer deleteShutdownSnapshot(ctx, sandboxName)
 
 			// Setup: reconcile to create pod, then replace with pod that has NodeName
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -1462,11 +1428,11 @@ var _ = Describe("Sandbox Controller", func() {
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
 			// Verify RootfsSnapshot was created
-			rootfsSnapshot := getLatestSnapshotForSandbox(ctx, sandboxName)
+			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 
 			// Set RootfsSnapshot Ready=False with failed reason to simulate failed snapshot
-			setLatestSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
+			setShutdownSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 			Expect(err).NotTo(HaveOccurred())
@@ -1524,7 +1490,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteSnapshotsForSandbox(ctx, sandboxName)
+			defer deleteShutdownSnapshot(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -1558,7 +1524,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify RootfsSnapshot was created with default activeDeadlineSeconds (300)
-			rootfsSnapshot := getLatestSnapshotForSandbox(ctx, sandboxName)
+			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.Spec.ActiveDeadlineSeconds).NotTo(BeNil())
 			Expect(*rootfsSnapshot.Spec.ActiveDeadlineSeconds).To(Equal(int64(300)), "Should use default activeDeadlineSeconds of 300")
@@ -1616,7 +1582,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteSnapshotsForSandbox(ctx, sandboxName)
+			defer deleteShutdownSnapshot(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -1650,7 +1616,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			rootfsSnapshot := getLatestSnapshotForSandbox(ctx, sandboxName)
+			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			originalUID := rootfsSnapshot.UID
 
@@ -1660,7 +1626,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			rootfsSnapshot = getLatestSnapshotForSandbox(ctx, sandboxName)
+			rootfsSnapshot = getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.UID).To(Equal(originalUID), "RootfsSnapshot should not be recreated")
 
@@ -1670,7 +1636,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			rootfsSnapshot = getLatestSnapshotForSandbox(ctx, sandboxName)
+			rootfsSnapshot = getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.UID).To(Equal(originalUID), "RootfsSnapshot should not be recreated on third reconcile")
 		})
@@ -1740,7 +1706,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteSnapshotsForSandbox(ctx, sandboxName)
+			defer deleteShutdownSnapshot(ctx, sandboxName)
 
 			// Create and make pod ready (need to recreate with NodeName)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -1786,7 +1752,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteSnapshotsForSandbox(ctx, sandboxName)
+			defer deleteShutdownSnapshot(ctx, sandboxName)
 
 			// Setup - recreate pod with NodeName
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -1807,9 +1773,9 @@ var _ = Describe("Sandbox Controller", func() {
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
 			// Mark RootfsSnapshot succeeded
-			rootfsSnapshot := getLatestSnapshotForSandbox(ctx, sandboxName)
+			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
-			setLatestSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
+			setShutdownSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
 		drainEvents2:
 			for {
@@ -1853,7 +1819,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteSnapshotsForSandbox(ctx, sandboxName)
+			defer deleteShutdownSnapshot(ctx, sandboxName)
 
 			// Setup - recreate pod with NodeName
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -1864,9 +1830,9 @@ var _ = Describe("Sandbox Controller", func() {
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
 			// Mark RootfsSnapshot failed
-			rootfsSnapshot := getLatestSnapshotForSandbox(ctx, sandboxName)
+			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
-			setLatestSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
+			setShutdownSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
 
 			// Drain previous events
 		drainEvents3:
@@ -2127,7 +2093,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteSnapshotsForSandbox(ctx, sandboxName)
+			defer deleteShutdownSnapshot(ctx, sandboxName)
 
 			// First reconcile - creates pod and adds finalizer
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -2173,12 +2139,12 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify RootfsSnapshot was created
-			rootfsSnapshot := getLatestSnapshotForSandbox(ctx, sandboxName)
+			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.Spec.SandboxName).To(Equal(sandboxName))
 
 			// Mark RootfsSnapshot as complete
-			setLatestSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
+			setShutdownSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
 			// Reconcile - should complete deletion
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
