@@ -182,7 +182,14 @@ func (h *Handler) handleLargeFileUpload(c *gin.Context, ctx context.Context, san
 		return
 	}
 
-	tenantID, _ := c.Get("tenant_id")
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+			Error:   "Unauthorized",
+			Message: "tenant_id not found in context",
+		})
+		return
+	}
 	tenantIDStr := tenantID.(string)
 
 	uploadID := uuid.New().String()
@@ -345,7 +352,14 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 	targetPath := c.Query("path")
 
 	// Get tenant ID from context
-	tenantID, _ := c.Get("tenant_id")
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+			Error:   "Unauthorized",
+			Message: "tenant_id not found in context",
+		})
+		return
+	}
 	tenantIDStr := tenantID.(string)
 
 	ctx := c.Request.Context()
@@ -643,7 +657,14 @@ func (h *Handler) GetDownloadStatus(c *gin.Context) {
 	downloadID := c.Param("download_id")
 
 	// Get tenant ID from context
-	tenantID, _ := c.Get("tenant_id")
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+			Error:   "Unauthorized",
+			Message: "tenant_id not found in context",
+		})
+		return
+	}
 	tenantIDStr := tenantID.(string)
 
 	ctx := c.Request.Context()
@@ -719,7 +740,14 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 	log.Printf("[CONFIRM] Request for sandbox %s: upload_id=%s, filename=%s, path=%s", sandboxID, req.UploadID, req.Filename, req.Path)
 
 	// Get tenant ID from context
-	tenantID, _ := c.Get("tenant_id")
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
+			Error:   "Unauthorized",
+			Message: "tenant_id not found in context",
+		})
+		return
+	}
 	tenantIDStr := tenantID.(string)
 
 	ctx := c.Request.Context()
