@@ -26,6 +26,16 @@ const (
 	presignedURLExpiresIn  = 3600            // 1 hour
 )
 
+// agentError represents an error returned by the sandbox agent with its HTTP status code.
+type agentError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *agentError) Error() string {
+	return e.Message
+}
+
 // buildObjectKey constructs an S3 object key path.
 // format: {type}/{tenantID}/{sandboxID}/{id}/{filename}
 func buildObjectKey(objectType string, tenantID string, sandboxID string, id string, filename string) string {
@@ -357,10 +367,17 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 	fileInfo, err := h.getFileInfo(ctx, agentAddress, targetPath)
 	if err != nil {
 		log.Printf("[DOWNLOAD] Failed to get file info: %v", err)
-		c.JSON(http.StatusBadGateway, models.ErrorResponse{
-			Error:   "BadGateway",
-			Message: "Failed to get file info from sandbox agent: " + err.Error(),
-		})
+		if agentErr, ok := err.(*agentError); ok {
+			c.JSON(agentErr.StatusCode, models.ErrorResponse{
+				Error:   http.StatusText(agentErr.StatusCode),
+				Message: agentErr.Message,
+			})
+		} else {
+			c.JSON(http.StatusBadGateway, models.ErrorResponse{
+				Error:   "BadGateway",
+				Message: "Failed to connect to sandbox agent: " + err.Error(),
+			})
+		}
 		return
 	}
 
@@ -415,13 +432,14 @@ func (h *Handler) getFileInfo(ctx context.Context, agentAddress, path string) (*
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		var agentError struct {
+		var agentErrResp struct {
 			Error string `json:"error"`
 		}
-		if err := json.Unmarshal(bodyBytes, &agentError); err == nil && agentError.Error != "" {
-			return nil, fmt.Errorf("agent error: %s", agentError.Error)
+		message := string(bodyBytes)
+		if err := json.Unmarshal(bodyBytes, &agentErrResp); err == nil && agentErrResp.Error != "" {
+			message = agentErrResp.Error
 		}
-		return nil, fmt.Errorf("agent returned status %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, &agentError{StatusCode: resp.StatusCode, Message: message}
 	}
 
 	var result models.FileInfo
@@ -526,10 +544,37 @@ func (h *Handler) initiateLargeFileDownload(c *gin.Context, ctx context.Context,
 	// Tell agent to upload the file to S3
 	if err := h.triggerAgentUploadToStorage(ctx, agentAddress, targetPath, uploadURL); err != nil {
 		log.Printf("[DOWNLOAD] Failed to trigger agent upload: %v", err)
-		c.JSON(http.StatusBadGateway, models.ErrorResponse{
-			Error:   "BadGateway",
-			Message: "Failed to initiate file upload: " + err.Error(),
-		})
+		if agentErr, ok := err.(*agentError); ok {
+			// Map agent status codes to gateway responses
+			switch agentErr.StatusCode {
+			case http.StatusNotFound:
+				c.JSON(http.StatusNotFound, models.ErrorResponse{
+					Error:   "NotFound",
+					Message: agentErr.Message,
+				})
+			case http.StatusForbidden:
+				c.JSON(http.StatusForbidden, models.ErrorResponse{
+					Error:   "Forbidden",
+					Message: agentErr.Message,
+				})
+			case http.StatusBadRequest:
+				c.JSON(http.StatusBadRequest, models.ErrorResponse{
+					Error:   "BadRequest",
+					Message: agentErr.Message,
+				})
+			default:
+				c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+					Error:   "InternalServerError",
+					Message: agentErr.Message,
+				})
+			}
+		} else {
+			// Connection/network errors are actual gateway errors
+			c.JSON(http.StatusBadGateway, models.ErrorResponse{
+				Error:   "BadGateway",
+				Message: "Failed to connect to sandbox agent: " + err.Error(),
+			})
+		}
 		return
 	}
 
@@ -578,7 +623,15 @@ func (h *Handler) triggerAgentUploadToStorage(ctx context.Context, agentAddress,
 
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("agent returned status %d: %s", resp.StatusCode, string(respBody))
+		// Parse agent error response to get the message
+		var agentResp struct {
+			Error string `json:"error"`
+		}
+		msg := string(respBody)
+		if err := json.Unmarshal(respBody, &agentResp); err == nil && agentResp.Error != "" {
+			msg = agentResp.Error
+		}
+		return &agentError{StatusCode: resp.StatusCode, Message: msg}
 	}
 
 	return nil
@@ -646,7 +699,7 @@ func (h *Handler) handleDownloadStatus(c *gin.Context, ctx context.Context, tena
 		DownloadID:  downloadID,
 		Ready:       true,
 		DownloadURL: downloadURL,
-		ExpiresIn:   expiresIn,
+		ExpiresIn:   presignedURLExpiresIn,
 	})
 }
 
