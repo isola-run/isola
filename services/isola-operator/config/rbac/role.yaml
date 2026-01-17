@@ -85,6 +85,7 @@ rules:
   - sandbox.isola.run
   resources:
   - sandboxes
+  - sandboxtemplates
   verbs:
   - create
   - delete
@@ -92,12 +93,4 @@ rules:
   - list
   - patch
   - update
-  - watch
-- apiGroups:
-  - sandbox.isola.run
-  resources:
-  - sandboxtemplates
-  verbs:
-  - get
-  - list
   - watch

@@ -48,8 +48,10 @@ func createSandbox(ctx context.Context, name, templateRef string) *sandboxv1alph
 			Namespace: testNamespace,
 		},
 		Spec: sandboxv1alpha1.SandboxSpec{
-			TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-				Name: templateRef,
+			Template: sandboxv1alpha1.TemplateConfig{
+				TemplateRef: &sandboxv1alpha1.SandboxTemplateReference{
+					Name: templateRef,
+				},
 			},
 		},
 	}
@@ -201,8 +203,10 @@ func createSandboxWithNetworkTemplate(ctx context.Context, name, templateRef, ne
 			Namespace: testNamespace,
 		},
 		Spec: sandboxv1alpha1.SandboxSpec{
-			TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-				Name: templateRef,
+			Template: sandboxv1alpha1.TemplateConfig{
+				TemplateRef: &sandboxv1alpha1.SandboxTemplateReference{
+					Name: templateRef,
+				},
 			},
 			Network: &sandboxv1alpha1.NetworkConfig{
 				TemplateRef: &sandboxv1alpha1.NetworkTemplateReference{
@@ -353,8 +357,10 @@ var _ = Describe("Sandbox Controller", func() {
 					Namespace: testNamespace,
 				},
 				Spec: sandboxv1alpha1.SandboxSpec{
-					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-						Name: "", // Empty template ref
+					Template: sandboxv1alpha1.TemplateConfig{
+						TemplateRef: &sandboxv1alpha1.SandboxTemplateReference{
+							Name: "", // Empty template ref
+						},
 					},
 				},
 			}
@@ -2669,8 +2675,10 @@ var _ = Describe("Sandbox Controller", func() {
 					Namespace: testNamespace,
 				},
 				Spec: sandboxv1alpha1.SandboxSpec{
-					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-						Name: templateRef,
+					Template: sandboxv1alpha1.TemplateConfig{
+						TemplateRef: &sandboxv1alpha1.SandboxTemplateReference{
+							Name: templateRef,
+						},
 					},
 					Network: &sandboxv1alpha1.NetworkConfig{
 						Spec: &networkSpec,
@@ -2921,8 +2929,10 @@ var _ = Describe("Sandbox Controller", func() {
 					Namespace: testNamespace,
 				},
 				Spec: sandboxv1alpha1.SandboxSpec{
-					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-						Name: templateName,
+					Template: sandboxv1alpha1.TemplateConfig{
+						TemplateRef: &sandboxv1alpha1.SandboxTemplateReference{
+							Name: templateName,
+						},
 					},
 					Network: nil,
 				},
@@ -2957,8 +2967,10 @@ var _ = Describe("Sandbox Controller", func() {
 					Namespace: testNamespace,
 				},
 				Spec: sandboxv1alpha1.SandboxSpec{
-					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-						Name: templateName,
+					Template: sandboxv1alpha1.TemplateConfig{
+						TemplateRef: &sandboxv1alpha1.SandboxTemplateReference{
+							Name: templateName,
+						},
 					},
 					Network: nil,
 				},
@@ -3167,8 +3179,10 @@ var _ = Describe("Sandbox Controller", func() {
 					Namespace: testNamespace,
 				},
 				Spec: sandboxv1alpha1.SandboxSpec{
-					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-						Name: templateName,
+					Template: sandboxv1alpha1.TemplateConfig{
+						TemplateRef: &sandboxv1alpha1.SandboxTemplateReference{
+							Name: templateName,
+						},
 					},
 					Network: nil,
 				},
@@ -3203,8 +3217,10 @@ var _ = Describe("Sandbox Controller", func() {
 					Namespace: testNamespace,
 				},
 				Spec: sandboxv1alpha1.SandboxSpec{
-					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-						Name: templateName,
+					Template: sandboxv1alpha1.TemplateConfig{
+						TemplateRef: &sandboxv1alpha1.SandboxTemplateReference{
+							Name: templateName,
+						},
 					},
 					Network: nil,
 				},

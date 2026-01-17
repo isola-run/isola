@@ -22,7 +22,7 @@ spec:
       name: Ready
       type: string
     - description: SandboxTemplate reference
-      jsonPath: .spec.templateRef.name
+      jsonPath: .spec.template.templateRef.name
       name: Template
       type: string
     - jsonPath: .metadata.creationTimestamp
@@ -242,23 +242,91 @@ spec:
                 x-kubernetes-validations:
                 - message: At least one of 'templateRef' or 'spec' is required.
                   rule: has(self.templateRef) || has(self.spec)
-              templateRef:
+              template:
                 description: |-
-                  TemplateRef references the SandboxTemplate to inherit pod configuration from.
-                  The SandboxTemplate must exist in the same namespace as this Sandbox.
+                  Template specifies the sandbox template configuration.
+                  Can either reference a shared SandboxTemplate or embed template spec directly.
+                  When embedding a spec, the controller creates an owned SandboxTemplate
+                  that is garbage-collected when the sandbox is deleted.
                 properties:
-                  name:
+                  spec:
                     description: |-
-                      Name of the SandboxTemplate in the same namespace.
-                      The referenced SandboxTemplate provides the pod configuration (containers, initContainers, etc.)
-                      and lifecycle settings (timeout, shutdown policy) for this Sandbox.
-                    minLength: 1
-                    type: string
-                required:
-                - name
+                      Spec embeds sandbox template configuration directly in the sandbox.
+                      When specified, the controller creates a SandboxTemplate CR
+                      that is owned by this sandbox and garbage-collected
+                      when the sandbox is deleted.
+                      Note: This spec is immutable after sandbox creation - changes are ignored.
+                    properties:
+                      podTemplate:
+                        description: |-
+                          PodTemplate describes the pod that will be created to run the sandbox.
+                          The Sandbox controller will override specific security settings (runtimeClassName, etc.)
+                          but allows users to define containers, volumes, and env vars.
+
+                          todo benl: I am extremely unsure about the kubebuilder attributes above
+                          todo benl: agent-sandbox use PodTemplate instead of PodTemplateSpec but from my research the PodTemplateSpec is far more popular and suitable
+                          todo benl: enforce PreemptionPolicy never in validating webhook?
+                          todo benl: verify total resources make sense, etc
+                        x-kubernetes-preserve-unknown-fields: true
+                      shutdownPolicy:
+                        description: |-
+                          todo benl: utilize TerminationGracePeriodSeconds like RabbitMQ operator to allow shutdown hooks to execute
+                          todo benl: think on how to implement shutdown policy to allow multiple toggles
+                          ShutdownPolicy defines what to do when the sandbox ends
+                        properties:
+                          activeDeadlineSeconds:
+                            default: 300
+                            description: |-
+                              ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
+                              that the snapshot job may be active before the system tries to terminate it.
+                              Only used when Policy is SnapshotFilesystem.
+                            format: int64
+                            minimum: 1
+                            type: integer
+                          policy:
+                            allOf:
+                            - enum:
+                              - Delete
+                              - SnapshotFilesystem
+                            - enum:
+                              - Delete
+                              - SnapshotFilesystem
+                            default: Delete
+                            description: Policy determines the action taken when the
+                              sandbox shuts down
+                            type: string
+                        type: object
+                      timeoutSeconds:
+                        description: TimeoutSeconds defines how long the sandbox runs
+                          before being terminated
+                        format: int64
+                        minimum: 1
+                        type: integer
+                    required:
+                    - podTemplate
+                    type: object
+                  templateRef:
+                    description: |-
+                      TemplateRef references an existing SandboxTemplate in the same namespace.
+                      The referenced SandboxTemplate is not owned by this sandbox and will persist
+                      independently of sandbox lifecycle.
+                    properties:
+                      name:
+                        description: |-
+                          Name of the SandboxTemplate in the same namespace.
+                          The referenced SandboxTemplate provides the pod configuration (containers, initContainers, etc.)
+                          and lifecycle settings (timeout, shutdown policy) for this Sandbox.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
                 type: object
+                x-kubernetes-validations:
+                - message: At least one of 'templateRef' or 'spec' is required.
+                  rule: has(self.templateRef) || has(self.spec)
             required:
-            - templateRef
+            - template
             type: object
           status:
             description: status defines the observed state of Sandbox

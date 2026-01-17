@@ -53,6 +53,25 @@ type SandboxTemplateReference struct {
 	Name string `json:"name"`
 }
 
+// TemplateConfig specifies the sandbox template configuration for a Sandbox.
+// At least one of TemplateRef or Spec must be specified.
+// +kubebuilder:validation:XValidation:rule="has(self.templateRef) || has(self.spec)",message="At least one of 'templateRef' or 'spec' is required."
+type TemplateConfig struct {
+	// TemplateRef references an existing SandboxTemplate in the same namespace.
+	// The referenced SandboxTemplate is not owned by this sandbox and will persist
+	// independently of sandbox lifecycle.
+	// +optional
+	TemplateRef *SandboxTemplateReference `json:"templateRef,omitempty"`
+
+	// Spec embeds sandbox template configuration directly in the sandbox.
+	// When specified, the controller creates a SandboxTemplate CR
+	// that is owned by this sandbox and garbage-collected
+	// when the sandbox is deleted.
+	// Note: This spec is immutable after sandbox creation - changes are ignored.
+	// +optional
+	Spec *SandboxTemplateSpec `json:"spec,omitempty"`
+}
+
 // NetworkTemplateReference identifies a NetworkTemplate in the same namespace.
 type NetworkTemplateReference struct {
 	// Name of the NetworkTemplate in the same namespace.
@@ -85,10 +104,12 @@ type NetworkConfig struct {
 
 // SandboxSpec defines the desired state of Sandbox
 type SandboxSpec struct {
-	// TemplateRef references the SandboxTemplate to inherit pod configuration from.
-	// The SandboxTemplate must exist in the same namespace as this Sandbox.
+	// Template specifies the sandbox template configuration.
+	// Can either reference a shared SandboxTemplate or embed template spec directly.
+	// When embedding a spec, the controller creates an owned SandboxTemplate
+	// that is garbage-collected when the sandbox is deleted.
 	// +required
-	TemplateRef SandboxTemplateReference `json:"templateRef"`
+	Template TemplateConfig `json:"template"`
 
 	// Network specifies the network isolation configuration for this sandbox.
 	// Can either reference a shared NetworkTemplate or embed network rules directly.
@@ -120,6 +141,24 @@ func (s *Sandbox) HasNetworkSpec() bool {
 	return s.Spec.Network != nil && s.Spec.Network.Spec != nil
 }
 
+// GetTemplateName returns the effective SandboxTemplate name for this sandbox.
+// - For templateRef: returns the referenced template name
+// - For spec: returns "{sandbox-name}-template"
+func (s *Sandbox) GetTemplateName() string {
+	if s.Spec.Template.TemplateRef != nil {
+		return s.Spec.Template.TemplateRef.Name
+	}
+	return s.GetOwnedTemplateName()
+}
+
+func (s *Sandbox) GetOwnedTemplateName() string {
+	return s.Name + "-template"
+}
+
+func (s *Sandbox) HasTemplateSpec() bool {
+	return s.Spec.Template.Spec != nil
+}
+
 // todo benl: for now, not storing sandbox pod or snapshotter pod info anywhere in the sandbox CRD
 // SandboxStatus defines the observed state of Sandbox.
 type SandboxStatus struct {
@@ -140,7 +179,7 @@ type SandboxStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=sb
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status",description="Aggregate readiness"
-// +kubebuilder:printcolumn:name="Template",type="string",JSONPath=".spec.templateRef.name",description="SandboxTemplate reference"
+// +kubebuilder:printcolumn:name="Template",type="string",JSONPath=".spec.template.templateRef.name",description="SandboxTemplate reference"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason",priority=1,description="Reason for Ready condition"
 // Sandbox is the Schema for the sandboxes API

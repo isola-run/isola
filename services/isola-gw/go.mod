@@ -1,6 +1,6 @@
 module github.com/isola-ai/isola-sb/services/isola-gw
 
-go 1.25.5
+go 1.24.7
 
 require (
 	github.com/gin-gonic/gin v1.11.0
