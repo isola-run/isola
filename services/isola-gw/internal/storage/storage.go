@@ -73,7 +73,7 @@ func NewBucketWrapper(bucket *blob.Bucket, bucketName string) (*BucketWrapper, e
 
 // GeneratePresignedUploadURL generates a presigned URL for uploading a file.
 // TODO: limit the size of the file that can be uploaded
-func (b *BucketWrapper) GeneratePresignedUploadURL(ctx context.Context, key string, expiresIn int, contentType string) (string, error) {
+func (b *BucketWrapper) GeneratePresignedUploadURL(ctx context.Context, key string, expiresIn int) (string, error) {
 	opts := &blob.SignedURLOptions{
 		Expiry: time.Duration(expiresIn) * time.Second,
 		Method: "PUT",

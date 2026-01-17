@@ -24,6 +24,7 @@ import (
 const (
 	fileSizeThresholdBytes = 5 * 1024 * 1024 // 5MB
 	presignedURLExpiresIn  = 3600            // 1 hour
+	interalUploadExpiresIn = 900             // 15 minutes
 )
 
 // agentError represents an error returned by the sandbox agent with its HTTP status code.
@@ -195,8 +196,7 @@ func (h *Handler) handleLargeFileUpload(c *gin.Context, ctx context.Context, san
 	uploadID := uuid.New().String()
 	objectKey := buildObjectKey("uploads", tenantIDStr, sandboxID, uploadID, filename)
 
-	expiresIn := 900 // 15 minutes
-	uploadURL, err := h.storage.GeneratePresignedUploadURL(ctx, objectKey, expiresIn, "")
+	uploadURL, err := h.storage.GeneratePresignedUploadURL(ctx, objectKey, interalUploadExpiresIn)
 	if err != nil {
 		log.Printf("[UPLOAD] Failed to generate presigned URL: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
@@ -211,7 +211,7 @@ func (h *Handler) handleLargeFileUpload(c *gin.Context, ctx context.Context, san
 	c.JSON(http.StatusAccepted, models.UploadUrlResponse{
 		UploadURL: uploadURL,
 		UploadID:  uploadID,
-		ExpiresIn: expiresIn,
+		ExpiresIn: interalUploadExpiresIn,
 	})
 }
 
@@ -544,8 +544,7 @@ func (h *Handler) initiateLargeFileDownload(c *gin.Context, ctx context.Context,
 	log.Printf("[DOWNLOAD] Large file detected (%d bytes), initiating S3 upload: downloadID=%s", fileSize, downloadID)
 
 	// Generate presigned upload URL for the agent
-	expiresIn := 900 // 15 minutes
-	uploadURL, err := h.storage.GeneratePresignedUploadURL(ctx, objectKey, expiresIn, "application/octet-stream")
+	uploadURL, err := h.storage.GeneratePresignedUploadURL(ctx, objectKey, interalUploadExpiresIn)
 	if err != nil {
 		log.Printf("[DOWNLOAD] Failed to generate presigned upload URL: %v", err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
