@@ -135,9 +135,10 @@ def sandbox_with_localstack_access(
     This creates the Sandbox CR directly with the network template reference.
     """
     namespace = "isola-sandboxes"
-    sandbox_id = uuid.uuid4().hex
-    sandbox_name = f"sandbox-{sandbox_id[:8]}"
-    template_name = f"template-{sandbox_id[:8]}"
+    # Use full UUID as the sandbox name (K8s resource name = ID)
+    sandbox_id = str(uuid.uuid4())
+    sandbox_name = sandbox_id
+    template_name = sandbox_id  # SandboxTemplate uses same name
 
     # Create SandboxTemplate first
     template_body = {
@@ -179,8 +180,7 @@ def sandbox_with_localstack_access(
             "name": sandbox_name,
             "namespace": namespace,
             "labels": {
-                "sandbox-id": sandbox_id,
-                "managed-by": "e2e-test",
+                "app.kubernetes.io/managed-by": "e2e-test",
             },
         },
         "spec": {

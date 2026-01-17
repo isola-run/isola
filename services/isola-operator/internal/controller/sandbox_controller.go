@@ -340,13 +340,6 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		labels[network.NetworkTemplateLabelKey] = networkTemplate.Name
 	}
 
-	// todo benl: why this exists? ("sandbox-id")
-	if sandbox.Labels != nil {
-		if sandboxID, exists := sandbox.Labels["sandbox-id"]; exists {
-			labels["sandbox-id"] = sandboxID
-		}
-	}
-
 	if template.Spec.PodTemplate.Labels != nil {
 		maps.Copy(labels, template.Spec.PodTemplate.Labels)
 	}
@@ -661,7 +654,8 @@ func (r *SandboxReconciler) CreateSnapshotterJob(
 }
 
 func getSandboxPodName(sandbox *sandboxv1alpha1.Sandbox) string {
-	return sandbox.Name + "-pod"
+	// Pod name is the same as sandbox name (UUID)
+	return sandbox.Name
 }
 
 func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*corev1.Pod, error) {
@@ -680,7 +674,7 @@ func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv
 }
 
 func getFilesystemSnapshotterJobName(sandbox *sandboxv1alpha1.Sandbox) string {
-	return sandbox.Name + "-fssnapshotter"
+	return sandbox.Name + "-snap"
 }
 
 func (r *SandboxReconciler) getFilesystemSnapshotterJob(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*batchv1.Job, error) {

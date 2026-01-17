@@ -59,7 +59,7 @@ func TestGetNetworkTemplateName(t *testing.T) {
 					},
 				},
 			},
-			expected: "my-sandbox-network",
+			expected: "my-sandbox-net",
 		},
 		{
 			name: "network config with nil templateRef and nil spec returns owned name",
@@ -72,7 +72,7 @@ func TestGetNetworkTemplateName(t *testing.T) {
 					},
 				},
 			},
-			expected: "edge-case-network",
+			expected: "edge-case-net",
 		},
 	}
 
@@ -88,7 +88,7 @@ func TestGetOwnedNetworkTemplateName(t *testing.T) {
 	sandbox := Sandbox{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-sandbox"},
 	}
-	assert.Equal(t, "my-sandbox-network", sandbox.GetOwnedNetworkTemplateName())
+	assert.Equal(t, "my-sandbox-net", sandbox.GetOwnedNetworkTemplateName())
 }
 
 func TestHasNetworkSpec(t *testing.T) {

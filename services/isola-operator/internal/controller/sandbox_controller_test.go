@@ -304,7 +304,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -322,7 +322,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -377,11 +377,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandbox1Name, templateName)
 			defer deleteSandbox(ctx, sandbox1Name)
-			defer deletePod(ctx, sandbox1Name+"-pod")
+			defer deletePod(ctx, sandbox1Name)
 
 			createSandbox(ctx, sandbox2Name, templateName)
 			defer deleteSandbox(ctx, sandbox2Name)
-			defer deletePod(ctx, sandbox2Name+"-pod")
+			defer deletePod(ctx, sandbox2Name)
 
 			createSandbox(ctx, sandbox3Name, "other-template")
 			defer deleteSandbox(ctx, sandbox3Name)
@@ -433,7 +433,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -456,7 +456,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -479,7 +479,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -504,7 +504,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -534,7 +534,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconcilerWithRuntime, sandboxName)
@@ -557,7 +557,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -592,7 +592,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -630,7 +630,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -649,7 +649,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -675,7 +675,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -711,7 +711,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -746,7 +746,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -781,7 +781,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -821,7 +821,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -858,7 +858,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -880,7 +880,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -921,7 +921,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -948,7 +948,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -979,7 +979,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			sandbox := createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -1010,7 +1010,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			result, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -1052,7 +1052,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -1113,7 +1113,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -1171,8 +1171,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			podName := sandboxName
+			snapshotterJobName := sandboxName + "-snap"
 			defer deletePod(ctx, podName)
 			defer deleteJob(ctx, snapshotterJobName)
 
@@ -1246,7 +1246,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -1254,7 +1254,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Simulate pod being gone
-			deletePod(ctx, sandboxName+"-pod")
+			deletePod(ctx, sandboxName)
 			fakeClock.Advance(2 * time.Second)
 
 			// Reconcile - sandbox deleted after snapshot skipped (pod missing)
@@ -1291,8 +1291,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			podName := sandboxName
+			snapshotterJobName := sandboxName + "-snap"
 			defer deletePod(ctx, podName)
 			defer deleteJob(ctx, snapshotterJobName)
 
@@ -1381,8 +1381,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			podName := sandboxName
+			snapshotterJobName := sandboxName + "-snap"
 			defer deletePod(ctx, podName)
 			defer deleteJob(ctx, snapshotterJobName)
 
@@ -1445,7 +1445,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			template := &sandboxv1alpha1.SandboxTemplate{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: templateName, Namespace: testNamespace}, template)).To(Succeed())
@@ -1475,8 +1475,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			podName := sandboxName
+			snapshotterJobName := sandboxName + "-snap"
 			defer deletePod(ctx, podName)
 			defer deleteJob(ctx, snapshotterJobName)
 
@@ -1536,7 +1536,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			defer deletePod(ctx, podName)
 
 			// Reconcile to try to create pod - this should fail because RuntimeClass doesn't exist
@@ -1568,8 +1568,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			podName := sandboxName
+			snapshotterJobName := sandboxName + "-snap"
 			defer deletePod(ctx, podName)
 			defer deleteJob(ctx, snapshotterJobName)
 
@@ -1659,7 +1659,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -1696,8 +1696,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			podName := sandboxName
+			snapshotterJobName := sandboxName + "-snap"
 			defer deletePod(ctx, podName)
 			defer deleteJob(ctx, snapshotterJobName)
 
@@ -1743,8 +1743,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			podName := sandboxName
+			snapshotterJobName := sandboxName + "-snap"
 			defer deletePod(ctx, podName)
 			defer deleteJob(ctx, snapshotterJobName)
 
@@ -1819,8 +1819,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
-			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			podName := sandboxName
+			snapshotterJobName := sandboxName + "-snap"
 			defer deletePod(ctx, podName)
 			defer deleteJob(ctx, snapshotterJobName)
 
@@ -1900,7 +1900,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			sandbox := createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -1932,7 +1932,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			// First reconcile
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -1978,7 +1978,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -1999,7 +1999,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -2032,7 +2032,7 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteTemplate(ctx, templateName)
 
 			createSandbox(ctx, sandboxName, templateName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -2058,7 +2058,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createTemplate(ctx, templateName)
 			createSandbox(ctx, sandboxName, templateName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -2101,8 +2101,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 
-			podName := sandboxName + "-pod"
-			snapshotterJobName := sandboxName + "-fssnapshotter"
+			podName := sandboxName
+			snapshotterJobName := sandboxName + "-snap"
 			defer deletePod(ctx, podName)
 			defer deleteJob(ctx, snapshotterJobName)
 
@@ -2227,7 +2227,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2267,7 +2267,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2293,7 +2293,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2330,7 +2330,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2366,7 +2366,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2407,7 +2407,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2459,7 +2459,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2514,7 +2514,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			// Initial reconcile - creates Pod
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -2560,7 +2560,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Create first sandbox
 			createSandboxWithNetworkTemplate(ctx, sandbox1Name, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandbox1Name)
-			defer deletePod(ctx, sandbox1Name+"-pod")
+			defer deletePod(ctx, sandbox1Name)
 
 			// Reconcile first sandbox - creates Pod, reuses NetworkPolicy
 			_, err := doReconcile(ctx, reconciler, sandbox1Name)
@@ -2569,7 +2569,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Create second sandbox using the same NetworkTemplate
 			createSandboxWithNetworkTemplate(ctx, sandbox2Name, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandbox2Name)
-			defer deletePod(ctx, sandbox2Name+"-pod")
+			defer deletePod(ctx, sandbox2Name)
 
 			// Reconcile second sandbox - should not fail, reuses existing NetworkPolicy
 			_, err = doReconcile(ctx, reconciler, sandbox2Name)
@@ -2621,7 +2621,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Create sandbox referencing the deleting template
 			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			// Reconcile - should detect template is being deleted
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -2633,7 +2633,7 @@ var _ = Describe("Sandbox Controller", func() {
 				metav1.ConditionFalse, CondReasonNetworkTemplateDeleting)).To(BeTrue())
 
 			// Verify no pod was created (template is being deleted)
-			pod := getPod(ctx, sandboxName+"-pod")
+			pod := getPod(ctx, sandboxName)
 			Expect(pod).To(BeNil())
 		})
 	})
@@ -2689,14 +2689,14 @@ var _ = Describe("Sandbox Controller", func() {
 			}
 			createSandboxWithNetworkSpec(sandboxName, templateName, networkSpec)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			// Reconcile - should create owned NetworkTemplate
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify owned NetworkTemplate was created
-			ownedTemplateName := sandboxName + "-network"
+			ownedTemplateName := sandboxName + "-net"
 			nt := &sandboxv1alpha1.NetworkTemplate{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: ownedTemplateName, Namespace: testNamespace}, nt)
 			Expect(err).NotTo(HaveOccurred())
@@ -2731,14 +2731,14 @@ var _ = Describe("Sandbox Controller", func() {
 			}
 			createSandboxWithNetworkSpec(sandboxName, templateName, networkSpec)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+			defer deletePod(ctx, sandboxName)
 
 			// First reconcile - creates owned template
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify initial spec
-			ownedTemplateName := sandboxName + "-network"
+			ownedTemplateName := sandboxName + "-net"
 			nt := &sandboxv1alpha1.NetworkTemplate{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: ownedTemplateName, Namespace: testNamespace}, nt)
 			Expect(err).NotTo(HaveOccurred())
@@ -2766,7 +2766,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should fail with error when owned template name conflicts with non-owned template", func() {
 			// Create a non-owned NetworkTemplate with the expected owned name
-			conflictingName := sandboxName + "-network"
+			conflictingName := sandboxName + "-net"
 			conflictingNT := &sandboxv1alpha1.NetworkTemplate{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      conflictingName,
@@ -2836,13 +2836,13 @@ var _ = Describe("Sandbox Controller", func() {
 			}
 			createSandboxWithNetworkSpec(sandbox1Name, templateName, networkSpec)
 			defer deleteSandbox(ctx, sandbox1Name)
-			defer deletePod(ctx, sandbox1Name+"-pod")
+			defer deletePod(ctx, sandbox1Name)
 
 			// Create sandbox2 with templateRef
 			sandbox2Name := sandboxName + "-2"
 			createSandboxWithNetworkTemplate(ctx, sandbox2Name, templateName, sharedTemplateName)
 			defer deleteSandbox(ctx, sandbox2Name)
-			defer deletePod(ctx, sandbox2Name+"-pod")
+			defer deletePod(ctx, sandbox2Name)
 
 			// Reconcile sandbox1
 			_, err = doReconcile(ctx, reconciler, sandbox1Name)
@@ -2850,7 +2850,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			// Verify sandbox1's owned template
 			owned1 := &sandboxv1alpha1.NetworkTemplate{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandbox1Name + "-network", Namespace: testNamespace}, owned1)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandbox1Name + "-net", Namespace: testNamespace}, owned1)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(owned1.Labels["sandbox.isola.run/owned"]).To(Equal("true"))
 			defer func() {
@@ -2867,7 +2867,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(sandbox2.GetNetworkTemplateName()).To(Equal(sharedTemplateName))
 
 			// The owned template for sandbox1 should not have sandbox2 as owner
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandbox1Name + "-network", Namespace: testNamespace}, owned1)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandbox1Name + "-net", Namespace: testNamespace}, owned1)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(owned1.OwnerReferences).To(HaveLen(1))
 			Expect(owned1.OwnerReferences[0].Name).To(Equal(sandbox1Name))
@@ -2933,7 +2933,7 @@ var _ = Describe("Sandbox Controller", func() {
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			pod := getPod(ctx, podName)
 			Expect(pod).To(BeNil(), "pod should not exist when default NetworkTemplate is missing")
 
@@ -2947,7 +2947,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should create pod with default template label when default template exists", func() {
 			sandboxName := fmt.Sprintf("sandbox-default-template-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 
 			// Default template already exists from BeforeSuite
 
@@ -2979,7 +2979,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should configure ClusterFirst DNS when dnsPolicy is ClusterFirst", func() {
 			sandboxName := fmt.Sprintf("sandbox-dns-cluster-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			networkTemplateName := fmt.Sprintf("dns-cluster-template-%d", time.Now().UnixNano())
 
 			// Create network template with ClusterFirst - needs egress to DNS pods
@@ -3014,7 +3014,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should configure DNS None with ndots:1 when dnsPolicy is None", func() {
 			sandboxName := fmt.Sprintf("sandbox-dns-none-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			networkTemplateName := fmt.Sprintf("dns-none-template-%d", time.Now().UnixNano())
 
 			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
@@ -3044,7 +3044,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should use sink nameserver with fast-fail options when dnsPolicy is None and nameservers is empty", func() {
 			sandboxName := fmt.Sprintf("sandbox-dns-sink-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			networkTemplateName := fmt.Sprintf("dns-sink-template-%d", time.Now().UnixNano())
 
 			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
@@ -3082,7 +3082,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should preserve existing DNSConfig options when adding nameservers for ClusterFirst", func() {
 			sandboxName := fmt.Sprintf("sandbox-dns-preserve-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			networkTemplateName := fmt.Sprintf("dns-preserve-template-%d", time.Now().UnixNano())
 			customTemplateName := fmt.Sprintf("template-dns-preserve-%d", time.Now().UnixNano())
 
@@ -3155,7 +3155,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should have NetworkReady=False when network template not ready", func() {
 			sandboxName := fmt.Sprintf("sandbox-ready-network-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 
 			// Replace the default template with one that is NOT reconciled (not ready)
 			deleteNetworkTemplate(ctx, sandboxv1alpha1.DefaultNetworkTemplate)
@@ -3216,7 +3216,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should reconcile sandbox when referenced NetworkTemplate is created", func() {
 			sandboxName := fmt.Sprintf("sandbox-watch-test-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
+			podName := sandboxName
 			networkTemplateName := fmt.Sprintf("watch-template-%d", time.Now().UnixNano())
 
 			cachedReconciler := newTestReconcilerWithCache(fakeClock)
