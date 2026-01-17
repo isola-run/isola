@@ -114,11 +114,12 @@ const (
 	agentContainerName = "isola-agent"
 
 	// Field index for efficient lookup of sandboxes by templates references
-	sandboxTemplateRefField        = ".spec.templateRef.name"
+	sandboxTemplateRefField        = ".spec.template.effectiveTemplateName"
 	sandboxNetworkTemplateRefField = ".spec.network.effectiveTemplateName"
 
-	// Condition reason for owned NetworkTemplate errors
-	CondReasonOwnedTemplateError = "OwnedTemplateError"
+	// Condition reason for owned template errors
+	CondReasonOwnedTemplateError        = "OwnedTemplateError"
+	CondReasonOwnedSandboxTemplateError = "OwnedSandboxTemplateError"
 
 	NetworkTemplateFinalizer = "sandbox.isola.run/network-template-cleanup"
 )
@@ -698,11 +699,112 @@ func (r *SandboxReconciler) getFilesystemSnapshotterJob(ctx context.Context, san
 	return snapshotterJob, nil
 }
 
+// EnsureOwnedTemplateFromSpec creates or gets a sandbox-owned SandboxTemplate
+// for sandboxes with embedded template spec (template.spec is set).
+// The created SandboxTemplate is owned by the sandbox via OwnerReference
+// and will be garbage-collected when the sandbox is deleted.
+func (r *SandboxReconciler) EnsureOwnedTemplateFromSpec(
+	ctx context.Context,
+	sandbox *sandboxv1alpha1.Sandbox,
+	baseSandbox *sandboxv1alpha1.Sandbox,
+) (*sandboxv1alpha1.SandboxTemplate, error) {
+	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+
+	if !sandbox.HasTemplateSpec() {
+		return nil, nil
+	}
+
+	templateName := sandbox.GetOwnedTemplateName()
+	log = log.WithValues("ownedSandboxTemplate", templateName)
+
+	existing := &sandboxv1alpha1.SandboxTemplate{}
+	err := r.Get(ctx, types.NamespacedName{Name: templateName, Namespace: sandbox.Namespace}, existing)
+
+	if err == nil {
+		// Template exists - verify ownership
+		if !metav1.IsControlledBy(existing, sandbox) {
+			log.Error(nil, "SandboxTemplate exists but is not owned by this sandbox")
+			return nil, fmt.Errorf("SandboxTemplate %q exists but is not owned by sandbox %q", templateName, sandbox.Name)
+		}
+		return existing, nil
+	}
+
+	if !apierrors.IsNotFound(err) {
+		log.Error(err, "Failed to get owned SandboxTemplate")
+		return nil, err
+	}
+
+	// Create sandbox-owned SandboxTemplate
+	log.Info("Creating owned SandboxTemplate")
+	ownedTemplate := &sandboxv1alpha1.SandboxTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      templateName,
+			Namespace: sandbox.Namespace,
+			Labels: map[string]string{
+				"sandbox.isola.run/owner": sandbox.Name,
+				"sandbox.isola.run/owned": "true",
+			},
+		},
+		Spec: *sandbox.Spec.Template.Spec,
+	}
+
+	if err := controllerutil.SetControllerReference(sandbox, ownedTemplate, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference on owned SandboxTemplate")
+		return nil, err
+	}
+
+	if err := r.Create(ctx, ownedTemplate); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			// Race condition - another reconcile created it, refetch
+			if err := r.Get(ctx, types.NamespacedName{Name: templateName, Namespace: sandbox.Namespace}, existing); err != nil {
+				return nil, err
+			}
+			return existing, nil
+		}
+		log.Error(err, "Failed to create owned SandboxTemplate")
+		return nil, err
+	}
+
+	log.Info("Owned SandboxTemplate created")
+	return ownedTemplate, nil
+}
+
 func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.SandboxTemplate, ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+
+	// For embedded specs, create/get the sandbox-owned SandboxTemplate first
+	if sandbox.HasTemplateSpec() {
+		_, err := r.EnsureOwnedTemplateFromSpec(ctx, sandbox, baseSandbox)
+		if err != nil {
+			if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+				{
+					Type:               SandboxTemplateReadyCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonOwnedSandboxTemplateError,
+					Message:            err.Error(),
+					ObservedGeneration: sandbox.Generation,
+				},
+				{
+					Type:               SandboxReadyCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonOwnedSandboxTemplateError,
+					Message:            err.Error(),
+					ObservedGeneration: sandbox.Generation,
+				},
+			}); patchErr != nil {
+				log.Error(patchErr, "Failed to update Sandbox status")
+				return nil, ctrl.Result{}, patchErr
+			}
+			return nil, ctrl.Result{}, err
+		}
+	}
+
+	templateName := sandbox.GetTemplateName()
+	log = log.WithValues("sandboxTemplate", templateName)
+
 	template := &sandboxv1alpha1.SandboxTemplate{}
 
-	if err := r.Get(ctx, types.NamespacedName{Name: sandbox.Spec.TemplateRef.Name, Namespace: sandbox.Namespace}, template); err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Name: templateName, Namespace: sandbox.Namespace}, template); err != nil {
 		if apierrors.IsNotFound(err) {
 
 			if err := r.patchStatus(
@@ -1153,7 +1255,7 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/finalizers,verbs=update
-// +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxtemplates,verbs=get;list;watch
+// +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxtemplates,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=networktemplates,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=networktemplates/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
@@ -1229,7 +1331,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if template == nil {
-		log.Info("Template not found, waiting", "template", sandbox.Spec.TemplateRef.Name)
+		log.Info("Template not found, waiting", "template", sandbox.GetTemplateName())
 		return ctrl.Result{}, nil
 	}
 
@@ -1616,6 +1718,7 @@ func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&sandboxv1alpha1.Sandbox{}).
 		Owns(&corev1.Pod{}).
 		Owns(&batchv1.Job{}).
+		Owns(&sandboxv1alpha1.SandboxTemplate{}).
 		// Watch SandboxTemplate changes to reconcile affected sandboxes
 		Watches(
 			&sandboxv1alpha1.SandboxTemplate{},
@@ -1634,10 +1737,10 @@ func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func extractTemplateRefName(obj client.Object) []string {
 	sandbox, ok := obj.(*sandboxv1alpha1.Sandbox)
-	if !ok || sandbox.Spec.TemplateRef.Name == "" {
+	if !ok {
 		return nil
 	}
-	return []string{sandbox.Spec.TemplateRef.Name}
+	return []string{sandbox.GetTemplateName()}
 }
 
 func extractNetworkTemplateRefName(obj client.Object) []string {

@@ -30,7 +30,6 @@ const (
 	sandboxGroup    = "sandbox.isola.run"
 	sandboxVersion  = "v1alpha1"
 	sandboxPlural   = "sandboxes"
-	templatePlural  = "sandboxtemplates"
 	defaultTimeout  = 600 // seconds
 	defaultShutdown = "Delete"
 )
@@ -91,13 +90,13 @@ func (m *Manager) doInitialize() error {
 	return nil
 }
 
-func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req models.CreateSandboxRequest, templateName string) (bool, *string) {
+func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req models.CreateSandboxRequest, _ string) (bool, *string) {
 	if err := m.Initialize(); err != nil {
 		errorMsg := fmt.Sprintf("Failed to initialize: %v", err)
 		return false, &errorMsg
 	}
 
-	// First create the SandboxTemplate CR
+	// Build inline template spec (embedded directly in the Sandbox)
 	templateSpec := map[string]interface{}{
 		"podTemplate": map[string]interface{}{
 			"spec": map[string]interface{}{
@@ -128,16 +127,10 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 		},
 	}
 
-	err := m.createSandboxTemplateCR(ctx, templateName, templateSpec)
-	if err != nil {
-		errorMsg := fmt.Sprintf("Failed to create SandboxTemplate: %v", err)
-		return false, &errorMsg
-	}
-
-	// Create Sandbox CR
+	// Create Sandbox CR with inline template spec
 	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
-	log.Printf("Creating Sandbox CR '%s' (template=%s) in namespace '%s'",
-		sandboxName, templateName, m.namespace)
+	log.Printf("Creating Sandbox CR '%s' (inline template) in namespace '%s'",
+		sandboxName, m.namespace)
 
 	sandboxBody := &unstructured.Unstructured{
 		Object: map[string]interface{}{
@@ -155,8 +148,8 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 				},
 			},
 			"spec": map[string]interface{}{
-				"templateRef": map[string]interface{}{
-					"name": templateName,
+				"template": map[string]interface{}{
+					"spec": templateSpec,
 				},
 			},
 		},
@@ -168,7 +161,7 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 		Resource: sandboxPlural,
 	}
 
-	_, err = m.dynamicClient.Resource(gvr).Namespace(m.namespace).Create(ctx, sandboxBody, metav1.CreateOptions{})
+	_, err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Create(ctx, sandboxBody, metav1.CreateOptions{})
 	if err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			log.Printf("Sandbox CR '%s' already exists", sandboxName)
@@ -181,53 +174,6 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 
 	log.Printf("Created Sandbox CR 'sandbox-%s' for sandbox %s", sandboxID[:min(8, len(sandboxID))], sandboxID)
 	return true, nil
-}
-
-func (m *Manager) createSandboxTemplateCR(ctx context.Context, templateName string, templateSpec map[string]interface{}) error {
-	log.Printf("Creating SandboxTemplate '%s' in namespace '%s'", templateName, m.namespace)
-
-	templateBody := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": fmt.Sprintf("%s/%s", sandboxGroup, sandboxVersion),
-			"kind":       "SandboxTemplate",
-			"metadata": map[string]interface{}{
-				"name":      templateName,
-				"namespace": m.namespace,
-				"labels": map[string]interface{}{
-					"managed-by": "isola-gw",
-				},
-			},
-			"spec": templateSpec,
-		},
-	}
-
-	gvr := schema.GroupVersionResource{
-		Group:    sandboxGroup,
-		Version:  sandboxVersion,
-		Resource: templatePlural,
-	}
-
-	_, err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Create(ctx, templateBody, metav1.CreateOptions{})
-	if err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			log.Printf("SandboxTemplate '%s' already exists, updating", templateName)
-			// Try to update if it already exists
-			existing, getErr := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Get(ctx, templateName, metav1.GetOptions{})
-			if getErr != nil {
-				return fmt.Errorf("failed to get existing template: %w", getErr)
-			}
-			templateBody.SetResourceVersion(existing.GetResourceVersion())
-			_, updateErr := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Update(ctx, templateBody, metav1.UpdateOptions{})
-			if updateErr != nil {
-				return fmt.Errorf("failed to update template: %w", updateErr)
-			}
-			return nil
-		}
-		return fmt.Errorf("failed to create SandboxTemplate: %w", err)
-	}
-
-	log.Printf("Created SandboxTemplate '%s' in namespace '%s'", templateName, m.namespace)
-	return nil
 }
 
 func (m *Manager) GetSandboxCR(ctx context.Context, sandboxID string) (*unstructured.Unstructured, error) {
@@ -395,13 +341,13 @@ func (m *Manager) parseStateFromConditions(sandbox *unstructured.Unstructured) (
 		switch reason {
 		case "PodPending", "PodCreating", "Reconciling":
 			return models.SandboxStatePending, nil
-		case "PodFailed", "PodCreationFailed":
+		case "PodFailed", "PodCreationFailed", "OwnedSandboxTemplateError", "OwnedTemplateError":
 			errorReason := message
 			return models.SandboxStateError, &errorReason
 		case "PodSucceeded", "TimedOut", "Deleting":
 			return models.SandboxStateStopped, nil
-		case "NetworkConfigNotApplied", "NetworkTemplateNotFound", "NetworkTemplateDeleting":
-			// Network not ready yet, but pod might be pending/running
+		case "NetworkConfigNotApplied", "NetworkTemplateNotFound", "NetworkTemplateDeleting", "TemplateNotFound":
+			// Template/network not ready yet, but pod might be pending/running
 			if podReadyCondition != nil {
 				podStatus, _ := podReadyCondition["status"].(string)
 				if podStatus == "True" {

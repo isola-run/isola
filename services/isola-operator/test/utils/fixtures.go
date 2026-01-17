@@ -87,6 +87,17 @@ func WithNetworkSpec(spec sandboxv1alpha1.NetworkTemplateSpec) SandboxOption {
 	}
 }
 
+// WithSandboxTemplateSpec replaces the template reference with an embedded spec
+func WithSandboxTemplateSpec(spec sandboxv1alpha1.SandboxTemplateSpec) SandboxOption {
+	return func(s *sandboxv1alpha1.Sandbox) {
+		s.Spec.Template = sandboxv1alpha1.TemplateConfig{
+			Spec: &spec,
+		}
+	}
+}
+
+// NewTestSandbox creates a new Sandbox with a template reference.
+// Use WithSandboxTemplateSpec() to override with an embedded spec instead.
 func NewTestSandbox(name, namespace, templateRef string, opts ...SandboxOption) *sandboxv1alpha1.Sandbox {
 	sandbox := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
@@ -94,8 +105,31 @@ func NewTestSandbox(name, namespace, templateRef string, opts ...SandboxOption) 
 			Namespace: namespace,
 		},
 		Spec: sandboxv1alpha1.SandboxSpec{
-			TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-				Name: templateRef,
+			Template: sandboxv1alpha1.TemplateConfig{
+				TemplateRef: &sandboxv1alpha1.SandboxTemplateReference{
+					Name: templateRef,
+				},
+			},
+		},
+	}
+
+	for _, opt := range opts {
+		opt(sandbox)
+	}
+
+	return sandbox
+}
+
+// NewTestSandboxWithSpec creates a new Sandbox with an embedded template spec (no external template reference).
+func NewTestSandboxWithSpec(name, namespace string, spec sandboxv1alpha1.SandboxTemplateSpec, opts ...SandboxOption) *sandboxv1alpha1.Sandbox {
+	sandbox := &sandboxv1alpha1.Sandbox{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: sandboxv1alpha1.SandboxSpec{
+			Template: sandboxv1alpha1.TemplateConfig{
+				Spec: &spec,
 			},
 		},
 	}
@@ -113,6 +147,17 @@ func NewTestSandboxTemplate(name, namespace string, opts ...TemplateOption) *san
 			Name:      name,
 			Namespace: namespace,
 		},
+		Spec: NewTestSandboxTemplateSpec(opts...),
+	}
+
+	return template
+}
+
+// NewTestSandboxTemplateSpec creates a default SandboxTemplateSpec for testing.
+// This can be used both for standalone SandboxTemplate objects and for embedding in Sandbox specs.
+func NewTestSandboxTemplateSpec(opts ...TemplateOption) sandboxv1alpha1.SandboxTemplateSpec {
+	// Create a temporary template to apply options
+	template := &sandboxv1alpha1.SandboxTemplate{
 		Spec: sandboxv1alpha1.SandboxTemplateSpec{
 			PodTemplate: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
@@ -132,7 +177,7 @@ func NewTestSandboxTemplate(name, namespace string, opts ...TemplateOption) *san
 		opt(template)
 	}
 
-	return template
+	return template.Spec
 }
 
 // NetworkTemplateOption is a functional option for configuring NetworkTemplate

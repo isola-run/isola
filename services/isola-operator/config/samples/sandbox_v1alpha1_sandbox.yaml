@@ -7,9 +7,25 @@ metadata:
     app.kubernetes.io/name: isola-operator
     app.kubernetes.io/managed-by: kustomize
 spec:
-  templateRef:
-    name: default-template
-  # networkTemplateRef is optional - defaults to "isola-isolated" (deny-all)
+  # Template can be specified via reference OR inline spec
+  # Option 1: Reference an existing SandboxTemplate
+  template:
+    templateRef:
+      name: default-template
+  # Option 2: Embed the template spec directly (creates owned SandboxTemplate)
+  # template:
+  #   spec:
+  #     podTemplate:
+  #       spec:
+  #         containers:
+  #           - name: sandbox
+  #             image: python:3.11
+  #             command: ["sleep", "3600"]
+  #     timeoutSeconds: 600
+  #     shutdownPolicy:
+  #       policy: Delete
+  # Network is optional - defaults to "isola-isolated" (deny-all)
   # To use a different network template, uncomment:
-  # networkTemplateRef:
-  #   name: isola-egress-only
+  # network:
+  #   templateRef:
+  #     name: isola-egress-only
