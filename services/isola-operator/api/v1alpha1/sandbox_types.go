@@ -100,7 +100,7 @@ type SandboxSpec struct {
 
 // GetNetworkTemplateName returns the effective NetworkTemplate name for this sandbox.
 // - For templateRef: returns the referenced template name
-// - For spec: returns "{sandbox-name}-network"
+// - For spec: returns "{sandbox-name}-net"
 // - otherwise defaults to DefaultNetworkTemplate
 func (s *Sandbox) GetNetworkTemplateName() string {
 	if s.Spec.Network == nil {
@@ -113,7 +113,7 @@ func (s *Sandbox) GetNetworkTemplateName() string {
 }
 
 func (s *Sandbox) GetOwnedNetworkTemplateName() string {
-	return s.Name + "-network"
+	return s.Name + "-net"
 }
 
 func (s *Sandbox) HasNetworkSpec() bool {

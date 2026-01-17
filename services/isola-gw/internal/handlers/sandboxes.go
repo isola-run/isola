@@ -115,8 +115,7 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 	log.Printf("Creating sandbox: %+v", sandbox)
 
 	ctx := c.Request.Context()
-	templateName := "sandbox-template-" + sandboxID
-	success, errorReason := h.k8sManager.CreateSandboxCR(ctx, sandboxID, req, templateName)
+	success, errorReason := h.k8sManager.CreateSandboxCR(ctx, sandboxID, req)
 	if !success {
 		errMsg := "unknown error"
 		if errorReason != nil {
@@ -204,26 +203,18 @@ func (h *Handler) sandboxCRToModel(cr *unstructured.Unstructured) *models.Sandbo
 		return nil
 	}
 
-	// Get sandbox ID from labels
-	labels, _ := metadata["labels"].(map[string]interface{})
-	sandboxID, ok := labels["sandbox-id"].(string)
+	// Sandbox ID is the K8s resource name (UUID)
+	sandboxID, ok := metadata["name"].(string)
 	if !ok || sandboxID == "" {
 		return nil
 	}
 
-	// Get name from annotation or fallback to CR name
-	var sandboxName string
+	// Get optional display name from annotation, fallback to ID
+	sandboxName := sandboxID
 	annotations, _ := metadata["annotations"].(map[string]interface{})
 	if annotations != nil {
-		if nameVal, ok := annotations["isola.run/sandbox-name"].(string); ok {
-			sandboxName = nameVal
-		}
-	}
-	if sandboxName == "" {
-		if nameVal, ok := metadata["name"].(string); ok {
-			sandboxName = nameVal
-		} else {
-			sandboxName = "sandbox-" + sandboxID[:min(8, len(sandboxID))]
+		if displayName, ok := annotations["isola.run/display-name"].(string); ok && displayName != "" {
+			sandboxName = displayName
 		}
 	}
 

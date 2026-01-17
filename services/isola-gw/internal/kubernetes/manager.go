@@ -13,7 +13,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -91,13 +90,13 @@ func (m *Manager) doInitialize() error {
 	return nil
 }
 
-func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req models.CreateSandboxRequest, templateName string) (bool, *string) {
+func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req models.CreateSandboxRequest) (bool, *string) {
 	if err := m.Initialize(); err != nil {
 		errorMsg := fmt.Sprintf("Failed to initialize: %v", err)
 		return false, &errorMsg
 	}
 
-	// First create the SandboxTemplate CR
+	// First create the SandboxTemplate CR (uses same name as sandbox)
 	templateSpec := map[string]interface{}{
 		"podTemplate": map[string]interface{}{
 			"spec": map[string]interface{}{
@@ -128,35 +127,40 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 		},
 	}
 
-	err := m.createSandboxTemplateCR(ctx, templateName, templateSpec)
+	// sandboxID (UUID) is used directly as the K8s resource name
+	// UUID format (e.g., "8d295c17-bea5-41a7-b74e-47ac60402bd9") is DNS-1123 compliant
+	err := m.createSandboxTemplateCR(ctx, sandboxID, templateSpec)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to create SandboxTemplate: %v", err)
 		return false, &errorMsg
 	}
 
-	// Create Sandbox CR
-	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
-	log.Printf("Creating Sandbox CR '%s' (template=%s) in namespace '%s'",
-		sandboxName, templateName, m.namespace)
+	// Create Sandbox CR with UUID as the name
+	log.Printf("Creating Sandbox CR '%s' in namespace '%s'", sandboxID, m.namespace)
+
+	metadata := map[string]interface{}{
+		"name":      sandboxID,
+		"namespace": m.namespace,
+		"labels": map[string]interface{}{
+			"app.kubernetes.io/managed-by": "isola-gw",
+		},
+	}
+
+	// Add optional display name annotation if user provided a name
+	if req.Name != "" {
+		metadata["annotations"] = map[string]interface{}{
+			"isola.run/display-name": req.Name,
+		}
+	}
 
 	sandboxBody := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": fmt.Sprintf("%s/%s", sandboxGroup, sandboxVersion),
 			"kind":       "Sandbox",
-			"metadata": map[string]interface{}{
-				"name":      sandboxName,
-				"namespace": m.namespace,
-				"labels": map[string]interface{}{
-					"sandbox-id": sandboxID,
-					"managed-by": "isola-gw",
-				},
-				"annotations": map[string]interface{}{
-					"isola.run/sandbox-name": req.Name,
-				},
-			},
+			"metadata":   metadata,
 			"spec": map[string]interface{}{
 				"templateRef": map[string]interface{}{
-					"name": templateName,
+					"name": sandboxID,
 				},
 			},
 		},
@@ -171,15 +175,15 @@ func (m *Manager) CreateSandboxCR(ctx context.Context, sandboxID string, req mod
 	_, err = m.dynamicClient.Resource(gvr).Namespace(m.namespace).Create(ctx, sandboxBody, metav1.CreateOptions{})
 	if err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			log.Printf("Sandbox CR '%s' already exists", sandboxName)
+			log.Printf("Sandbox CR '%s' already exists", sandboxID)
 			return true, nil
 		}
-		log.Printf("Failed to create Sandbox CR for %s: %v", sandboxID, err)
+		log.Printf("Failed to create Sandbox CR '%s': %v", sandboxID, err)
 		errorMsg := fmt.Sprintf("Kubernetes API error: %v", err)
 		return false, &errorMsg
 	}
 
-	log.Printf("Created Sandbox CR 'sandbox-%s' for sandbox %s", sandboxID[:min(8, len(sandboxID))], sandboxID)
+	log.Printf("Created Sandbox CR '%s'", sandboxID)
 	return true, nil
 }
 
@@ -235,14 +239,14 @@ func (m *Manager) GetSandboxCR(ctx context.Context, sandboxID string) (*unstruct
 		return nil, fmt.Errorf("failed to initialize: %w", err)
 	}
 
-	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
+	// sandboxID is the K8s resource name directly
 	gvr := schema.GroupVersionResource{
 		Group:    sandboxGroup,
 		Version:  sandboxVersion,
 		Resource: sandboxPlural,
 	}
 
-	sandbox, err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Get(ctx, sandboxName, metav1.GetOptions{})
+	sandbox, err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Get(ctx, sandboxID, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -283,8 +287,8 @@ func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) error {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
 
-	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
-	log.Printf("Deleting Sandbox CR '%s'", sandboxName)
+	// sandboxID is the K8s resource name directly
+	log.Printf("Deleting Sandbox CR '%s'", sandboxID)
 
 	gvr := schema.GroupVersionResource{
 		Group:    sandboxGroup,
@@ -292,17 +296,17 @@ func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) error {
 		Resource: sandboxPlural,
 	}
 
-	err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Delete(ctx, sandboxName, metav1.DeleteOptions{})
+	err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Delete(ctx, sandboxID, metav1.DeleteOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Printf("Sandbox CR '%s' already deleted", sandboxName)
+			log.Printf("Sandbox CR '%s' already deleted", sandboxID)
 			return nil // Idempotent: already gone is success
 		}
-		log.Printf("Failed to delete Sandbox CR '%s': %v", sandboxName, err)
+		log.Printf("Failed to delete Sandbox CR '%s': %v", sandboxID, err)
 		return err // Preserve original error for apierrors.IsNotFound() etc.
 	}
 
-	log.Printf("Deleted Sandbox CR '%s'", sandboxName)
+	log.Printf("Deleted Sandbox CR '%s'", sandboxID)
 	return nil
 }
 
@@ -345,10 +349,9 @@ func (m *Manager) GetSandboxStatus(ctx context.Context, sandboxID string) (*Sand
 
 // getAgentAddress constructs the DNS-resolvable address for the sandbox agent.
 // Format: <pod-name>.<headless-service>.<namespace>.svc.cluster.local
+// Pod name is the same as sandbox ID (UUID).
 func (m *Manager) getAgentAddress(sandboxID string) string {
-	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
-	podName := sandboxName + "-pod"
-	return fmt.Sprintf("%s.%s.%s.svc.cluster.local", podName, agentServiceName, m.namespace)
+	return fmt.Sprintf("%s.%s.%s.svc.cluster.local", sandboxID, agentServiceName, m.namespace)
 }
 
 // parseStateFromConditions derives the SandboxState from the Sandbox CR conditions.
@@ -426,26 +429,21 @@ func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command 
 		return "", fmt.Sprintf("Failed to initialize: %v", err), 1, err
 	}
 
-	labelSelector := labels.SelectorFromSet(map[string]string{
-		"sandbox-id": sandboxID,
-	}).String()
+	// Pod name is the same as sandboxID (UUID)
+	podName := sandboxID
 
-	pods, err := m.clientset.CoreV1().Pods(m.namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: labelSelector,
-	})
+	pod, err := m.clientset.CoreV1().Pods(m.namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
-		log.Printf("Failed to list pods for sandbox %s: %v", sandboxID, err)
+		if apierrors.IsNotFound(err) {
+			errorMsg := fmt.Sprintf("Pod not found for sandbox %s", sandboxID)
+			log.Print(errorMsg)
+			return "", errorMsg, 1, errors.New(errorMsg)
+		}
+		log.Printf("Failed to get pod for sandbox %s: %v", sandboxID, err)
 		return "", fmt.Sprintf("API error: %v", err), 1, err
 	}
 
-	if len(pods.Items) == 0 {
-		errorMsg := fmt.Sprintf("Pod not found for sandbox %s", sandboxID)
-		log.Print(errorMsg)
-		return "", errorMsg, 1, errors.New(errorMsg)
-	}
-
-	pod := pods.Items[0]
-	podName := pod.Name
+	_ = pod // pod retrieved successfully
 
 	// Execute command in pod using /bin/sh -c
 	execCommand := []string{"/bin/sh", "-c", command}

@@ -45,16 +45,16 @@ class K8sHelper:
         sandbox_id: str,
         namespace: str = "isola-sandboxes",
     ) -> V1Pod | None:
-        """Get the pod for a sandbox by its ID."""
+        """Get the pod for a sandbox by its ID (UUID = pod name)."""
         try:
-            pods = self.core_v1.list_namespaced_pod(
+            # Pod name is the same as sandbox_id (UUID)
+            return self.core_v1.read_namespaced_pod(
+                name=sandbox_id,
                 namespace=namespace,
-                label_selector=f"sandbox-id={sandbox_id}",
             )
-            if pods.items:
-                return pods.items[0]
-            return None
         except ApiException as e:
+            if e.status == 404:
+                return None
             logger.error(f"Failed to get sandbox pod: {e}")
             return None
 
@@ -63,14 +63,14 @@ class K8sHelper:
         sandbox_id: str,
         namespace: str = "isola-sandboxes",
     ) -> dict | None:
-        """Get the Sandbox custom resource."""
+        """Get the Sandbox custom resource (sandbox_id is the K8s resource name)."""
         try:
             return self.custom.get_namespaced_custom_object(
                 group="sandbox.isola.run",
                 version="v1alpha1",
                 namespace=namespace,
                 plural="sandboxes",
-                name=f"sandbox-{sandbox_id}",
+                name=sandbox_id,
             )
         except ApiException as e:
             if e.status == 404:
