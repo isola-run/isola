@@ -70,11 +70,11 @@ class TestRootfsSnapshotCreation:
             )
             logger.info(f"Created RootfsSnapshot: {snapshot_name}")
 
-            # Wait for snapshot to complete (Ready=True or Ready=False with Failed reason)
+            # Wait for snapshot to complete (Complete=True or Complete=False with Failed reason)
             try:
                 snap = k8s.wait_for_snapshot_condition(
                     name=snapshot_name,
-                    condition_type="Ready",
+                    condition_type="Complete",
                     expected_status="True",
                     timeout=120,
                 )
@@ -118,14 +118,14 @@ class TestRootfsSnapshotCreation:
             # Wait for failure
             snap = k8s.wait_for_snapshot_condition(
                 name=snapshot_name,
-                condition_type="Ready",
+                condition_type="Complete",
                 expected_status="False",
                 timeout=30,
             )
 
             # Verify it failed with appropriate reason
             conditions = snap.get("status", {}).get("conditions", [])
-            ready_cond = next((c for c in conditions if c["type"] == "Ready"), None)
+            ready_cond = next((c for c in conditions if c["type"] == "Complete"), None)
             assert ready_cond is not None
             assert ready_cond["reason"] == "Failed"
             assert "not found" in ready_cond.get("message", "").lower()
@@ -155,14 +155,14 @@ class TestRootfsSnapshotCreation:
             # Wait for failure
             snap = k8s.wait_for_snapshot_condition(
                 name=snapshot_name,
-                condition_type="Ready",
+                condition_type="Complete",
                 expected_status="False",
                 timeout=30,
             )
 
             # Verify it failed
             conditions = snap.get("status", {}).get("conditions", [])
-            ready_cond = next((c for c in conditions if c["type"] == "Ready"), None)
+            ready_cond = next((c for c in conditions if c["type"] == "Complete"), None)
             assert ready_cond is not None
             assert ready_cond["reason"] == "Failed"
             assert "no containers" in ready_cond.get("message", "").lower()
@@ -290,7 +290,7 @@ class TestRootfsSnapshotTTL:
             # Wait for completion
             k8s.wait_for_snapshot_condition(
                 name=snap_name,
-                condition_type="Ready",
+                condition_type="Complete",
                 expected_status="True",
                 timeout=120,
             )
