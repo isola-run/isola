@@ -24,20 +24,20 @@ import (
 type RootfsSnapshotConditionType string
 
 const (
-	// RootfsSnapshotReady indicates all containers have been snapshotted successfully.
+	// RootfsSnapshotComplete indicates all containers have been snapshotted.
 	// True when all container snapshots succeeded.
 	// False when any snapshot failed or is still in progress.
-	RootfsSnapshotReady RootfsSnapshotConditionType = "Ready"
+	RootfsSnapshotComplete RootfsSnapshotConditionType = "Complete"
 )
 
 // ContainerSnapshotConditionType defines condition types for per-container status
 type ContainerSnapshotConditionType string
 
 const (
-	// ContainerSnapshotReady indicates this container's snapshot status.
+	// ContainerSnapshotComplete indicates this container's snapshot status.
 	// True when snapshot succeeded.
-	// False when snapshot failed or is in progress.
-	ContainerSnapshotReady ContainerSnapshotConditionType = "Ready"
+	// False when snapshot failed or is still in progress.
+	ContainerSnapshotComplete ContainerSnapshotConditionType = "Complete"
 )
 
 // Condition reasons for RootfsSnapshot
@@ -145,8 +145,8 @@ type RootfsSnapshotStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=rfs
-// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status",description="All snapshots completed successfully"
-// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason",description="Reason for Ready condition"
+// +kubebuilder:printcolumn:name="Complete",type="string",JSONPath=".status.conditions[?(@.type=='Complete')].status",description="All snapshots completed successfully"
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Complete')].reason",description="Reason for Complete condition"
 // +kubebuilder:printcolumn:name="Sandbox",type="string",JSONPath=".spec.sandboxName",description="Sandbox being snapshotted"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 

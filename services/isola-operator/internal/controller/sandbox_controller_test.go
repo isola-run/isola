@@ -171,7 +171,7 @@ func setRootfsSnapshotReady(ctx context.Context, name string, ready bool, reason
 		status = metav1.ConditionFalse
 	}
 	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-		Type:               string(sandboxv1alpha1.RootfsSnapshotReady),
+		Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
 		Status:             status,
 		Reason:             reason,
 		Message:            message,

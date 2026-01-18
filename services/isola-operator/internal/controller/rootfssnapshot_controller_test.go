@@ -276,7 +276,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snap := getRootfsSnapshotHelper(ctx, snapName, testNamespace)
 			Expect(snap).NotTo(BeNil())
 
-			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
@@ -329,7 +329,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snap := getRootfsSnapshotHelper(ctx, snapName, testNamespace)
 			Expect(snap).NotTo(BeNil())
 
-			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
@@ -361,7 +361,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snap := getRootfsSnapshotHelper(ctx, snapName, testNamespace)
 			Expect(snap).NotTo(BeNil())
 
-			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
@@ -472,7 +472,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snap := getRootfsSnapshotHelper(ctx, snapName, testNamespace)
 			Expect(snap).NotTo(BeNil())
 
-			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotSucceeded))
@@ -519,7 +519,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snap := getRootfsSnapshotHelper(ctx, snapName, testNamespace)
 			Expect(snap).NotTo(BeNil())
 
-			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
@@ -646,7 +646,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snap := getRootfsSnapshotHelper(ctx, snapName, testNamespace)
 			Expect(snap).NotTo(BeNil())
 
-			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))

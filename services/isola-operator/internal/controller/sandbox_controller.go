@@ -761,7 +761,7 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 		}
 	}
 
-	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 	if readyCond == nil {
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
@@ -1260,7 +1260,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{RequeueAfter: requeueAfter}, false, nil
 	}
 
-	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotReady))
+	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 	if readyCond != nil && readyCond.Status == metav1.ConditionTrue {
 		log.Info("Snapshot completed successfully", "snapshot", snapshotName)
 		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", fmt.Sprintf("Snapshot %q completed", snapshotName))
