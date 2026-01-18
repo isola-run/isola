@@ -39,6 +39,7 @@ helm_resource(
 # isola-operator
 # ==============================================================================
 
+# todo benl: reduce context when we restructure repo to go standards
 docker_build(
     'isola-operator',
     context='.',

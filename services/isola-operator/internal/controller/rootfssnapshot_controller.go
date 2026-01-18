@@ -411,6 +411,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					ServiceAccountName: r.SnapshotServiceAccount,
+					HostPID:            true, // runsc tar needs host PID namespace to verify sandbox is running
 					NodeSelector: map[string]string{
 						"kubernetes.io/hostname": sandboxPod.Spec.NodeName,
 					},
@@ -424,7 +425,13 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 							Command: []string{"/usr/local/bin/runsc"},
 							Args:    []string{"--root=/run/containerd/runsc/k8s.io", "tar", "rootfs-upper", "--file", localSnapshotPath, containerID},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged: ptr.To(bool(false)),
+								RunAsUser:  ptr.To(int64(0)), // root needed to read runsc state files
+								RunAsGroup: ptr.To(int64(0)),
+								Capabilities: &corev1.Capabilities{
+									Drop: []corev1.Capability{"ALL"},
+								},
+								ReadOnlyRootFilesystem:   ptr.To(true),
+								AllowPrivilegeEscalation: ptr.To(false),
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "runsc-bin", MountPath: "/usr/local/bin/runsc", ReadOnly: true},
@@ -451,6 +458,16 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 							Image:   r.UploaderImage,
 							Env:     uploaderEnv,
 							EnvFrom: uploaderEnvFrom,
+							SecurityContext: &corev1.SecurityContext{
+								RunAsUser:    ptr.To(int64(65534)), // nobody
+								RunAsGroup:   ptr.To(int64(65534)),
+								RunAsNonRoot: ptr.To(true),
+								Capabilities: &corev1.Capabilities{
+									Drop: []corev1.Capability{"ALL"},
+								},
+								ReadOnlyRootFilesystem:   ptr.To(true),
+								AllowPrivilegeEscalation: ptr.To(false),
+							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "snapshot-data", MountPath: "/snapshot", ReadOnly: true},
 							},
