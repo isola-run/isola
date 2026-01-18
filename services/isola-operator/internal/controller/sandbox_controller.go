@@ -689,6 +689,7 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	networkCondition := r.determineNetworkCondition(sandbox, networkTemplate)
 	conditions = append(conditions, networkCondition)
 
+	// todo benl: currently, only shutdown snapsbot condition is reflected
 	shutdownSnapshot, err := r.getShutdownSnapshot(ctx, sandbox)
 	if err != nil {
 		return err
@@ -1163,6 +1164,8 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		}); err != nil {
 			return ctrl.Result{}, false, err
 		}
+		// return true for cleanupDone so the sandbox gets deleted and as a result
+		// the rootfssnapshot due to it being owned by the sandboxed
 		return ctrl.Result{}, true, nil
 	}
 
