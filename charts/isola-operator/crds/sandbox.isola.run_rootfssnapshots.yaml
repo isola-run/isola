@@ -18,11 +18,11 @@ spec:
   versions:
   - additionalPrinterColumns:
     - description: All snapshots completed successfully
-      jsonPath: .status.conditions[?(@.type=='Ready')].status
-      name: Ready
+      jsonPath: .status.conditions[?(@.type=='Complete')].status
+      name: Complete
       type: string
-    - description: Reason for Ready condition
-      jsonPath: .status.conditions[?(@.type=='Ready')].reason
+    - description: Reason for Complete condition
+      jsonPath: .status.conditions[?(@.type=='Complete')].reason
       name: Reason
       type: string
     - description: Sandbox being snapshotted
