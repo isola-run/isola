@@ -45,7 +45,6 @@ func buildObjectKey(objectType string, tenantID string, sandboxID string, id str
 
 // generateDownloadID creates a deterministic download ID from tenant, sandbox, and path.
 // Same file always gets the same ID, enabling stateless operation.
-// TODO: __OMER__ verify if there's a token to download with it.
 func generateDownloadID(tenantID, sandboxID, path string) string {
 	h := sha256.New()
 	h.Write([]byte(tenantID + sandboxID + path))
