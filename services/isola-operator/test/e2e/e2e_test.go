@@ -31,7 +31,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/omereli/dev-isola/services/isola-operator/test/utils"
+	"github.com/isola-ai/isola-sb/services/isola-operator/test/utils"
 )
 
 // namespace where the project is deployed in (configurable via ISOLA_TEST_NAMESPACE env var)

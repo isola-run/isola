@@ -36,7 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
+	sandboxv1alpha1 "github.com/isola-ai/isola-sb/services/isola-operator/api/v1alpha1"
 )
 
 // Helper functions for tests
@@ -515,6 +515,58 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Labels).To(HaveKeyWithValue("app", "isola-sandbox"))
 			Expect(pod.Labels).To(HaveKeyWithValue("sandbox.isola.run/id", sandboxName))
 			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "isola-operator"))
+		})
+
+		It("should add gvisor overlay2 annotation when RuntimeClassName is set", func() {
+			sandboxName := "sandbox-gvisor-overlay"
+			templateName := "template-gvisor-overlay"
+			runtimeClassName := "gvisor"
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			// Use reconciler with RuntimeClassName configured
+			reconcilerWithRuntime := newTestReconcilerWithRuntimeClass(fakeClock, runtimeClassName)
+
+			createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
+
+			createSandbox(ctx, sandboxName, templateName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconcilerWithRuntime, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.RuntimeClassName).NotTo(BeNil())
+			Expect(*pod.Spec.RuntimeClassName).To(Equal(runtimeClassName))
+			Expect(pod.Annotations).To(HaveKeyWithValue("dev.gvisor.flag.overlay2", "root:self"))
+		})
+
+		It("should not add gvisor overlay2 annotation when RuntimeClassName is not set", func() {
+			sandboxName := "sandbox-no-runtime"
+			templateName := "template-no-runtime"
+
+			createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
+
+			createSandbox(ctx, sandboxName, templateName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.RuntimeClassName).To(BeNil())
+			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.overlay2"))
 		})
 
 		It("should preserve template init containers when injecting agent sidecar", func() {

@@ -3,12 +3,8 @@
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
-MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-ROOT_DIR := $(abspath $(MAKEFILE_DIR)/../..)
-LOCALBIN := $(ROOT_DIR)/bin
-
-GOLANGCI_LINT := $(LOCALBIN)/golangci-lint
-GOVULNCHECK := $(LOCALBIN)/govulncheck
+GOLANGCI_LINT ?= golangci-lint
+GOVULNCHECK ?= govulncheck
 
 .PHONY: all
 all: build

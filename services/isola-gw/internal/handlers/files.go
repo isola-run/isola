@@ -18,7 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/omereli/dev-isola/services/isola-gw/internal/models"
+	"github.com/isola-ai/isola-sb/services/isola-gw/internal/models"
 )
 
 const (
@@ -738,15 +738,20 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 	log.Printf("[CONFIRM] Request for sandbox %s: upload_id=%s, filename=%s, path=%s", sandboxID, req.UploadID, req.Filename, req.Path)
 
 	// Get tenant ID from context
-	tenantID, ok := c.Get("tenant_id")
-	if !ok {
+	tenantID, _ := c.Get("tenant_id")
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
 			Error:   "Unauthorized",
-			Message: "tenant_id not found in context",
 		})
 		return
 	}
-	tenantIDStr := tenantID.(string)
+	tenantIDStr, ok := tenantID.(string)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:   "InternalServerError",
+			Message: "Invalid tenant ID type",
+		})
+		return
+	}
 
 	ctx := c.Request.Context()
 

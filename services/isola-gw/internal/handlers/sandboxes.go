@@ -5,12 +5,12 @@ import (
 	"context"
 	"log" // TODO: Use slog
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/omereli/dev-isola/services/isola-gw/internal/models"
+	"github.com/isola-ai/isola-sb/services/isola-gw/internal/models"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -178,15 +178,18 @@ func (h *Handler) TerminateSandbox(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	success, errorReason := h.k8sManager.DeleteSandboxCR(ctx, sandboxID)
-	if !success {
-		statusCode := http.StatusInternalServerError
-		if errorReason != nil && strings.Contains(*errorReason, "not found") {
-			statusCode = http.StatusNotFound
+	err := h.k8sManager.DeleteSandboxCR(ctx, sandboxID)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, models.ErrorResponse{
+				Error:   "NotFound",
+				Message: "Sandbox not found",
+			})
+			return
 		}
-		c.JSON(statusCode, models.ErrorResponse{
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "InternalServerError",
-			Message: *errorReason,
+			Message: err.Error(),
 		})
 		return
 	}

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/omereli/dev-isola/services/isola-gw/internal/models"
+	"github.com/isola-ai/isola-sb/services/isola-gw/internal/models"
 )
 
 func (h *Handler) HealthCheck(c *gin.Context) {

@@ -42,7 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
+	sandboxv1alpha1 "github.com/isola-ai/isola-sb/services/isola-operator/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -259,6 +259,20 @@ func newTestReconcilerWithRecorder(clock Clock, recorder record.EventRecorder) *
 		Recorder:   recorder,
 		AgentImage: "isola-agent:test",
 		Clock:      clock,
+	}
+}
+
+// newTestReconcilerWithRuntimeClass creates a SandboxReconciler with RuntimeClassName set.
+// Used for testing gvisor-specific features like overlay2 annotation.
+func newTestReconcilerWithRuntimeClass(clock Clock, runtimeClassName string) *SandboxReconciler {
+	rec := record.NewFakeRecorder(100)
+	return &SandboxReconciler{
+		Client:           k8sClient,
+		Scheme:           scheme.Scheme,
+		Recorder:         rec,
+		AgentImage:       "isola-agent:test",
+		Clock:            clock,
+		RuntimeClassName: runtimeClassName,
 	}
 }
 
