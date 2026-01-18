@@ -116,13 +116,11 @@ func run() error {
 	}
 	defer bucket.Close()
 
-	// Determine the next revision by listing existing snapshots
 	revision, err := getNextRevision(ctx, bucket, namespace, sandboxName)
 	if err != nil {
 		return fmt.Errorf("failed to determine revision: %w", err)
 	}
 
-	// Build the snapshot key
 	snapshotKey := fmt.Sprintf("snapshots/%s/%s/rev-%05d/%s.tar", namespace, sandboxName, revision, containerName)
 
 	fmt.Printf("Uploading %s to %s (key: %s, revision: %d)\n", snapshotFile, bucketURL, snapshotKey, revision)
