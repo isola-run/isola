@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -33,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/omereli/dev-isola/services/isola-operator/api/v1alpha1"
@@ -161,40 +159,8 @@ func deleteJob(ctx context.Context, name string) {
 	}
 }
 
-func createNetworkTemplate(ctx context.Context, name string, opts ...func(*sandboxv1alpha1.NetworkTemplate)) *sandboxv1alpha1.NetworkTemplate {
-	nt := &sandboxv1alpha1.NetworkTemplate{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: testNamespace,
-		},
-		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			// Default to isolated mode (DNSPolicy: None with external DNS)
-			// This satisfies CEL validation without requiring cluster DNS access
-			DNSPolicy:   corev1.DNSNone,
-			Nameservers: []string{"8.8.8.8"},
-		},
-	}
-	for _, opt := range opts {
-		opt(nt)
-	}
-	ExpectWithOffset(1, k8sClient.Create(ctx, nt)).To(Succeed())
-	return nt
-}
-
-func deleteNetworkTemplate(ctx context.Context, name string) {
-	nt := &sandboxv1alpha1.NetworkTemplate{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, nt)
-	if err == nil {
-		// Remove finalizer if present to allow deletion
-		if len(nt.Finalizers) > 0 {
-			nt.Finalizers = nil
-			_ = k8sClient.Update(ctx, nt)
-		}
-		_ = k8sClient.Delete(ctx, nt)
-	}
-}
-
-func createSandboxWithNetworkTemplate(ctx context.Context, name, templateRef, networkTemplateRef string) {
+// createSandboxWithNetwork creates a sandbox with a custom network configuration
+func createSandboxWithNetwork(ctx context.Context, name, templateRef string, networkConfig *sandboxv1alpha1.NetworkConfig) *sandboxv1alpha1.Sandbox {
 	sandbox := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -204,14 +170,11 @@ func createSandboxWithNetworkTemplate(ctx context.Context, name, templateRef, ne
 			TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
 				Name: templateRef,
 			},
-			Network: &sandboxv1alpha1.NetworkConfig{
-				TemplateRef: &sandboxv1alpha1.NetworkTemplateReference{
-					Name: networkTemplateRef,
-				},
-			},
+			Network: networkConfig,
 		},
 	}
 	ExpectWithOffset(1, k8sClient.Create(ctx, sandbox)).To(Succeed())
+	return sandbox
 }
 
 func hasConditionWithReason(sandbox *sandboxv1alpha1.Sandbox, condType string, status metav1.ConditionStatus, reason string) bool {
@@ -2178,9 +2141,9 @@ var _ = Describe("Sandbox Controller", func() {
 	})
 
 	// ============================================
-	// Category G: NetworkPolicy Tests
+	// Category G: Network Configuration Tests
 	// ============================================
-	Context("NetworkPolicy", func() {
+	Context("Network Configuration", func() {
 		var (
 			reconciler *SandboxReconciler
 			fakeClock  *FakeClock
@@ -2209,172 +2172,185 @@ var _ = Describe("Sandbox Controller", func() {
 			}
 		}
 
-		It("should create NetworkPolicy when NetworkTemplate is referenced", func() {
-			sandboxName := "sandbox-netpol-basic"
-			templateName := "template-netpol-basic"
-			networkTemplateName := "nettemplate-basic"
+		It("should apply AllowInternet label when AllowInternet is true", func() {
+			sandboxName := "sandbox-allow-internet"
+			templateName := "template-allow-internet"
 
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.AllowedEgressCIDRs = []string{"8.8.8.0/24"}
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				AllowInternet: true,
 			})
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkPolicyHelper(ctx, networkTemplateName+"-netpol")
-
-			reconcileNetworkTemplate(ctx, networkTemplateName)
-
-			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			np := getNetworkPolicy(ctx, networkTemplateName+"-netpol")
-			Expect(np).NotTo(BeNil())
-			Expect(np.Spec.PolicyTypes).To(ContainElements(
-				networkingv1.PolicyTypeIngress,
-				networkingv1.PolicyTypeEgress,
-			))
-			// 2 egress rules: DNS (from default spec) + CIDR
-			Expect(np.Spec.Egress).To(HaveLen(2))
-			// Verify our CIDR rule exists
-			var foundCIDR bool
-			for _, rule := range np.Spec.Egress {
-				for _, to := range rule.To {
-					if to.IPBlock != nil && to.IPBlock.CIDR == "8.8.8.0/24" {
-						foundCIDR = true
-						break
-					}
-				}
-			}
-			Expect(foundCIDR).To(BeTrue())
-
-			Expect(np.Spec.PodSelector.MatchLabels).To(HaveKeyWithValue("sandbox.isola.run/network-template", networkTemplateName))
-
-			sandbox := getSandbox(ctx, sandboxName)
-			Expect(hasConditionWithReason(sandbox, SandboxNetworkReadyCondition, metav1.ConditionTrue, CondReasonNetworkPolicyApplied)).To(BeTrue())
+			pod := getPod(ctx, sandboxName+"-pod")
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Labels[sandboxv1alpha1.LabelAllowInternet]).To(Equal("true"))
+			Expect(pod.Labels[sandboxv1alpha1.LabelAllowClusterDNS]).To(BeEmpty())
 		})
 
-		It("should not create NetworkPolicy when no NetworkTemplateRef is specified", func() {
-			sandboxName := "sandbox-no-netpol"
-			templateName := "template-no-netpol"
+		It("should apply AllowClusterDNS label when AllowClusterDNS is true", func() {
+			sandboxName := "sandbox-allow-dns"
+			templateName := "template-allow-dns"
 
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			createSandbox(ctx, sandboxName, templateName)
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				AllowClusterDNS: true,
+			})
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
+			pod := getPod(ctx, sandboxName+"-pod")
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Labels[sandboxv1alpha1.LabelAllowClusterDNS]).To(Equal("true"))
+			Expect(pod.Labels[sandboxv1alpha1.LabelAllowInternet]).To(BeEmpty())
+		})
+
+		It("should apply both network labels when both options are true", func() {
+			sandboxName := "sandbox-both-labels"
+			templateName := "template-both-labels"
+
+			createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
+
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				AllowInternet:   true,
+				AllowClusterDNS: true,
+			})
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, sandboxName+"-pod")
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Labels[sandboxv1alpha1.LabelAllowInternet]).To(Equal("true"))
+			Expect(pod.Labels[sandboxv1alpha1.LabelAllowClusterDNS]).To(Equal("true"))
+		})
+
+		It("should not create NetworkPolicy when no custom rules are specified", func() {
+			sandboxName := "sandbox-no-custom-netpol"
+			templateName := "template-no-custom-netpol"
+
+			createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
+
+			// Only using AllowInternet (handled by shared policy via labels)
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				AllowInternet: true,
+			})
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// No per-sandbox NetworkPolicy should be created
 			np := getNetworkPolicy(ctx, sandboxName+"-netpol")
 			Expect(np).To(BeNil())
 		})
 
-		It("should create isolated policy with DNS egress when using default template config", func() {
-			// Default template uses DNSPolicy: None with external DNS, so egress to DNS is allowed
-			sandboxName := "sandbox-isolated"
-			templateName := "template-isolated"
-			networkTemplateName := "nettemplate-isolated"
+		It("should create per-sandbox NetworkPolicy when AllowedCIDRs are specified", func() {
+			sandboxName := "sandbox-cidr-policy"
+			templateName := "template-cidr-policy"
 
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			createNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkPolicyHelper(ctx, networkTemplateName+"-netpol")
-
-			reconcileNetworkTemplate(ctx, networkTemplateName)
-
-			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				AllowedCIDRs: []sandboxv1alpha1.CIDREgressRule{
+					{CIDR: "10.0.0.0/24"},
+				},
+			})
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
+			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			np := getNetworkPolicy(ctx, networkTemplateName+"-netpol")
+			// Verify per-sandbox NetworkPolicy was created
+			np := getNetworkPolicy(ctx, sandboxName+"-netpol")
 			Expect(np).NotTo(BeNil())
-			// Ingress is nil (handled by Helm-installed NetworkPolicy for isola-gw)
-			Expect(np.Spec.Ingress).To(BeNil())
-			// Egress has DNS rule (from default Nameservers)
+			Expect(np.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeEgress))
+
+			// Verify CIDR egress rule exists
 			Expect(np.Spec.Egress).To(HaveLen(1))
-			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("8.8.8.8/32"))
-			Expect(np.Spec.PolicyTypes).To(ContainElements(
-				networkingv1.PolicyTypeIngress,
-				networkingv1.PolicyTypeEgress,
-			))
+			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("10.0.0.0/24"))
+
+			// Verify sandbox owns the NetworkPolicy
+			Expect(np.OwnerReferences).To(HaveLen(1))
+			Expect(np.OwnerReferences[0].Name).To(Equal(sandboxName))
 		})
 
-		It("should include DNS egress rule when Nameservers is specified", func() {
-			sandboxName := "sandbox-dns-allowed"
-			templateName := "template-dns-allowed"
-			networkTemplateName := "nettemplate-dns-allowed"
+		It("should create per-sandbox NetworkPolicy when custom DNS servers are specified", func() {
+			sandboxName := "sandbox-dns-policy"
+			templateName := "template-dns-policy"
 
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.Nameservers = []string{"8.8.8.8"}
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				DNS: []string{"8.8.8.8", "1.1.1.1"},
 			})
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkPolicyHelper(ctx, networkTemplateName+"-netpol")
-
-			// Reconcile NetworkTemplate to create NetworkPolicy and set Ready condition
-			reconcileNetworkTemplate(ctx, networkTemplateName)
-
-			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
+			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Verify DNS egress rule exists
-			np := getNetworkPolicy(ctx, networkTemplateName+"-netpol")
+			// Verify per-sandbox NetworkPolicy was created
+			np := getNetworkPolicy(ctx, sandboxName+"-netpol")
 			Expect(np).NotTo(BeNil())
-			Expect(np.Spec.Egress).To(HaveLen(1))
-			// Verify it targets the DNS server IP as /32 CIDR
-			Expect(np.Spec.Egress[0].To).To(HaveLen(1))
-			Expect(np.Spec.Egress[0].To[0].IPBlock).NotTo(BeNil())
-			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("8.8.8.8/32"))
-			// Verify port 53 UDP and TCP
-			Expect(np.Spec.Egress[0].Ports).To(HaveLen(2))
+
+			// Verify DNS egress rules exist (one per server with port 53)
+			var dnsRules []networkingv1.NetworkPolicyEgressRule
+			for _, rule := range np.Spec.Egress {
+				for _, to := range rule.To {
+					if to.IPBlock != nil && (to.IPBlock.CIDR == "8.8.8.8/32" || to.IPBlock.CIDR == "1.1.1.1/32") {
+						dnsRules = append(dnsRules, rule)
+						break
+					}
+				}
+			}
+			Expect(dnsRules).To(HaveLen(2))
 		})
 
 		It("should block risky CIDRs (169.254.0.0/16) when egress allows 0.0.0.0/0", func() {
 			sandboxName := "sandbox-block-metadata"
 			templateName := "template-block-metadata"
-			networkTemplateName := "nettemplate-block-metadata"
 
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.AllowedEgressCIDRs = []string{"0.0.0.0/0"}
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				AllowedCIDRs: []sandboxv1alpha1.CIDREgressRule{
+					{CIDR: "0.0.0.0/0"},
+				},
 			})
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkPolicyHelper(ctx, networkTemplateName+"-netpol")
-
-			// Reconcile NetworkTemplate to create NetworkPolicy and set Ready condition
-			reconcileNetworkTemplate(ctx, networkTemplateName)
-
-			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
+			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify NetworkPolicy has 169.254.0.0/16 in except
-			np := getNetworkPolicy(ctx, networkTemplateName+"-netpol")
+			np := getNetworkPolicy(ctx, sandboxName+"-netpol")
 			Expect(np).NotTo(BeNil())
-			// Find the 0.0.0.0/0 rule (not the DNS rule)
+			// Find the 0.0.0.0/0 rule
 			var cidrRule *networkingv1.NetworkPolicyEgressRule
 			for i := range np.Spec.Egress {
 				for _, to := range np.Spec.Egress[i].To {
@@ -2391,31 +2367,26 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should not add except for public CIDRs that don't overlap blocked ranges", func() {
 			sandboxName := "sandbox-public-range"
 			templateName := "template-public-range"
-			networkTemplateName := "nettemplate-public-range"
 
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.AllowedEgressCIDRs = []string{"8.8.8.0/24"}
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				AllowedCIDRs: []sandboxv1alpha1.CIDREgressRule{
+					{CIDR: "8.8.8.0/24"},
+				},
 			})
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkPolicyHelper(ctx, networkTemplateName+"-netpol")
-
-			// Reconcile NetworkTemplate to create NetworkPolicy and set Ready condition
-			reconcileNetworkTemplate(ctx, networkTemplateName)
-
-			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
+			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Public CIDR 8.8.8.0/24 doesn't overlap blocked ranges, so no except list
-			np := getNetworkPolicy(ctx, networkTemplateName+"-netpol")
+			np := getNetworkPolicy(ctx, sandboxName+"-netpol")
 			Expect(np).NotTo(BeNil())
-			// Find our CIDR rule (not the DNS rule which is 8.8.8.8/32)
+			// Find our CIDR rule
 			var cidrRule *networkingv1.NetworkPolicyEgressRule
 			for i := range np.Spec.Egress {
 				for _, to := range np.Spec.Egress[i].To {
@@ -2432,13 +2403,12 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should create egress rules for allowed egress pods", func() {
 			sandboxName := "sandbox-egress-pods"
 			templateName := "template-egress-pods"
-			networkTemplateName := "nettemplate-egress-pods"
 
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.AllowedEgressPods = []sandboxv1alpha1.EgressPodRule{
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				AllowedPods: []sandboxv1alpha1.PodEgressRule{
 					{
 						Namespace: "kube-system",
 						PodSelector: metav1.LabelSelector{
@@ -2449,27 +2419,19 @@ var _ = Describe("Sandbox Controller", func() {
 							{Protocol: corev1.ProtocolTCP, Port: 53},
 						},
 					},
-				}
+				},
 			})
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkPolicyHelper(ctx, networkTemplateName+"-netpol")
-
-			// Reconcile NetworkTemplate to create NetworkPolicy and set Ready condition
-			reconcileNetworkTemplate(ctx, networkTemplateName)
-
-			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
+			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify egress pod selector rule
-			np := getNetworkPolicy(ctx, networkTemplateName+"-netpol")
+			np := getNetworkPolicy(ctx, sandboxName+"-netpol")
 			Expect(np).NotTo(BeNil())
-			// 2 egress rules: DNS + pod selector
-			Expect(np.Spec.Egress).To(HaveLen(2))
-			// Find the pod selector rule (not the DNS IP rule)
+			// Find the pod selector rule
 			var podRule *networkingv1.NetworkPolicyEgressRule
 			for i := range np.Spec.Egress {
 				for _, to := range np.Spec.Egress[i].To {
@@ -2491,767 +2453,118 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(podRule.Ports).To(HaveLen(2))
 		})
 
-		It("should recreate NetworkPolicy if deleted (via NetworkTemplateReconciler)", func() {
+		It("should recreate NetworkPolicy if deleted", func() {
 			sandboxName := "sandbox-np-recreate"
 			templateName := "template-np-recreate"
-			networkTemplateName := "nettemplate-np-recreate"
 
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.AllowedEgressCIDRs = []string{"8.8.8.0/24"}
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				AllowedCIDRs: []sandboxv1alpha1.CIDREgressRule{
+					{CIDR: "8.8.8.0/24"},
+				},
 			})
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkPolicyHelper(ctx, networkTemplateName+"-netpol")
-
-			// Reconcile NetworkTemplate to create NetworkPolicy and set Ready condition
-			reconcileNetworkTemplate(ctx, networkTemplateName)
-
-			// Verify NetworkPolicy exists
-			np := getNetworkPolicy(ctx, networkTemplateName+"-netpol")
-			Expect(np).NotTo(BeNil())
-
-			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
+			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-netpol")
 
-			// Initial reconcile - creates Pod
+			// Initial reconcile - creates Pod and NetworkPolicy
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
+
+			// Verify NetworkPolicy exists
+			np := getNetworkPolicy(ctx, sandboxName+"-netpol")
+			Expect(np).NotTo(BeNil())
 
 			// Delete the NetworkPolicy externally (simulating attacker/accidental deletion)
 			Expect(k8sClient.Delete(ctx, np)).To(Succeed())
 
 			// Verify it's gone
-			np = getNetworkPolicy(ctx, networkTemplateName+"-netpol")
+			np = getNetworkPolicy(ctx, sandboxName+"-netpol")
 			Expect(np).To(BeNil())
 
-			// Reconcile NetworkTemplate - should recreate NetworkPolicy
-			// (In production, this is triggered by the NetworkPolicy watch)
-			reconcileNetworkTemplate(ctx, networkTemplateName)
+			// Reconcile sandbox - should recreate its NetworkPolicy
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
 
 			// Verify NetworkPolicy is recreated
-			np = getNetworkPolicy(ctx, networkTemplateName+"-netpol")
+			np = getNetworkPolicy(ctx, sandboxName+"-netpol")
 			Expect(np).NotTo(BeNil())
 		})
 
-		It("should share NetworkPolicy across sandboxes using the same NetworkTemplate", func() {
-			sandbox1Name := "sandbox-shared-np-1"
-			sandbox2Name := "sandbox-shared-np-2"
-			templateName := "template-shared-np"
-			networkTemplateName := "nettemplate-shared"
+		It("should configure DNS policy None with custom nameservers", func() {
+			sandboxName := "sandbox-dns-config"
+			templateName := "template-dns-config"
 
 			createTemplate(ctx, templateName)
 			defer deleteTemplate(ctx, templateName)
 
-			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.AllowedEgressCIDRs = []string{"8.8.8.0/24"}
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				DNS: []string{"8.8.8.8", "1.1.1.1"},
 			})
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkPolicyHelper(ctx, networkTemplateName+"-netpol")
-
-			// Reconcile NetworkTemplate to create NetworkPolicy and set Ready condition
-			reconcileNetworkTemplate(ctx, networkTemplateName)
-
-			np := getNetworkPolicy(ctx, networkTemplateName+"-netpol")
-			Expect(np).NotTo(BeNil())
-
-			// Create first sandbox
-			createSandboxWithNetworkTemplate(ctx, sandbox1Name, templateName, networkTemplateName)
-			defer deleteSandbox(ctx, sandbox1Name)
-			defer deletePod(ctx, sandbox1Name+"-pod")
-
-			// Reconcile first sandbox - creates Pod, reuses NetworkPolicy
-			_, err := doReconcile(ctx, reconciler, sandbox1Name)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Create second sandbox using the same NetworkTemplate
-			createSandboxWithNetworkTemplate(ctx, sandbox2Name, templateName, networkTemplateName)
-			defer deleteSandbox(ctx, sandbox2Name)
-			defer deletePod(ctx, sandbox2Name+"-pod")
-
-			// Reconcile second sandbox - should not fail, reuses existing NetworkPolicy
-			_, err = doReconcile(ctx, reconciler, sandbox2Name)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Verify still only one NetworkPolicy exists
-			np = getNetworkPolicy(ctx, networkTemplateName+"-netpol")
-			Expect(np).NotTo(BeNil())
-
-			// Both sandboxes should have NetworkConfigured=True
-			sandbox1 := getSandbox(ctx, sandbox1Name)
-			Expect(hasConditionWithReason(sandbox1, SandboxNetworkReadyCondition, metav1.ConditionTrue, CondReasonNetworkPolicyApplied)).To(BeTrue())
-			sandbox2 := getSandbox(ctx, sandbox2Name)
-			Expect(hasConditionWithReason(sandbox2, SandboxNetworkReadyCondition, metav1.ConditionTrue, CondReasonNetworkPolicyApplied)).To(BeTrue())
-		})
-
-		It("should not use a NetworkTemplate that is being deleted", func() {
-			sandboxName := "sandbox-deleting-template"
-			templateName := "template-deleting"
-			networkTemplateName := "nettemplate-deleting"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			// Create NetworkTemplate with a test finalizer (to prevent immediate deletion)
-			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.AllowedEgressCIDRs = []string{"8.8.8.0/24"}
-				controllerutil.AddFinalizer(nt, "test-finalizer")
-			})
-			defer func() {
-				// Cleanup: remove finalizer and delete
-				nt := &sandboxv1alpha1.NetworkTemplate{}
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: networkTemplateName, Namespace: testNamespace}, nt); err == nil {
-					controllerutil.RemoveFinalizer(nt, "test-finalizer")
-					_ = k8sClient.Update(ctx, nt)
-				}
-				deleteNetworkTemplate(ctx, networkTemplateName)
-			}()
-
-			// Delete the NetworkTemplate - it will be blocked by finalizer, but DeletionTimestamp will be set
-			nt := &sandboxv1alpha1.NetworkTemplate{}
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: networkTemplateName, Namespace: testNamespace}, nt)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, nt)).To(Succeed())
-
-			// Verify DeletionTimestamp is set (deletion in progress)
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: networkTemplateName, Namespace: testNamespace}, nt)).To(Succeed())
-			Expect(nt.DeletionTimestamp).NotTo(BeNil())
-
-			// Create sandbox referencing the deleting template
-			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
+			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-netpol")
 
-			// Reconcile - should detect template is being deleted
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Verify sandbox has NetworkConfigured=False with reason NetworkTemplateDeleting
-			sandbox := getSandbox(ctx, sandboxName)
-			Expect(hasConditionWithReason(sandbox, SandboxNetworkReadyCondition,
-				metav1.ConditionFalse, CondReasonNetworkTemplateDeleting)).To(BeTrue())
-
-			// Verify no pod was created (template is being deleted)
 			pod := getPod(ctx, sandboxName+"-pod")
-			Expect(pod).To(BeNil())
-		})
-	})
-
-	Context("Embedded Network Spec", func() {
-		var (
-			templateName string
-			sandboxName  string
-			fakeClock    *FakeClock
-			reconciler   *SandboxReconciler
-		)
-
-		BeforeEach(func() {
-			suffix := fmt.Sprintf("%d", time.Now().UnixNano())
-			templateName = "embed-template-" + suffix
-			sandboxName = "embed-sandbox-" + suffix
-			fakeClock = NewFakeClock(time.Now())
-			reconciler = newTestReconciler(fakeClock)
-
-			// Create sandbox template
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {})
-		})
-
-		AfterEach(func() {
-			deleteTemplate(ctx, templateName)
-		})
-
-		// Helper to create sandbox with embedded network spec
-		createSandboxWithNetworkSpec := func(name, templateRef string, networkSpec sandboxv1alpha1.NetworkTemplateSpec) {
-			sandbox := &sandboxv1alpha1.Sandbox{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: testNamespace,
-				},
-				Spec: sandboxv1alpha1.SandboxSpec{
-					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-						Name: templateRef,
-					},
-					Network: &sandboxv1alpha1.NetworkConfig{
-						Spec: &networkSpec,
-					},
-				},
-			}
-			ExpectWithOffset(1, k8sClient.Create(ctx, sandbox)).To(Succeed())
-		}
-
-		It("should create owned NetworkTemplate when sandbox has embedded network spec", func() {
-			// Create sandbox with embedded network spec
-			networkSpec := sandboxv1alpha1.NetworkTemplateSpec{
-				DNSPolicy:          corev1.DNSNone,
-				Nameservers:        []string{"8.8.8.8"},
-				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
-			}
-			createSandboxWithNetworkSpec(sandboxName, templateName, networkSpec)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			// Reconcile - should create owned NetworkTemplate
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Verify owned NetworkTemplate was created
-			ownedTemplateName := sandboxName + "-network"
-			nt := &sandboxv1alpha1.NetworkTemplate{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: ownedTemplateName, Namespace: testNamespace}, nt)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Verify spec matches
-			Expect(nt.Spec.AllowedEgressCIDRs).To(Equal([]string{"8.8.8.0/24"}))
-			Expect(nt.Spec.Nameservers).To(Equal([]string{"8.8.8.8"}))
-
-			// Verify labels
-			Expect(nt.Labels["sandbox.isola.run/owner"]).To(Equal(sandboxName))
-			Expect(nt.Labels["sandbox.isola.run/owned"]).To(Equal("true"))
-
-			// Verify owner reference
-			Expect(nt.OwnerReferences).To(HaveLen(1))
-			Expect(nt.OwnerReferences[0].Name).To(Equal(sandboxName))
-			Expect(nt.OwnerReferences[0].Kind).To(Equal("Sandbox"))
-
-			// Cleanup
-			err = k8sClient.Delete(ctx, nt)
-			Expect(err).NotTo(HaveOccurred())
-		})
-
-		It("should NOT update owned NetworkTemplate when sandbox spec changes (immutable after creation)", func() {
-			// Network spec is immutable after sandbox creation.
-			// Changing network isolation mid-flight introduces edge cases with little benefit.
-
-			// Create sandbox with embedded network spec
-			networkSpec := sandboxv1alpha1.NetworkTemplateSpec{
-				DNSPolicy:          corev1.DNSNone,
-				Nameservers:        []string{"8.8.8.8"},
-				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
-			}
-			createSandboxWithNetworkSpec(sandboxName, templateName, networkSpec)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			// First reconcile - creates owned template
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Verify initial spec
-			ownedTemplateName := sandboxName + "-network"
-			nt := &sandboxv1alpha1.NetworkTemplate{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: ownedTemplateName, Namespace: testNamespace}, nt)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(nt.Spec.AllowedEgressCIDRs).To(Equal([]string{"8.8.8.0/24"}))
-
-			// Attempt to update sandbox spec
-			sandbox := getSandbox(ctx, sandboxName)
-			sandbox.Spec.Network.Spec.AllowedEgressCIDRs = []string{"192.168.0.0/16"}
-			err = k8sClient.Update(ctx, sandbox)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Reconcile again
-			_, err = doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Verify spec is unchanged - owned NetworkTemplate retains original spec
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: ownedTemplateName, Namespace: testNamespace}, nt)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(nt.Spec.AllowedEgressCIDRs).To(Equal([]string{"8.8.8.0/24"}), "owned NetworkTemplate spec should not change after creation")
-
-			// Cleanup
-			err = k8sClient.Delete(ctx, nt)
-			Expect(err).NotTo(HaveOccurred())
-		})
-
-		It("should fail with error when owned template name conflicts with non-owned template", func() {
-			// Create a non-owned NetworkTemplate with the expected owned name
-			conflictingName := sandboxName + "-network"
-			conflictingNT := &sandboxv1alpha1.NetworkTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      conflictingName,
-					Namespace: testNamespace,
-				},
-				Spec: sandboxv1alpha1.NetworkTemplateSpec{
-					DNSPolicy:          corev1.DNSNone,
-					Nameservers:        []string{"8.8.8.8"},
-					AllowedEgressCIDRs: []string{"0.0.0.0/0"},
-				},
-			}
-			err := k8sClient.Create(ctx, conflictingNT)
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				err := k8sClient.Delete(ctx, conflictingNT)
-				Expect(err).NotTo(HaveOccurred())
-			}()
-
-			// Create sandbox that would use the conflicting name
-			networkSpec := sandboxv1alpha1.NetworkTemplateSpec{
-				DNSPolicy:          corev1.DNSNone,
-				Nameservers:        []string{"8.8.8.8"},
-				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
-			}
-			createSandboxWithNetworkSpec(sandboxName, templateName, networkSpec)
-			defer deleteSandbox(ctx, sandboxName)
-
-			// Reconcile - should fail with ownership error
-			_, err = doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("not owned by sandbox"))
-
-			// Verify sandbox has error condition
-			sandbox := getSandbox(ctx, sandboxName)
-			Expect(hasConditionWithReason(sandbox, SandboxNetworkReadyCondition,
-				metav1.ConditionFalse, CondReasonOwnedTemplateError)).To(BeTrue())
-		})
-
-		It("should work with mixed usage - some sandboxes with spec, some with templateRef", func() {
-			// Create a shared NetworkTemplate
-			sharedTemplateName := templateName + "-shared-network"
-			sharedNT := &sandboxv1alpha1.NetworkTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      sharedTemplateName,
-					Namespace: testNamespace,
-				},
-				Spec: sandboxv1alpha1.NetworkTemplateSpec{
-					DNSPolicy:          corev1.DNSNone,
-					Nameservers:        []string{"8.8.8.8"},
-					AllowedEgressCIDRs: []string{"0.0.0.0/0"},
-				},
-			}
-			err := k8sClient.Create(ctx, sharedNT)
-			Expect(err).NotTo(HaveOccurred())
-			reconcileNetworkTemplate(ctx, sharedTemplateName)
-			defer func() {
-				err := k8sClient.Delete(ctx, sharedNT)
-				Expect(err).NotTo(HaveOccurred())
-			}()
-
-			// Create sandbox1 with embedded spec
-			sandbox1Name := sandboxName + "-1"
-			networkSpec := sandboxv1alpha1.NetworkTemplateSpec{
-				DNSPolicy:          corev1.DNSNone,
-				Nameservers:        []string{"8.8.8.8"},
-				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
-			}
-			createSandboxWithNetworkSpec(sandbox1Name, templateName, networkSpec)
-			defer deleteSandbox(ctx, sandbox1Name)
-			defer deletePod(ctx, sandbox1Name+"-pod")
-
-			// Create sandbox2 with templateRef
-			sandbox2Name := sandboxName + "-2"
-			createSandboxWithNetworkTemplate(ctx, sandbox2Name, templateName, sharedTemplateName)
-			defer deleteSandbox(ctx, sandbox2Name)
-			defer deletePod(ctx, sandbox2Name+"-pod")
-
-			// Reconcile sandbox1
-			_, err = doReconcile(ctx, reconciler, sandbox1Name)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Verify sandbox1's owned template
-			owned1 := &sandboxv1alpha1.NetworkTemplate{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandbox1Name + "-network", Namespace: testNamespace}, owned1)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(owned1.Labels["sandbox.isola.run/owned"]).To(Equal("true"))
-			defer func() {
-				err := k8sClient.Delete(ctx, owned1)
-				Expect(err).NotTo(HaveOccurred())
-			}()
-
-			// Reconcile sandbox2
-			_, err = doReconcile(ctx, reconciler, sandbox2Name)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Verify sandbox2 uses the shared template (no owned template created)
-			sandbox2 := getSandbox(ctx, sandbox2Name)
-			Expect(sandbox2.GetNetworkTemplateName()).To(Equal(sharedTemplateName))
-
-			// The owned template for sandbox1 should not have sandbox2 as owner
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandbox1Name + "-network", Namespace: testNamespace}, owned1)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(owned1.OwnerReferences).To(HaveLen(1))
-			Expect(owned1.OwnerReferences[0].Name).To(Equal(sandbox1Name))
-		})
-	})
-
-	// ============================================
-	// Category I: Default NetworkTemplate Tests
-	// ============================================
-	Context("Default NetworkTemplate Behavior", func() {
-		var (
-			reconciler   *SandboxReconciler
-			fakeClock    *FakeClock
-			templateName string
-		)
-
-		// restoreDefaultNetworkTemplate recreates and reconciles the default template
-		restoreDefaultNetworkTemplate := func() {
-			nt := &sandboxv1alpha1.NetworkTemplate{}
-			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      sandboxv1alpha1.DefaultNetworkTemplate,
-				Namespace: testNamespace,
-			}, nt)
-			if err != nil {
-				createNetworkTemplate(ctx, sandboxv1alpha1.DefaultNetworkTemplate)
-				reconcileNetworkTemplate(ctx, sandboxv1alpha1.DefaultNetworkTemplate)
-			}
-		}
-
-		BeforeEach(func() {
-			fakeClock = NewFakeClock(time.Now())
-			reconciler = newTestReconciler(fakeClock)
-			templateName = fmt.Sprintf("template-default-net-%d", time.Now().UnixNano())
-			createTemplate(ctx, templateName)
-		})
-
-		AfterEach(func() {
-			deleteTemplate(ctx, templateName)
-			restoreDefaultNetworkTemplate()
-		})
-
-		It("should block pod creation until default NetworkTemplate exists", func() {
-			sandboxName := fmt.Sprintf("sandbox-no-network-%d", time.Now().UnixNano())
-
-			// Delete the default template to test the missing template scenario
-			deleteNetworkTemplate(ctx, sandboxv1alpha1.DefaultNetworkTemplate)
-
-			sandbox := &sandboxv1alpha1.Sandbox{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      sandboxName,
-					Namespace: testNamespace,
-				},
-				Spec: sandboxv1alpha1.SandboxSpec{
-					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-						Name: templateName,
-					},
-					Network: nil,
-				},
-			}
-			Expect(k8sClient.Create(ctx, sandbox)).To(Succeed())
-			defer deleteSandbox(ctx, sandboxName)
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			podName := sandboxName + "-pod"
-			pod := getPod(ctx, podName)
-			Expect(pod).To(BeNil(), "pod should not exist when default NetworkTemplate is missing")
-
-			sandbox = getSandbox(ctx, sandboxName)
-			Expect(hasConditionWithReason(sandbox, SandboxNetworkReadyCondition,
-				metav1.ConditionFalse, CondReasonNetworkTemplateNotFound)).To(BeTrue())
-
-			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxNetworkReadyCondition)
-			Expect(cond.Message).To(ContainSubstring(sandboxv1alpha1.DefaultNetworkTemplate))
-		})
-
-		It("should create pod with default template label when default template exists", func() {
-			sandboxName := fmt.Sprintf("sandbox-default-template-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
-
-			// Default template already exists from BeforeSuite
-
-			sandbox := &sandboxv1alpha1.Sandbox{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      sandboxName,
-					Namespace: testNamespace,
-				},
-				Spec: sandboxv1alpha1.SandboxSpec{
-					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-						Name: templateName,
-					},
-					Network: nil,
-				},
-			}
-			Expect(k8sClient.Create(ctx, sandbox)).To(Succeed())
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, podName)
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, podName)
-			Expect(pod).NotTo(BeNil())
-			Expect(pod.Labels["sandbox.isola.run/network-template"]).To(
-				Equal(sandboxv1alpha1.DefaultNetworkTemplate),
-			)
-		})
-
-		It("should configure ClusterFirst DNS when dnsPolicy is ClusterFirst", func() {
-			sandboxName := fmt.Sprintf("sandbox-dns-cluster-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
-			networkTemplateName := fmt.Sprintf("dns-cluster-template-%d", time.Now().UnixNano())
-
-			// Create network template with ClusterFirst - needs egress to DNS pods
-			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.DNSPolicy = corev1.DNSClusterFirst
-				nt.Spec.Nameservers = nil // Clear default nameservers
-				nt.Spec.AllowedEgressPods = []sandboxv1alpha1.EgressPodRule{
-					{
-						Namespace: "kube-system",
-						PodSelector: metav1.LabelSelector{
-							MatchLabels: map[string]string{"k8s-app": "kube-dns"},
-						},
-					},
-				}
-			})
-			reconcileNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-
-			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, podName)
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, podName)
-			Expect(pod).NotTo(BeNil())
-			Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
-			// No DNSConfig should be set when using ClusterFirst without additional nameservers
-			Expect(pod.Spec.DNSConfig).To(BeNil())
-		})
-
-		It("should configure DNS None with ndots:1 when dnsPolicy is None", func() {
-			sandboxName := fmt.Sprintf("sandbox-dns-none-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
-			networkTemplateName := fmt.Sprintf("dns-none-template-%d", time.Now().UnixNano())
-
-			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.DNSPolicy = corev1.DNSNone
-				nt.Spec.Nameservers = []string{"8.8.8.8", "1.1.1.1"}
-			})
-			reconcileNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-
-			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, podName)
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
 			Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
 			Expect(pod.Spec.DNSConfig).NotTo(BeNil())
 			Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
-			// ndots:1 is hard-coded for DNSPolicy None
-			Expect(pod.Spec.DNSConfig.Options).To(HaveLen(1))
-			Expect(pod.Spec.DNSConfig.Options[0].Name).To(Equal("ndots"))
-			Expect(*pod.Spec.DNSConfig.Options[0].Value).To(Equal("1"))
 		})
 
-		It("should use sink nameserver with fast-fail options when dnsPolicy is None and nameservers is empty", func() {
-			sandboxName := fmt.Sprintf("sandbox-dns-sink-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
-			networkTemplateName := fmt.Sprintf("dns-sink-template-%d", time.Now().UnixNano())
+		It("should use ClusterFirst DNS when AllowClusterDNS is true and no custom DNS", func() {
+			sandboxName := "sandbox-clusterfirst-dns"
+			templateName := "template-clusterfirst-dns"
 
-			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.DNSPolicy = corev1.DNSNone
-				nt.Spec.Nameservers = []string{} // Empty - should use sink nameserver
+			createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
+
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				AllowClusterDNS: true,
 			})
-			reconcileNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-
-			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, podName)
+			defer deletePod(ctx, sandboxName+"-pod")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			pod := getPod(ctx, podName)
-			Expect(pod).NotTo(BeNil())
-			Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
-			Expect(pod.Spec.DNSConfig).NotTo(BeNil())
-			// Should use sink nameserver 127.0.0.1
-			Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"127.0.0.1"}))
-			// Should have fast-fail options: timeout=1, attempts=1, ndots=1
-			Expect(pod.Spec.DNSConfig.Options).To(HaveLen(3))
-			optionMap := make(map[string]string)
-			for _, opt := range pod.Spec.DNSConfig.Options {
-				if opt.Value != nil {
-					optionMap[opt.Name] = *opt.Value
-				}
-			}
-			Expect(optionMap["timeout"]).To(Equal("1"))
-			Expect(optionMap["attempts"]).To(Equal("1"))
-			Expect(optionMap["ndots"]).To(Equal("1"))
-		})
-
-		It("should preserve existing DNSConfig options when adding nameservers for ClusterFirst", func() {
-			sandboxName := fmt.Sprintf("sandbox-dns-preserve-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
-			networkTemplateName := fmt.Sprintf("dns-preserve-template-%d", time.Now().UnixNano())
-			customTemplateName := fmt.Sprintf("template-dns-preserve-%d", time.Now().UnixNano())
-
-			// Create a SandboxTemplate with existing DNSConfig options in the PodTemplate
-			customTemplate := &sandboxv1alpha1.SandboxTemplate{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      customTemplateName,
-					Namespace: testNamespace,
-				},
-				Spec: sandboxv1alpha1.SandboxTemplateSpec{
-					PodTemplate: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name:    "sandbox",
-									Image:   "busybox:latest",
-									Command: []string{"sleep", "infinity"},
-								},
-							},
-							DNSConfig: &corev1.PodDNSConfig{
-								Options: []corev1.PodDNSConfigOption{
-									{Name: "single-request-reopen"},
-									{Name: "edns0"},
-								},
-							},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, customTemplate)).To(Succeed())
-			defer deleteTemplate(ctx, customTemplateName)
-
-			// Create network template with ClusterFirst + additional nameservers
-			createNetworkTemplate(ctx, networkTemplateName, func(nt *sandboxv1alpha1.NetworkTemplate) {
-				nt.Spec.DNSPolicy = corev1.DNSClusterFirst
-				nt.Spec.Nameservers = []string{"8.8.8.8"}
-				nt.Spec.AllowedEgressPods = []sandboxv1alpha1.EgressPodRule{
-					{
-						Namespace: "kube-system",
-						PodSelector: metav1.LabelSelector{
-							MatchLabels: map[string]string{"k8s-app": "kube-dns"},
-						},
-					},
-				}
-			})
-			reconcileNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-
-			createSandboxWithNetworkTemplate(ctx, sandboxName, customTemplateName, networkTemplateName)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, podName)
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, podName)
+			pod := getPod(ctx, sandboxName+"-pod")
 			Expect(pod).NotTo(BeNil())
 			Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
-			Expect(pod.Spec.DNSConfig).NotTo(BeNil())
-			// Should have the additional nameservers
-			Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8"}))
-			// Should preserve the original options from the PodTemplate
-			Expect(pod.Spec.DNSConfig.Options).To(HaveLen(2))
-			optionNames := make([]string, 0, len(pod.Spec.DNSConfig.Options))
-			for _, opt := range pod.Spec.DNSConfig.Options {
-				optionNames = append(optionNames, opt.Name)
-			}
-			Expect(optionNames).To(ContainElements("single-request-reopen", "edns0"))
 		})
 
-		It("should have NetworkReady=False when network template not ready", func() {
-			sandboxName := fmt.Sprintf("sandbox-ready-network-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
+		It("should set NetworkReady condition to True when network configured", func() {
+			sandboxName := "sandbox-network-ready"
+			templateName := "template-network-ready"
 
-			// Replace the default template with one that is NOT reconciled (not ready)
-			deleteNetworkTemplate(ctx, sandboxv1alpha1.DefaultNetworkTemplate)
-			createNetworkTemplate(ctx, sandboxv1alpha1.DefaultNetworkTemplate)
+			createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
 
-			sandbox := &sandboxv1alpha1.Sandbox{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      sandboxName,
-					Namespace: testNamespace,
-				},
-				Spec: sandboxv1alpha1.SandboxSpec{
-					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-						Name: templateName,
-					},
-					Network: nil,
-				},
-			}
-			Expect(k8sClient.Create(ctx, sandbox)).To(Succeed())
+			createSandboxWithNetwork(ctx, sandboxName, templateName, &sandboxv1alpha1.NetworkConfig{
+				AllowInternet: true,
+			})
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, podName)
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			sandbox = getSandbox(ctx, sandboxName)
-
-			// NetworkReady should be False when template is not ready
-			networkCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxNetworkReadyCondition)
-			Expect(networkCond).NotTo(BeNil())
-			Expect(networkCond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(networkCond.Reason).To(Equal(CondReasonNetworkConfigNotApplied))
-
-			// Overall Ready should also be False (either PodPending or NetworkConfigNotApplied)
-			readyCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
-			Expect(readyCond).NotTo(BeNil())
-			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
-		})
-
-		It("should index sandboxes without network config under default template name", func() {
-			sandboxName := fmt.Sprintf("sandbox-index-test-%d", time.Now().UnixNano())
-
-			sandbox := &sandboxv1alpha1.Sandbox{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      sandboxName,
-					Namespace: testNamespace,
-				},
-				Spec: sandboxv1alpha1.SandboxSpec{
-					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-						Name: templateName,
-					},
-					Network: nil,
-				},
-			}
-
-			result := extractNetworkTemplateRefName(sandbox)
-			Expect(result).To(Equal([]string{sandboxv1alpha1.DefaultNetworkTemplate}))
-		})
-
-		It("should reconcile sandbox when referenced NetworkTemplate is created", func() {
-			sandboxName := fmt.Sprintf("sandbox-watch-test-%d", time.Now().UnixNano())
-			podName := sandboxName + "-pod"
-			networkTemplateName := fmt.Sprintf("watch-template-%d", time.Now().UnixNano())
-
-			cachedReconciler := newTestReconcilerWithCache(fakeClock)
-
-			// Create sandbox referencing a template that doesn't exist yet
-			createSandboxWithNetworkTemplate(ctx, sandboxName, templateName, networkTemplateName)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, podName)
+			defer deletePod(ctx, sandboxName+"-pod")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
-			Expect(hasConditionWithReason(sandbox, SandboxNetworkReadyCondition,
-				metav1.ConditionFalse, CondReasonNetworkTemplateNotFound)).To(BeTrue())
-
-			// Now create the template
-			networkTemplate := createNetworkTemplate(ctx, networkTemplateName)
-			defer deleteNetworkTemplate(ctx, networkTemplateName)
-
-			// Verify watch triggers reconcile via findSandboxesForNetworkTemplate
-			Eventually(func() []reconcile.Request {
-				return cachedReconciler.findSandboxesForNetworkTemplate(ctx, networkTemplate)
-			}, testTimeout, testInterval).Should(ContainElement(reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      sandboxName,
-					Namespace: testNamespace,
-				},
-			}))
+			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxNetworkReadyCondition)
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 		})
+
 	})
 })
 
 var _ = Describe("configureDNS function", func() {
-	It("should return error for unsupported DNS policy", func() {
+	It("should use sink nameserver when networkConfig is nil", func() {
 		pod := &corev1.Pod{
 			Spec: corev1.PodSpec{
 				Containers: []corev1.Container{
@@ -3260,19 +2573,14 @@ var _ = Describe("configureDNS function", func() {
 			},
 		}
 
-		networkTemplate := &sandboxv1alpha1.NetworkTemplate{
-			Spec: sandboxv1alpha1.NetworkTemplateSpec{
-				DNSPolicy: corev1.DNSPolicy("InvalidPolicy"),
-			},
-		}
-
-		err := configureDNS(pod, networkTemplate)
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("unsupported DNS policy"))
-		Expect(err.Error()).To(ContainSubstring("InvalidPolicy"))
+		err := configureDNS(pod, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
+		Expect(pod.Spec.DNSConfig).NotTo(BeNil())
+		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"127.0.0.1"}))
 	})
 
-	It("should not return error for empty DNS policy (defaults to ClusterFirst)", func() {
+	It("should use ClusterFirst DNS when AllowClusterDNS is true", func() {
 		pod := &corev1.Pod{
 			Spec: corev1.PodSpec{
 				Containers: []corev1.Container{
@@ -3281,14 +2589,32 @@ var _ = Describe("configureDNS function", func() {
 			},
 		}
 
-		networkTemplate := &sandboxv1alpha1.NetworkTemplate{
-			Spec: sandboxv1alpha1.NetworkTemplateSpec{
-				DNSPolicy: "", // Empty should default to ClusterFirst
+		networkConfig := &sandboxv1alpha1.NetworkConfig{
+			AllowClusterDNS: true,
+		}
+
+		err := configureDNS(pod, networkConfig)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
+	})
+
+	It("should use custom DNS servers when specified", func() {
+		pod := &corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Name: "test", Image: "busybox"},
+				},
 			},
 		}
 
-		err := configureDNS(pod, networkTemplate)
+		networkConfig := &sandboxv1alpha1.NetworkConfig{
+			DNS: []string{"8.8.8.8", "1.1.1.1"},
+		}
+
+		err := configureDNS(pod, networkConfig)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
+		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
+		Expect(pod.Spec.DNSConfig).NotTo(BeNil())
+		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
 	})
 })

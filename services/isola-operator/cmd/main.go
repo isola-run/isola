@@ -197,16 +197,6 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
 		os.Exit(1)
 	}
-
-	// NetworkTemplateReconciler manages the lifecycle for NetworkTemplates.
-	// It creates/updates policies and sets the Ready condition that SandboxReconciler checks.
-	if err := (&controller.NetworkTemplateReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "NetworkTemplate")
-		os.Exit(1)
-	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

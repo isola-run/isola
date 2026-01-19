@@ -58,32 +58,6 @@ rules:
 - apiGroups:
   - sandbox.isola.run
   resources:
-  - networktemplates
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - sandbox.isola.run
-  resources:
-  - networktemplates/finalizers
-  - sandboxes/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - sandbox.isola.run
-  resources:
-  - networktemplates/status
-  - sandboxes/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - sandbox.isola.run
-  resources:
   - sandboxes
   verbs:
   - create
@@ -93,6 +67,20 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - sandbox.isola.run
+  resources:
+  - sandboxes/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - sandbox.isola.run
+  resources:
+  - sandboxes/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - sandbox.isola.run
   resources:

@@ -1,6 +1,6 @@
 module github.com/omereli/dev-isola/services/isola-operator
 
-go 1.25.5
+go 1.24.7
 
 require (
 	github.com/onsi/ginkgo/v2 v2.22.0
