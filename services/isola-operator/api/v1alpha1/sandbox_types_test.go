@@ -23,75 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestGetNetworkTemplateName(t *testing.T) {
-	tests := []struct {
-		name     string
-		sandbox  Sandbox
-		expected string
-	}{
-		{
-			name: "nil network config returns default template",
-			sandbox: Sandbox{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-sandbox"},
-				Spec:       SandboxSpec{Network: nil},
-			},
-			expected: DefaultNetworkTemplate,
-		},
-		{
-			name: "templateRef returns referenced name",
-			sandbox: Sandbox{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-sandbox"},
-				Spec: SandboxSpec{
-					Network: &NetworkConfig{
-						TemplateRef: &NetworkTemplateReference{Name: "custom-template"},
-					},
-				},
-			},
-			expected: "custom-template",
-		},
-		{
-			name: "embedded spec returns owned template name",
-			sandbox: Sandbox{
-				ObjectMeta: metav1.ObjectMeta{Name: "my-sandbox"},
-				Spec: SandboxSpec{
-					Network: &NetworkConfig{
-						Spec: &NetworkTemplateSpec{},
-					},
-				},
-			},
-			expected: "my-sandbox-network",
-		},
-		{
-			name: "network config with nil templateRef and nil spec returns owned name",
-			sandbox: Sandbox{
-				ObjectMeta: metav1.ObjectMeta{Name: "edge-case"},
-				Spec: SandboxSpec{
-					Network: &NetworkConfig{
-						TemplateRef: nil,
-						Spec:        nil,
-					},
-				},
-			},
-			expected: "edge-case-network",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.sandbox.GetNetworkTemplateName()
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestGetOwnedNetworkTemplateName(t *testing.T) {
-	sandbox := Sandbox{
-		ObjectMeta: metav1.ObjectMeta{Name: "my-sandbox"},
-	}
-	assert.Equal(t, "my-sandbox-network", sandbox.GetOwnedNetworkTemplateName())
-}
-
-func TestHasNetworkSpec(t *testing.T) {
+func TestHasCustomNetworkRules(t *testing.T) {
 	tests := []struct {
 		name     string
 		sandbox  Sandbox
@@ -105,34 +37,57 @@ func TestHasNetworkSpec(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "network with templateRef only returns false",
+			name: "empty network config returns false",
+			sandbox: Sandbox{
+				Spec: SandboxSpec{
+					Network: &NetworkConfig{},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "network with only boolean flags returns false",
 			sandbox: Sandbox{
 				Spec: SandboxSpec{
 					Network: &NetworkConfig{
-						TemplateRef: &NetworkTemplateReference{Name: "template"},
+						AllowInternet:   true,
+						AllowClusterDNS: true,
 					},
 				},
 			},
 			expected: false,
 		},
 		{
-			name: "network with spec returns true",
+			name: "network with DNS servers returns true",
 			sandbox: Sandbox{
 				Spec: SandboxSpec{
 					Network: &NetworkConfig{
-						Spec: &NetworkTemplateSpec{},
+						DNS: []string{"8.8.8.8"},
 					},
 				},
 			},
 			expected: true,
 		},
 		{
-			name: "network with empty spec returns true",
+			name: "network with CIDR rules returns true",
 			sandbox: Sandbox{
 				Spec: SandboxSpec{
 					Network: &NetworkConfig{
-						Spec: &NetworkTemplateSpec{
-							AllowedEgressCIDRs: []string{},
+						AllowedCIDRs: []CIDREgressRule{
+							{CIDR: "10.0.0.0/8"},
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "network with pod rules returns true",
+			sandbox: Sandbox{
+				Spec: SandboxSpec{
+					Network: &NetworkConfig{
+						AllowedPods: []PodEgressRule{
+							{Namespace: "kube-system"},
 						},
 					},
 				},
@@ -143,13 +98,107 @@ func TestHasNetworkSpec(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.sandbox.HasNetworkSpec()
+			result := tt.sandbox.HasCustomNetworkRules()
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestDefaultNetworkTemplateConstant(t *testing.T) {
-	// Verify the constant matches the expected value
-	assert.Equal(t, "isola-isolated", DefaultNetworkTemplate)
+func TestGetCustomNetworkPolicyName(t *testing.T) {
+	sandbox := Sandbox{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-sandbox"},
+	}
+	assert.Equal(t, "my-sandbox-egress", sandbox.GetCustomNetworkPolicyName())
+}
+
+func TestGetNetworkLabels(t *testing.T) {
+	tests := []struct {
+		name     string
+		sandbox  Sandbox
+		expected map[string]string
+	}{
+		{
+			name: "nil network returns only sandbox label",
+			sandbox: Sandbox{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-sandbox"},
+				Spec:       SandboxSpec{Network: nil},
+			},
+			expected: map[string]string{
+				LabelSandboxName: "test-sandbox",
+			},
+		},
+		{
+			name: "empty network config returns only sandbox label",
+			sandbox: Sandbox{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-sandbox"},
+				Spec: SandboxSpec{
+					Network: &NetworkConfig{},
+				},
+			},
+			expected: map[string]string{
+				LabelSandboxName: "test-sandbox",
+			},
+		},
+		{
+			name: "allowInternet=true adds internet label",
+			sandbox: Sandbox{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-sandbox"},
+				Spec: SandboxSpec{
+					Network: &NetworkConfig{
+						AllowInternet: true,
+					},
+				},
+			},
+			expected: map[string]string{
+				LabelSandboxName:     "test-sandbox",
+				LabelAllowInternet:   "true",
+			},
+		},
+		{
+			name: "allowClusterDNS=true adds dns label",
+			sandbox: Sandbox{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-sandbox"},
+				Spec: SandboxSpec{
+					Network: &NetworkConfig{
+						AllowClusterDNS: true,
+					},
+				},
+			},
+			expected: map[string]string{
+				LabelSandboxName:     "test-sandbox",
+				LabelAllowClusterDNS: "true",
+			},
+		},
+		{
+			name: "both flags set adds both labels",
+			sandbox: Sandbox{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-sandbox"},
+				Spec: SandboxSpec{
+					Network: &NetworkConfig{
+						AllowInternet:   true,
+						AllowClusterDNS: true,
+					},
+				},
+			},
+			expected: map[string]string{
+				LabelSandboxName:     "test-sandbox",
+				LabelAllowInternet:   "true",
+				LabelAllowClusterDNS: "true",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.sandbox.GetNetworkLabels()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestLabelConstants(t *testing.T) {
+	// Verify the label constants have expected values
+	assert.Equal(t, "isola.run/allow-internet", LabelAllowInternet)
+	assert.Equal(t, "isola.run/allow-cluster-dns", LabelAllowClusterDNS)
+	assert.Equal(t, "isola.run/sandbox", LabelSandboxName)
 }

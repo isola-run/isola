@@ -1,0 +1,88 @@
+# Shared NetworkPolicies for sandbox network isolation
+# These are label-based policies that select sandbox pods based on their network capabilities.
+# Sandboxes get deny-all by default; capabilities are enabled via labels added by the controller.
+---
+# Base deny-all policy for sandbox pods - all sandbox pods get this by default
+# This ensures no egress traffic is allowed unless explicitly permitted by other policies.
+# Note: NetworkPolicies are additive, so additional allow policies stack on top of this.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: isola-deny-all-egress
+  namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: isola-operator
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: isola-sandbox
+  policyTypes:
+    - Egress
+  # Empty egress list = deny all egress
+  egress: []
+---
+# Allow internet egress for pods with isola.run/allow-internet=true
+# Permits egress to 0.0.0.0/0 EXCEPT private/internal ranges:
+# - 10.0.0.0/8 (RFC 1918 Class A private)
+# - 172.16.0.0/12 (RFC 1918 Class B private)
+# - 192.168.0.0/16 (RFC 1918 Class C private)
+# - 169.254.0.0/16 (Link-local, includes cloud metadata 169.254.169.254)
+# - 100.64.0.0/10 (CGNAT / Carrier-grade NAT)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: isola-allow-internet
+  namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: isola-operator
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      isola.run/allow-internet: "true"
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 100.64.0.0/10
+---
+# Allow cluster DNS egress for pods with isola.run/allow-cluster-dns=true
+# Permits egress to kube-dns/CoreDNS pods in kube-system namespace on port 53
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: isola-allow-cluster-dns
+  namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: isola-operator
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      isola.run/allow-cluster-dns: "true"
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

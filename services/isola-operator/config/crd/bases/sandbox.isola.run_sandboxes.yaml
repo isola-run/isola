@@ -54,187 +54,168 @@ spec:
               network:
                 description: |-
                   Network specifies the network isolation configuration for this sandbox.
-                  Can either reference a shared NetworkTemplate or embed network rules directly.
-                  If not specified, no NetworkPolicy is created (unrestricted network access).
-                  When specified, must contain exactly one of templateRef or spec.
+                  If not specified, the sandbox has no network access (default deny-all via base policy).
+                  Use boolean flags (allowInternet, allowClusterDNS) to enable common capabilities.
+                  Use allowedCIDRs and allowedPods for custom egress rules.
                 properties:
-                  spec:
+                  allowClusterDNS:
                     description: |-
-                      Spec embeds network isolation rules directly in the sandbox.
-                      When specified, the controller creates a NetworkTemplate CR
-                      that is owned by this sandbox and garbage-collected
-                      when the sandbox is deleted.
-                      Note: This spec is immutable after sandbox creation - changes are ignored.
-                    properties:
-                      allowedEgressCIDRs:
-                        description: |-
-                          AllowedEgressCIDRs is a list of CIDRs the sandbox is allowed to connect to (outbound traffic).
-                          If empty, no CIDR-based egress is allowed (but allowedEgressPods rules may still permit traffic).
-                          Risky IPs (cloud metadata 169.254.0.0/16, private ranges, IPv6 link-local fe80::/10) are
-                          automatically blocked when the specified CIDR would otherwise allow them.
-                        items:
+                      AllowClusterDNS enables access to cluster DNS (kube-dns/CoreDNS).
+                      When true, adds label isola.run/allow-cluster-dns=true and sets DNSPolicy to ClusterFirst.
+                      The pre-installed isola-allow-cluster-dns NetworkPolicy allows egress to kube-dns pods.
+                    type: boolean
+                  allowInternet:
+                    description: |-
+                      AllowInternet enables outbound internet access.
+                      When true, adds label isola.run/allow-internet=true which is selected by the
+                      pre-installed isola-allow-internet NetworkPolicy.
+                      This allows egress to 0.0.0.0/0 EXCEPT private ranges (10.0.0.0/8, 172.16.0.0/12,
+                      192.168.0.0/16), link-local (169.254.0.0/16), and CGNAT (100.64.0.0/10).
+                    type: boolean
+                  allowedCIDRs:
+                    description: |-
+                      AllowedCIDRs specifies custom CIDR-based egress rules.
+                      Creates a per-sandbox NetworkPolicy owned by the sandbox (garbage-collected on deletion).
+                      Use this for allowing access to specific internal services or IP ranges.
+                    items:
+                      description: CIDREgressRule defines an egress rule to a specific
+                        CIDR range.
+                      properties:
+                        cidr:
+                          description: CIDR is the IP range to allow egress to (e.g.,
+                            "10.200.0.0/24").
                           pattern: ^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$
                           type: string
-                        type: array
-                      allowedEgressPods:
-                        description: |-
-                          AllowedEgressPods specifies pods the sandbox can connect to via label selectors.
-                          Useful for allowing access to in-cluster services like kube-dns.
-                          When using ClusterFirst DNS policy, you must add a rule here to allow egress to DNS.
-
-                          Example for kube-dns/CoreDNS:
-                            - namespace: kube-system
-                              podSelector:
-                                matchLabels:
-                                  k8s-app: kube-dns  # or k8s-app: coredns depending on cluster
-                              ports:
-                                - port: 53
-                                  protocol: UDP
-                                - port: 53
-                                  protocol: TCP
-                        items:
+                        ports:
+                          description: Ports restricts the rule to specific ports.
+                            If empty, all ports are allowed.
+                          items:
+                            description: NetworkPort defines a port for network rules.
+                            properties:
+                              port:
+                                description: Port number.
+                                format: int32
+                                maximum: 65535
+                                minimum: 1
+                                type: integer
+                              protocol:
+                                default: TCP
+                                description: Protocol (TCP or UDP). Defaults to TCP.
+                                enum:
+                                - TCP
+                                - UDP
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          type: array
+                      required:
+                      - cidr
+                      type: object
+                    type: array
+                  allowedPods:
+                    description: |-
+                      AllowedPods specifies pod-selector based egress rules.
+                      Creates per-sandbox NetworkPolicy rules for communicating with specific pods.
+                    items:
+                      description: PodEgressRule defines an egress rule to pods matching
+                        a selector.
+                      properties:
+                        namespace:
+                          description: Namespace of the target pods.
+                          minLength: 1
+                          type: string
+                        podSelector:
                           description: |-
-                            EgressPodRule defines a pod-based egress rule.
-                            This allows sandboxes to communicate with specific pods in the cluster,
-                            such as in-cluster DNS (kube-dns/CoreDNS) when using ClusterFirst DNS policy.
+                            PodSelector selects pods in the namespace.
+                            An empty selector ({}) matches all pods in the namespace.
                           properties:
-                            namespace:
-                              description: Namespace of the target pods.
-                              minLength: 1
-                              type: string
-                            podSelector:
-                              description: |-
-                                PodSelector selects pods in the namespace.
-                                An empty selector ({}) matches all pods in the namespace.
-                              properties:
-                                matchExpressions:
-                                  description: matchExpressions is a list of label
-                                    selector requirements. The requirements are ANDed.
-                                  items:
-                                    description: |-
-                                      A label selector requirement is a selector that contains values, a key, and an operator that
-                                      relates the key and values.
-                                    properties:
-                                      key:
-                                        description: key is the label key that the
-                                          selector applies to.
-                                        type: string
-                                      operator:
-                                        description: |-
-                                          operator represents a key's relationship to a set of values.
-                                          Valid operators are In, NotIn, Exists and DoesNotExist.
-                                        type: string
-                                      values:
-                                        description: |-
-                                          values is an array of string values. If the operator is In or NotIn,
-                                          the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                                          the values array must be empty. This array is replaced during a strategic
-                                          merge patch.
-                                        items:
-                                          type: string
-                                        type: array
-                                        x-kubernetes-list-type: atomic
-                                    required:
-                                    - key
-                                    - operator
-                                    type: object
-                                  type: array
-                                  x-kubernetes-list-type: atomic
-                                matchLabels:
-                                  additionalProperties:
-                                    type: string
-                                  description: |-
-                                    matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-                                    map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                    operator is "In", and the values array contains only "value". The requirements are ANDed.
-                                  type: object
-                              type: object
-                              x-kubernetes-map-type: atomic
-                            ports:
-                              description: Ports to allow. If empty, all ports are
-                                allowed to the selected pods.
+                            matchExpressions:
+                              description: matchExpressions is a list of label selector
+                                requirements. The requirements are ANDed.
                               items:
                                 description: |-
-                                  NetworkPort defines a port for network rules.
-                                  Using a custom type instead of networkingv1.NetworkPolicyPort for a simpler API
+                                  A label selector requirement is a selector that contains values, a key, and an operator that
+                                  relates the key and values.
                                 properties:
-                                  port:
-                                    description: Port number.
-                                    format: int32
-                                    maximum: 65535
-                                    minimum: 1
-                                    type: integer
-                                  protocol:
-                                    default: TCP
-                                    description: Protocol (TCP or UDP). Defaults to
-                                      TCP.
-                                    enum:
-                                    - TCP
-                                    - UDP
+                                  key:
+                                    description: key is the label key that the selector
+                                      applies to.
                                     type: string
+                                  operator:
+                                    description: |-
+                                      operator represents a key's relationship to a set of values.
+                                      Valid operators are In, NotIn, Exists and DoesNotExist.
+                                    type: string
+                                  values:
+                                    description: |-
+                                      values is an array of string values. If the operator is In or NotIn,
+                                      the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                      the values array must be empty. This array is replaced during a strategic
+                                      merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                    x-kubernetes-list-type: atomic
                                 required:
-                                - port
+                                - key
+                                - operator
                                 type: object
                               type: array
-                          required:
-                          - namespace
-                          - podSelector
+                              x-kubernetes-list-type: atomic
+                            matchLabels:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                map is equivalent to an element of matchExpressions, whose key field is "key", the
+                                operator is "In", and the values array contains only "value". The requirements are ANDed.
+                              type: object
                           type: object
-                        type: array
-                      dnsPolicy:
-                        default: ClusterFirst
-                        description: |
-                          DNSPolicy specifies the DNS policy for sandbox pods.
-                          - "None": Pod uses only the nameservers from the nameservers field (fully isolated from cluster DNS).
-                            If no nameservers are specified, a sink nameserver (127.0.0.1) is used and DNS queries will fail.
-                            The pod's resolv.conf will have ndots:1 for faster resolution of external domains.
-                          - "ClusterFirst": Pod uses cluster DNS, with nameservers combined (duplicates removed).
-                            When using ClusterFirst, you must also add an egress rule via allowedEgressPods to permit
-                            traffic to kube-dns (typically namespace=kube-system, label k8s-app=kube-dns or k8s-app=coredns).
-                        enum:
-                        - None
-                        - ClusterFirst
-                        type: string
-                      nameservers:
-                        description: |-
-                          Nameservers is a list of DNS server IP addresses.
-                          - When dnsPolicy is "None": optional. If empty, 127.0.0.1 is used as a sink (DNS queries fail).
-                            If specified, these are the only nameservers available, and egress to their IPs is automatically allowed.
-                          - When dnsPolicy is "ClusterFirst": optional, combined with cluster DNS (duplicates removed by k8s).
-                            If specified, egress to their IPs is automatically allowed.
-                          MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
-                        items:
-                          type: string
-                        maxItems: 3
-                        type: array
-                        x-kubernetes-validations:
-                        - message: must be valid IP addresses
-                          rule: self.all(s, isIP(s))
-                    type: object
-                    x-kubernetes-validations:
-                    - message: allowedEgressPods is required when dnsPolicy is ClusterFirst
-                        (must allow egress to cluster DNS)
-                      rule: self.dnsPolicy != 'ClusterFirst' || size(self.allowedEgressPods)
-                        > 0
-                  templateRef:
+                          x-kubernetes-map-type: atomic
+                        ports:
+                          description: Ports restricts the rule to specific ports.
+                            If empty, all ports are allowed.
+                          items:
+                            description: NetworkPort defines a port for network rules.
+                            properties:
+                              port:
+                                description: Port number.
+                                format: int32
+                                maximum: 65535
+                                minimum: 1
+                                type: integer
+                              protocol:
+                                default: TCP
+                                description: Protocol (TCP or UDP). Defaults to TCP.
+                                enum:
+                                - TCP
+                                - UDP
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          type: array
+                      required:
+                      - namespace
+                      - podSelector
+                      type: object
+                    type: array
+                  dns:
                     description: |-
-                      TemplateRef references an existing NetworkTemplate in the same namespace.
-                      The referenced NetworkTemplate is not owned by this sandbox and will persist
-                      independently of sandbox lifecycle.
-                    properties:
-                      name:
-                        description: |-
-                          Name of the NetworkTemplate in the same namespace.
-                          The referenced NetworkTemplate defines the network isolation rules.
-                        minLength: 1
-                        type: string
-                    required:
-                    - name
-                    type: object
+                      DNS specifies custom nameserver IPs for the sandbox.
+                      When specified with AllowClusterDNS=false, sets DNSPolicy to None with these nameservers.
+                      When specified with AllowClusterDNS=true, these are added as additional nameservers.
+                      Egress to these IPs on port 53 is automatically allowed.
+                      MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
+                    items:
+                      type: string
+                    maxItems: 3
+                    type: array
+                    x-kubernetes-validations:
+                    - message: must be valid IP addresses
+                      rule: self.all(s, isIP(s))
                 type: object
-                x-kubernetes-validations:
-                - message: At least one of 'templateRef' or 'spec' is required.
-                  rule: has(self.templateRef) || has(self.spec)
               templateRef:
                 description: |-
                   TemplateRef references the SandboxTemplate to inherit pod configuration from.
