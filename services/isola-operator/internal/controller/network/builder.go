@@ -15,72 +15,20 @@ limitations under the License.
 */
 
 /*
-Package network provides NetworkPolicy building from NetworkTemplate specifications.
+Package network provides custom NetworkPolicy building for sandboxes with advanced
+network configurations (custom CIDRs, pod egress rules, or custom DNS).
 
-# Architecture: Thin Builder with Future Extensibility
+# Architecture
 
-This package implements a "thin builder" pattern that directly translates NetworkTemplate
-specs into Kubernetes NetworkPolicy objects. This is intentionally simple for v1.
+Most sandboxes use static Helm-installed NetworkPolicies based on pod labels:
+  - sandbox-default-deny: Denies all traffic for pods with app=isola-sandbox
+  - sandbox-allow-internet: Allows internet egress for pods with isola.run/allow-internet=true
+  - sandbox-allow-cluster-dns: Allows cluster DNS for pods with isola.run/allow-cluster-dns=true
 
-# Future Enforcement Backend Support
-
-The current implementation generates standard Kubernetes NetworkPolicy objects.
-To support alternative enforcement backends (e.g., Cilium, Calico), the architecture
-can be extended as follows:
-
-1. Define an Enforcer interface:
-
-	type Enforcer interface {
-	    // IsAvailable checks if this enforcer is available in the cluster
-	    IsAvailable(ctx context.Context) bool
-
-	    // BuildPolicy creates the backend-specific policy object(s)
-	    BuildPolicy(template *NetworkTemplate, opts PolicyOptions) (client.Object, error)
-
-	    // CanHandleFQDN returns true if this enforcer supports FQDN-based rules
-	    CanHandleFQDN() bool
-	}
-
-2. Implement enforcers for each backend:
-
-  - K8sNetworkPolicyEnforcer (current implementation)
-  - CiliumNetworkPolicyEnforcer (generates CiliumNetworkPolicy with FQDN support)
-  - CalicoNetworkPolicyEnforcer (generates Calico GlobalNetworkPolicy)
-
-3. Add enforcer detection and selection:
-
-	func DetectEnforcer(ctx context.Context, client client.Client) Enforcer {
-	    // Check for Cilium CRDs
-	    if hasCRD(ctx, client, "ciliumnetworkpolicies.cilium.io") {
-	        return &CiliumEnforcer{}
-	    }
-	    // Check for Calico CRDs
-	    if hasCRD(ctx, client, "networkpolicies.crd.projectcalico.org") {
-	        return &CalicoEnforcer{}
-	    }
-	    // Default to standard K8s NetworkPolicy
-	    return &K8sEnforcer{}
-	}
-
-4. Extend NetworkTemplateSpec for FQDN support (requires Cilium):
-
-	type NetworkTemplateSpec struct {
-	    // ... existing fields ...
-
-	    // AllowedEgressFQDNs specifies FQDN-based egress rules (requires Cilium)
-	    // +optional
-	    AllowedEgressFQDNs []FQDNSelector `json:"allowedEgressFQDNs,omitempty"`
-	}
-
-	type FQDNSelector struct {
-	    // MatchName matches an exact FQDN (e.g., "api.openai.com")
-	    MatchName string `json:"matchName,omitempty"`
-	    // MatchPattern matches FQDNs with wildcards (e.g., "*.github.com")
-	    MatchPattern string `json:"matchPattern,omitempty"`
-	}
-
-This abstraction is deferred until FQDN/Cilium support is actually needed.
-The current thin builder approach minimizes complexity while maintaining extensibility.
+This package builds custom NetworkPolicies only when needed:
+  - Custom egress CIDRs are specified
+  - Pod-based egress rules are specified
+  - Custom nameservers are specified without internet access (need DNS egress rules)
 */
 package network
 
@@ -97,14 +45,9 @@ import (
 )
 
 const (
-	NetworkPolicySuffix = "-netpol"
-
-	NetworkTemplateLabelKey = "sandbox.isola.run/network-template"
+	// SandboxIDLabelKey is the label used to identify the sandbox pod.
+	SandboxIDLabelKey = "sandbox.isola.run/id"
 )
-
-func GetNetworkPolicyName(templateName string) string {
-	return templateName + NetworkPolicySuffix
-}
 
 // egressCIDR holds a validated egress prefix with its computed exceptions.
 type egressCIDR struct {
@@ -112,25 +55,25 @@ type egressCIDR struct {
 	Except []netip.Prefix
 }
 
-// BuildNetworkPolicy creates a K8s NetworkPolicy from a NetworkTemplate.
-// The policy selects pods with the label {NetworkTemplateLabelKey}={template-name}.
+// BuildCustomNetworkPolicy creates a K8s NetworkPolicy for a sandbox with custom
+// network configuration (CIDRs, pod rules, or nameservers).
 //
-// The generated policy enforces:
-// - Default deny for both ingress and egress
-// - Egress rules based on AllowedEgressCIDRs, AllowedEgressPods, and Nameservers
+// The policy selects the specific sandbox pod using {SandboxIDLabelKey}={sandboxName}.
 //
-// Note: Ingress from isola-gw is handled by a separate Helm-installed NetworkPolicy
-// that selects pods with label `app: isola-sandbox`.
+// This is only called when the sandbox needs custom rules beyond the static
+// Helm-installed policies. Returns nil if no custom policy is needed.
 //
 // Returns error if CIDRs are invalid or if egress CIDRs completely overlap with blocked ranges.
-func BuildNetworkPolicy(template *sandboxv1alpha1.NetworkTemplate) (*networkingv1.NetworkPolicy, error) {
-	spec := &template.Spec
+func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1alpha1.NetworkSpec) (*networkingv1.NetworkPolicy, error) {
+	if network == nil {
+		return nil, nil
+	}
 
 	// Parse and validate egress CIDRs, collecting canonical prefixes.
 	// Deduplicate to avoid redundant rules (uses canonical string as key).
-	egressCIDRs := make([]egressCIDR, 0, len(spec.AllowedEgressCIDRs))
+	egressCIDRs := make([]egressCIDR, 0, len(network.AllowedEgressCIDRs))
 	seenEgress := make(map[string]bool)
-	for _, cidrStr := range spec.AllowedEgressCIDRs {
+	for _, cidrStr := range network.AllowedEgressCIDRs {
 		prefix, err := cidr.ParsePrefix(cidrStr)
 		if err != nil {
 			return nil, err
@@ -148,42 +91,51 @@ func BuildNetworkPolicy(template *sandboxv1alpha1.NetworkTemplate) (*networkingv
 	}
 
 	// Parse nameserver IPs - egress to these IPs is automatically allowed on port 53
+	// Only needed when not using internet access (which covers all IPs anyway)
 	var dnsAddrs []netip.Addr
-	for _, ipStr := range spec.Nameservers {
-		addr, err := cidr.ParseDNSServerIP(ipStr)
-		if err != nil {
-			return nil, err
+	if !network.AllowAllInternet {
+		for _, ipStr := range network.Nameservers {
+			addr, err := cidr.ParseDNSServerIP(ipStr)
+			if err != nil {
+				return nil, err
+			}
+			dnsAddrs = append(dnsAddrs, addr)
 		}
-		dnsAddrs = append(dnsAddrs, addr)
 	}
+
+	// Check if we actually need a custom policy
+	hasCustomRules := len(egressCIDRs) > 0 || len(dnsAddrs) > 0 || len(network.AllowedEgressPods) > 0
+	if !hasCustomRules {
+		return nil, nil
+	}
+
+	policyName := sandboxName + "-custom-netpol"
 
 	np := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      GetNetworkPolicyName(template.Name),
-			Namespace: template.Namespace,
+			Name:      policyName,
+			Namespace: namespace,
 			Labels: map[string]string{
-				NetworkTemplateLabelKey:        template.Name,
-				"app.kubernetes.io/managed-by": "isola-operator",
+				SandboxIDLabelKey:               sandboxName,
+				"app.kubernetes.io/managed-by":  "isola-operator",
+				"app.kubernetes.io/component":   "sandbox-network",
+				"isola.run/custom-network-rule": "true",
 			},
 		},
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					NetworkTemplateLabelKey: template.Name,
+					SandboxIDLabelKey: sandboxName,
 				},
 			},
-			// Always set both policy types for default-deny behavior
+			// Only set egress policy type - ingress is handled by default-deny and allow-gw policies
 			PolicyTypes: []networkingv1.PolicyType{
-				networkingv1.PolicyTypeIngress,
 				networkingv1.PolicyTypeEgress,
 			},
 		},
 	}
 
-	// Ingress: empty (default deny) - ingress from isola-gw is handled by the
-	// Helm-installed NetworkPolicy "allow-isola-gw-ingress" in the sandbox namespace.
-	np.Spec.Ingress = nil
-	np.Spec.Egress = buildEgressRules(egressCIDRs, dnsAddrs, spec.AllowedEgressPods)
+	np.Spec.Egress = buildEgressRules(egressCIDRs, dnsAddrs, network.AllowedEgressPods)
 
 	return np, nil
 }

@@ -31,7 +31,6 @@ import (
 	nodev1 "k8s.io/api/node/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -132,15 +131,6 @@ var _ = BeforeSuite(func() {
 	)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Register field index for sandbox networkTemplateRef lookups
-	err = mgr.GetFieldIndexer().IndexField(
-		ctx,
-		&sandboxv1alpha1.Sandbox{},
-		sandboxNetworkTemplateRefField,
-		extractNetworkTemplateRefName,
-	)
-	Expect(err).NotTo(HaveOccurred())
-
 	// Start manager cache in background (needed for field indexing)
 	go func() {
 		defer GinkgoRecover()
@@ -172,33 +162,6 @@ var _ = BeforeSuite(func() {
 		Description:      "High priority for isola sandbox pods",
 	}
 	Expect(k8sClient.Create(ctx, priorityClass)).To(Succeed())
-
-	// Create and reconcile the default NetworkTemplate that all sandboxes use
-	// The isolated template uses DNSPolicy: None with external DNS to avoid cluster network access
-	defaultNetworkTemplate := &sandboxv1alpha1.NetworkTemplate{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      sandboxv1alpha1.DefaultNetworkTemplate,
-			Namespace: testNamespace,
-		},
-		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSPolicy:   corev1.DNSNone,
-			Nameservers: []string{"8.8.8.8"},
-		},
-	}
-	Expect(k8sClient.Create(ctx, defaultNetworkTemplate)).To(Succeed())
-
-	// Reconcile to make it ready
-	ntReconciler := &NetworkTemplateReconciler{
-		Client: k8sClient,
-		Scheme: scheme.Scheme,
-	}
-	_, err = ntReconciler.Reconcile(ctx, ctrl.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      sandboxv1alpha1.DefaultNetworkTemplate,
-			Namespace: testNamespace,
-		},
-	})
-	Expect(err).NotTo(HaveOccurred())
 
 	// Create fake event recorder for test assertions
 	testRecorder = record.NewFakeRecorder(100)
@@ -287,36 +250,4 @@ func newTestReconcilerWithCache(clock Clock) *SandboxReconciler {
 		AgentImage: "isola-agent:test",
 		Clock:      clock,
 	}
-}
-
-// newTestNetworkTemplateReconciler creates a NetworkTemplateReconciler for testing.
-// Uses k8sCache (manager's client) because field indexing is required for efficient sandbox lookups.
-func newTestNetworkTemplateReconciler() *NetworkTemplateReconciler {
-	return &NetworkTemplateReconciler{
-		Client: k8sCache,
-		Scheme: scheme.Scheme,
-		// IsolaGatewayNamespace defaults to NetworkTemplate's namespace
-		// IsolaGatewayLabels defaults to {"app.kubernetes.io/name": "isola-controller"}
-	}
-}
-
-// reconcileNetworkTemplate reconciles a NetworkTemplate, creating the NetworkPolicy and setting Ready condition.
-// This simulates what happens in production when NetworkTemplateReconciler runs.
-// Waits for cache to sync the NetworkTemplate before reconciling.
-func reconcileNetworkTemplate(ctx context.Context, templateName string) {
-	rec := newTestNetworkTemplateReconciler()
-
-	// Wait for cache to sync the NetworkTemplate (created with direct client)
-	Eventually(func() error {
-		nt := &sandboxv1alpha1.NetworkTemplate{}
-		return k8sCache.Get(ctx, types.NamespacedName{Name: templateName, Namespace: testNamespace}, nt)
-	}, "5s", "100ms").Should(Succeed())
-
-	_, err := rec.Reconcile(ctx, ctrl.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      templateName,
-			Namespace: testNamespace,
-		},
-	})
-	Expect(err).NotTo(HaveOccurred())
 }

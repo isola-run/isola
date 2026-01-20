@@ -23,6 +23,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/services/isola-operator/api/v1alpha1"
-	"github.com/isola-ai/isola-sb/services/isola-operator/internal/controller/network"
+	netbuilder "github.com/isola-ai/isola-sb/services/isola-operator/internal/controller/network"
 	"github.com/isola-ai/isola-sb/services/isola-operator/internal/controller/podutil"
 	"github.com/isola-ai/isola-sb/services/isola-operator/internal/controller/snapshot"
 	"k8s.io/client-go/tools/record"
@@ -75,15 +76,8 @@ const (
 	CondReasonInvalidRuntime         = "InvalidRuntime"
 
 	// NetworkPolicy-related reasons
-	CondReasonNetworkPolicyApplied    = "NetworkPolicyApplied"
-	CondReasonNetworkPolicyFailed     = "NetworkPolicyFailed"
-	CondReasonNetworkConfigNotApplied = "NetworkConfigNotApplied"
-	CondReasonNetworkPolicyMissing    = "NetworkPolicyMissing"
-	CondReasonInvalidNetworkPolicy    = "InvalidNetworkPolicy"
-	CondReasonPodDeletedForSafety     = "PodDeletedForSafety"
-	CondReasonNetworkTemplateDeleting = "NetworkTemplateDeleting"
-	CondReasonNoNetworkPolicy         = "NoNetworkPolicy"
-	CondReasonNetworkTemplateNotFound = "NetworkTemplateNotFound"
+	CondReasonNetworkPolicyApplied = "NetworkPolicyApplied"
+	CondReasonNetworkPolicyFailed  = "NetworkPolicyFailed"
 )
 
 const defaultActiveDeadlineSeconds int64 = 300
@@ -110,16 +104,13 @@ const (
 	agentContainerName = "isola-agent"
 
 	// Field index for efficient lookup of sandboxes by templates references
-	sandboxTemplateRefField        = ".spec.templateRef.name"
-	sandboxNetworkTemplateRefField = ".spec.network.effectiveTemplateName"
+	sandboxTemplateRefField = ".spec.templateRef.name"
 
-	// Condition reason for owned NetworkTemplate errors
-	CondReasonOwnedTemplateError = "OwnedTemplateError"
-
-	NetworkTemplateFinalizer = "sandbox.isola.run/network-template-cleanup"
+	// Network labels for pod selection by Helm-installed NetworkPolicies
+	LabelAllowInternet   = "isola.run/allow-internet"
+	LabelAllowClusterDNS = "isola.run/allow-cluster-dns"
 )
 
-// clock returns the reconciler's Clock, defaulting to RealClock if not set
 func (r *SandboxReconciler) clock() Clock {
 	if r.Clock != nil {
 		return r.Clock
@@ -127,14 +118,18 @@ func (r *SandboxReconciler) clock() Clock {
 	return RealClock{}
 }
 
-func isNetworkTemplateReady(networkTemplate *sandboxv1alpha1.NetworkTemplate) bool {
-	if networkTemplate == nil {
-		return false
+func buildNetworkLabels(network *sandboxv1alpha1.NetworkSpec) map[string]string {
+	labels := make(map[string]string)
+	if network == nil {
+		return labels
 	}
-
-	readyCond := meta.FindStatusCondition(networkTemplate.Status.Conditions,
-		string(sandboxv1alpha1.NetworkTemplateReady))
-	return readyCond != nil && readyCond.Status == metav1.ConditionTrue
+	if network.AllowAllInternet {
+		labels[LabelAllowInternet] = "true"
+	}
+	if network.AllowClusterDNS {
+		labels[LabelAllowClusterDNS] = "true"
+	}
+	return labels
 }
 
 func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
@@ -186,8 +181,7 @@ func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandbo
 	return nil
 }
 
-// todo benl: get sandbox if create failed with already exists?
-func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, networkTemplate *sandboxv1alpha1.NetworkTemplate) error {
+func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate) error {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 	// todo benl reduce verbose logging
 	log.Info("Creating Pod")
@@ -199,10 +193,8 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		"cluster-autoscaler.kubernetes.io/safe-to-evict": "false",
 	}
 
-	// Add network-template label if network config is specified.
-	// This label is required for the created resource(s) (e.g. NetworkPolicy) to select this pod.
-	if networkTemplate != nil {
-		labels[network.NetworkTemplateLabelKey] = networkTemplate.Name
+	for k, v := range buildNetworkLabels(sandbox.Spec.Network) {
+		labels[k] = v
 	}
 
 	// todo benl: why this exists? ("sandbox-id")
@@ -252,18 +244,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// Set high priority to prevent preemption by applicative non-sandbox pods
 	sandboxPod.Spec.PriorityClassName = "isola-sandbox"
 
-	// todo benl: implement api to restore pod from snapshot (make sure they are compatible)
-	// if sandboxPod.Annotations == nil {
-	// 	sandboxPod.Annotations = map[string]string{}
-	// }
-
-	// sandboxPod.Annotations["dev.gvisor.tar.rootfs.upper.todobenl"] = "/tmp/rootfs-sandbox-870e5846-1766869560.tar"
-
-	// Configure DNS for sandbox pods based on NetworkTemplate settings.
-	if err := configureDNS(sandboxPod, networkTemplate); err != nil {
-		log.Error(err, "Failed to configure DNS")
-		return err
-	}
+	configureDNS(sandboxPod, sandbox.Spec.Network)
 
 	if err := r.injectSidecar(sandboxPod); err != nil {
 		log.Error(err, "Failed to inject sidecar")
@@ -326,21 +307,32 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	return nil
 }
 
-// configureDNS sets up DNS configuration for the sandbox pod based on the NetworkTemplate.
-// - DNSPolicy None: Uses only the specified nameservers. If empty, uses 127.0.0.1 sink with fast-fail options.
-// - DNSPolicy ClusterFirst: Uses cluster DNS with optional additional nameservers.
-func configureDNS(sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.NetworkTemplate) error {
-	dnsPolicy := networkTemplate.Spec.DNSPolicy
+func configureDNS(sandboxPod *corev1.Pod, network *sandboxv1alpha1.NetworkSpec) {
+	allowClusterDNS := network != nil && network.AllowClusterDNS
 
-	switch dnsPolicy {
-	case corev1.DNSNone:
-		sandboxPod.Spec.DNSPolicy = corev1.DNSNone
-		nameservers := networkTemplate.Spec.Nameservers
-		dnsOptions := []corev1.PodDNSConfigOption{
-			// ndots:1 - external domains are tried directly without search domain suffix
-			{Name: "ndots", Value: ptr.To("1")},
+	if allowClusterDNS {
+		sandboxPod.Spec.DNSPolicy = corev1.DNSClusterFirst
+		if len(network.Nameservers) > 0 {
+			if sandboxPod.Spec.DNSConfig == nil {
+				sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{}
+			}
+			// todo benl: log warn if pod spec has nameservers already?
+			sandboxPod.Spec.DNSConfig.Nameservers = network.Nameservers
 		}
-		if len(nameservers) == 0 {
+	} else {
+		sandboxPod.Spec.DNSPolicy = corev1.DNSNone
+		
+		nameservers := []string{}
+		dnsOptions := []corev1.PodDNSConfigOption{}
+		hasNameServers := network != nil && len(network.Nameservers) > 0
+		
+		if hasNameServers {
+			nameservers = network.Nameservers
+			dnsOptions = []corev1.PodDNSConfigOption{
+				// ndots:1 - external domains are tried directly without search domain suffix
+				{Name: "ndots", Value: ptr.To("1")},
+			}
+		} else {
 			// Sink nameserver - DNS queries will fail fast
 			nameservers = []string{"127.0.0.1"}
 			dnsOptions = []corev1.PodDNSConfigOption{
@@ -349,26 +341,12 @@ func configureDNS(sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.Netwo
 				{Name: "ndots", Value: ptr.To("1")},
 			}
 		}
+
 		sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{
 			Nameservers: nameservers,
 			Options:     dnsOptions,
 		}
-
-	case corev1.DNSClusterFirst, "":
-		sandboxPod.Spec.DNSPolicy = corev1.DNSClusterFirst
-		if len(networkTemplate.Spec.Nameservers) > 0 {
-			if sandboxPod.Spec.DNSConfig == nil {
-				sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{}
-			}
-			sandboxPod.Spec.DNSConfig.Nameservers = networkTemplate.Spec.Nameservers
-		}
-		// When no additional nameservers, don't modify DNSConfig - use pod template defaults
-
-	default:
-		return fmt.Errorf("unsupported DNS policy: %q", dnsPolicy)
 	}
-
-	return nil
 }
 
 func getSandboxPodName(sandbox *sandboxv1alpha1.Sandbox) string {
@@ -465,167 +443,72 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 	return template, ctrl.Result{}, nil
 }
 
-// EnsureOwnedNetworkTemplateFromSpec creates or updates a sandbox-owned NetworkTemplate
-// for sandboxes with embedded network spec (network.spec is set).
-// The created NetworkTemplate is owned by the sandbox via OwnerReference
-// and will be garbage-collected when the sandbox is deleted.
-func (r *SandboxReconciler) EnsureOwnedNetworkTemplateFromSpec(
+// ensureCustomNetworkPolicy creates or updates a custom NetworkPolicy for sandboxes
+// that need more than the static Helm-installed policies (custom CIDRs, pod rules, or DNS).
+func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
-) (*sandboxv1alpha1.NetworkTemplate, error) {
+) error {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 
-	if !sandbox.HasNetworkSpec() {
-		return nil, nil
+	if !sandbox.NeedsCustomNetworkPolicy() {
+		return nil
 	}
 
-	templateName := sandbox.GetOwnedNetworkTemplateName()
-	log = log.WithValues("ownedNetworkTemplate", templateName)
-
-	existing := &sandboxv1alpha1.NetworkTemplate{}
-	err := r.Get(ctx, types.NamespacedName{Name: templateName, Namespace: sandbox.Namespace}, existing)
-
-	if err == nil {
-		// Template exists - verify ownership
-		if !metav1.IsControlledBy(existing, sandbox) {
-			log.Error(nil, "NetworkTemplate exists but is not owned by this sandbox")
-			return nil, fmt.Errorf("NetworkTemplate %q exists but is not owned by sandbox %q", templateName, sandbox.Name)
-		}
-		return existing, nil
-	}
-
-	if !apierrors.IsNotFound(err) {
-		log.Error(err, "Failed to get owned NetworkTemplate")
-		return nil, err
-	}
-
-	// Create sandbox-owned NetworkTemplate
-	log.Info("Creating owned NetworkTemplate")
-	ownedTemplate := &sandboxv1alpha1.NetworkTemplate{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      templateName,
-			Namespace: sandbox.Namespace,
-			Labels: map[string]string{
-				"sandbox.isola.run/owner": sandbox.Name,
-				"sandbox.isola.run/owned": "true",
-			},
-		},
-		Spec: *sandbox.Spec.Network.Spec,
-	}
-
-	if err := controllerutil.SetControllerReference(sandbox, ownedTemplate, r.Scheme); err != nil {
-		log.Error(err, "Failed to set controller reference on owned NetworkTemplate")
-		return nil, err
-	}
-
-	if err := r.Create(ctx, ownedTemplate); err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			// Race condition - another reconcile created it, refetch
-			if err := r.Get(ctx, types.NamespacedName{Name: templateName, Namespace: sandbox.Namespace}, existing); err != nil {
-				return nil, err
-			}
-			return existing, nil
-		}
-		log.Error(err, "Failed to create owned NetworkTemplate")
-		return nil, err
-	}
-
-	log.Info("Owned NetworkTemplate created")
-	return ownedTemplate, nil
-}
-
-// EnsureNetworkTemplate fetches the NetworkTemplate for the sandbox.
-// For embedded specs (network.spec), creates a sandbox-owned NetworkTemplate.
-func (r *SandboxReconciler) EnsureNetworkTemplate(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.NetworkTemplate, ctrl.Result, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
-
-	// For embedded specs, create/update the sandbox-owned NetworkTemplate first
-	if sandbox.HasNetworkSpec() {
-		_, err := r.EnsureOwnedNetworkTemplateFromSpec(ctx, sandbox, baseSandbox)
-		if err != nil {
-			if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-				{
-					Type:               SandboxNetworkReadyCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonOwnedTemplateError,
-					Message:            err.Error(),
-					ObservedGeneration: sandbox.Generation,
-				},
-				{
-					Type:               SandboxReadyCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonOwnedTemplateError,
-					Message:            err.Error(),
-					ObservedGeneration: sandbox.Generation,
-				},
-			}); patchErr != nil {
-				log.Error(patchErr, "Failed to update Sandbox status")
-				return nil, ctrl.Result{}, patchErr
-			}
-			return nil, ctrl.Result{}, err
-		}
-	}
-
-	templateName := sandbox.GetNetworkTemplateName()
-	log = log.WithValues("networkTemplate", templateName)
-
-	networkTemplate := &sandboxv1alpha1.NetworkTemplate{}
-	if err := r.Get(ctx, types.NamespacedName{Name: templateName, Namespace: sandbox.Namespace}, networkTemplate); err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Error(err, "NetworkTemplate not found")
-			if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-				{
-					Type:               SandboxNetworkReadyCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonNetworkTemplateNotFound,
-					Message:            fmt.Sprintf("NetworkTemplate %q not found", templateName),
-					ObservedGeneration: sandbox.Generation,
-				},
-				{
-					Type:               SandboxReadyCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonNetworkTemplateNotFound,
-					Message:            fmt.Sprintf("NetworkTemplate %q not found", templateName),
-					ObservedGeneration: sandbox.Generation,
-				},
-			}); patchErr != nil {
-				log.Error(patchErr, "Failed to update Sandbox status")
-				return nil, ctrl.Result{}, patchErr
-			}
-			// Wait for the NetworkTemplate to be created
-			return nil, ctrl.Result{}, nil
-		}
-		log.Error(err, "Failed to get NetworkTemplate")
-		return nil, ctrl.Result{}, err
-	}
-
-	if !networkTemplate.DeletionTimestamp.IsZero() {
-		log.Info("NetworkTemplate is being deleted, cannot use")
+	desiredNP, err := netbuilder.BuildCustomNetworkPolicy(sandbox.Name, sandbox.Namespace, sandbox.Spec.Network)
+	if err != nil {
+		log.Error(err, "Failed to build custom NetworkPolicy")
 		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxNetworkReadyCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonNetworkTemplateDeleting,
-				Message:            fmt.Sprintf("NetworkTemplate %q is being deleted", templateName),
-				ObservedGeneration: sandbox.Generation,
-			},
-			{
-				Type:               SandboxReadyCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonNetworkTemplateDeleting,
-				Message:            fmt.Sprintf("NetworkTemplate %q is being deleted", templateName),
+				Reason:             CondReasonNetworkPolicyFailed,
+				Message:            err.Error(),
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); patchErr != nil {
 			log.Error(patchErr, "Failed to update Sandbox status")
-			return nil, ctrl.Result{}, patchErr
 		}
-		// Requeue to check again - template will be fully deleted soon
-		return nil, ctrl.Result{RequeueAfter: time.Second}, nil
+		return err
 	}
 
-	return networkTemplate, ctrl.Result{}, nil
+	if desiredNP == nil {
+		// No custom policy needed
+		return nil
+	}
+
+	existingNP := &networkingv1.NetworkPolicy{}
+	policyName := sandbox.GetCustomNetworkPolicyName()
+	err = r.Get(ctx, types.NamespacedName{Name: policyName, Namespace: sandbox.Namespace}, existingNP)
+
+	if err == nil {
+		// Policy exists - no update needed (network config is immutable)
+		return nil
+	}
+
+	if !apierrors.IsNotFound(err) {
+		log.Error(err, "Failed to get existing custom NetworkPolicy")
+		return err
+	}
+
+	log.Info("Creating custom NetworkPolicy", "policyName", policyName)
+	if err := controllerutil.SetControllerReference(sandbox, desiredNP, r.Scheme); err != nil {
+		log.Error(err, "Failed to set controller reference on custom NetworkPolicy")
+		return err
+	}
+
+	if err := r.Create(ctx, desiredNP); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			// Race condition - policy already created
+			return nil
+		}
+		log.Error(err, "Failed to create custom NetworkPolicy")
+		return err
+	}
+
+	log.Info("Custom NetworkPolicy created")
+	return nil
 }
 
 func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
@@ -679,14 +562,13 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	sandboxPod *corev1.Pod,
-	networkTemplate *sandboxv1alpha1.NetworkTemplate,
 ) error {
 	var conditions []metav1.Condition
 
 	podCondition := r.determinePodCondition(sandbox, sandboxPod)
 	conditions = append(conditions, podCondition)
 
-	networkCondition := r.determineNetworkCondition(sandbox, networkTemplate)
+	networkCondition := r.determineNetworkCondition(sandbox)
 	conditions = append(conditions, networkCondition)
 
 	// todo benl: currently, only shutdown snapsbot condition is reflected
@@ -697,7 +579,7 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	snapshotCondition := r.determineSnapshotCondition(sandbox, shutdownSnapshot)
 	conditions = append(conditions, snapshotCondition)
 
-	readyCondition := r.determineReadyCondition(sandbox, sandboxPod, networkTemplate)
+	readyCondition := r.determineReadyCondition(sandbox, sandboxPod)
 	conditions = append(conditions, readyCondition)
 
 	return r.patchStatus(ctx, baseSandbox, sandbox, conditions)
@@ -795,39 +677,21 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 	}
 }
 
-func (r *SandboxReconciler) determineNetworkCondition(sandbox *sandboxv1alpha1.Sandbox, networkTemplate *sandboxv1alpha1.NetworkTemplate) metav1.Condition {
-	if networkTemplate == nil {
-		return metav1.Condition{
-			Type:               SandboxNetworkReadyCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonNetworkTemplateNotFound,
-			Message:            "NetworkTemplate not found",
-			ObservedGeneration: sandbox.Generation,
-		}
-	}
-
-	if isNetworkTemplateReady(networkTemplate) {
-		return metav1.Condition{
-			Type:               SandboxNetworkReadyCondition,
-			Status:             metav1.ConditionTrue,
-			Reason:             CondReasonNetworkPolicyApplied,
-			Message:            "network configuration applied",
-			ObservedGeneration: sandbox.Generation,
-		}
-	}
-
+func (r *SandboxReconciler) determineNetworkCondition(sandbox *sandboxv1alpha1.Sandbox) metav1.Condition {
+	// Network configuration is now static (Helm-installed policies + optional custom policy).
+	// The network is considered ready once the pod is created (policies apply immediately).
 	return metav1.Condition{
 		Type:               SandboxNetworkReadyCondition,
-		Status:             metav1.ConditionFalse,
-		Reason:             CondReasonNetworkConfigNotApplied,
-		Message:            "Waiting for network configuration to be applied",
+		Status:             metav1.ConditionTrue,
+		Reason:             CondReasonNetworkPolicyApplied,
+		Message:            "Network configuration applied",
 		ObservedGeneration: sandbox.Generation,
 	}
 }
 
 // determineReadyCondition returns the aggregate Ready condition.
-// Sandbox is ready when pod is ready AND network is configured (if network template exists).
-func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod, networkTemplate *sandboxv1alpha1.NetworkTemplate) metav1.Condition {
+// Sandbox is ready when pod is ready.
+func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) metav1.Condition {
 	if podutil.IsPodTerminated(sandboxPod) {
 		reason := CondReasonPodFailed
 		message := "Pod failed"
@@ -854,16 +718,6 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 		}
 	}
 
-	if !isNetworkTemplateReady(networkTemplate) {
-		return metav1.Condition{
-			Type:               SandboxReadyCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonNetworkConfigNotApplied,
-			Message:            "Waiting for network configuration to be applied",
-			ObservedGeneration: sandbox.Generation,
-		}
-	}
-
 	return metav1.Condition{
 		Type:               SandboxReadyCondition,
 		Status:             metav1.ConditionTrue,
@@ -877,8 +731,6 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/finalizers,verbs=update
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxtemplates,verbs=get;list;watch
-// +kubebuilder:rbac:groups=sandbox.isola.run,resources=networktemplates,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=sandbox.isola.run,resources=networktemplates/finalizers,verbs=update
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
@@ -956,14 +808,8 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 	}
 
-	networkTemplate, result, err := r.EnsureNetworkTemplate(ctx, sandbox, baseSandbox)
-	if err != nil {
-		return result, err
-	}
-
-	if networkTemplate == nil {
-		log.Info("NetworkTemplate not found, waiting")
-		return ctrl.Result{}, nil
+	if err := r.ensureCustomNetworkPolicy(ctx, sandbox, baseSandbox); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	sandboxPod, err := r.getSandboxPod(ctx, sandbox)
@@ -1007,22 +853,17 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if sandboxPod == nil {
-		if err := r.CreateSandboxPod(ctx, sandbox, baseSandbox, template, networkTemplate); err != nil {
+		if err := r.CreateSandboxPod(ctx, sandbox, baseSandbox, template); err != nil {
 			return ctrl.Result{}, err
 		}
-		if err := r.reconcileSandboxStatus(ctx, sandbox, baseSandbox, nil, networkTemplate); err != nil {
+		if err := r.reconcileSandboxStatus(ctx, sandbox, baseSandbox, nil); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: timeUntilTimeout}, nil
 	}
 
-	if err := r.reconcileSandboxStatus(ctx, sandbox, baseSandbox, sandboxPod, networkTemplate); err != nil {
+	if err := r.reconcileSandboxStatus(ctx, sandbox, baseSandbox, sandboxPod); err != nil {
 		return ctrl.Result{}, err
-	}
-
-	// If network template exists but isn't ready, requeue sooner to check again
-	if networkTemplate != nil && !isNetworkTemplateReady(networkTemplate) {
-		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 
 	return ctrl.Result{RequeueAfter: timeUntilTimeout}, nil
@@ -1370,31 +1211,15 @@ func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
-	// Field index for sandbox networkTemplateRef lookups
-	if err := mgr.GetFieldIndexer().IndexField(
-		context.Background(),
-		&sandboxv1alpha1.Sandbox{},
-		sandboxNetworkTemplateRefField,
-		extractNetworkTemplateRefName,
-	); err != nil {
-		return err
-	}
-
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.Sandbox{}).
 		Owns(&corev1.Pod{}).
 		Owns(&sandboxv1alpha1.RootfsSnapshot{}).
+		Owns(&networkingv1.NetworkPolicy{}).
 		// Watch SandboxTemplate changes to reconcile affected sandboxes
 		Watches(
 			&sandboxv1alpha1.SandboxTemplate{},
 			handler.EnqueueRequestsFromMapFunc(r.findSandboxesForTemplate),
-		).
-		// Watch NetworkTemplate changes to reconcile affected sandboxes.
-		// When NetworkTemplate Ready condition changes, sandboxes are requeued
-		// to check if they can now proceed with pod creation.
-		Watches(
-			&sandboxv1alpha1.NetworkTemplate{},
-			handler.EnqueueRequestsFromMapFunc(r.findSandboxesForNetworkTemplate),
 		).
 		Named("sandbox").
 		Complete(r)
@@ -1408,41 +1233,11 @@ func extractTemplateRefName(obj client.Object) []string {
 	return []string{sandbox.Spec.TemplateRef.Name}
 }
 
-func extractNetworkTemplateRefName(obj client.Object) []string {
-	sandbox, ok := obj.(*sandboxv1alpha1.Sandbox)
-	if !ok {
-		return nil
-	}
-
-	return []string{sandbox.GetNetworkTemplateName()}
-}
-
 func (r *SandboxReconciler) findSandboxesForTemplate(ctx context.Context, template client.Object) []reconcile.Request {
 	sandboxList := &sandboxv1alpha1.SandboxList{}
 	if err := r.List(ctx, sandboxList,
 		client.InNamespace(template.GetNamespace()),
 		client.MatchingFields{sandboxTemplateRefField: template.GetName()},
-	); err != nil {
-		return nil
-	}
-
-	requests := make([]reconcile.Request, 0, len(sandboxList.Items))
-	for _, sandbox := range sandboxList.Items {
-		requests = append(requests, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      sandbox.Name,
-				Namespace: sandbox.Namespace,
-			},
-		})
-	}
-	return requests
-}
-
-func (r *SandboxReconciler) findSandboxesForNetworkTemplate(ctx context.Context, networkTemplate client.Object) []reconcile.Request {
-	sandboxList := &sandboxv1alpha1.SandboxList{}
-	if err := r.List(ctx, sandboxList,
-		client.InNamespace(networkTemplate.GetNamespace()),
-		client.MatchingFields{sandboxNetworkTemplateRefField: networkTemplate.GetName()},
 	); err != nil {
 		return nil
 	}
