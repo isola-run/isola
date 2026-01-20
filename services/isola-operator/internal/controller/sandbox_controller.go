@@ -186,26 +186,24 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// todo benl reduce verbose logging
 	log.Info("Creating Pod")
 
-	labels := map[string]string{
-		"app":                          "isola-sandbox",
-		"sandbox.isola.run/id":         sandbox.Name,
-		"app.kubernetes.io/managed-by": "isola-operator",
-		"cluster-autoscaler.kubernetes.io/safe-to-evict": "false",
+	// Apply template labels first to prevent templates from overriding app, sandbox.isola.run/*, isola.run/*, etc.
+	labels := make(map[string]string)
+	if template.Spec.PodTemplate.Labels != nil {
+		maps.Copy(labels, template.Spec.PodTemplate.Labels)
 	}
 
-	for k, v := range buildNetworkLabels(sandbox.Spec.Network) {
-		labels[k] = v
-	}
+	labels["app"] = "isola-sandbox"
+	labels["sandbox.isola.run/id"] = sandbox.Name
+	labels["app.kubernetes.io/managed-by"] = "isola-operator"
+	labels["cluster-autoscaler.kubernetes.io/safe-to-evict"] = "false"
+
+	maps.Copy(labels, buildNetworkLabels(sandbox.Spec.Network))
 
 	// todo benl: why this exists? ("sandbox-id")
 	if sandbox.Labels != nil {
 		if sandboxID, exists := sandbox.Labels["sandbox-id"]; exists {
 			labels["sandbox-id"] = sandboxID
 		}
-	}
-
-	if template.Spec.PodTemplate.Labels != nil {
-		maps.Copy(labels, template.Spec.PodTemplate.Labels)
 	}
 
 	sandboxPod := &corev1.Pod{
@@ -321,12 +319,10 @@ func configureDNS(sandboxPod *corev1.Pod, network *sandboxv1alpha1.NetworkSpec) 
 		}
 	} else {
 		sandboxPod.Spec.DNSPolicy = corev1.DNSNone
-		
-		nameservers := []string{}
-		dnsOptions := []corev1.PodDNSConfigOption{}
-		hasNameServers := network != nil && len(network.Nameservers) > 0
-		
-		if hasNameServers {
+
+		var nameservers []string
+		var dnsOptions []corev1.PodDNSConfigOption
+		if network != nil && len(network.Nameservers) > 0 {
 			nameservers = network.Nameservers
 			dnsOptions = []corev1.PodDNSConfigOption{
 				// ndots:1 - external domains are tried directly without search domain suffix

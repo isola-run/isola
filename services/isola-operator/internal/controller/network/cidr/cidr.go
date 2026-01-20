@@ -112,7 +112,8 @@ func ParsePrefix(cidrStr string) (netip.Prefix, error) {
 }
 
 // ParseDNSServerIP parses and validates a DNS server IP address.
-// Returns the validated address. Rejects IPv4-mapped IPv6.
+// Returns the validated address. Rejects IPv4-mapped IPv6 and IPs in blocked ranges
+// (private networks, cloud metadata endpoints, etc.).
 func ParseDNSServerIP(ipStr string) (netip.Addr, error) {
 	addr, err := netip.ParseAddr(ipStr)
 	if err != nil {
@@ -121,5 +122,22 @@ func ParseDNSServerIP(ipStr string) (netip.Addr, error) {
 	if addr.Is4In6() {
 		return netip.Addr{}, fmt.Errorf("invalid DNS server IP %q: IPv4-mapped IPv6 not allowed", ipStr)
 	}
+	if err := validateNotBlocked(addr); err != nil {
+		return netip.Addr{}, fmt.Errorf("invalid DNS server IP %q: %w", ipStr, err)
+	}
 	return addr, nil
+}
+
+// validateNotBlocked returns an error if addr falls within any blocked range.
+func validateNotBlocked(addr netip.Addr) error {
+	blocked := BlockedV4
+	if addr.Is6() {
+		blocked = BlockedV6
+	}
+	for _, b := range blocked {
+		if b.Contains(addr) {
+			return fmt.Errorf("IP is in blocked range %s", b)
+		}
+	}
+	return nil
 }
