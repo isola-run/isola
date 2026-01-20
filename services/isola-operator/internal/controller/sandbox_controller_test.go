@@ -2605,8 +2605,7 @@ var _ = Describe("configureDNS function", func() {
 			},
 		}
 
-		err := configureDNS(pod, nil)
-		Expect(err).NotTo(HaveOccurred())
+		configureDNS(pod, nil)
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
 		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"127.0.0.1"}))
 	})
@@ -2624,8 +2623,7 @@ var _ = Describe("configureDNS function", func() {
 			AllowClusterDNS: true,
 		}
 
-		err := configureDNS(pod, network)
-		Expect(err).NotTo(HaveOccurred())
+		configureDNS(pod, network)
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
 	})
 
@@ -2642,8 +2640,7 @@ var _ = Describe("configureDNS function", func() {
 			Nameservers: []string{"8.8.8.8", "1.1.1.1"},
 		}
 
-		err := configureDNS(pod, network)
-		Expect(err).NotTo(HaveOccurred())
+		configureDNS(pod, network)
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
 		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
 	})
@@ -2662,8 +2659,7 @@ var _ = Describe("configureDNS function", func() {
 			Nameservers:     []string{"8.8.8.8"},
 		}
 
-		err := configureDNS(pod, network)
-		Expect(err).NotTo(HaveOccurred())
+		configureDNS(pod, network)
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
 		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8"}))
 	})

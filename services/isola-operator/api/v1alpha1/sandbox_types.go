@@ -122,6 +122,8 @@ type NetworkSpec struct {
 }
 
 // SandboxSpec defines the desired state of Sandbox
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.network) || has(self.network)",message="network cannot be removed once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.network) || !has(oldSelf.network) || self.network == oldSelf.network",message="network is immutable once set"
 type SandboxSpec struct {
 	// TemplateRef references the SandboxTemplate to inherit pod configuration from.
 	// The SandboxTemplate must exist in the same namespace as this Sandbox.
@@ -130,6 +132,7 @@ type SandboxSpec struct {
 
 	// Network specifies the network isolation configuration for this sandbox.
 	// If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
+	// Network configuration is immutable after sandbox creation.
 	// +optional
 	Network *NetworkSpec `json:"network,omitempty"`
 }

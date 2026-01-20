@@ -62,6 +62,7 @@ spec:
                 description: |-
                   Network specifies the network isolation configuration for this sandbox.
                   If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
+                  Network configuration is immutable after sandbox creation.
                 properties:
                   allowAllInternet:
                     default: false
@@ -208,6 +209,12 @@ spec:
             required:
             - templateRef
             type: object
+            x-kubernetes-validations:
+            - message: network cannot be removed once set
+              rule: '!has(oldSelf.network) || has(self.network)'
+            - message: network is immutable once set
+              rule: '!has(self.network) || !has(oldSelf.network) || self.network ==
+                oldSelf.network'
           status:
             description: status defines the observed state of Sandbox
             properties:
