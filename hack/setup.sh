@@ -6,7 +6,6 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-isola-dev}"
 REGISTRY_NAME="${REGISTRY_NAME:-kind-registry}"
 REGISTRY_PORT="${REGISTRY_PORT:-5001}"
-GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/${GVISOR_VERSION}"
 
 # Tool versions (keep in sync with CI workflows)
 GOLANGCI_LINT_VERSION="v2.8.0"
@@ -15,6 +14,8 @@ SETUP_ENVTEST_VERSION="v0.23.0"
 ENVTEST_K8S_VERSION="1.34"  # matches k8s.io/api in go.mod
 LEFTHOOK_VERSION="v2.0.15"
 GVISOR_VERSION="release-20260112.0"
+
+GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/${GVISOR_VERSION}"
 
 echo "=== Isola Development Environment Setup ==="
 
