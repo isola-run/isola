@@ -147,10 +147,10 @@ func (s *Sandbox) NeedsCustomNetworkPolicy() bool {
 	// Custom policy needed for:
 	// - Custom CIDR rules
 	// - Pod egress rules
-	// - Custom nameservers when not allowing internet (need DNS egress rules)
+	// - Custom nameservers (even with allowAllInternet, nameservers may be in blocked private ranges)
 	return len(n.AllowedEgressCIDRs) > 0 ||
 		len(n.AllowedEgressPods) > 0 ||
-		(len(n.Nameservers) > 0 && !n.AllowAllInternet)
+		len(n.Nameservers) > 0
 }
 
 // GetCustomNetworkPolicyName returns the name for this sandbox's custom NetworkPolicy.
