@@ -34,105 +34,17 @@ def k8s_helper() -> K8sHelper | None:
         pytest.skip(f"Failed to connect to cluster: {e}")
 
 
-@pytest.fixture(scope="module")
-def localstack_network_template(k8s_helper: K8sHelper) -> Generator[str, None, None]:
-    """
-    Create a NetworkTemplate that allows egress to localstack.
-    This template allows DNS resolution and HTTP access to localstack.
-    """
-    template_name = f"localstack-egress-{uuid.uuid4().hex[:6]}"
-    namespace = "isola-sandboxes"
-
-    template_body = {
-        "apiVersion": "sandbox.isola.run/v1alpha1",
-        "kind": "NetworkTemplate",
-        "metadata": {
-            "name": template_name,
-            "namespace": namespace,
-        },
-        "spec": {
-            "dnsPolicy": "ClusterFirst",
-            "allowedEgressPods": [
-                {
-                    "namespace": "kube-system",
-                    "podSelector": {
-                        "matchLabels": {"k8s-app": "kube-dns"},
-                    },
-                    "ports": [
-                        {"protocol": "UDP", "port": 53},
-                        {"protocol": "TCP", "port": 53},
-                    ],
-                },
-                {
-                    "namespace": "localstack",
-                    "podSelector": {
-                        "matchLabels": {"app.kubernetes.io/name": "localstack"},
-                    },
-                    "ports": [
-                        {"protocol": "TCP", "port": 4566},
-                    ],
-                },
-            ],
-        },
-    }
-
-    logger.info(f"Creating NetworkTemplate {template_name}")
-    k8s_helper.custom.create_namespaced_custom_object(
-        group="sandbox.isola.run",
-        version="v1alpha1",
-        namespace=namespace,
-        plural="networktemplates",
-        body=template_body,
-    )
-
-    # Wait for the template to be ready
-    for _ in range(30):
-        template = k8s_helper.custom.get_namespaced_custom_object(
-            group="sandbox.isola.run",
-            version="v1alpha1",
-            namespace=namespace,
-            plural="networktemplates",
-            name=template_name,
-        )
-        conditions = template.get("status", {}).get("conditions", [])
-        ready = any(
-            c.get("type") == "Ready" and c.get("status") == "True"
-            for c in conditions
-        )
-        if ready:
-            logger.info(f"NetworkTemplate {template_name} is ready")
-            break
-        time.sleep(1)
-    else:
-        pytest.fail(f"NetworkTemplate {template_name} did not become ready")
-
-    yield template_name
-
-    # Cleanup
-    try:
-        k8s_helper.custom.delete_namespaced_custom_object(
-            group="sandbox.isola.run",
-            version="v1alpha1",
-            namespace=namespace,
-            plural="networktemplates",
-            name=template_name,
-        )
-        logger.info(f"Deleted NetworkTemplate {template_name}")
-    except Exception as e:
-        logger.warning(f"Failed to delete NetworkTemplate {template_name}: {e}")
-
-
 @pytest.fixture
 def sandbox_with_localstack_access(
     k8s_helper: K8sHelper,
-    localstack_network_template: str,
     isola_client: IsolaClient,
     skip_cleanup: bool,
     request: FixtureRequest,
 ) -> Generator[dict, None, None]:
     """
     Create a sandbox with network access to localstack.
-    This creates the Sandbox CR directly with the network template reference.
+    This creates the Sandbox CR with inline network spec that allows
+    cluster DNS and egress to localstack pods.
     """
     namespace = "isola-sandboxes"
     sandbox_id = uuid.uuid4().hex
@@ -171,7 +83,8 @@ def sandbox_with_localstack_access(
         body=template_body,
     )
 
-    # Create Sandbox with network template reference
+    # Create Sandbox with inline network spec
+    # allowClusterDNS=true enables DNS, allowedEgressPods allows localstack access
     sandbox_body = {
         "apiVersion": "sandbox.isola.run/v1alpha1",
         "kind": "Sandbox",
@@ -188,14 +101,23 @@ def sandbox_with_localstack_access(
                 "name": template_name,
             },
             "network": {
-                "templateRef": {
-                    "name": localstack_network_template,
-                },
+                "allowClusterDNS": True,
+                "allowedEgressPods": [
+                    {
+                        "namespace": "localstack",
+                        "podSelector": {
+                            "matchLabels": {"app.kubernetes.io/name": "localstack"},
+                        },
+                        "ports": [
+                            {"protocol": "TCP", "port": 4566},
+                        ],
+                    },
+                ],
             },
         },
     }
 
-    logger.info(f"Creating Sandbox {sandbox_name} with network template {localstack_network_template}")
+    logger.info(f"Creating Sandbox {sandbox_name} with localstack egress")
     k8s_helper.custom.create_namespaced_custom_object(
         group="sandbox.isola.run",
         version="v1alpha1",
@@ -297,11 +219,11 @@ class TestLocalstackConnectivity:
     ) -> None:
         """
         Verify that a sandbox with localstack egress rules can reach localstack.
-        This tests the full network policy chain: NetworkTemplate -> NetworkPolicy -> egress allowed.
+        This tests the full network policy chain: inline NetworkSpec -> custom NetworkPolicy -> egress allowed.
         """
         sandbox_id = sandbox_with_localstack_access["id"]
 
-        # Test DNS resolution first
+        # Test DNS resolution first (cluster DNS is allowed)
         result = isola_client.execute_command(
             sandbox_id,
             "python -c \"import socket; print(socket.gethostbyname('localstack.localstack.svc.cluster.local'))\"",
@@ -329,7 +251,7 @@ class TestLocalstackConnectivity:
     ) -> None:
         """
         Verify that the sandbox cannot reach external IPs not in the egress rules.
-        The localstack egress template only allows kube-dns and localstack.
+        The localstack egress spec only allows kube-dns (via allowClusterDNS) and localstack pods.
         """
         sandbox_id = sandbox_with_localstack_access["id"]
 
@@ -364,8 +286,8 @@ class TestDefaultIsolatedNetwork:
         isola_client: IsolaClient,
     ) -> None:
         """
-        Verify that default sandboxes (using isola-isolated template) cannot reach cluster services.
-        The default isolated template uses DNSPolicy: None with sink nameserver.
+        Verify that default sandboxes (no network spec) cannot reach cluster services.
+        Default sandboxes use DNSPolicy: None with sink nameserver (127.0.0.1).
         """
         sandbox_id = sandbox["id"]
 
