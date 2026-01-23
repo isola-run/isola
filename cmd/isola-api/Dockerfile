@@ -9,18 +9,20 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy required source
-COPY cmd/gateway/ cmd/gateway/
-COPY internal/gateway/ internal/gateway/
+COPY api/ api/
+COPY cmd/isola-api/ cmd/isola-api/
+COPY internal/api/ internal/api/
 
 # Build
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o isola-gw ./cmd/gateway/main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o isola-api ./cmd/isola-api/main.go
 
 # Use distroless as minimal base image
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /
-COPY --from=builder /workspace/isola-gw .
+COPY --from=builder /workspace/isola-api .
+USER 65532:65532
 
 EXPOSE 8080
 
-ENTRYPOINT ["/isola-gw"]
+ENTRYPOINT ["/isola-api"]
