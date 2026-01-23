@@ -13,7 +13,7 @@ GOVULNCHECK_VERSION="v1.1.4"
 SETUP_ENVTEST_VERSION="v0.23.0"
 ENVTEST_K8S_VERSION="1.34"  # matches k8s.io/api in go.mod
 LEFTHOOK_VERSION="v2.0.15"
-GVISOR_VERSION="release-20260112.0"
+GVISOR_VERSION="20260112"
 
 GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/${GVISOR_VERSION}"
 
