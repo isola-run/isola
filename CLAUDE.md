@@ -107,6 +107,19 @@ cd tests/e2e && uv run pytest            # Run all tests
 cd tests/e2e && uv run pytest --skip-cleanup  # Debug: keep sandboxes
 ```
 
+## Tooling Versions
+
+Tool versions are pinned and must be kept in sync:
+
+| Tool | Location | Also sync with |
+|------|----------|----------------|
+| golangci-lint | `hack/setup.sh` | `.github/workflows/lint.yml` |
+| govulncheck | `hack/setup.sh` | - |
+| setup-envtest | `hack/setup.sh`, `.github/workflows/test.yml` | - |
+| envtest K8s | `Makefile` | k8s.io/api in go.mod |
+| lefthook | `hack/setup.sh` | - |
+| gVisor | `hack/setup.sh` | `.github/workflows/e2e.yml` |
+
 ## Comment Policy
 
 Only comment non-obvious code. Bad: `// Check if job failed`. Good: explain *why* something unexpected is needed:
