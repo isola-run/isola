@@ -17,27 +17,50 @@ runtimeClassName: "gvisor"
 # Namespace where sandbox pods are created
 sandboxNamespace: isola-sandboxes
 
-# Storage credentials for sandbox jobs (snapshots, file uploads)
-# These credentials are made available to jobs in the sandbox namespace.
-#
-# Three modes of operation:
-#   1. Pod/Workload Identity: Leave all fields empty (recommended for production)
-#   2. Existing Secret: Set existingSecret to reference a pre-created secret (any provider)
-#   3. Chart-managed Secret: Provide accessKeyId/secretAccessKey (AWS/S3-compatible only)
-#
-sandboxCredentials:
-  ## @param sandboxCredentials.existingSecret Name of existing secret containing storage credentials
-  ## Use this for production with any storage provider (AWS, GCP, Azure, S3-compatible).
-  ## The secret can contain any keys your storage backend requires.
-  ## When set, the inline credentials below are ignored.
-  existingSecret: ""
+# Snapshot configuration for uploading rootfs snapshots to bucket storage
+snapshot:
+  # Container image for the snapshot uploader job
+  uploaderImage: "isola-uploader:latest"
 
-  ## AWS/S3-compatible credentials (only used when existingSecret is empty)
-  ## Convenient for dev/CI with LocalStack or S3-compatible storage.
-  ## Creates a secret with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION keys.
-  ## @param sandboxCredentials.accessKeyId AWS Access Key ID
-  accessKeyId: ""
-  ## @param sandboxCredentials.secretAccessKey AWS Secret Access Key
-  secretAccessKey: ""
-  ## @param sandboxCredentials.region AWS Region
-  region: ""
+  # Storage configuration
+  storage:
+    # Bucket URL for snapshot storage (required for snapshotting to work)
+    # Examples:
+    #   s3://bucket-name?region=us-east-1 (AWS S3)
+    #   s3://bucket-name?endpoint=http://localstack:4566&use_path_style=true (LocalStack/MinIO)
+    #   gs://bucket-name (Google Cloud Storage)
+    #   azblob://container-name (Azure Blob Storage)
+    bucketUrl: ""
+
+    # Storage credentials for snapshot jobs
+    # Three modes of operation:
+    #   1. Pod/Workload Identity: Leave all fields empty (recommended for production)
+    #   2. Existing Secret: Set existingSecret to reference a pre-created secret (any provider)
+    #   3. Chart-managed Secret: Provide accessKeyId/secretAccessKey (AWS/S3-compatible only)
+    credentials:
+      ## @param snapshot.storage.credentials.existingSecret Name of existing secret containing storage credentials
+      ## Use this for production with any storage provider (AWS, GCP, Azure, S3-compatible).
+      ## The secret can contain any keys your storage backend requires.
+      ## When set, the inline credentials below are ignored.
+      existingSecret: ""
+
+      ## AWS/S3-compatible credentials (only used when existingSecret is empty)
+      ## Convenient for dev/CI with LocalStack or S3-compatible storage.
+      ## Creates a secret with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION keys.
+      ## @param snapshot.storage.credentials.accessKeyId AWS Access Key ID
+      accessKeyId: ""
+      ## @param snapshot.storage.credentials.secretAccessKey AWS Secret Access Key
+      secretAccessKey: ""
+      ## @param snapshot.storage.credentials.region AWS Region
+      region: ""
+
+  # ServiceAccount for snapshot jobs (created in sandboxNamespace)
+  serviceAccount:
+    create: true
+    name: "isola-snapshot-job"
+    # Annotations for pod identity (IRSA, Workload Identity, etc.)
+    # Examples:
+    #   eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/isola-snapshot"
+    #   iam.gke.io/gcp-service-account: "isola-snapshot@project.iam.gserviceaccount.com"
+    #   azure.workload.identity/use: "true"
+    annotations: {}

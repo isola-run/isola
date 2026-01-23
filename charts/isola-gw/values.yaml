@@ -10,9 +10,29 @@ sandboxNamespace: isola-sandboxes
 nodePort:
   enabled: false
 
+# Storage configuration for file uploads
 storage:
   enabled: false
   bucketUrl: ""
-  # Credentials (read automatically by go-cloud from standard env vars)
-  awsAccessKeyId: ""
-  awsSecretAccessKey: ""
+
+  # Storage credentials
+  # Three modes of operation:
+  #   1. Pod/Workload Identity: Leave all fields empty (recommended for production)
+  #   2. Existing Secret: Set existingSecret to reference a pre-created secret (any provider)
+  #   3. Chart-managed Secret: Provide accessKeyId/secretAccessKey (AWS/S3-compatible only)
+  credentials:
+    ## @param storage.credentials.existingSecret Name of existing secret containing storage credentials
+    ## Use this for production with any storage provider (AWS, GCP, Azure, S3-compatible).
+    ## The secret can contain any keys your storage backend requires.
+    ## When set, the inline credentials below are ignored.
+    existingSecret: ""
+
+    ## AWS/S3-compatible credentials (only used when existingSecret is empty)
+    ## Convenient for dev/CI with LocalStack or S3-compatible storage.
+    ## Creates a secret with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION keys.
+    ## @param storage.credentials.accessKeyId AWS Access Key ID
+    accessKeyId: ""
+    ## @param storage.credentials.secretAccessKey AWS Secret Access Key
+    secretAccessKey: ""
+    ## @param storage.credentials.region AWS Region
+    region: ""

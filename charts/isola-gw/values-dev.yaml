@@ -11,10 +11,12 @@ nodePort:
   enabled: true
   port: 30080
 
-# LocalStack configuration
-# URL includes endpoint and path style for S3-compatible services
+# LocalStack storage configuration
 storage:
   enabled: true
   bucketUrl: "s3://isola-uploads?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
-  awsAccessKeyId: "test"
-  awsSecretAccessKey: "test"
+  # LocalStack credentials - chart creates isola-gw-storage-credentials secret
+  credentials:
+    accessKeyId: "test"
+    secretAccessKey: "test"
+    region: "us-east-1"

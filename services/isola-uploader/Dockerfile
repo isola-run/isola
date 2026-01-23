@@ -1,0 +1,27 @@
+# Build stage
+FROM golang:1.25.5-bookworm AS builder
+
+WORKDIR /workspace
+
+# Copy shared packages first (referenced by replace directive)
+COPY pkg/snapshot/ /pkg/snapshot/
+
+# Copy go mod files first for caching
+COPY services/isola-uploader/go.mod go.mod
+COPY services/isola-uploader/go.sum* ./
+RUN go mod download
+
+# Copy source
+COPY services/isola-uploader/cmd/ cmd/
+
+# Build static binary
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o uploader ./cmd/main.go
+
+# Final stage - minimal image
+FROM gcr.io/distroless/static:nonroot
+
+COPY --from=builder /workspace/uploader /uploader
+
+USER 65532:65532
+
+ENTRYPOINT ["/uploader"]

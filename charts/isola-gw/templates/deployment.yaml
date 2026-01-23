@@ -66,14 +66,30 @@ spec:
         {{- if .Values.storage.enabled }}
         - name: ISOLA_BUCKET_URL
           value: {{ .Values.storage.bucketUrl | quote }}
-        {{- if .Values.storage.awsAccessKeyId }}
+        {{- /* Determine which secret to use for credentials */ -}}
+        {{- $credentialSecretName := "" }}
+        {{- if .Values.storage.credentials.existingSecret }}
+        {{- $credentialSecretName = .Values.storage.credentials.existingSecret }}
+        {{- else if and .Values.storage.credentials.accessKeyId .Values.storage.credentials.secretAccessKey }}
+        {{- $credentialSecretName = "isola-gw-storage-credentials" }}
+        {{- end }}
+        {{- if $credentialSecretName }}
         - name: AWS_ACCESS_KEY_ID
-          value: {{ .Values.storage.awsAccessKeyId | quote }}
-        {{- end }}
-        {{- if .Values.storage.awsSecretAccessKey }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ $credentialSecretName }}
+              key: AWS_ACCESS_KEY_ID
         - name: AWS_SECRET_ACCESS_KEY
-          value: {{ .Values.storage.awsSecretAccessKey | quote }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ $credentialSecretName }}
+              key: AWS_SECRET_ACCESS_KEY
+        {{- if .Values.storage.credentials.region }}
+        - name: AWS_REGION
+          valueFrom:
+            secretKeyRef:
+              name: {{ $credentialSecretName }}
+              key: AWS_REGION
         {{- end }}
         {{- end }}
-#TODO: REMOVE SECRETS FROM THIS FILE - THEY SHOULD BE MOUNTED AS SECRETS
-#TODO: it doe ISOLA_GIN_MODE is determined by logLevel as it affects more than just logs
+        {{- end }}
