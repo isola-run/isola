@@ -10,7 +10,6 @@ env:
   KIND_CLUSTER_NAME: isola-e2e
   # Image names (no registry prefix - loaded directly into Kind)
   OPERATOR_IMAGE: isola-operator
-  GW_IMAGE: isola-gw
   AGENT_IMAGE: isola-agent
   UPLOADER_IMAGE: isola-uploader
 
@@ -37,16 +36,6 @@ jobs:
           tags: ${{ env.OPERATOR_IMAGE }}:ci
           cache-from: type=gha,scope=operator
           cache-to: type=gha,mode=max,scope=operator
-
-      - name: Build isola-gw image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: cmd/gateway/Dockerfile
-          load: true
-          tags: ${{ env.GW_IMAGE }}:ci
-          cache-from: type=gha,scope=gw
-          cache-to: type=gha,mode=max,scope=gw
 
       - name: Build isola-agent image
         uses: docker/build-push-action@v5
@@ -117,7 +106,6 @@ jobs:
       - name: Load images into Kind
         run: |
           kind load docker-image ${{ env.OPERATOR_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
-          kind load docker-image ${{ env.GW_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.AGENT_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.UPLOADER_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
 
@@ -146,38 +134,13 @@ jobs:
             --set snapshot.uploaderImage=${{ env.UPLOADER_IMAGE }}:ci \
             --wait --timeout 3m
 
-      - name: Deploy isola-gw
-        run: |
-          helm install isola-gw charts/isola-gw \
-            --namespace isola-system \
-            -f charts/isola-gw/values-dev.yaml \
-            --set image.tag=ci \
-            --set image.pullPolicy=Never \
-            --wait --timeout 3m
-
       - name: Wait for services to be ready
         run: |
           echo "Waiting for isola-operator..."
           kubectl rollout status deployment/isola-operator -n isola-system --timeout=120s
 
-          echo "Waiting for isola-gw..."
-          kubectl rollout status deployment/isola-gw -n isola-system --timeout=120s
-
           echo "Checking pod status..."
           kubectl get pods -n isola-system
-
-          echo "Waiting for isola-gw health endpoint..."
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:30080/health > /dev/null 2>&1; then
-              echo "isola-gw is healthy!"
-              break
-            fi
-            echo "Waiting for isola-gw... ($i/30)"
-            sleep 2
-          done
-
-          # Final health check
-          curl -sf http://localhost:30080/health || (echo "isola-gw health check failed" && exit 1)
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -191,9 +154,6 @@ jobs:
         working-directory: tests/e2e
         run: |
           uv run pytest -v --tb=short --junitxml=test-results.xml
-        env:
-          ISOLA_BASE_URL: http://localhost:30080
-          ISOLA_API_KEY: iso_sk_demo
 
       - name: Upload test results
         if: always()
@@ -222,9 +182,6 @@ jobs:
 
           echo "=== isola-operator logs ===" > ./debug-logs/operator.log
           kubectl logs -l app.kubernetes.io/name=isola-operator -n isola-system --tail=500 >> ./debug-logs/operator.log 2>&1 || true
-
-          echo "=== isola-gw logs ===" > ./debug-logs/gw.log
-          kubectl logs -l app.kubernetes.io/name=isola-gw -n isola-system --tail=500 >> ./debug-logs/gw.log 2>&1 || true
 
           echo "=== Sandboxes ===" > ./debug-logs/sandboxes.txt
           kubectl get sandboxes -A -o wide >> ./debug-logs/sandboxes.txt 2>&1 || true
