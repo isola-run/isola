@@ -28,7 +28,7 @@ Most sandboxes use static Helm-installed NetworkPolicies based on pod labels:
 This package builds custom NetworkPolicies only when needed:
   - Custom egress CIDRs are specified
   - Pod-based egress rules are specified
-  - Custom nameservers are specified without internet access (need DNS egress rules)
+  - Custom nameservers are specified (may be private IPs)
 */
 package network
 
@@ -90,17 +90,16 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 		egressCIDRs = append(egressCIDRs, egressCIDR{Prefix: prefix, Except: except})
 	}
 
-	// Parse nameserver IPs - egress to these IPs is automatically allowed on port 53
-	// Only needed when not using internet access (which covers all IPs anyway)
+	// Parse nameserver IPs - egress to these IPs is automatically allowed on port 53.
+	// Always create rules even with allowAllInternet, since nameservers may be private IPs
+	// that fall within blocked ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16).
 	var dnsAddrs []netip.Addr
-	if !network.AllowAllInternet {
-		for _, ipStr := range network.Nameservers {
-			addr, err := cidr.ParseDNSServerIP(ipStr)
-			if err != nil {
-				return nil, err
-			}
-			dnsAddrs = append(dnsAddrs, addr)
+	for _, ipStr := range network.Nameservers {
+		addr, err := cidr.ParseDNSServerIP(ipStr)
+		if err != nil {
+			return nil, err
 		}
+		dnsAddrs = append(dnsAddrs, addr)
 	}
 
 	// Check if we actually need a custom policy

@@ -104,7 +104,7 @@ func TestNeedsCustomNetworkPolicy(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "nameservers with internet access returns false",
+			name: "nameservers with internet access still returns true",
 			sandbox: Sandbox{
 				Spec: SandboxSpec{
 					Network: &NetworkSpec{
@@ -113,7 +113,7 @@ func TestNeedsCustomNetworkPolicy(t *testing.T) {
 					},
 				},
 			},
-			expected: false,
+			expected: true, // nameservers may be private IPs blocked by allowAllInternet
 		},
 	}
 

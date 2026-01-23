@@ -2562,8 +2562,9 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(np.Spec.Egress).To(HaveLen(2))
 		})
 
-		It("should not create custom NetworkPolicy when nameservers provided with internet access", func() {
-			// When allowAllInternet=true, nameservers don't need custom egress rules
+		It("should create custom NetworkPolicy for nameservers even with internet access", func() {
+			// Custom policy needed even with allowAllInternet=true because nameservers
+			// may be private IPs that fall within blocked ranges
 			sandboxName := "sandbox-internet-dns"
 			templateName := "template-internet-dns"
 
@@ -2581,9 +2582,15 @@ var _ = Describe("Sandbox Controller", func() {
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// No custom NetworkPolicy needed - internet access covers DNS
+			// Custom NetworkPolicy created for explicit DNS egress rules
 			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
-			Expect(np).To(BeNil())
+			Expect(np).NotTo(BeNil())
+			Expect(np.Spec.Egress).To(HaveLen(1))
+			Expect(np.Spec.Egress[0].Ports).To(HaveLen(2))
+			protocols := []corev1.Protocol{*np.Spec.Egress[0].Ports[0].Protocol, *np.Spec.Egress[0].Ports[1].Protocol}
+			Expect(protocols).To(ContainElements(corev1.ProtocolUDP, corev1.ProtocolTCP))
+			Expect(np.Spec.Egress[0].Ports[0].Port.IntVal).To(Equal(int32(53)))
+			Expect(np.Spec.Egress[0].Ports[1].Port.IntVal).To(Equal(int32(53)))
 
 			// Verify pod has correct labels and DNS config
 			pod := getPod(ctx, sandboxName+"-pod")

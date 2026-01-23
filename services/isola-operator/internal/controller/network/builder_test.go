@@ -119,7 +119,7 @@ func TestBuildCustomNetworkPolicy_WithNameservers(t *testing.T) {
 	require.Len(t, dnsRule.Ports, 2)
 }
 
-func TestBuildCustomNetworkPolicy_NameserversIgnoredWhenInternetAllowed(t *testing.T) {
+func TestBuildCustomNetworkPolicy_NameserversWithInternetAccess(t *testing.T) {
 	network := &sandboxv1alpha1.NetworkSpec{
 		AllowAllInternet: true,
 		Nameservers:      []string{"8.8.8.8"},
@@ -127,8 +127,16 @@ func TestBuildCustomNetworkPolicy_NameserversIgnoredWhenInternetAllowed(t *testi
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
 	require.NoError(t, err)
-	// No custom policy needed - internet access covers DNS servers
-	assert.Nil(t, np)
+	// Custom policy created even with internet access - nameservers may be private IPs
+	// that fall within blocked ranges
+	require.NotNil(t, np)
+	require.Len(t, np.Spec.Egress, 1)
+	require.Len(t, np.Spec.Egress[0].Ports, 2)
+	protocols := []corev1.Protocol{*np.Spec.Egress[0].Ports[0].Protocol, *np.Spec.Egress[0].Ports[1].Protocol}
+	assert.Contains(t, protocols, corev1.ProtocolUDP)
+	assert.Contains(t, protocols, corev1.ProtocolTCP)
+	assert.Equal(t, int32(53), np.Spec.Egress[0].Ports[0].Port.IntVal)
+	assert.Equal(t, int32(53), np.Spec.Egress[0].Ports[1].Port.IntVal)
 }
 
 func TestBuildCustomNetworkPolicy_InvalidNameserver(t *testing.T) {
