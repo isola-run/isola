@@ -54,17 +54,22 @@ fix-all: fmt lint-fix ## Fix all auto-fixable issues
 
 ##@ Testing
 
+ENVTEST_K8S_VERSION ?= 1.34
+
 .PHONY: test
 test: ## Run tests
-	go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
+		go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 .PHONY: test-verbose
 test-verbose: ## Run tests with verbose output
-	go test ./internal/operator/controller/... -v -ginkgo.v -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
+		go test ./internal/operator/controller/... -v -ginkgo.v -coverprofile cover.out
 
 .PHONY: test-focus
 test-focus: ## Run tests matching FOCUS pattern
-	go test ./internal/operator/controller/... -v -ginkgo.v -ginkgo.focus="$(FOCUS)"
+	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
+		go test ./internal/operator/controller/... -v -ginkgo.v -ginkgo.focus="$(FOCUS)"
 
 ##@ Build
 

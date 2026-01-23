@@ -11,7 +11,6 @@ REGISTRY_PORT="${REGISTRY_PORT:-5001}"
 GOLANGCI_LINT_VERSION="v2.8.0"
 GOVULNCHECK_VERSION="v1.1.4"
 SETUP_ENVTEST_VERSION="v0.23.0"
-ENVTEST_K8S_VERSION="1.34"  # matches k8s.io/api in go.mod
 LEFTHOOK_VERSION="v2.0.15"
 GVISOR_VERSION="20260112"
 
@@ -118,16 +117,7 @@ if check_optional_tool "govulncheck" "Install: go install golang.org/x/vuln/cmd/
 fi
 check_optional_tool "lefthook" "Install: go install github.com/evilmartians/lefthook/v2@${LEFTHOOK_VERSION}" && HAS_LEFTHOOK=1
 
-if check_optional_tool "setup-envtest" "Install: go install sigs.k8s.io/controller-runtime/tools/setup-envtest@${SETUP_ENVTEST_VERSION}"; then
-    echo "  Setting up envtest binaries for k8s ${ENVTEST_K8S_VERSION}..."
-    mkdir -p "${ROOT_DIR}/bin"
-    ENVTEST_PATH=$(setup-envtest use "${ENVTEST_K8S_VERSION}" --bin-dir "${ROOT_DIR}/bin" -p path 2>/dev/null)
-    if [ -n "$ENVTEST_PATH" ]; then
-        echo "    [OK] envtest binaries at: ${ENVTEST_PATH}"
-    else
-        echo "    [WARN] Failed to download envtest binaries"
-    fi
-fi
+check_optional_tool "setup-envtest" "Install: go install sigs.k8s.io/controller-runtime/tools/setup-envtest@${SETUP_ENVTEST_VERSION}"
 
 # https://kind.sigs.k8s.io/docs/user/local-registry/
 echo ""
