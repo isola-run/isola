@@ -7,8 +7,16 @@ agentImage: isola-agent:dev
 # Use gVisor runtime (installed by setup.sh)
 runtimeClassName: "gvisor"
 
-# LocalStack credentials for dev/CI
-sandboxCredentials:
-  accessKeyId: "test"
-  secretAccessKey: "test"
-  region: "us-east-1"
+# Snapshot configuration (uses LocalStack in dev)
+snapshot:
+  uploaderImage: "isola-uploader:dev"
+  storage:
+    bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
+    # LocalStack credentials - chart creates isola-snapshot-credentials secret
+    credentials:
+      accessKeyId: "test"
+      secretAccessKey: "test"
+      region: "us-east-1"
+  serviceAccount:
+    create: true
+    name: "isola-snapshot-job"

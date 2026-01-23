@@ -3,15 +3,22 @@ ARG TARGETOS
 ARG TARGETARCH
 
 WORKDIR /workspace
+
+# Copy shared packages first (referenced by replace directive)
+COPY pkg/snapshot/ /pkg/snapshot/
+
 # Copy the Go Modules manifests
-COPY go.mod go.mod
-COPY go.sum go.sum
+COPY services/isola-operator/go.mod go.mod
+COPY services/isola-operator/go.sum go.sum
+
 # cache deps before building and copying source so that we don't need to re-download as much
 # and so that source changes don't invalidate our downloaded layer
 RUN go mod download
 
-# Copy the Go source (relies on .dockerignore to filter)
-COPY . .
+# Copy the Go source
+COPY services/isola-operator/cmd/ cmd/
+COPY services/isola-operator/internal/ internal/
+COPY services/isola-operator/api/ api/
 
 # Build
 # the GOARCH has no default value to allow the binary to be built according to the host where the command
