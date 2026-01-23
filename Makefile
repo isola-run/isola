@@ -1,10 +1,7 @@
-# Root Makefile for isola multi-service repository
+# Root Makefile for isola-sb
 
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
-
-SERVICES := isola-operator isola-gw isola-agent
-SERVICE_DIRS := $(addprefix services/,$(SERVICES))
 
 ##@ General
 
@@ -12,52 +9,72 @@ SERVICE_DIRS := $(addprefix services/,$(SERVICES))
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-##@ Development (All Services)
+##@ Development
 
-.PHONY: lint-all
-lint-all: ## Run golangci-lint on all services
-	@for dir in $(SERVICE_DIRS); do \
-		echo "=== Linting $$dir ==="; \
-		(cd $$dir && golangci-lint run); \
-	done
+.PHONY: generate
+generate: ## Generate code (DeepCopy methods)
+	controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 
-.PHONY: lint-fix-all
-lint-fix-all: ## Run golangci-lint --fix on all services
-	@for dir in $(SERVICE_DIRS); do \
-		echo "=== Fixing $$dir ==="; \
-		(cd $$dir && golangci-lint run --fix); \
-	done
+.PHONY: manifests
+manifests: ## Generate CRD and RBAC manifests
+	controller-gen rbac:roleName=isola-operator-manager-role crd webhook \
+		paths="./api/..." paths="./internal/operator/controller/..." \
+		output:crd:artifacts:config=config/crd/bases \
+		output:rbac:artifacts:config=config/rbac
 
-.PHONY: fmt-all
-fmt-all: ## Run golangci-lint fmt on all services
-	@for dir in $(SERVICE_DIRS); do \
-		echo "=== Formatting $$dir ==="; \
-		(cd $$dir && golangci-lint fmt ./...); \
-	done
+.PHONY: fmt
+fmt: ## Run golangci-lint fmt
+	golangci-lint fmt ./...
 
-.PHONY: vet-all
-vet-all: ## Run go vet on all services
-	@for dir in $(SERVICE_DIRS); do \
-		echo "=== Vetting $$dir ==="; \
-		(cd $$dir && go vet ./...); \
-	done
+.PHONY: vet
+vet: ## Run go vet
+	go vet ./...
 
-.PHONY: vulncheck-all
-vulncheck-all: ## Run govulncheck on all services
-	@for dir in $(SERVICE_DIRS); do \
-		echo "=== Vulnerability check $$dir ==="; \
-		(cd $$dir && govulncheck ./...); \
-	done
+.PHONY: lint
+lint: ## Run golangci-lint
+	golangci-lint run
 
-.PHONY: tidy-all
-tidy-all: ## Run go mod tidy on all services
-	@for dir in $(SERVICE_DIRS); do \
-		echo "=== Tidying $$dir ==="; \
-		(cd $$dir && go mod tidy); \
-	done
+.PHONY: lint-fix
+lint-fix: ## Run golangci-lint --fix
+	golangci-lint run --fix
+
+.PHONY: vulncheck
+vulncheck: ## Run govulncheck
+	govulncheck ./...
+
+.PHONY: tidy
+tidy: ## Run go mod tidy
+	go mod tidy
 
 .PHONY: check-all
-check-all: vet-all lint-all vulncheck-all ## Run all checks (read-only, CI-safe)
+check-all: vet lint vulncheck ## Run all checks (read-only, CI-safe)
 
 .PHONY: fix-all
-fix-all: fmt-all lint-fix-all ## Fix all auto-fixable issues
+fix-all: fmt lint-fix ## Fix all auto-fixable issues
+
+##@ Testing
+
+.PHONY: test
+test: ## Run tests
+	go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+
+.PHONY: test-verbose
+test-verbose: ## Run tests with verbose output
+	go test ./internal/operator/controller/... -v -ginkgo.v -coverprofile cover.out
+
+.PHONY: test-focus
+test-focus: ## Run tests matching FOCUS pattern
+	go test ./internal/operator/controller/... -v -ginkgo.v -ginkgo.focus="$(FOCUS)"
+
+##@ Build
+
+.PHONY: build
+build: ## Build all binaries
+	go build -o bin/operator ./cmd/operator
+	go build -o bin/gateway ./cmd/gateway
+	go build -o bin/agent ./cmd/agent
+	go build -o bin/uploader ./cmd/uploader
+
+.PHONY: run-operator
+run-operator: ## Run operator from your host
+	go run ./cmd/operator/main.go

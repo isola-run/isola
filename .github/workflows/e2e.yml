@@ -32,7 +32,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: services/isola-operator/Dockerfile
+          file: cmd/operator/Dockerfile
           load: true
           tags: ${{ env.OPERATOR_IMAGE }}:ci
           cache-from: type=gha,scope=operator
@@ -41,8 +41,8 @@ jobs:
       - name: Build isola-gw image
         uses: docker/build-push-action@v5
         with:
-          context: services/isola-gw
-          file: services/isola-gw/Dockerfile
+          context: .
+          file: cmd/gateway/Dockerfile
           load: true
           tags: ${{ env.GW_IMAGE }}:ci
           cache-from: type=gha,scope=gw
@@ -51,8 +51,8 @@ jobs:
       - name: Build isola-agent image
         uses: docker/build-push-action@v5
         with:
-          context: services/isola-agent
-          file: services/isola-agent/Dockerfile
+          context: .
+          file: cmd/agent/Dockerfile
           load: true
           tags: ${{ env.AGENT_IMAGE }}:ci
           cache-from: type=gha,scope=agent
@@ -62,7 +62,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: services/isola-uploader/Dockerfile
+          file: cmd/uploader/Dockerfile
           load: true
           tags: ${{ env.UPLOADER_IMAGE }}:ci
           cache-from: type=gha,scope=uploader
@@ -188,7 +188,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Run E2E tests
-        working-directory: tests
+        working-directory: tests/e2e
         run: |
           uv run pytest -v --tb=short --junitxml=test-results.xml
         env:
@@ -200,7 +200,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: tests/test-results.xml
+          path: tests/e2e/test-results.xml
           retention-days: 7
 
       # Failure diagnostics

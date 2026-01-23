@@ -8,18 +8,8 @@ on:
 
 jobs:
   test:
-    name: Test ${{ matrix.service }}
+    name: Test
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: isola-operator
-            test_cmd: make test
-          - service: isola-gw
-            test_cmd: go test ./... -v
-          - service: isola-agent
-            test_cmd: go test ./... -v
 
     steps:
       - name: Checkout code
@@ -28,12 +18,10 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: services/${{ matrix.service }}/go.mod
+          go-version-file: go.mod
 
       - name: Run go mod tidy
-        working-directory: services/${{ matrix.service }}
         run: go mod tidy
 
       - name: Run tests
-        working-directory: services/${{ matrix.service }}
-        run: ${{ matrix.test_cmd }}
+        run: make test

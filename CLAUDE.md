@@ -7,25 +7,28 @@
 make check-all          # vet + lint + vulncheck (CI-safe)
 make fix-all            # Auto-fix formatting and lint issues
 
-# Operator-specific (from services/isola-operator/)
+# Testing
 make test               # Unit tests with coverage
 make test-focus FOCUS="TestName"  # Run specific test
 make generate           # Regenerate DeepCopy methods after CRD changes
 make manifests          # Regenerate CRD YAML after CRD changes
 
+# Build
+make build              # Build all binaries to bin/
+
 # Local dev
 ./hack/setup.sh         # One-time: Kind cluster + registry
 tilt up                 # Start dev environment (http://localhost:10350)
-cd tests && uv run pytest -m smoke  # E2E smoke tests
+cd tests/e2e && uv run pytest  # E2E tests
 ```
 
 ## CRD Workflow
 
-After modifying `services/isola-operator/api/v1alpha1/*_types.go`:
+After modifying `api/v1alpha1/*_types.go`:
 ```bash
-cd services/isola-operator && make generate manifests && \
-  cp config/crd/bases/*.yaml ../../charts/isola-operator/crds/ && \
-  cp config/rbac/role.yaml ../../charts/isola-operator/templates/clusterrole.yaml
+make generate manifests && \
+  cp config/crd/bases/*.yaml charts/isola-operator/crds/ && \
+  cp config/rbac/role.yaml charts/isola-operator/templates/clusterrole.yaml
 ```
 
 **NetworkTemplateSpec changes:** When modifying `NetworkTemplateSpec`, also update the built-in templates in `charts/isola-operator/templates/network-templates.yaml`. These are Helm-only (not generated) and must match the CRD schema.
@@ -34,10 +37,19 @@ cd services/isola-operator && make generate manifests && \
 
 **Backward compatibility:** not required at this stage. You may introduce breaking changes to CRDs, APIs, and internal interfaces if it simplifies the design, provided tests are updated accordingly.
 
-**Services:**
-- `isola-operator` - Kubebuilder operator for Sandbox/SandboxTemplate/NetworkTemplate CRDs
-- `isola-gw` - Gin HTTP gateway (auth, K8s client, S3 storage)
-- `isola-agent` - Gin sidecar injected into sandbox pods by operator
+**Project structure:**
+- `api/v1alpha1/` - CRD type definitions (Sandbox, SandboxTemplate, RootFSSnapshot)
+- `cmd/operator/` - Kubebuilder operator entry point
+- `cmd/gateway/` - Gin HTTP gateway (auth, K8s client, S3 storage)
+- `cmd/agent/` - Gin sidecar injected into sandbox pods by operator
+- `cmd/uploader/` - Snapshot uploader job
+- `internal/operator/controller/` - Reconciler implementations
+- `internal/gateway/` - Gateway handlers and models
+- `internal/agent/` - Agent handlers
+- `internal/snapshot/` - Shared snapshot types
+- `config/` - Kustomize manifests
+- `charts/` - Helm charts (source of truth for deployment)
+- `tests/e2e/` - Python E2E tests
 
 **Namespaces:** `isola-system` (operator/gateway), `isola-sandboxes` (sandbox pods)
 
@@ -70,13 +82,13 @@ cd services/isola-operator && make generate manifests && \
 
 **Go tests:** Ginkgo/Gomega with envtest (K8s API simulation)
 ```bash
-cd services/isola-operator && make test
+make test
 ```
 
 **E2E tests:** Python pytest against running cluster
 ```bash
-cd tests && uv run pytest -m smoke   # Quick
-cd tests && uv run pytest --skip-cleanup  # Debug: keep sandboxes
+cd tests/e2e && uv run pytest            # Run all tests
+cd tests/e2e && uv run pytest --skip-cleanup  # Debug: keep sandboxes
 ```
 
 ## Comment Policy
