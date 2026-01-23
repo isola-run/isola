@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -38,10 +39,6 @@ const (
 	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
 )
 
-const (
-	DefaultNetworkTemplate string = "isola-isolated"
-)
-
 // SandboxTemplateReference identifies a SandboxTemplate in the same namespace.
 type SandboxTemplateReference struct {
 	// Name of the SandboxTemplate in the same namespace.
@@ -53,37 +50,80 @@ type SandboxTemplateReference struct {
 	Name string `json:"name"`
 }
 
-// NetworkTemplateReference identifies a NetworkTemplate in the same namespace.
-type NetworkTemplateReference struct {
-	// Name of the NetworkTemplate in the same namespace.
-	// The referenced NetworkTemplate defines the network isolation rules.
+// NetworkPort defines a port for network rules.
+type NetworkPort struct {
+	// Protocol (TCP or UDP). Defaults to TCP.
+	// +kubebuilder:validation:Enum=TCP;UDP
+	// +kubebuilder:default=TCP
+	// +optional
+	Protocol corev1.Protocol `json:"protocol,omitempty"`
+
+	// Port number.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
 	// +required
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	Name string `json:"name"`
+	Port int32 `json:"port"`
 }
 
-// todo benl: neither specific
-// NetworkConfig specifies the network isolation configuration for a Sandbox.
-// Exactly one of TemplateRef or Spec must be specified.
-// +kubebuilder:validation:XValidation:rule="has(self.templateRef) || has(self.spec)",message="At least one of 'templateRef' or 'spec' is required."
-type NetworkConfig struct {
-	// TemplateRef references an existing NetworkTemplate in the same namespace.
-	// The referenced NetworkTemplate is not owned by this sandbox and will persist
-	// independently of sandbox lifecycle.
-	// +optional
-	TemplateRef *NetworkTemplateReference `json:"templateRef,omitempty"`
+// EgressPodRule defines a pod-based egress rule.
+// This allows sandboxes to communicate with specific pods in the cluster.
+type EgressPodRule struct {
+	// Namespace of the target pods.
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	Namespace string `json:"namespace"`
 
-	// Spec embeds network isolation rules directly in the sandbox.
-	// When specified, the controller creates a NetworkTemplate CR
-	// that is owned by this sandbox and garbage-collected
-	// when the sandbox is deleted.
-	// Note: This spec is immutable after sandbox creation - changes are ignored.
+	// PodSelector selects pods in the namespace.
+	// An empty selector ({}) matches all pods in the namespace.
+	// +required
+	PodSelector metav1.LabelSelector `json:"podSelector"`
+
+	// Ports to allow. If empty, all ports are allowed to the selected pods.
 	// +optional
-	Spec *NetworkTemplateSpec `json:"spec,omitempty"`
+	Ports []NetworkPort `json:"ports,omitempty"`
+}
+
+// NetworkSpec defines network isolation for a sandbox.
+// If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
+type NetworkSpec struct {
+	// AllowAllInternet allows egress to 0.0.0.0/0 and ::/0 with blocked ranges
+	// (private IPs, cloud metadata, etc.) automatically excepted.
+	// Adds label isola.run/allow-internet=true to the pod.
+	// +kubebuilder:default=false
+	AllowAllInternet bool `json:"allowAllInternet,omitempty"`
+
+	// AllowClusterDNS allows DNS queries to cluster DNS (kube-dns/CoreDNS).
+	// When true: DNSPolicy=ClusterFirst, adds label isola.run/allow-cluster-dns=true
+	// When false: DNSPolicy=None, uses nameservers field or sink (127.0.0.1)
+	// +kubebuilder:default=false
+	AllowClusterDNS bool `json:"allowClusterDNS,omitempty"`
+
+	// AllowedEgressCIDRs specifies additional CIDRs the sandbox can reach.
+	// Blocked ranges are automatically excepted. Creates a custom NetworkPolicy.
+	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$`
+	// +optional
+	AllowedEgressCIDRs []string `json:"allowedEgressCIDRs,omitempty"`
+
+	// AllowedEgressPods specifies pods the sandbox can reach via selectors.
+	// Uses full LabelSelector (matchLabels + matchExpressions) for flexibility.
+	// Creates a custom NetworkPolicy.
+	// +optional
+	AllowedEgressPods []EgressPodRule `json:"allowedEgressPods,omitempty"`
+
+	// Nameservers are DNS server IPs to inject into the pod.
+	// When allowClusterDNS=false: These are the only nameservers (or 127.0.0.1 sink if empty).
+	// When allowClusterDNS=true: Combined with cluster DNS.
+	// When specified with allowAllInternet=false, creates custom policy for DNS egress.
+	// MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
+	// +kubebuilder:validation:MaxItems=3
+	// +kubebuilder:validation:XValidation:rule="self.all(s, isIP(s))",message="must be valid IP addresses"
+	// +optional
+	Nameservers []string `json:"nameservers,omitempty"`
 }
 
 // SandboxSpec defines the desired state of Sandbox
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.network) || has(self.network)",message="network cannot be removed once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.network) || !has(oldSelf.network) || self.network == oldSelf.network",message="network is immutable once set"
 type SandboxSpec struct {
 	// TemplateRef references the SandboxTemplate to inherit pod configuration from.
 	// The SandboxTemplate must exist in the same namespace as this Sandbox.
@@ -91,33 +131,31 @@ type SandboxSpec struct {
 	TemplateRef SandboxTemplateReference `json:"templateRef"`
 
 	// Network specifies the network isolation configuration for this sandbox.
-	// Can either reference a shared NetworkTemplate or embed network rules directly.
-	// If not specified, no NetworkPolicy is created (unrestricted network access).
-	// When specified, must contain exactly one of templateRef or spec.
+	// If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
+	// Network configuration is immutable after sandbox creation.
 	// +optional
-	Network *NetworkConfig `json:"network,omitempty"`
+	Network *NetworkSpec `json:"network,omitempty"`
 }
 
-// GetNetworkTemplateName returns the effective NetworkTemplate name for this sandbox.
-// - For templateRef: returns the referenced template name
-// - For spec: returns "{sandbox-name}-network"
-// - otherwise defaults to DefaultNetworkTemplate
-func (s *Sandbox) GetNetworkTemplateName() string {
+// NeedsCustomNetworkPolicy returns true if this sandbox requires a custom NetworkPolicy
+// (beyond the Helm-installed static policies).
+func (s *Sandbox) NeedsCustomNetworkPolicy() bool {
 	if s.Spec.Network == nil {
-		return DefaultNetworkTemplate
+		return false
 	}
-	if s.Spec.Network.TemplateRef != nil {
-		return s.Spec.Network.TemplateRef.Name
-	}
-	return s.GetOwnedNetworkTemplateName()
+	n := s.Spec.Network
+	// Custom policy needed for:
+	// - Custom CIDR rules
+	// - Pod egress rules
+	// - Custom nameservers (even with allowAllInternet, nameservers may be in blocked private ranges)
+	return len(n.AllowedEgressCIDRs) > 0 ||
+		len(n.AllowedEgressPods) > 0 ||
+		len(n.Nameservers) > 0
 }
 
-func (s *Sandbox) GetOwnedNetworkTemplateName() string {
-	return s.Name + "-network"
-}
-
-func (s *Sandbox) HasNetworkSpec() bool {
-	return s.Spec.Network != nil && s.Spec.Network.Spec != nil
+// GetCustomNetworkPolicyName returns the name for this sandbox's custom NetworkPolicy.
+func (s *Sandbox) GetCustomNetworkPolicyName() string {
+	return s.Name + "-custom-netpol"
 }
 
 // todo benl: for now, not storing sandbox pod or snapshotter pod info anywhere in the sandbox CRD

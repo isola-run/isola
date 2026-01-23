@@ -23,75 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestGetNetworkTemplateName(t *testing.T) {
-	tests := []struct {
-		name     string
-		sandbox  Sandbox
-		expected string
-	}{
-		{
-			name: "nil network config returns default template",
-			sandbox: Sandbox{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-sandbox"},
-				Spec:       SandboxSpec{Network: nil},
-			},
-			expected: DefaultNetworkTemplate,
-		},
-		{
-			name: "templateRef returns referenced name",
-			sandbox: Sandbox{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-sandbox"},
-				Spec: SandboxSpec{
-					Network: &NetworkConfig{
-						TemplateRef: &NetworkTemplateReference{Name: "custom-template"},
-					},
-				},
-			},
-			expected: "custom-template",
-		},
-		{
-			name: "embedded spec returns owned template name",
-			sandbox: Sandbox{
-				ObjectMeta: metav1.ObjectMeta{Name: "my-sandbox"},
-				Spec: SandboxSpec{
-					Network: &NetworkConfig{
-						Spec: &NetworkTemplateSpec{},
-					},
-				},
-			},
-			expected: "my-sandbox-network",
-		},
-		{
-			name: "network config with nil templateRef and nil spec returns owned name",
-			sandbox: Sandbox{
-				ObjectMeta: metav1.ObjectMeta{Name: "edge-case"},
-				Spec: SandboxSpec{
-					Network: &NetworkConfig{
-						TemplateRef: nil,
-						Spec:        nil,
-					},
-				},
-			},
-			expected: "edge-case-network",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.sandbox.GetNetworkTemplateName()
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestGetOwnedNetworkTemplateName(t *testing.T) {
-	sandbox := Sandbox{
-		ObjectMeta: metav1.ObjectMeta{Name: "my-sandbox"},
-	}
-	assert.Equal(t, "my-sandbox-network", sandbox.GetOwnedNetworkTemplateName())
-}
-
-func TestHasNetworkSpec(t *testing.T) {
+func TestNeedsCustomNetworkPolicy(t *testing.T) {
 	tests := []struct {
 		name     string
 		sandbox  Sandbox
@@ -105,51 +37,97 @@ func TestHasNetworkSpec(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "network with templateRef only returns false",
+			name: "empty network spec returns false",
 			sandbox: Sandbox{
 				Spec: SandboxSpec{
-					Network: &NetworkConfig{
-						TemplateRef: &NetworkTemplateReference{Name: "template"},
+					Network: &NetworkSpec{},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "allowAllInternet only returns false",
+			sandbox: Sandbox{
+				Spec: SandboxSpec{
+					Network: &NetworkSpec{
+						AllowAllInternet: true,
 					},
 				},
 			},
 			expected: false,
 		},
 		{
-			name: "network with spec returns true",
+			name: "allowClusterDNS only returns false",
 			sandbox: Sandbox{
 				Spec: SandboxSpec{
-					Network: &NetworkConfig{
-						Spec: &NetworkTemplateSpec{},
+					Network: &NetworkSpec{
+						AllowClusterDNS: true,
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "allowedEgressCIDRs returns true",
+			sandbox: Sandbox{
+				Spec: SandboxSpec{
+					Network: &NetworkSpec{
+						AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 					},
 				},
 			},
 			expected: true,
 		},
 		{
-			name: "network with empty spec returns true",
+			name: "allowedEgressPods returns true",
 			sandbox: Sandbox{
 				Spec: SandboxSpec{
-					Network: &NetworkConfig{
-						Spec: &NetworkTemplateSpec{
-							AllowedEgressCIDRs: []string{},
+					Network: &NetworkSpec{
+						AllowedEgressPods: []EgressPodRule{
+							{Namespace: "kube-system", PodSelector: metav1.LabelSelector{}},
 						},
 					},
 				},
 			},
 			expected: true,
 		},
+		{
+			name: "nameservers without internet access returns true",
+			sandbox: Sandbox{
+				Spec: SandboxSpec{
+					Network: &NetworkSpec{
+						Nameservers:      []string{"8.8.8.8"},
+						AllowAllInternet: false,
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "nameservers with internet access still returns true",
+			sandbox: Sandbox{
+				Spec: SandboxSpec{
+					Network: &NetworkSpec{
+						Nameservers:      []string{"8.8.8.8"},
+						AllowAllInternet: true,
+					},
+				},
+			},
+			expected: true, // nameservers may be private IPs blocked by allowAllInternet
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.sandbox.HasNetworkSpec()
+			result := tt.sandbox.NeedsCustomNetworkPolicy()
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestDefaultNetworkTemplateConstant(t *testing.T) {
-	// Verify the constant matches the expected value
-	assert.Equal(t, "isola-isolated", DefaultNetworkTemplate)
+func TestGetCustomNetworkPolicyName(t *testing.T) {
+	sandbox := Sandbox{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-sandbox"},
+	}
+	assert.Equal(t, "my-sandbox-custom-netpol", sandbox.GetCustomNetworkPolicyName())
 }

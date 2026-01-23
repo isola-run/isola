@@ -1,8 +1,10 @@
+# Default deny policy for all sandbox pods.
+# Denies all ingress and egress by default - other policies add specific allowances.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-isola-gw-ingress
+  name: sandbox-default-deny
   namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
   labels:
     app.kubernetes.io/managed-by: Helm
@@ -14,14 +16,7 @@ spec:
       app: isola-sandbox
   policyTypes:
     - Ingress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: {{ .Release.Namespace }}
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: isola-gw
-      ports:
-        - protocol: TCP
-          port: 8080
+    - Egress
+  # Empty rules = deny all
+  ingress: []
+  egress: []

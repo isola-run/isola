@@ -67,23 +67,30 @@ func WithRuntimeClass(name string) TemplateOption {
 // SandboxOption is a functional option for configuring Sandbox
 type SandboxOption func(*sandboxv1alpha1.Sandbox)
 
-// WithNetworkTemplateRef adds a NetworkTemplate reference to the sandbox
-func WithNetworkTemplateRef(name string) SandboxOption {
+// WithNetworkSpec sets the network configuration for the sandbox
+func WithNetworkSpec(spec *sandboxv1alpha1.NetworkSpec) SandboxOption {
 	return func(s *sandboxv1alpha1.Sandbox) {
-		s.Spec.Network = &sandboxv1alpha1.NetworkConfig{
-			TemplateRef: &sandboxv1alpha1.NetworkTemplateReference{
-				Name: name,
-			},
-		}
+		s.Spec.Network = spec
 	}
 }
 
-// WithNetworkSpec adds an embedded NetworkTemplateSpec to the sandbox
-func WithNetworkSpec(spec sandboxv1alpha1.NetworkTemplateSpec) SandboxOption {
+// WithInternetAccess enables internet egress for the sandbox
+func WithInternetAccess() SandboxOption {
 	return func(s *sandboxv1alpha1.Sandbox) {
-		s.Spec.Network = &sandboxv1alpha1.NetworkConfig{
-			Spec: &spec,
+		if s.Spec.Network == nil {
+			s.Spec.Network = &sandboxv1alpha1.NetworkSpec{}
 		}
+		s.Spec.Network.AllowAllInternet = true
+	}
+}
+
+// WithClusterDNS enables cluster DNS for the sandbox
+func WithClusterDNS() SandboxOption {
+	return func(s *sandboxv1alpha1.Sandbox) {
+		if s.Spec.Network == nil {
+			s.Spec.Network = &sandboxv1alpha1.NetworkSpec{}
+		}
+		s.Spec.Network.AllowClusterDNS = true
 	}
 }
 
@@ -135,62 +142,39 @@ func NewTestSandboxTemplate(name, namespace string, opts ...TemplateOption) *san
 	return template
 }
 
-// NetworkTemplateOption is a functional option for configuring NetworkTemplate
-type NetworkTemplateOption func(*sandboxv1alpha1.NetworkTemplate)
+// NetworkSpecOption is a functional option for configuring NetworkSpec
+type NetworkSpecOption func(*sandboxv1alpha1.NetworkSpec)
 
 // WithAllowedEgressCIDRs sets the allowed egress CIDRs
-func WithAllowedEgressCIDRs(cidrs ...string) NetworkTemplateOption {
-	return func(nt *sandboxv1alpha1.NetworkTemplate) {
-		nt.Spec.AllowedEgressCIDRs = cidrs
+func WithAllowedEgressCIDRs(cidrs ...string) NetworkSpecOption {
+	return func(ns *sandboxv1alpha1.NetworkSpec) {
+		ns.AllowedEgressCIDRs = cidrs
 	}
 }
 
-// WithNameservers sets the DNS server IPs for the network template
-func WithNameservers(servers ...string) NetworkTemplateOption {
-	return func(nt *sandboxv1alpha1.NetworkTemplate) {
-		nt.Spec.Nameservers = servers
-	}
-}
-
-// WithDNSPolicy sets the DNS policy for the network template
-func WithDNSPolicy(policy corev1.DNSPolicy) NetworkTemplateOption {
-	return func(nt *sandboxv1alpha1.NetworkTemplate) {
-		nt.Spec.DNSPolicy = policy
+// WithNameservers sets the DNS server IPs for the network spec
+func WithNameservers(servers ...string) NetworkSpecOption {
+	return func(ns *sandboxv1alpha1.NetworkSpec) {
+		ns.Nameservers = servers
 	}
 }
 
 // WithAllowedEgressPods sets the allowed egress pod rules
-func WithAllowedEgressPods(rules ...sandboxv1alpha1.EgressPodRule) NetworkTemplateOption {
-	return func(nt *sandboxv1alpha1.NetworkTemplate) {
-		nt.Spec.AllowedEgressPods = rules
+func WithAllowedEgressPods(rules ...sandboxv1alpha1.EgressPodRule) NetworkSpecOption {
+	return func(ns *sandboxv1alpha1.NetworkSpec) {
+		ns.AllowedEgressPods = rules
 	}
 }
 
-// NewTestNetworkTemplate creates a new NetworkTemplate for testing.
-// By default, uses DNSPolicy: None with external DNS.
-// Use WithNameservers() to override or omit nameservers (empty = sink nameserver).
-func NewTestNetworkTemplate(name, namespace string, opts ...NetworkTemplateOption) *sandboxv1alpha1.NetworkTemplate {
-	nt := &sandboxv1alpha1.NetworkTemplate{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: sandboxv1alpha1.NetworkTemplateSpec{
-			DNSPolicy:   corev1.DNSNone,
-			Nameservers: []string{"8.8.8.8"},
-		},
-	}
+// NewTestNetworkSpec creates a new NetworkSpec for testing.
+func NewTestNetworkSpec(opts ...NetworkSpecOption) *sandboxv1alpha1.NetworkSpec {
+	ns := &sandboxv1alpha1.NetworkSpec{}
 
 	for _, opt := range opts {
-		opt(nt)
+		opt(ns)
 	}
 
-	return nt
-}
-
-// NewTestNetworkTemplateDenyAll creates a NetworkTemplate that denies all traffic
-func NewTestNetworkTemplateDenyAll(name, namespace string) *sandboxv1alpha1.NetworkTemplate {
-	return NewTestNetworkTemplate(name, namespace)
+	return ns
 }
 
 func NewTestRuntimeClass(name, handler string) *nodev1.RuntimeClass {

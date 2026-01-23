@@ -112,7 +112,8 @@ func ParsePrefix(cidrStr string) (netip.Prefix, error) {
 }
 
 // ParseDNSServerIP parses and validates a DNS server IP address.
-// Returns the validated address. Rejects IPv4-mapped IPv6.
+// Returns the validated address. Rejects IPv4-mapped IPv6 but allows private IPs
+// (users may have internal DNS servers in private ranges).
 func ParseDNSServerIP(ipStr string) (netip.Addr, error) {
 	addr, err := netip.ParseAddr(ipStr)
 	if err != nil {
