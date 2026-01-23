@@ -19,7 +19,6 @@ make build              # Build all binaries to bin/
 # Local dev
 ./hack/setup.sh         # One-time: Kind cluster + registry
 tilt up                 # Start dev environment (http://localhost:10350)
-cd tests/e2e && uv run pytest  # E2E tests
 ```
 
 ## CRD Workflow
@@ -31,6 +30,15 @@ make generate manifests && \
   cp config/rbac/role.yaml charts/isola-operator/templates/clusterrole.yaml
 ```
 
+## OpenAPI Workflow
+
+After modifying `api/openapi.yaml`:
+```bash
+make generate-api  # Regenerates internal/api/generated/openapi.gen.go
+```
+
+The generated code is committed to the repo. CI runs `make check-api-codegen` to verify it's in sync.
+
 ## Architecture Notes
 
 **Backward compatibility:** not required at this stage. You may introduce breaking changes to CRDs, APIs, and internal interfaces if it simplifies the design, provided tests are updated accordingly.
@@ -39,21 +47,19 @@ make generate manifests && \
 
 **Project structure:**
 - `api/v1alpha1/` - CRD type definitions (Sandbox, SandboxTemplate, RootfsSnapshot)
+- `api/openapi.yaml` - OpenAPI spec for isola-api (source of truth for REST API)
 - `cmd/operator/` - Kubebuilder operator entry point
-- `cmd/gateway/` - Gin HTTP gateway (auth, K8s client, S3 storage)
+- `cmd/isola-api/` - REST API gateway for external clients
 - `cmd/agent/` - Gin sidecar injected into sandbox pods by operator
 - `cmd/uploader/` - Snapshot uploader job (uploads tarballs to S3/GCS/Azure)
 - `internal/operator/controller/` - Reconciler implementations
-- `internal/gateway/` - Gateway handlers and models
+- `internal/api/` - isola-api handlers, middleware, and generated OpenAPI code
 - `internal/agent/` - Agent handlers
 - `internal/snapshot/` - Shared snapshot types (used by operator and uploader)
 - `config/` - Kustomize manifests (for controller-gen output)
 - `charts/` - Helm charts (source of truth for deployment)
-- `tests/e2e/` - Python E2E tests
 
-**Gateway OpenAPI spec:** `cmd/gateway/openapi.yaml` is hand-maintained. TODO: migrate to [swaggo/swag](https://github.com/swaggo/swag) for auto-generation from handler annotations.
-
-**Namespaces:** `isola-system` (operator/gateway), `isola-sandboxes` (sandbox pods)
+**Namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
 
 **Helm charts are source of truth** - CRDs must be synced from operator (see workflow above)
 
@@ -99,12 +105,6 @@ make generate manifests && \
 **Go tests:** Ginkgo/Gomega with envtest (K8s API simulation)
 ```bash
 make test
-```
-
-**E2E tests:** Python pytest against running cluster
-```bash
-cd tests/e2e && uv run pytest            # Run all tests
-cd tests/e2e && uv run pytest --skip-cleanup  # Debug: keep sandboxes
 ```
 
 ## Tooling Versions

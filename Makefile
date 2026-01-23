@@ -11,8 +11,21 @@ help: ## Display this help
 
 ##@ Development
 
+.PHONY: generate-api
+generate-api: ## Generate isola-api OpenAPI code
+	go generate ./cmd/isola-api/...
+
+.PHONY: check-api-codegen
+check-api-codegen: generate-api ## Verify isola-api OpenAPI code is up-to-date
+	@if ! git diff --quiet -- api/openapi.yaml internal/api/generated/; then \
+		echo "ERROR: API generated code is out of sync with spec"; \
+		echo "Run 'make generate-api' and commit the changes"; \
+		git diff --stat -- api/openapi.yaml internal/api/generated/; \
+		exit 1; \
+	fi
+
 .PHONY: generate
-generate: ## Generate code (DeepCopy methods)
+generate: generate-api ## Generate all code (CRD DeepCopy + OpenAPI)
 	controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 
 .PHONY: manifests
@@ -47,7 +60,7 @@ tidy: ## Run go mod tidy
 	go mod tidy
 
 .PHONY: check-all
-check-all: vet lint vulncheck ## Run all checks (read-only, CI-safe)
+check-all: vet lint vulncheck check-api-codegen ## Run all checks (read-only, CI-safe)
 
 .PHONY: fix-all
 fix-all: fmt lint-fix ## Fix all auto-fixable issues
@@ -76,9 +89,9 @@ test-focus: ## Run tests matching FOCUS pattern
 .PHONY: build
 build: ## Build all binaries
 	go build -o bin/operator ./cmd/operator
-	go build -o bin/gateway ./cmd/gateway
 	go build -o bin/agent ./cmd/agent
 	go build -o bin/uploader ./cmd/uploader
+	go build -o bin/isola-api ./cmd/isola-api
 
 .PHONY: run-operator
 run-operator: ## Run operator from your host

@@ -80,6 +80,25 @@ helm_resource(
 )
 
 # ==============================================================================
+# isola-api
+# ==============================================================================
+
+docker_build(
+    'isola-api',
+    context='.',
+    dockerfile='cmd/isola-api/Dockerfile',
+    only=[
+        'api/',
+        'cmd/isola-api/',
+        'internal/api/',
+        'go.mod',
+        'go.sum',
+    ]
+)
+
+# TODO: Add helm_resource for isola-api when chart is created (Phase 2)
+
+# ==============================================================================
 # isola-uploader (snapshot uploader - built but deployed by operator via Jobs)
 # ==============================================================================
 
@@ -109,49 +128,6 @@ docker_build(
         'go.mod',
         'go.sum',
     ]
-)
-
-# ==============================================================================
-# isola-gw (API Gateway)
-# ==============================================================================
-
-docker_build(
-    'isola-gw',
-    context='.',
-    dockerfile='cmd/gateway/Dockerfile',
-    only=[
-        'cmd/gateway/',
-        'internal/gateway/',
-        'go.mod',
-        'go.sum',
-    ]
-)
-
-helm_resource(
-    'isola-gw',
-    'charts/isola-gw',
-    namespace='isola-system',
-    flags=[
-        '--create-namespace',
-        '-f', 'charts/isola-gw/values-dev.yaml',
-        '--set', 'image.repository=isola-gw',
-        '--set', 'image.tag=latest',
-    ],
-    image_deps=['isola-gw'],
-    image_keys=[('image.repository', 'image.tag')],
-    resource_deps=['isola-operator', 'localstack'],
-    deps=['charts/isola-gw'],
-    labels=['isola'],
-)
-
-# ==============================================================================
-# Port Forward
-# ==============================================================================
-
-k8s_resource(
-    workload='isola-gw',
-    port_forwards=['30080:8080'],
-    labels=['isola'],
 )
 
 # ==============================================================================
