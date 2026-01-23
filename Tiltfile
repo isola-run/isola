@@ -39,18 +39,17 @@ helm_resource(
 # isola-operator
 # ==============================================================================
 
-# todo benl: reduce context when we restructure repo to go standards
 docker_build(
     'isola-operator',
     context='.',
-    dockerfile='services/isola-operator/Dockerfile',
+    dockerfile='cmd/operator/Dockerfile',
     only=[
-        'services/isola-operator/cmd/',
-        'services/isola-operator/internal/',
-        'services/isola-operator/api/',
-        'services/isola-operator/go.mod',
-        'services/isola-operator/go.sum',
-        'pkg/snapshot/',
+        'cmd/operator/',
+        'internal/operator/',
+        'internal/snapshot/',
+        'api/',
+        'go.mod',
+        'go.sum',
     ]
 )
 
@@ -87,12 +86,12 @@ helm_resource(
 docker_build(
     'isola-uploader',
     context='.',
-    dockerfile='services/isola-uploader/Dockerfile',
+    dockerfile='cmd/uploader/Dockerfile',
     only=[
-        'services/isola-uploader/cmd/',
-        'services/isola-uploader/go.mod',
-        'services/isola-uploader/go.sum',
-        'pkg/snapshot/',
+        'cmd/uploader/',
+        'internal/snapshot/',
+        'go.mod',
+        'go.sum',
     ]
 )
 
@@ -102,11 +101,11 @@ docker_build(
 
 docker_build(
     'isola-agent',
-    context='services/isola-agent',
-    dockerfile='services/isola-agent/Dockerfile',
+    context='.',
+    dockerfile='cmd/agent/Dockerfile',
     only=[
-        'cmd/',
-        'internal/',
+        'cmd/agent/',
+        'internal/agent/',
         'go.mod',
         'go.sum',
     ]
@@ -118,11 +117,11 @@ docker_build(
 
 docker_build(
     'isola-gw',
-    context='services/isola-gw',
-    dockerfile='services/isola-gw/Dockerfile',
+    context='.',
+    dockerfile='cmd/gateway/Dockerfile',
     only=[
-        'cmd/',
-        'internal/',
+        'cmd/gateway/',
+        'internal/gateway/',
         'go.mod',
         'go.sum',
     ]
@@ -161,8 +160,8 @@ k8s_resource(
 
 local_resource(
     'e2e-tests',
-    cmd='cd tests && uv run pytest -m smoke',
-    deps=['tests/'],
+    cmd='cd tests/e2e && uv run pytest -m smoke',
+    deps=['tests/e2e/'],
     auto_init=False,
     trigger_mode=TRIGGER_MODE_MANUAL,
     labels=['tests'],
@@ -170,8 +169,8 @@ local_resource(
 
 local_resource(
     'e2e-tests-all',
-    cmd='cd tests && uv run pytest',
-    deps=['tests/'],
+    cmd='cd tests/e2e && uv run pytest',
+    deps=['tests/e2e/'],
     auto_init=False,
     trigger_mode=TRIGGER_MODE_MANUAL,
     labels=['tests'],
