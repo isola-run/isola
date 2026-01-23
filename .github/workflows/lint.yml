@@ -8,15 +8,8 @@ on:
 
 jobs:
   lint:
-    name: Lint ${{ matrix.service }}
+    name: Lint
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        service:
-          - isola-operator
-          - isola-gw
-          - isola-agent
 
     steps:
       - name: Checkout code
@@ -25,12 +18,9 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: services/${{ matrix.service }}/go.mod
+          go-version-file: go.mod
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9.2.0
         with:
           version: v2.8.0
-          working-directory: services/${{ matrix.service }}
-          # golangci-lint v2 walks up to find config, but be explicit
-          args: --config ../../.golangci.yml
