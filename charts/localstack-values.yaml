@@ -9,5 +9,6 @@ startServices: s3
 # Create the buckets on startup
 enableStartupScripts: true
 startupScriptContent: |
+  #!/bin/bash
   awslocal s3api create-bucket --bucket isola-uploads 2>/dev/null || true
   awslocal s3api create-bucket --bucket isola-snapshots 2>/dev/null || true
