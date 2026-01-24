@@ -3,7 +3,9 @@
 package models
 
 type CreateSandboxRequest struct {
-	Name      string            `json:"name" binding:"required"`
+	// Name is optional. If not provided, a unique name will be auto-generated.
+	// If provided, must be DNS-safe (lowercase alphanumeric and hyphens, max 63 chars).
+	Name      string            `json:"name,omitempty"`
 	Image     *string           `json:"image,omitempty"`
 	Region    string            `json:"region,omitempty"`
 	CPU       *float64          `json:"cpu,omitempty"`

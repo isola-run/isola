@@ -9,9 +9,9 @@ import (
 	"github.com/isola-ai/isola-sb/internal/gateway/models"
 )
 
-// ExecuteCommand handles POST /sandboxes/:id/execute
+// ExecuteCommand handles POST /sandboxes/:name/execute
 func (h *Handler) ExecuteCommand(c *gin.Context) {
-	sandboxID := c.Param("id")
+	name := c.Param("name")
 
 	var req models.ExecuteCommandRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -22,16 +22,16 @@ func (h *Handler) ExecuteCommand(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[EXECUTE] Request for sandbox %s: %s", sandboxID, req.Command)
+	log.Printf("[EXECUTE] Request for sandbox '%s': %s", name, req.Command)
 
 	tenantID, _ := c.Get("tenant_id")
 	_ = tenantID // TODO:__OMER__ validate tenant_id belongs to the sandbox
 
 	ctx := c.Request.Context()
 
-	status, err := h.k8sManager.GetSandboxStatus(ctx, sandboxID)
+	status, err := h.k8sManager.GetSandboxStatus(ctx, name)
 	if err != nil {
-		log.Printf("[EXECUTE] Failed to get sandbox %s status: %v", sandboxID, err)
+		log.Printf("[EXECUTE] Failed to get sandbox '%s' status: %v", name, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "InternalServerError",
 			Message: "Failed to get sandbox status",
@@ -39,7 +39,7 @@ func (h *Handler) ExecuteCommand(c *gin.Context) {
 		return
 	}
 	if status == nil {
-		log.Printf("[EXECUTE] Sandbox %s not found", sandboxID)
+		log.Printf("[EXECUTE] Sandbox '%s' not found", name)
 		c.JSON(http.StatusNotFound, models.ErrorResponse{
 			Error:   "NotFound",
 			Message: "Sandbox not found",
@@ -48,7 +48,7 @@ func (h *Handler) ExecuteCommand(c *gin.Context) {
 	}
 
 	if status.State != models.SandboxStateRunning {
-		log.Printf("[EXECUTE] Sandbox %s not in running state: %s", sandboxID, status.State)
+		log.Printf("[EXECUTE] Sandbox '%s' not in running state: %s", name, status.State)
 		c.JSON(http.StatusConflict, models.ErrorResponse{
 			Error:   "Conflict",
 			Message: "Sandbox must be in 'running' state, current state: " + string(status.State),
@@ -57,9 +57,9 @@ func (h *Handler) ExecuteCommand(c *gin.Context) {
 	}
 
 	// Execute command in Kubernetes pod
-	stdout, stderr, exitCode, err := h.k8sManager.ExecuteCommand(ctx, sandboxID, req.Command)
+	stdout, stderr, exitCode, err := h.k8sManager.ExecuteCommand(ctx, name, req.Command)
 	if err != nil {
-		log.Printf("[EXECUTE] Failed to execute command in sandbox %s: %v", sandboxID, err)
+		log.Printf("[EXECUTE] Failed to execute command in sandbox '%s': %v", name, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "InternalServerError",
 			Message: "Failed to execute command: " + err.Error(),
@@ -67,7 +67,7 @@ func (h *Handler) ExecuteCommand(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[EXECUTE] Command completed for sandbox %s: exit_code=%d", sandboxID, exitCode)
+	log.Printf("[EXECUTE] Command completed for sandbox '%s': exit_code=%d", name, exitCode)
 
 	c.JSON(http.StatusOK, models.ExecuteCommandResponse{
 		Stdout:   stdout,

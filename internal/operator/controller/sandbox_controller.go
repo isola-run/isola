@@ -193,18 +193,11 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	}
 
 	labels["app"] = "isola-sandbox"
-	labels["sandbox.isola.run/id"] = sandbox.Name
+	labels["sandbox.isola.run/name"] = sandbox.Name
 	labels["app.kubernetes.io/managed-by"] = "isola-operator"
 	labels["cluster-autoscaler.kubernetes.io/safe-to-evict"] = "false"
 
 	maps.Copy(labels, buildNetworkLabels(sandbox.Spec.Network))
-
-	// todo benl: why this exists? ("sandbox-id")
-	if sandbox.Labels != nil {
-		if sandboxID, exists := sandbox.Labels["sandbox-id"]; exists {
-			labels["sandbox-id"] = sandboxID
-		}
-	}
 
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

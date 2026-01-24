@@ -35,17 +35,17 @@ func (h *Handler) SetupRoutes(r *gin.Engine) {
 		// Sandbox CRUD
 		api.GET("/sandboxes", h.ListSandboxes)
 		api.POST("/sandboxes", h.CreateSandbox)
-		api.GET("/sandboxes/:id", h.GetSandbox)
-		api.DELETE("/sandboxes/:id", h.TerminateSandbox)
+		api.GET("/sandboxes/:name", h.GetSandbox)
+		api.DELETE("/sandboxes/:name", h.TerminateSandbox)
 
 		// Command execution
-		api.POST("/sandboxes/:id/execute", h.ExecuteCommand)
+		api.POST("/sandboxes/:name/execute", h.ExecuteCommand)
 
 		// File operations
-		api.GET("/sandboxes/:id/files", h.DownloadFile)
-		api.POST("/sandboxes/:id/files", h.UploadFile)
-		api.POST("/sandboxes/:id/files/upload-url", h.GenerateUploadUrl)
-		api.POST("/sandboxes/:id/files/confirm", h.ConfirmUpload)
+		api.GET("/sandboxes/:name/files", h.DownloadFile)
+		api.POST("/sandboxes/:name/files", h.UploadFile)
+		api.POST("/sandboxes/:name/files/upload-url", h.GenerateUploadUrl)
+		api.POST("/sandboxes/:name/files/confirm", h.ConfirmUpload)
 	}
 }
 

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/isola-ai/isola-sb/internal/gateway/models"
+	"github.com/isola-ai/isola-sb/internal/gateway/naming"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -93,7 +93,12 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 	tenantID, _ := c.Get("tenant_id")
 	_ = tenantID // TODO: __OMER__ mark sandbox as owned by tenant
 
-	sandboxID := uuid.New().String()
+	// Generate unique name if not provided
+	name := req.Name
+	if name == "" {
+		name = naming.GenerateSandboxName()
+	}
+
 	now := time.Now().UTC()
 
 	desiredState := models.SandboxStateStopped
@@ -102,8 +107,7 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 	}
 
 	sandbox := &models.Sandbox{
-		ID:           sandboxID,
-		Name:         req.Name,
+		Name:         name,
 		State:        models.SandboxStatePending,
 		DesiredState: &desiredState,
 		Env:          req.Env,
@@ -115,14 +119,14 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 	log.Printf("Creating sandbox: %+v", sandbox)
 
 	ctx := c.Request.Context()
-	templateName := "sandbox-template-" + sandboxID
-	success, errorReason := h.k8sManager.CreateSandboxCR(ctx, sandboxID, req, templateName)
+	templateName := name + "-template"
+	success, errorReason := h.k8sManager.CreateSandboxCR(ctx, name, req, templateName)
 	if !success {
 		errMsg := "unknown error"
 		if errorReason != nil {
 			errMsg = *errorReason
 		}
-		log.Printf("Sandbox %s CR creation failed: %s", sandboxID, errMsg)
+		log.Printf("Sandbox '%s' CR creation failed: %s", name, errMsg)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "InternalServerError",
 			Message: "Failed to create sandbox: " + errMsg,
@@ -130,21 +134,21 @@ func (h *Handler) CreateSandbox(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Sandbox %s created successfully", sandboxID)
+	log.Printf("Sandbox '%s' created successfully", name)
 	c.JSON(http.StatusCreated, sandbox)
 }
 
 func (h *Handler) GetSandbox(c *gin.Context) {
-	sandboxID := c.Param("id")
+	name := c.Param("name")
 
 	tenantID, _ := c.Get("tenant_id")
 	_ = tenantID // TODO: validate tenant_id belongs to the sandbox
 
 	ctx := c.Request.Context()
 
-	sandbox, err := h.getSandbox(ctx, sandboxID)
+	sandbox, err := h.getSandbox(ctx, name)
 	if err != nil {
-		log.Printf("Failed to get sandbox %s: %v", sandboxID, err)
+		log.Printf("Failed to get sandbox '%s': %v", name, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "InternalServerError",
 			Message: "Failed to get sandbox",
@@ -164,7 +168,7 @@ func (h *Handler) GetSandbox(c *gin.Context) {
 }
 
 func (h *Handler) TerminateSandbox(c *gin.Context) {
-	sandboxID := c.Param("id")
+	name := c.Param("name")
 
 	var params models.TerminateSandboxParams
 	if err := c.ShouldBindQuery(&params); err != nil {
@@ -178,7 +182,7 @@ func (h *Handler) TerminateSandbox(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	err := h.k8sManager.DeleteSandboxCR(ctx, sandboxID)
+	err := h.k8sManager.DeleteSandboxCR(ctx, name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			c.JSON(http.StatusNotFound, models.ErrorResponse{
@@ -204,26 +208,17 @@ func (h *Handler) sandboxCRToModel(cr *unstructured.Unstructured) *models.Sandbo
 		return nil
 	}
 
-	// Get sandbox ID from labels
-	labels, _ := metadata["labels"].(map[string]interface{})
-	sandboxID, ok := labels["sandbox-id"].(string)
-	if !ok || sandboxID == "" {
+	// Get name from metadata.name - this is the sole identifier
+	name, ok := metadata["name"].(string)
+	if !ok || name == "" {
 		return nil
 	}
 
-	// Get name from annotation or fallback to CR name
-	var sandboxName string
-	annotations, _ := metadata["annotations"].(map[string]interface{})
-	if annotations != nil {
-		if nameVal, ok := annotations["isola.run/sandbox-name"].(string); ok {
-			sandboxName = nameVal
-		}
-	}
-	if sandboxName == "" {
-		if nameVal, ok := metadata["name"].(string); ok {
-			sandboxName = nameVal
-		} else {
-			sandboxName = "sandbox-" + sandboxID[:min(8, len(sandboxID))]
+	// Get creation timestamp
+	createdAt := time.Now().UTC()
+	if creationTimestamp, ok := metadata["creationTimestamp"].(string); ok {
+		if parsed, err := time.Parse(time.RFC3339, creationTimestamp); err == nil {
+			createdAt = parsed
 		}
 	}
 
@@ -258,20 +253,19 @@ func (h *Handler) sandboxCRToModel(cr *unstructured.Unstructured) *models.Sandbo
 
 	desiredState := state
 	return &models.Sandbox{
-		ID:           sandboxID,
-		Name:         sandboxName,
+		Name:         name,
 		State:        state,
 		DesiredState: &desiredState,
 		Env:          make(map[string]string),
 		Labels:       make(map[string]string),
 		ErrorReason:  errorReason,
-		CreatedAt:    time.Now().UTC(), // TODO: get actual creation time from CR
+		CreatedAt:    createdAt,
 	}
 }
 
-// getSandbox gets a single sandbox by ID
-func (h *Handler) getSandbox(ctx context.Context, sandboxID string) (*models.Sandbox, error) {
-	cr, err := h.k8sManager.GetSandboxCR(ctx, sandboxID)
+// getSandbox gets a single sandbox by name
+func (h *Handler) getSandbox(ctx context.Context, name string) (*models.Sandbox, error) {
+	cr, err := h.k8sManager.GetSandboxCR(ctx, name)
 	if err != nil {
 		return nil, err
 	}

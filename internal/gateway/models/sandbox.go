@@ -21,7 +21,8 @@ type AttachedVolume struct {
 }
 
 type Sandbox struct {
-	ID           string            `json:"id"`
+	// Name is the unique identifier for the sandbox.
+	// It is a DNS-safe string used as the Kubernetes resource name.
 	Name         string            `json:"name"`
 	State        SandboxState      `json:"state"`
 	DesiredState *SandboxState     `json:"desiredState,omitempty"`

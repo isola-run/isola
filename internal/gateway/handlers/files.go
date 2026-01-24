@@ -23,17 +23,17 @@ const (
 )
 
 // buildObjectKey constructs an S3 object key path.
-// format: {type}/{tenantID}/{sandboxID}/{id}/{filename}
-func buildObjectKey(objectType string, tenantID string, sandboxID string, id string, filename string) string {
-	return fmt.Sprintf("%s/%s/%s/%s/%s", objectType, tenantID, sandboxID, id, filename)
+// format: {type}/{tenantID}/{sandboxName}/{id}/{filename}
+func buildObjectKey(objectType string, tenantID string, sandboxName string, id string, filename string) string {
+	return fmt.Sprintf("%s/%s/%s/%s/%s", objectType, tenantID, sandboxName, id, filename)
 }
 
 // getSandboxStatusAndAddress retrieves sandbox status and validates it's running.
 // Returns (agentAddress, shouldReturn) where shouldReturn is true if an error response was sent.
-func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context, sandboxID string, logPrefix string) (string, bool) {
-	status, err := h.k8sManager.GetSandboxStatus(ctx, sandboxID)
+func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context, name string, logPrefix string) (string, bool) {
+	status, err := h.k8sManager.GetSandboxStatus(ctx, name)
 	if err != nil {
-		log.Printf("[%s] Failed to get sandbox %s status: %v", logPrefix, sandboxID, err)
+		log.Printf("[%s] Failed to get sandbox '%s' status: %v", logPrefix, name, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "InternalServerError",
 			Message: "Failed to get sandbox status",
@@ -41,7 +41,7 @@ func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context
 		return "", true
 	}
 	if status == nil {
-		log.Printf("[%s] Sandbox %s not found", logPrefix, sandboxID)
+		log.Printf("[%s] Sandbox '%s' not found", logPrefix, name)
 		c.JSON(http.StatusNotFound, models.ErrorResponse{
 			Error:   "NotFound",
 			Message: "Sandbox not found",
@@ -50,7 +50,7 @@ func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context
 	}
 
 	if status.State != models.SandboxStateRunning {
-		log.Printf("[%s] Sandbox %s not in running state: %s", logPrefix, sandboxID, status.State)
+		log.Printf("[%s] Sandbox '%s' not in running state: %s", logPrefix, name, status.State)
 		c.JSON(http.StatusConflict, models.ErrorResponse{
 			Error:   "Conflict",
 			Message: "Sandbox must be in 'running' state, current state: " + string(status.State),
@@ -62,7 +62,7 @@ func (h *Handler) getSandboxStatusAndAddress(ctx context.Context, c *gin.Context
 }
 
 func (h *Handler) UploadFile(c *gin.Context) {
-	sandboxID := c.Param("id")
+	name := c.Param("name")
 
 	// Get tenant ID from context
 	tenantID, _ := c.Get("tenant_id")
@@ -70,7 +70,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "UPLOAD")
+	agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, name, "UPLOAD")
 	if shouldReturn {
 		return
 	}
@@ -253,7 +253,7 @@ func (h *Handler) UploadFile(c *gin.Context) {
 		}
 	}
 
-	log.Printf("Successfully uploaded file to sandbox %s: %+v", sandboxID, agentResponse)
+	log.Printf("Successfully uploaded file to sandbox '%s': %+v", name, agentResponse)
 
 	success := true
 	if val, ok := agentResponse["success"].(bool); ok {
@@ -277,10 +277,10 @@ func (h *Handler) UploadFile(c *gin.Context) {
 	})
 }
 
-// DownloadFile handles GET /sandboxes/:id/files?path=...
+// DownloadFile handles GET /sandboxes/:name/files?path=...
 // Streams the file directly from the sandbox agent to the client without buffering.
 func (h *Handler) DownloadFile(c *gin.Context) {
-	sandboxID := c.Param("id")
+	name := c.Param("name")
 	targetPath := c.Query("path")
 
 	if targetPath == "" {
@@ -293,7 +293,7 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "DOWNLOAD")
+	agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, name, "DOWNLOAD")
 	if shouldReturn {
 		return
 	}
@@ -362,7 +362,7 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[DOWNLOAD] Streaming file from sandbox %s: path=%s, size=%d", sandboxID, targetPath, contentLength)
+	log.Printf("[DOWNLOAD] Streaming file from sandbox '%s': path=%s, size=%d", name, targetPath, contentLength)
 
 	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
 		c.Header("Content-Disposition", cd)
@@ -371,7 +371,7 @@ func (h *Handler) DownloadFile(c *gin.Context) {
 }
 
 func (h *Handler) GenerateUploadUrl(c *gin.Context) {
-	sandboxID := c.Param("id")
+	name := c.Param("name")
 
 	var req models.UploadUrlRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -382,7 +382,7 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[UPLOAD-URL] Request for sandbox %s: path=%s, filename=%s", sandboxID, req.Path, req.Filename)
+	log.Printf("[UPLOAD-URL] Request for sandbox '%s': path=%s, filename=%s", name, req.Path, req.Filename)
 
 	tenantID, exists := c.Get("tenant_id")
 	if !exists {
@@ -411,14 +411,14 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 		return
 	}
 
-	_, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "UPLOAD-URL")
+	_, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, name, "UPLOAD-URL")
 	if shouldReturn {
 		return
 	}
 
 	// Generate unique upload ID and object key
 	uploadID := uuid.New().String()
-	objectKey := buildObjectKey("uploads", tenantIDStr, sandboxID, uploadID, req.Filename)
+	objectKey := buildObjectKey("uploads", tenantIDStr, name, uploadID, req.Filename)
 
 	// Generate presigned upload URL (15 minutes expiration)
 	expiresIn := 900 // 15 minutes
@@ -446,9 +446,9 @@ func (h *Handler) GenerateUploadUrl(c *gin.Context) {
 	})
 }
 
-// ConfirmUpload handles POST /sandboxes/:id/files/confirm
+// ConfirmUpload handles POST /sandboxes/:name/files/confirm
 func (h *Handler) ConfirmUpload(c *gin.Context) {
-	sandboxID := c.Param("id")
+	name := c.Param("name")
 
 	var req models.ConfirmUploadRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -459,7 +459,7 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[CONFIRM] Request for sandbox %s: upload_id=%s, filename=%s, path=%s", sandboxID, req.UploadID, req.Filename, req.Path)
+	log.Printf("[CONFIRM] Request for sandbox '%s': upload_id=%s, filename=%s, path=%s", name, req.UploadID, req.Filename, req.Path)
 
 	// Get tenant ID from context
 	tenantID, exists := c.Get("tenant_id")
@@ -489,13 +489,13 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 		return
 	}
 
-	agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, sandboxID, "CONFIRM")
+	agentAddress, shouldReturn := h.getSandboxStatusAndAddress(ctx, c, name, "CONFIRM")
 	if shouldReturn {
 		return
 	}
 
 	// Reconstruct object key from upload_id and filename
-	objectKey := buildObjectKey("uploads", tenantIDStr, sandboxID, req.UploadID, req.Filename)
+	objectKey := buildObjectKey("uploads", tenantIDStr, name, req.UploadID, req.Filename)
 	targetPath := req.Path
 
 	// Generate presigned download URL for the agent
@@ -574,7 +574,7 @@ func (h *Handler) ConfirmUpload(c *gin.Context) {
 		}
 	}
 
-	log.Printf("[CONFIRM] Successfully triggered download for sandbox %s", sandboxID)
+	log.Printf("[CONFIRM] Successfully triggered download for sandbox '%s'", name)
 
 	// Delete the file from object storage after successful download
 	if err := h.storage.DeleteObject(ctx, objectKey); err != nil {

@@ -159,15 +159,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/sandboxes/{id}:
+  /api/v1/sandboxes/{name}:
     get:
       tags:
         - Sandboxes
       summary: Get sandbox
-      description: Returns details of a specific sandbox by ID
+      description: Returns details of a specific sandbox by name
       operationId: getSandbox
       parameters:
-        - $ref: '#/components/parameters/SandboxId'
+        - $ref: '#/components/parameters/SandboxName'
       responses:
         '200':
           description: Sandbox details
@@ -201,7 +201,7 @@ paths:
       description: Terminates and deletes a sandbox
       operationId: terminateSandbox
       parameters:
-        - $ref: '#/components/parameters/SandboxId'
+        - $ref: '#/components/parameters/SandboxName'
         - name: force
           in: query
           description: Force immediate termination without graceful shutdown
@@ -241,7 +241,7 @@ paths:
         The sandbox must be in 'running' state.
       operationId: executeCommand
       parameters:
-        - $ref: '#/components/parameters/SandboxId'
+        - $ref: '#/components/parameters/SandboxName'
       requestBody:
         required: true
         content:
@@ -296,7 +296,7 @@ paths:
         Maximum file size is 5MB. For larger files, use chunked download.
       operationId: downloadFile
       parameters:
-        - $ref: '#/components/parameters/SandboxId'
+        - $ref: '#/components/parameters/SandboxName'
         - name: path
           in: query
           description: Path to the file in the sandbox
@@ -363,7 +363,7 @@ paths:
         For larger files, use the presigned URL flow (upload-url + confirm endpoints).
       operationId: uploadFile
       parameters:
-        - $ref: '#/components/parameters/SandboxId'
+        - $ref: '#/components/parameters/SandboxName'
       requestBody:
         required: true
         content:
@@ -443,7 +443,7 @@ paths:
         the file transfer to the sandbox.
       operationId: generateUploadUrl
       parameters:
-        - $ref: '#/components/parameters/SandboxId'
+        - $ref: '#/components/parameters/SandboxName'
       requestBody:
         required: true
         content:
@@ -504,7 +504,7 @@ paths:
         Triggers the sandbox agent to download the file from object storage.
       operationId: confirmUpload
       parameters:
-        - $ref: '#/components/parameters/SandboxId'
+        - $ref: '#/components/parameters/SandboxName'
       requestBody:
         required: true
         content:
@@ -570,15 +570,17 @@ components:
       description: API key for authentication
 
   parameters:
-    SandboxId:
-      name: id
+    SandboxName:
+      name: name
       in: path
-      description: Unique identifier of the sandbox (UUID)
+      description: Unique name of the sandbox (DNS-safe identifier)
       required: true
       schema:
         type: string
-        format: uuid
-      example: 550e8400-e29b-41d4-a716-446655440000
+        pattern: ^[a-z0-9]+$
+        minLength: 12
+        maxLength: 63
+      example: v1stgxr8z5jd
 
   schemas:
     SandboxState:
@@ -611,20 +613,17 @@ components:
       type: object
       description: A sandbox instance
       required:
-        - id
         - name
         - state
         - env
         - labels
         - createdAt
       properties:
-        id:
-          type: string
-          format: uuid
-          description: Unique identifier of the sandbox
         name:
           type: string
-          description: Human-readable name of the sandbox
+          description: Unique name of the sandbox (DNS-safe identifier, used as the sole identifier)
+          pattern: ^[a-z0-9]+$
+          example: v1stgxr8z5jd
         state:
           $ref: '#/components/schemas/SandboxState'
         desiredState:
@@ -674,12 +673,13 @@ components:
     CreateSandboxRequest:
       type: object
       description: Request to create a new sandbox
-      required:
-        - name
       properties:
         name:
           type: string
-          description: Human-readable name for the sandbox
+          description: |
+            Optional name for the sandbox. If not provided, a unique name will be auto-generated.
+            If provided, must be DNS-safe (lowercase alphanumeric, max 63 chars).
+          pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
           minLength: 1
           maxLength: 63
         image:
