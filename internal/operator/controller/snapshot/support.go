@@ -26,11 +26,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// GetSandboxPodName returns the pod name for a sandbox
-func GetSandboxPodName(sandboxName string) string {
-	return sandboxName + "-pod"
-}
-
 // CheckRootfsSnapshotSupport checks if the pod's runtime class supports snapshotting.
 // Returns true if the pod uses a gvisor/runsc runtime.
 // Caller should check pod readiness before calling this.

@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -31,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
@@ -110,33 +110,41 @@ func getPod(ctx context.Context, name string) *corev1.Pod {
 func deleteSandbox(ctx context.Context, name string) {
 	sandbox := &sandboxv1alpha1.Sandbox{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, sandbox)
-	if err == nil {
-		_ = k8sClient.Delete(ctx, sandbox)
+	if errors.IsNotFound(err) {
+		return // Already deleted
 	}
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, sandbox))).NotTo(HaveOccurred())
 }
 
 func deleteTemplate(ctx context.Context, name string) {
 	template := &sandboxv1alpha1.SandboxTemplate{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, template)
-	if err == nil {
-		_ = k8sClient.Delete(ctx, template)
+	if errors.IsNotFound(err) {
+		return // Already deleted
 	}
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, template))).NotTo(HaveOccurred())
 }
 
 func deleteRuntimeClass(ctx context.Context, name string) {
 	rc := &nodev1.RuntimeClass{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: name}, rc)
-	if err == nil {
-		_ = k8sClient.Delete(ctx, rc)
+	if errors.IsNotFound(err) {
+		return // Already deleted
 	}
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, rc))).NotTo(HaveOccurred())
 }
 
 func deletePod(ctx context.Context, name string) {
 	pod := &corev1.Pod{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pod)
-	if err == nil {
-		_ = k8sClient.Delete(ctx, pod)
+	if errors.IsNotFound(err) {
+		return // Already deleted
 	}
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, pod))).NotTo(HaveOccurred())
 }
 
 func getRootfsSnapshot(ctx context.Context, name string) *sandboxv1alpha1.RootfsSnapshot {
@@ -154,9 +162,10 @@ func getShutdownSnapshot(ctx context.Context, sandboxName string) *sandboxv1alph
 
 func deleteShutdownSnapshot(ctx context.Context, sandboxName string) {
 	snap := getShutdownSnapshot(ctx, sandboxName)
-	if snap != nil {
-		_ = k8sClient.Delete(ctx, snap)
+	if snap == nil {
+		return // Already deleted
 	}
+	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, snap))).NotTo(HaveOccurred())
 }
 
 func setRootfsSnapshotReady(ctx context.Context, name string, ready bool, reason, message string) {
@@ -250,6 +259,26 @@ func makePodReady(ctx context.Context, pod *corev1.Pod, containerID string) {
 func doReconcile(ctx context.Context, reconciler *SandboxReconciler, name string) (reconcile.Result, error) {
 	req := reconcile.Request{NamespacedName: types.NamespacedName{Name: name, Namespace: testNamespace}}
 	return reconciler.Reconcile(ctx, req)
+}
+
+func getNetworkPolicy(ctx context.Context, name string) *networkingv1.NetworkPolicy {
+	np := &networkingv1.NetworkPolicy{}
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, np)
+	if errors.IsNotFound(err) {
+		return nil
+	}
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	return np
+}
+
+func deleteNetworkPolicy(ctx context.Context, name string) {
+	np := &networkingv1.NetworkPolicy{}
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, np)
+	if errors.IsNotFound(err) {
+		return // Already deleted
+	}
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, np))).NotTo(HaveOccurred())
 }
 
 var _ = Describe("Sandbox Controller", func() {
@@ -1326,14 +1355,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			Eventually(func() bool {
-				select {
-				case event := <-recorder.Events:
-					return len(event) > 0
-				default:
-					return false
-				}
-			}, testTimeout, testInterval).Should(BeTrue())
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("Normal SnapshotSucceeded")))
 
 			// Sandbox deleted after successful snapshot
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
@@ -1400,31 +1422,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(errors.IsNotFound(err)).To(BeTrue())
-		})
-
-		It("should respect custom snapshot timeout", func() {
-			sandboxName := "sandbox-custom-snapshot-timeout"
-			templateName := "template-custom-snapshot-timeout"
-
-			timeout := int64(1)
-			snapshotTimeout := int64(5)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy:                sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
-					ActiveDeadlineSeconds: &snapshotTimeout,
-				}
-			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			template := &sandboxv1alpha1.SandboxTemplate{}
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: templateName, Namespace: testNamespace}, template)).To(Succeed())
-			Expect(template.Spec.ShutdownPolicy.ActiveDeadlineSeconds).NotTo(BeNil())
-			Expect(*template.Spec.ShutdownPolicy.ActiveDeadlineSeconds).To(Equal(snapshotTimeout))
 		})
 
 		It("should use default activeDeadlineSeconds when not specified", func() {
@@ -1636,14 +1633,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Check for PodCreated event
-			Eventually(func() bool {
-				select {
-				case event := <-recorder.Events:
-					return event == "Normal PodCreated Sandbox Pod created"
-				default:
-					return false
-				}
-			}, testTimeout, testInterval).Should(BeTrue())
+			Eventually(recorder.Events).Should(Receive(Equal("Normal PodCreated Sandbox Pod created")))
 		})
 
 		It("should record RootfsSnapshotCreated event", func() {
@@ -1682,14 +1672,7 @@ var _ = Describe("Sandbox Controller", func() {
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
 			// Check for RootfsSnapshotCreated event (snapshot name is dynamic)
-			Eventually(func() bool {
-				select {
-				case event := <-recorder.Events:
-					return strings.Contains(event, "Normal RootfsSnapshotCreated Created RootfsSnapshot")
-				default:
-					return false
-				}
-			}, testTimeout, testInterval).Should(BeTrue())
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("Normal RootfsSnapshotCreated Created RootfsSnapshot")))
 		})
 
 		It("should record SnapshotSucceeded event", func() {
@@ -1749,14 +1732,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
-			Eventually(func() bool {
-				select {
-				case event := <-recorder.Events:
-					return len(event) > 0 && (event == "Normal SnapshotSucceeded Rootfs snapshot completed" || len(event) > 20)
-				default:
-					return false
-				}
-			}, testTimeout, testInterval).Should(BeTrue())
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("Normal SnapshotSucceeded Snapshot")))
 		})
 
 		It("should record SnapshotFailed event", func() {
@@ -1808,14 +1784,7 @@ var _ = Describe("Sandbox Controller", func() {
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
 			// Check for Warning SnapshotFailed event
-			Eventually(func() bool {
-				select {
-				case event := <-recorder.Events:
-					return len(event) > 0 && len(event) > 10
-				default:
-					return false
-				}
-			}, testTimeout, testInterval).Should(BeTrue())
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("Warning SnapshotFailed")))
 		})
 	})
 
@@ -1907,7 +1876,7 @@ var _ = Describe("Sandbox Controller", func() {
 	})
 
 	// ============================================
-	// Category G: Finalizer Behavior Tests
+	// Category H: Finalizer Behavior Tests
 	// ============================================
 	Context("Finalizer Behavior", func() {
 		var (
@@ -2120,7 +2089,7 @@ var _ = Describe("Sandbox Controller", func() {
 	})
 
 	// ============================================
-	// Category G: Network Configuration Tests
+	// Category I: Network Configuration Tests
 	// ============================================
 	Context("Network Configuration", func() {
 		var (
@@ -2132,24 +2101,6 @@ var _ = Describe("Sandbox Controller", func() {
 			fakeClock = NewFakeClock(time.Now())
 			reconciler = newTestReconciler(fakeClock)
 		})
-
-		getNetworkPolicy := func(ctx context.Context, name string) *networkingv1.NetworkPolicy {
-			np := &networkingv1.NetworkPolicy{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, np)
-			if errors.IsNotFound(err) {
-				return nil
-			}
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			return np
-		}
-
-		deleteNetworkPolicyHelper := func(ctx context.Context, name string) {
-			np := &networkingv1.NetworkPolicy{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, np)
-			if err == nil {
-				_ = k8sClient.Delete(ctx, np)
-			}
-		}
 
 		It("should create custom NetworkPolicy when allowedEgressCIDRs is specified", func() {
 			sandboxName := "sandbox-netpol-cidr"
@@ -2164,7 +2115,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-custom-netpol")
+			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2237,7 +2188,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-custom-netpol")
+			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2267,7 +2218,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-custom-netpol")
+			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2293,7 +2244,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-custom-netpol")
+			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2329,7 +2280,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-custom-netpol")
+			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2361,7 +2312,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-custom-netpol")
+			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 
 			// Initial reconcile - creates Pod and NetworkPolicy
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -2488,7 +2439,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-custom-netpol")
+			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -2497,6 +2448,39 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod).NotTo(BeNil())
 			Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
 			Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"1.1.1.1", "8.8.8.8"}))
+		})
+
+		// Note: Invalid CIDR format is rejected by CRD validation, so we can't test that path here.
+		// The CRD regex validates CIDR format at creation time.
+
+		It("should set NetworkConfigured condition to false with blocked CIDR", func() {
+			sandboxName := "sandbox-blocked-cidr"
+			templateName := "template-blocked-cidr"
+
+			createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
+
+			network := &sandboxv1alpha1.NetworkSpec{
+				AllowedEgressCIDRs: []string{"10.0.0.0/8"}, // Private range - blocked
+			}
+			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			// Reconcile returns error for blocked CIDR, but status is updated first
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("blocked range"))
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox).NotTo(BeNil())
+
+			// NetworkConfigured condition should be False with error message
+			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxNetworkReadyCondition)
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal(CondReasonNetworkPolicyFailed))
+			Expect(cond.Message).To(ContainSubstring("blocked range"))
 		})
 	})
 
@@ -2511,24 +2495,6 @@ var _ = Describe("Sandbox Controller", func() {
 			fakeClock = NewFakeClock(time.Now())
 			reconciler = newTestReconciler(fakeClock)
 		})
-
-		getNetworkPolicy := func(ctx context.Context, name string) *networkingv1.NetworkPolicy {
-			np := &networkingv1.NetworkPolicy{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, np)
-			if errors.IsNotFound(err) {
-				return nil
-			}
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			return np
-		}
-
-		deleteNetworkPolicyHelper := func(ctx context.Context, name string) {
-			np := &networkingv1.NetworkPolicy{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, np)
-			if err == nil {
-				_ = k8sClient.Delete(ctx, np)
-			}
-		}
 
 		It("should create custom NetworkPolicy with combined CIDR and pod rules", func() {
 			sandboxName := "sandbox-combined"
@@ -2551,7 +2517,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicyHelper(ctx, sandboxName+"-custom-netpol")
+			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())

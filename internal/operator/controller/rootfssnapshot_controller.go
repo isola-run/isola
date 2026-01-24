@@ -180,7 +180,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "Snapshot storage not configured: ISOLA_SNAPSHOT_BUCKET_URL is required")
 	}
 
-	sandboxPodName := snapshot.GetSandboxPodName(snap.Spec.SandboxName)
+	sandboxPodName := podutil.GetSandboxPodName(snap.Spec.SandboxName)
 	sandboxPod := &corev1.Pod{}
 	if err := r.Get(ctx, types.NamespacedName{Name: sandboxPodName, Namespace: snap.Namespace}, sandboxPod); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -255,8 +255,9 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		result, err := r.getUploadResult(ctx, job)
 		if err != nil {
 			log.Error(err, "Failed to read upload result from termination message")
-			// Still mark as succeeded since the job completed, but log the error
 			r.Recorder.Event(snap, corev1.EventTypeWarning, "TerminationLogReadFailed", err.Error())
+			r.deleteJob(ctx, job)
+			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Failed to read upload result: %v", err))
 		}
 
 		r.Recorder.Event(snap, corev1.EventTypeNormal, "SnapshotComplete", "Snapshot completed successfully")

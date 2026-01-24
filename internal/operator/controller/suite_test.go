@@ -50,7 +50,7 @@ import (
 const (
 	testNamespace = "test-sandbox"
 	testTimeout   = time.Second * 10
-	testInterval  = time.Millisecond * 250
+	testInterval  = time.Millisecond * 10
 )
 
 var (

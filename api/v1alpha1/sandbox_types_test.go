@@ -124,10 +124,3 @@ func TestNeedsCustomNetworkPolicy(t *testing.T) {
 		})
 	}
 }
-
-func TestGetCustomNetworkPolicyName(t *testing.T) {
-	sandbox := Sandbox{
-		ObjectMeta: metav1.ObjectMeta{Name: "my-sandbox"},
-	}
-	assert.Equal(t, "my-sandbox-custom-netpol", sandbox.GetCustomNetworkPolicyName())
-}
