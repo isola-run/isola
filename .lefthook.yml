@@ -1,39 +1,49 @@
 # Lefthook configuration
-# Install: go install github.com/evilmartians/lefthook/v2@v2.0.13 && lefthook install
+# Install: go install github.com/evilmartians/lefthook/v2@v2.0.15 && lefthook install
 
 pre-commit:
   parallel: true
   commands:
-    # isola-operator - lint on .go, .mod, .sum changes
-    lint-operator:
+    # Lint all Go code (single module at root)
+    lint:
       skip:
         - run: "! command -v golangci-lint >/dev/null 2>&1"
-      glob: "services/isola-operator/**/*.{go,mod,sum}"
-      run: make -C services/isola-operator lint
+      glob: "**/*.go"
+      run: golangci-lint run --new-from-rev=HEAD~1
 
-    # isola-gw
-    lint-gw:
+    # Format Go code
+    fmt:
       skip:
         - run: "! command -v golangci-lint >/dev/null 2>&1"
-      glob: "services/isola-gw/**/*.{go,mod,sum}"
-      run: make -C services/isola-gw lint
+      glob: "**/*.go"
+      run: golangci-lint fmt ./... && git add -u
 
-    # isola-agent
-    lint-agent:
+    # go mod tidy when go.mod/go.sum change
+    tidy:
+      glob: "{go.mod,go.sum}"
+      run: go mod tidy && git add go.mod go.sum
+
+    # Vet all Go code
+    vet:
+      glob: "**/*.go"
+      run: go vet ./...
+
+pre-push:
+  parallel: true
+  commands:
+    # Run tests before push
+    test:
+      glob: "**/*.go"
+      run: |
+        if command -v setup-envtest >/dev/null 2>&1; then
+          KUBEBUILDER_ASSETS="$(setup-envtest use 1.34 -p path)" go test $(go list ./... | grep -v /e2e) -short
+        else
+          echo "setup-envtest not found, skipping tests"
+        fi
+
+    # Check for dead code before push
+    deadcode:
       skip:
-        - run: "! command -v golangci-lint >/dev/null 2>&1"
-      glob: "services/isola-agent/**/*.{go,mod,sum}"
-      run: make -C services/isola-agent lint
-
-    # go mod tidy - only when go.mod/go.sum change
-    tidy-operator:
-      glob: "services/isola-operator/{go.mod,go.sum}"
-      run: cd services/isola-operator && go mod tidy && git add go.mod go.sum
-
-    tidy-gw:
-      glob: "services/isola-gw/{go.mod,go.sum}"
-      run: cd services/isola-gw && go mod tidy && git add go.mod go.sum
-
-    tidy-agent:
-      glob: "services/isola-agent/{go.mod,go.sum}"
-      run: cd services/isola-agent && go mod tidy && git add go.mod go.sum
+        - run: "! command -v deadcode >/dev/null 2>&1"
+      glob: "**/*.go"
+      run: deadcode ./...

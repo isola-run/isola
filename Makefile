@@ -42,12 +42,16 @@ lint-fix: ## Run golangci-lint --fix
 vulncheck: ## Run govulncheck
 	govulncheck ./...
 
+.PHONY: deadcode
+deadcode: ## Run deadcode to find unreachable functions
+	deadcode ./...
+
 .PHONY: tidy
 tidy: ## Run go mod tidy
 	go mod tidy
 
 .PHONY: check-all
-check-all: vet lint vulncheck ## Run all checks (read-only, CI-safe)
+check-all: vet lint vulncheck deadcode ## Run all checks (read-only, CI-safe)
 
 .PHONY: fix-all
 fix-all: fmt lint-fix ## Fix all auto-fixable issues

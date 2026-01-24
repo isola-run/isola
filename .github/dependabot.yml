@@ -1,0 +1,96 @@
+# Dependabot configuration
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Go modules
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps(go)"
+    groups:
+      # Group Kubernetes dependencies together
+      kubernetes:
+        patterns:
+          - "k8s.io/*"
+          - "sigs.k8s.io/*"
+      # Group cloud SDKs together
+      cloud:
+        patterns:
+          - "gocloud.dev*"
+          - "github.com/aws/*"
+          - "cloud.google.com/*"
+          - "github.com/Azure/*"
+    ignore:
+      # Ignore major version bumps for stability
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps(actions)"
+
+  # Docker images
+  - package-ecosystem: "docker"
+    directory: "/cmd/operator"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps(docker)"
+
+  - package-ecosystem: "docker"
+    directory: "/cmd/gateway"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps(docker)"
+
+  - package-ecosystem: "docker"
+    directory: "/cmd/agent"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps(docker)"
+
+  - package-ecosystem: "docker"
+    directory: "/cmd/uploader"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps(docker)"
+
+  # Python E2E test dependencies
+  - package-ecosystem: "pip"
+    directory: "/tests/e2e"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps(python)"
+
+  # Helm charts
+  - package-ecosystem: "helm"
+    directory: "/charts/isola-operator"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "deps(helm)"
+
+  - package-ecosystem: "helm"
+    directory: "/charts/isola-gw"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "deps(helm)"

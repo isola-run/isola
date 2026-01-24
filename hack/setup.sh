@@ -10,6 +10,7 @@ REGISTRY_PORT="${REGISTRY_PORT:-5001}"
 # Tool versions (keep in sync with CI workflows)
 GOLANGCI_LINT_VERSION="v2.8.0"
 GOVULNCHECK_VERSION="v1.1.4"
+DEADCODE_VERSION="latest"  # golang.org/x/tools/cmd/deadcode
 SETUP_ENVTEST_VERSION="v0.23.0"
 LEFTHOOK_VERSION="v2.0.15"
 GVISOR_VERSION="20260112"
@@ -115,6 +116,7 @@ if check_optional_tool "govulncheck" "Install: go install golang.org/x/vuln/cmd/
         echo "    [WARN] Version mismatch: installed $installed_version, expected $GOVULNCHECK_VERSION"
     fi
 fi
+check_optional_tool "deadcode" "Install: go install golang.org/x/tools/cmd/deadcode@${DEADCODE_VERSION}"
 check_optional_tool "lefthook" "Install: go install github.com/evilmartians/lefthook/v2@${LEFTHOOK_VERSION}" && HAS_LEFTHOOK=1
 
 check_optional_tool "setup-envtest" "Install: go install sigs.k8s.io/controller-runtime/tools/setup-envtest@${SETUP_ENVTEST_VERSION}"

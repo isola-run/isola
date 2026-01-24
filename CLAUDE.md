@@ -4,7 +4,7 @@
 
 ```bash
 # Lint/format (from repo root)
-make check-all          # vet + lint + vulncheck (CI-safe)
+make check-all          # vet + lint + vulncheck + deadcode (CI-safe)
 make fix-all            # Auto-fix formatting and lint issues
 
 # Testing
@@ -114,11 +114,13 @@ Tool versions are pinned and must be kept in sync:
 | Tool | Location | Also sync with |
 |------|----------|----------------|
 | golangci-lint | `hack/setup.sh` | `.github/workflows/lint.yml` |
-| govulncheck | `hack/setup.sh` | - |
+| govulncheck | `hack/setup.sh` | `.github/workflows/security.yml` |
+| deadcode | `hack/setup.sh` | `.github/workflows/security.yml` |
 | setup-envtest | `hack/setup.sh`, `.github/workflows/test.yml` | - |
 | envtest K8s | `Makefile` | k8s.io/api in go.mod |
 | lefthook | `hack/setup.sh` | - |
 | gVisor | `hack/setup.sh` | `.github/workflows/e2e.yml` |
+| trivy | `.github/workflows/security.yml` | - |
 
 ## Comment Policy
 

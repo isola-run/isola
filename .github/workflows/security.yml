@@ -8,7 +8,7 @@ on:
 
 jobs:
   govulncheck:
-    name: Vulnerability Check
+    name: Go Vulnerability Check
     runs-on: ubuntu-latest
 
     steps:
@@ -25,3 +25,89 @@ jobs:
 
       - name: Run govulncheck
         run: govulncheck ./...
+
+  deadcode:
+    name: Dead Code Detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install deadcode
+        run: go install golang.org/x/tools/cmd/deadcode@latest
+
+      - name: Run deadcode
+        run: deadcode ./...
+
+  trivy-image-scan:
+    name: Container Image Scan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: operator
+            context: .
+            dockerfile: cmd/operator/Dockerfile
+          - name: gateway
+            context: .
+            dockerfile: cmd/gateway/Dockerfile
+          - name: agent
+            context: .
+            dockerfile: cmd/agent/Dockerfile
+          - name: uploader
+            context: .
+            dockerfile: cmd/uploader/Dockerfile
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.dockerfile }}
+          push: false
+          load: true
+          tags: isola-${{ matrix.image.name }}:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: isola-${{ matrix.image.name }}:scan
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+  trivy-config-scan:
+    name: Config/IaC Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy config scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+          # Skip informational findings in Helm templates
+          skip-dirs: 'charts/*/templates'
