@@ -1,0 +1,390 @@
+/*
+Copyright 2025 isola.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package controller
+
+import (
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	snapshotpkg "github.com/isola-ai/isola-sb/internal/snapshot"
+)
+
+var _ = Describe("RootfsSnapshot Controller", func() {
+	var (
+		reconciler *RootfsSnapshotReconciler
+		fakeClock  *FakeClock
+		recorder   *record.FakeRecorder
+	)
+
+	BeforeEach(func() {
+		fakeClock = NewFakeClock(time.Now())
+		recorder = record.NewFakeRecorder(10)
+		reconciler = &RootfsSnapshotReconciler{
+			Client:                 k8sClient,
+			Scheme:                 k8sClient.Scheme(),
+			Recorder:               recorder,
+			Clock:                  fakeClock,
+			BucketURL:              "s3://test-bucket?region=us-east-1",
+			UploaderImage:          "isola-uploader:test",
+			SnapshotServiceAccount: "test-snapshot-sa",
+		}
+	})
+
+	Context("Single Container Snapshot", func() {
+		It("should create job for single container with two-container pattern", func() {
+			snapName := "snap-single"
+			sandboxName := "sandbox-single"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-single"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "sandbox", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"sandbox"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-sandbox"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify job was created with two-container pattern
+			job := getSnapshotJob(ctx, jobName)
+			Expect(job).NotTo(BeNil())
+
+			// Init container should be snapshotter (runs runsc tar)
+			Expect(job.Spec.Template.Spec.InitContainers).To(HaveLen(1))
+			Expect(job.Spec.Template.Spec.InitContainers[0].Name).To(Equal("snapshotter"))
+
+			// Main container should be uploader (uploads to bucket)
+			Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
+			Expect(job.Spec.Template.Spec.Containers[0].Name).To(Equal("uploader"))
+			Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal("isola-uploader:test"))
+
+			// Verify emptyDir volume for snapshot data
+			var snapshotDataVolume *corev1.Volume
+			for i := range job.Spec.Template.Spec.Volumes {
+				if job.Spec.Template.Spec.Volumes[i].Name == "snapshot-data" {
+					snapshotDataVolume = &job.Spec.Template.Spec.Volumes[i]
+					break
+				}
+			}
+			Expect(snapshotDataVolume).NotTo(BeNil())
+			Expect(snapshotDataVolume.EmptyDir).NotTo(BeNil())
+
+			// Verify container snapshot status (SnapshotKey/URI not set until job completes)
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+			Expect(snap.Status.ContainerSnapshots).To(HaveLen(1))
+			Expect(snap.Status.ContainerSnapshots[0].ContainerName).To(Equal("sandbox"))
+			Expect(snap.Status.ContainerSnapshots[0].ContainerID).To(Equal("abc123"))
+			// SnapshotKey and URI are empty until job completes with termination message
+			Expect(snap.Status.ContainerSnapshots[0].SnapshotKey).To(BeEmpty())
+			Expect(snap.Status.ContainerSnapshots[0].SnapshotURI).To(BeEmpty())
+			// Revision is 0 until job completes and reports actual revision
+			Expect(snap.Status.Revision).To(Equal(int32(0)))
+		})
+
+		It("should mark complete when job succeeds", func() {
+			snapName := "snap-success"
+			sandboxName := "sandbox-success"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-success"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://xyz789", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+			defer deleteSnapshotJobPod(ctx, jobName)
+
+			// First reconcile - creates job
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Create job pod with termination message and mark job complete
+			createSnapshotJobPodWithTerminationMessage(ctx, jobName, &snapshotpkg.UploadResult{
+				SnapshotKey:  "snapshots/" + testNamespace + "/" + sandboxName + "/rev-00001/main.tar",
+				Revision:     1,
+				BytesWritten: 1024,
+			})
+			setSnapshotJobComplete(ctx, jobName)
+
+			// Second reconcile - updates status
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotSucceeded))
+
+			Expect(snap.Status.CompletedAt).NotTo(BeNil())
+		})
+
+		It("should mark failed when job fails", func() {
+			snapName := "snap-fail"
+			sandboxName := "sandbox-fail"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-fail"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://fail123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			// First reconcile - creates job
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Mark job failed
+			setSnapshotJobFailed(ctx, jobName, "Container not found")
+
+			// Second reconcile - updates status
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
+
+			Expect(snap.Status.CompletedAt).NotTo(BeNil())
+		})
+	})
+
+	Context("Upload Result Error Handling", func() {
+		It("should fail when job pod has no termination message", func() {
+			snapName := "snap-no-term-msg"
+			sandboxName := "sandbox-no-term-msg"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-no-term-msg"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://noterm123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			// First reconcile - creates job
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Create job pod WITHOUT termination message (pass nil)
+			createSnapshotJobPodWithTerminationMessage(ctx, jobName, nil)
+			defer deleteSnapshotJobPod(ctx, jobName)
+			setSnapshotJobComplete(ctx, jobName)
+
+			// Second reconcile - should fail because no termination message
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
+			Expect(readyCond.Message).To(ContainSubstring("termination message"))
+		})
+
+		It("should fail when termination message has invalid JSON", func() {
+			snapName := "snap-bad-json"
+			sandboxName := "sandbox-bad-json"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-bad-json"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://badjson123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			// First reconcile - creates job
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Create job pod with invalid JSON termination message
+			jobPod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      jobName + "-pod",
+					Namespace: testNamespace,
+					Labels:    map[string]string{"job-name": jobName},
+				},
+				Spec: corev1.PodSpec{
+					Containers:    []corev1.Container{{Name: "uploader", Image: "test"}},
+					RestartPolicy: corev1.RestartPolicyNever,
+				},
+			}
+			Expect(k8sClient.Create(ctx, jobPod)).To(Succeed())
+			defer deleteSnapshotJobPod(ctx, jobName)
+
+			jobPod.Status.Phase = corev1.PodSucceeded
+			jobPod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{
+					Name: "uploader",
+					State: corev1.ContainerState{
+						Terminated: &corev1.ContainerStateTerminated{
+							ExitCode: 0,
+							Message:  "this is not valid json {{{",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, jobPod)).To(Succeed())
+
+			setSnapshotJobComplete(ctx, jobName)
+
+			// Second reconcile - should fail because invalid JSON
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
+			Expect(readyCond.Message).To(ContainSubstring("parse termination message"))
+		})
+
+		It("should fail when no job pod exists", func() {
+			snapName := "snap-no-job-pod"
+			sandboxName := "sandbox-no-job-pod"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-no-job-pod"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://nojobpod123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			// First reconcile - creates job
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Mark job complete WITHOUT creating a job pod
+			setSnapshotJobComplete(ctx, jobName)
+
+			// Second reconcile - should fail because no job pod
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
+			Expect(readyCond.Message).To(ContainSubstring("no pods found"))
+		})
+	})
+})
