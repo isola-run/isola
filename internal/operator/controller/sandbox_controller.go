@@ -257,8 +257,8 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	if err := r.Create(ctx, sandboxPod); err != nil {
 		log.Error(err, "Failed creating Pod")
 
-		// not checking err here, best effort status patch and return the create error
-		_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+		// Best effort status patch - log but don't override the original create error
+		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxPodReadyCondition,
 				Status:             metav1.ConditionFalse,
@@ -273,7 +273,9 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 				Message:            err.Error(),
 				ObservedGeneration: sandbox.Generation,
 			},
-		})
+		}); patchErr != nil {
+			log.Error(patchErr, "Failed to patch status after pod creation failure")
+		}
 		return err
 	}
 

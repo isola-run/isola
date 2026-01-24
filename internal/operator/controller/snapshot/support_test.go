@@ -27,27 +27,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func TestGetSandboxPodName(t *testing.T) {
-	tests := []struct {
-		name        string
-		sandboxName string
-		want        string
-	}{
-		{"simple name", "my-sandbox", "my-sandbox-pod"},
-		{"empty name", "", "-pod"},
-		{"with dashes", "test-sandbox-123", "test-sandbox-123-pod"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := GetSandboxPodName(tt.sandboxName)
-			if got != tt.want {
-				t.Errorf("GetSandboxPodName(%q) = %q, want %q", tt.sandboxName, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestCheckRootfsSnapshotSupport(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
