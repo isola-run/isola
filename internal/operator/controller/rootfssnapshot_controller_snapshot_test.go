@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -215,6 +216,230 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
 
 			Expect(snap.Status.CompletedAt).NotTo(BeNil())
+		})
+	})
+
+	Context("Job Configuration", func() {
+		It("should include credential secret EnvFrom when configured", func() {
+			snapName := "snap-with-creds"
+			sandboxName := "sandbox-with-creds"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-with-creds"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://creds123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			// Use reconciler with credential secret configured
+			credsReconciler := &RootfsSnapshotReconciler{
+				Client:               k8sClient,
+				Scheme:               k8sClient.Scheme(),
+				Recorder:             recorder,
+				Clock:                fakeClock,
+				BucketURL:            "s3://test-bucket?region=us-east-1",
+				UploaderImage:        "isola-uploader:test",
+				CredentialSecretName: "cloud-credentials",
+			}
+
+			_, err := credsReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			job := getSnapshotJob(ctx, jobName)
+			Expect(job).NotTo(BeNil())
+
+			// Verify uploader container has EnvFrom with secret reference
+			uploaderContainer := job.Spec.Template.Spec.Containers[0]
+			Expect(uploaderContainer.Name).To(Equal("uploader"))
+			Expect(uploaderContainer.EnvFrom).To(HaveLen(1))
+			Expect(uploaderContainer.EnvFrom[0].SecretRef).NotTo(BeNil())
+			Expect(uploaderContainer.EnvFrom[0].SecretRef.Name).To(Equal("cloud-credentials"))
+		})
+
+		It("should not include credential EnvFrom when not configured", func() {
+			snapName := "snap-no-creds"
+			sandboxName := "sandbox-no-creds"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-no-creds"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://nocreds123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			job := getSnapshotJob(ctx, jobName)
+			Expect(job).NotTo(BeNil())
+
+			// Verify uploader container has no EnvFrom
+			uploaderContainer := job.Spec.Template.Spec.Containers[0]
+			Expect(uploaderContainer.EnvFrom).To(BeEmpty())
+		})
+
+		It("should use container ephemeral storage limit for snapshot volume", func() {
+			snapName := "snap-storage-limit"
+			sandboxName := "sandbox-storage-limit"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-storage-limit"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			// Create pod with ephemeral storage limit on the container
+			storageLimit := resource.MustParse("2Gi")
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{
+					Name:  "main",
+					Image: "busybox",
+					Resources: corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceEphemeralStorage: storageLimit,
+						},
+					},
+				}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://storage123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			job := getSnapshotJob(ctx, jobName)
+			Expect(job).NotTo(BeNil())
+
+			// Find snapshot-data volume and verify its size limit matches container's ephemeral storage limit
+			var snapshotDataVolume *corev1.Volume
+			for i := range job.Spec.Template.Spec.Volumes {
+				if job.Spec.Template.Spec.Volumes[i].Name == "snapshot-data" {
+					snapshotDataVolume = &job.Spec.Template.Spec.Volumes[i]
+					break
+				}
+			}
+			Expect(snapshotDataVolume).NotTo(BeNil())
+			Expect(snapshotDataVolume.EmptyDir).NotTo(BeNil())
+			Expect(snapshotDataVolume.EmptyDir.SizeLimit).NotTo(BeNil())
+			Expect(snapshotDataVolume.EmptyDir.SizeLimit.String()).To(Equal("2Gi"))
+		})
+
+		It("should use default size limit when container has no ephemeral storage limit", func() {
+			snapName := "snap-default-limit"
+			sandboxName := "sandbox-default-limit"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-default-limit"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			// Create pod WITHOUT ephemeral storage limit
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://default123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			job := getSnapshotJob(ctx, jobName)
+			Expect(job).NotTo(BeNil())
+
+			// Find snapshot-data volume and verify it uses the default limit (1Gi)
+			var snapshotDataVolume *corev1.Volume
+			for i := range job.Spec.Template.Spec.Volumes {
+				if job.Spec.Template.Spec.Volumes[i].Name == "snapshot-data" {
+					snapshotDataVolume = &job.Spec.Template.Spec.Volumes[i]
+					break
+				}
+			}
+			Expect(snapshotDataVolume).NotTo(BeNil())
+			Expect(snapshotDataVolume.EmptyDir).NotTo(BeNil())
+			Expect(snapshotDataVolume.EmptyDir.SizeLimit).NotTo(BeNil())
+			Expect(snapshotDataVolume.EmptyDir.SizeLimit.String()).To(Equal("1Gi"))
+		})
+
+		It("should be idempotent when job already exists", func() {
+			snapName := "snap-idempotent"
+			sandboxName := "sandbox-idempotent"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-idempotent"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://idem123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			// First reconcile - creates job
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			job := getSnapshotJob(ctx, jobName)
+			Expect(job).NotTo(BeNil())
+			originalUID := job.UID
+
+			// Second reconcile - job already exists, should not error
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify same job exists (not recreated)
+			job = getSnapshotJob(ctx, jobName)
+			Expect(job).NotTo(BeNil())
+			Expect(job.UID).To(Equal(originalUID))
 		})
 	})
 
