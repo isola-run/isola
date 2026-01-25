@@ -45,14 +45,15 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"regexp"
 	"strconv"
 	"syscall"
 
+	"github.com/isola-ai/isola-sb/internal/logging"
 	"github.com/isola-ai/isola-sb/internal/snapshot"
 	"gocloud.dev/blob"
 
@@ -73,19 +74,26 @@ const (
 	EnvSnapshotSandboxName = "SNAPSHOT_SANDBOX_NAME"
 	// EnvSnapshotContainerName is the name of the container being snapshotted
 	EnvSnapshotContainerName = "SNAPSHOT_CONTAINER_NAME"
+	// EnvLogLevel is the log level
+	EnvLogLevel = "ISOLA_LOG_LEVEL"
 
 	// terminationLogPath is where we write the result for the controller to read
 	terminationLogPath = "/dev/termination-log"
 )
 
 func main() {
-	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+	logger := logging.New(logging.Config{
+		Level:   getEnv(EnvLogLevel, "info"),
+		DevMode: false, // Always JSON for job logs
+	})
+
+	if err := run(logger); err != nil {
+		logger.Error("upload failed", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(logger *slog.Logger) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 
@@ -96,64 +104,86 @@ func run() error {
 	containerName := os.Getenv(EnvSnapshotContainerName)
 
 	if bucketURL == "" {
-		return fmt.Errorf("%s environment variable is required", EnvBucketURL)
+		logger.Error("missing required environment variable", "var", EnvBucketURL)
+		return errMissingEnv(EnvBucketURL)
 	}
 	if snapshotFile == "" {
-		return fmt.Errorf("%s environment variable is required", EnvSnapshotFile)
+		logger.Error("missing required environment variable", "var", EnvSnapshotFile)
+		return errMissingEnv(EnvSnapshotFile)
 	}
 	if namespace == "" {
-		return fmt.Errorf("%s environment variable is required", EnvSnapshotNamespace)
+		logger.Error("missing required environment variable", "var", EnvSnapshotNamespace)
+		return errMissingEnv(EnvSnapshotNamespace)
 	}
 	if sandboxName == "" {
-		return fmt.Errorf("%s environment variable is required", EnvSnapshotSandboxName)
+		logger.Error("missing required environment variable", "var", EnvSnapshotSandboxName)
+		return errMissingEnv(EnvSnapshotSandboxName)
 	}
 	if containerName == "" {
-		return fmt.Errorf("%s environment variable is required", EnvSnapshotContainerName)
+		logger.Error("missing required environment variable", "var", EnvSnapshotContainerName)
+		return errMissingEnv(EnvSnapshotContainerName)
 	}
 
+	logger.Info("opening bucket", "url", bucketURL)
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
 	if err != nil {
-		return fmt.Errorf("failed to open bucket: %w", err)
+		logger.Error("failed to open bucket", "error", err)
+		return err
 	}
 	defer func() { _ = bucket.Close() }()
 
-	revision, err := getNextRevision(ctx, bucket, namespace, sandboxName)
+	revision, err := getNextRevision(ctx, logger, bucket, namespace, sandboxName)
 	if err != nil {
-		return fmt.Errorf("failed to determine revision: %w", err)
+		logger.Error("failed to determine revision", "error", err)
+		return err
 	}
 
-	snapshotKey := fmt.Sprintf("snapshots/%s/%s/rev-%05d/%s.tar", namespace, sandboxName, revision, containerName)
+	snapshotKey := snapshotKeyPath(namespace, sandboxName, revision, containerName)
 
-	fmt.Printf("Uploading %s to %s (key: %s, revision: %d)\n", snapshotFile, bucketURL, snapshotKey, revision)
+	logger.Info("uploading snapshot",
+		"file", snapshotFile,
+		"bucket", bucketURL,
+		"key", snapshotKey,
+		"revision", revision,
+	)
 
 	f, err := os.Open(snapshotFile) //nolint:gosec // snapshotFile comes from trusted env var
 	if err != nil {
-		return fmt.Errorf("failed to open snapshot file: %w", err)
+		logger.Error("failed to open snapshot file", "file", snapshotFile, "error", err)
+		return err
 	}
 	defer func() { _ = f.Close() }()
 
 	stat, err := f.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to stat snapshot file: %w", err)
+		logger.Error("failed to stat snapshot file", "file", snapshotFile, "error", err)
+		return err
 	}
 
 	w, err := bucket.NewWriter(ctx, snapshotKey, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create bucket writer: %w", err)
+		logger.Error("failed to create bucket writer", "key", snapshotKey, "error", err)
+		return err
 	}
 
 	written, err := io.Copy(w, f)
 	if err != nil {
 		_ = w.Close()
-		return fmt.Errorf("failed to upload: %w", err)
+		logger.Error("failed to upload", "error", err)
+		return err
 	}
 
 	// Close writer to finalize upload
 	if err := w.Close(); err != nil {
-		return fmt.Errorf("failed to finalize upload: %w", err)
+		logger.Error("failed to finalize upload", "error", err)
+		return err
 	}
 
-	fmt.Printf("Successfully uploaded %d bytes (file size: %d bytes)\n", written, stat.Size())
+	logger.Info("upload complete",
+		"bytes_written", written,
+		"file_size", stat.Size(),
+		"key", snapshotKey,
+	)
 
 	// Write result to termination log for controller to read
 	result := snapshot.UploadResult{
@@ -163,22 +193,32 @@ func run() error {
 	}
 	if err := writeTerminationLog(result); err != nil {
 		// Log but don't fail - the upload succeeded
-		fmt.Fprintf(os.Stderr, "warning: failed to write termination log: %v\n", err)
+		logger.Warn("failed to write termination log", "error", err)
 	}
 
 	return nil
 }
 
+func snapshotKeyPath(namespace, sandboxName string, revision int32, containerName string) string {
+	return "snapshots/" + namespace + "/" + sandboxName + "/rev-" + padRevision(revision) + "/" + containerName + ".tar"
+}
+
+func padRevision(rev int32) string {
+	return strconv.FormatInt(int64(rev), 10)
+}
+
 // getNextRevision lists existing snapshots in the bucket and returns the next revision number.
 // This ensures revision numbers are always increasing even if RootfsSnapshot resources
 // have been deleted from etcd.
-func getNextRevision(ctx context.Context, bucket *blob.Bucket, namespace, sandboxName string) (int32, error) {
-	prefix := fmt.Sprintf("snapshots/%s/%s/rev-", namespace, sandboxName)
+func getNextRevision(ctx context.Context, logger *slog.Logger, bucket *blob.Bucket, namespace, sandboxName string) (int32, error) {
+	prefix := "snapshots/" + namespace + "/" + sandboxName + "/rev-"
 
 	// Pattern to extract revision number from keys like "snapshots/ns/sandbox/rev-00001/container.tar"
 	revPattern := regexp.MustCompile(`rev-(\d+)/`)
 
 	var maxRevision int32 = 0
+
+	logger.Debug("listing existing snapshots", "prefix", prefix)
 
 	iter := bucket.List(&blob.ListOptions{Prefix: prefix})
 	for {
@@ -187,7 +227,7 @@ func getNextRevision(ctx context.Context, bucket *blob.Bucket, namespace, sandbo
 			break
 		}
 		if err != nil {
-			return 0, fmt.Errorf("failed to list bucket objects: %w", err)
+			return 0, err
 		}
 
 		matches := revPattern.FindStringSubmatch(obj.Key)
@@ -199,6 +239,7 @@ func getNextRevision(ctx context.Context, bucket *blob.Bucket, namespace, sandbo
 		}
 	}
 
+	logger.Debug("determined next revision", "max_existing", maxRevision, "next", maxRevision+1)
 	return maxRevision + 1, nil
 }
 
@@ -208,4 +249,23 @@ func writeTerminationLog(result snapshot.UploadResult) error {
 		return err
 	}
 	return os.WriteFile(terminationLogPath, data, 0600)
+}
+
+type envError struct {
+	name string
+}
+
+func (e envError) Error() string {
+	return e.name + " environment variable is required"
+}
+
+func errMissingEnv(name string) error {
+	return envError{name: name}
+}
+
+func getEnv(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
 }

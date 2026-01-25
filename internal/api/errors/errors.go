@@ -2,47 +2,49 @@
 package errors
 
 import (
+	"encoding/json"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	"github.com/isola-ai/isola-sb/internal/api/generated"
+	"github.com/isola-ai/isola-sb/internal/api/middleware"
 )
 
-// ErrorResponse represents an API error response.
-type ErrorResponse struct {
-	Error     string `json:"error"`
-	RequestID string `json:"request_id,omitempty"`
-}
-
 // Respond sends an error response with the given status code.
-func Respond(c *gin.Context, statusCode int, message string) {
-	requestID := c.GetHeader("X-Request-ID")
-	c.JSON(statusCode, ErrorResponse{
-		Error:     message,
-		RequestID: requestID,
-	})
+func Respond(w http.ResponseWriter, r *http.Request, statusCode int, message string) {
+	requestID := middleware.GetRequestID(r.Context())
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	resp := generated.ErrorResponse{
+		Error: message,
+	}
+	if requestID != "" {
+		resp.RequestId = &requestID
+	}
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // BadRequest sends a 400 Bad Request response.
-func BadRequest(c *gin.Context, message string) {
-	Respond(c, http.StatusBadRequest, message)
+func BadRequest(w http.ResponseWriter, r *http.Request, message string) {
+	Respond(w, r, http.StatusBadRequest, message)
 }
 
 // Unauthorized sends a 401 Unauthorized response.
-func Unauthorized(c *gin.Context, message string) {
-	Respond(c, http.StatusUnauthorized, message)
+func Unauthorized(w http.ResponseWriter, r *http.Request, message string) {
+	Respond(w, r, http.StatusUnauthorized, message)
 }
 
 // NotFound sends a 404 Not Found response.
-func NotFound(c *gin.Context, message string) {
-	Respond(c, http.StatusNotFound, message)
+func NotFound(w http.ResponseWriter, r *http.Request, message string) {
+	Respond(w, r, http.StatusNotFound, message)
 }
 
 // InternalError sends a 500 Internal Server Error response.
-func InternalError(c *gin.Context, message string) {
-	Respond(c, http.StatusInternalServerError, message)
+func InternalError(w http.ResponseWriter, r *http.Request, message string) {
+	Respond(w, r, http.StatusInternalServerError, message)
 }
 
 // ServiceUnavailable sends a 503 Service Unavailable response.
-func ServiceUnavailable(c *gin.Context, message string) {
-	Respond(c, http.StatusServiceUnavailable, message)
+func ServiceUnavailable(w http.ResponseWriter, r *http.Request, message string) {
+	Respond(w, r, http.StatusServiceUnavailable, message)
 }

@@ -1,0 +1,98 @@
+# Default values for isola-api.
+
+image:
+  repository: isola-api
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Number of replicas
+replicaCount: 1
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  # Set to a port number to enable NodePort (useful for development)
+  nodePort: null
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 200m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+# Logging configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: info
+  # Enable development mode (text output instead of JSON)
+  devMode: false
+
+# Namespace where sandbox pods are located (for watching)
+sandboxNamespace: isola-sandboxes
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container security context
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+
+# Liveness and readiness probes
+livenessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /api/v1/ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# ServiceAccount configuration
+serviceAccount:
+  # Create a new service account
+  create: true
+  # Name of the service account (auto-generated if empty)
+  name: ""
+  # Annotations to add to the service account
+  annotations: {}
+
+# Storage configuration for generating presigned URLs
+# Uses the same three-tier pattern as isola-operator:
+#   1. Pod Identity (recommended): Leave all fields empty
+#   2. Existing Secret: Reference a pre-created secret
+#   3. Chart-Managed: Provide inline credentials (dev only)
+storage:
+  # Bucket URL for storage operations
+  # Examples:
+  #   s3://bucket-name?region=us-east-1 (AWS S3)
+  #   s3://bucket-name?endpoint=http://localstack:4566&use_path_style=true (LocalStack/MinIO)
+  #   gs://bucket-name (Google Cloud Storage)
+  #   azblob://container-name (Azure Blob Storage)
+  bucketUrl: ""
+
+  credentials:
+    # Name of existing secret containing storage credentials
+    # When set, inline credentials below are ignored
+    existingSecret: ""
+
+    # AWS/S3-compatible credentials (only used when existingSecret is empty)
+    accessKeyId: ""
+    secretAccessKey: ""
+    region: ""

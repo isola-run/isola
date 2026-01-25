@@ -3,7 +3,7 @@ package: generated
 output: ../../internal/api/generated/openapi.gen.go
 generate:
   models: true
-  gin-server: true
+  chi-server: true
   embedded-spec: true
 output-options:
   skip-fmt: false

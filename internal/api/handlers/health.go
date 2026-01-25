@@ -2,35 +2,36 @@
 package handlers
 
 import (
+	"encoding/json"
+	"log/slog"
 	"net/http"
-
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 
 	"github.com/isola-ai/isola-sb/internal/api/generated"
 )
 
 // Handler implements the generated ServerInterface.
 type Handler struct {
-	logger *zap.Logger
+	logger *slog.Logger
 }
 
 // NewHandler creates a new Handler instance.
-func NewHandler(logger *zap.Logger) *Handler {
+func NewHandler(logger *slog.Logger) *Handler {
 	return &Handler{logger: logger}
 }
 
 // GetHealth implements the health check endpoint.
-func (h *Handler) GetHealth(c *gin.Context) {
-	c.JSON(http.StatusOK, generated.HealthResponse{
+func (h *Handler) GetHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(generated.HealthResponse{
 		Status: "ok",
 	})
 }
 
 // GetReady implements the readiness check endpoint.
-func (h *Handler) GetReady(c *gin.Context) {
+func (h *Handler) GetReady(w http.ResponseWriter, r *http.Request) {
 	// TODO: Add actual readiness checks (e.g., K8s client connectivity)
-	c.JSON(http.StatusOK, generated.HealthResponse{
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(generated.HealthResponse{
 		Status: "ok",
 	})
 }

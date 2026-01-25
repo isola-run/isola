@@ -1,39 +1,41 @@
 package middleware
 
 import (
+	"encoding/json"
+	"log/slog"
 	"net/http"
 	"runtime/debug"
 
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
-
-	apierrors "github.com/isola-ai/isola-sb/internal/api/errors"
+	"github.com/isola-ai/isola-sb/internal/api/generated"
 )
 
-// Recovery middleware recovers from panics and logs them with Zap.
-func Recovery(logger *zap.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		defer func() {
-			if r := recover(); r != nil {
-				var requestID string
-				if id, exists := c.Get("request_id"); exists {
-					requestID = id.(string)
+// Recovery middleware recovers from panics and logs them with slog.
+func Recovery(logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if rec := recover(); rec != nil {
+					requestID := GetRequestID(r.Context())
+
+					logger.Error("panic recovered",
+						slog.Any("panic", rec),
+						slog.String("request_id", requestID),
+						slog.String("path", r.URL.Path),
+						slog.String("method", r.Method),
+						slog.String("stack", string(debug.Stack())),
+					)
+
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+
+					resp := generated.ErrorResponse{
+						Error:     "internal server error",
+						RequestId: &requestID,
+					}
+					_ = json.NewEncoder(w).Encode(resp)
 				}
-
-				logger.Error("panic recovered",
-					zap.Any("panic", r),
-					zap.String("request_id", requestID),
-					zap.String("path", c.Request.URL.Path),
-					zap.String("method", c.Request.Method),
-					zap.ByteString("stack", debug.Stack()),
-				)
-
-				c.AbortWithStatusJSON(http.StatusInternalServerError, apierrors.ErrorResponse{
-					Error:     "internal server error",
-					RequestID: requestID,
-				})
-			}
-		}()
-		c.Next()
+			}()
+			next.ServeHTTP(w, r)
+		})
 	}
 }

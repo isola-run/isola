@@ -1,0 +1,23 @@
+# Development values for isola-api.
+
+image:
+  repository: isola-api
+  tag: "dev"
+
+# Enable development logging
+logging:
+  level: debug
+  devMode: true
+
+# Use NodePort for easy local access
+service:
+  type: NodePort
+  nodePort: 30080
+
+# Storage configuration (uses LocalStack in dev)
+storage:
+  bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
+  credentials:
+    accessKeyId: "test"
+    secretAccessKey: "test"
+    region: "us-east-1"
