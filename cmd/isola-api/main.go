@@ -1,4 +1,3 @@
-// Package main is the entry point for the isola-api service.
 package main
 
 //go:generate go tool oapi-codegen -config oapi-codegen.yaml ../../api/openapi.yaml
@@ -7,35 +6,61 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
+	"time"
 
-	"github.com/isola-ai/isola-sb/internal/api/config"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httplog/v2"
+
+	"github.com/isola-ai/isola-sb/internal/api/generated"
 	"github.com/isola-ai/isola-sb/internal/api/handlers"
-	"github.com/isola-ai/isola-sb/internal/api/server"
 	"github.com/isola-ai/isola-sb/internal/logging"
 )
 
-func main() {
-	cfg := config.Config{}
+const shutdownTimeout = 30 * time.Second
 
-	flag.StringVar(&cfg.HTTPAddr, "http-addr", getEnvOrDefault("ISOLA_HTTP_ADDR", ":8080"), "HTTP server listen address")
-	flag.StringVar(&cfg.LogLevel, "log-level", getEnvOrDefault("ISOLA_LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
-	flag.BoolVar(&cfg.DevMode, "dev", getEnvOrDefault("ISOLA_DEV_MODE", "") != "", "Enable development mode (text logging)")
+type config struct {
+	httpPort int
+	logLevel string
+	devMode  bool
+}
+
+func main() {
+	cfg := config{}
+
+	flag.IntVar(&cfg.httpPort, "http-port", getEnvOrDefaultInt("ISOLA_HTTP_PORT", 8080), "HTTP server port")
+	flag.StringVar(&cfg.logLevel, "log-level", getEnvOrDefault("ISOLA_LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
+	flag.BoolVar(&cfg.devMode, "dev", getEnvOrDefault("ISOLA_DEV_MODE", "") != "", "Enable development mode (text logging)")
 	flag.Parse()
 
 	logger := logging.New(logging.Config{
-		Level:   cfg.LogLevel,
-		DevMode: cfg.DevMode,
+		Level:   cfg.logLevel,
+		DevMode: cfg.devMode,
 	})
 
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	// todo benl: go over the configuration below
+	r.Use(httplog.RequestLogger(httplog.NewLogger("isola-api", httplog.Options{
+		LogLevel: slog.LevelInfo,
+		JSON:     !cfg.devMode,
+	})))
+
 	handler := handlers.NewHandler(logger)
-	router := server.NewRouter(logger, handler)
+	router := generated.HandlerWithOptions(handler, generated.ChiServerOptions{
+		BaseURL:    "/api/v1",
+		BaseRouter: r,
+	})
 
 	srv := &http.Server{
-		Addr:    cfg.HTTPAddr,
+		Addr:    fmt.Sprintf(":%d", cfg.httpPort),
 		Handler: router,
 	}
 
@@ -44,7 +69,7 @@ func main() {
 	defer stop()
 
 	go func() {
-		logger.Info("starting isola-api server", "addr", cfg.HTTPAddr)
+		logger.Info("starting isola-api server", "port", cfg.httpPort)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("server error", "error", err)
 			os.Exit(1)
@@ -54,7 +79,7 @@ func main() {
 	<-ctx.Done()
 	logger.Info("shutting down server")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
@@ -67,6 +92,15 @@ func main() {
 func getEnvOrDefault(key, defaultValue string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return defaultValue
+}
+
+func getEnvOrDefaultInt(key string, defaultValue int) int {
+	if v := os.Getenv(key); v != "" {
+		if i, err := strconv.Atoi(v); err == nil {
+			return i
+		}
 	}
 	return defaultValue
 }

@@ -1,6 +1,6 @@
 apiVersion: v2
 name: isola-api
-description: Isola API - REST API gateway for sandbox orchestration
+description: Isola API - API gateway for sandbox orchestration
 type: application
 version: 0.1.0
 appVersion: "1.0.0"

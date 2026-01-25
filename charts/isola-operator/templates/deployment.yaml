@@ -14,10 +14,17 @@ spec:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: manager
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         {{- include "isola-operator.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: isola-operator
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -56,12 +63,7 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 10
         resources:
-          limits:
-            cpu: 500m
-            memory: 128Mi
-          requests:
-            cpu: 10m
-            memory: 64Mi
+          {{- toYaml .Values.resources | nindent 10 }}
         env:
         {{- if .Values.snapshot.storage.bucketUrl }}
         - name: ISOLA_SNAPSHOT_BUCKET_URL
@@ -86,3 +88,15 @@ spec:
         - name: ISOLA_SNAPSHOT_SERVICE_ACCOUNT
           value: {{ .Values.snapshot.serviceAccount.name | quote }}
         {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

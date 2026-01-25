@@ -1,68 +1,32 @@
-# Default values for isola-api.
-
 image:
   repository: isola-api
   tag: "latest"
-  pullPolicy: IfNotPresent
+  pullSecrets: []
 
-# Number of replicas
 replicaCount: 1
 
-# Service configuration
+# Pod annotations (e.g., for Prometheus scraping)
+podAnnotations: {}
+
+# Pod scheduling
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
 service:
   type: ClusterIP
-  port: 80
-  targetPort: 8080
-  # Set to a port number to enable NodePort (useful for development)
   nodePort: null
 
-# Resource limits and requests
 resources:
-  limits:
-    cpu: 200m
-    memory: 128Mi
   requests:
     cpu: 10m
     memory: 64Mi
 
-# Logging configuration
 logging:
-  # Log level: debug, info, warn, error
   level: info
-  # Enable development mode (text output instead of JSON)
   devMode: false
 
-# Namespace where sandbox pods are located (for watching)
 sandboxNamespace: isola-sandboxes
-
-# Pod security context
-podSecurityContext:
-  runAsNonRoot: true
-  seccompProfile:
-    type: RuntimeDefault
-
-# Container security context
-securityContext:
-  capabilities:
-    drop:
-      - ALL
-  readOnlyRootFilesystem: true
-  allowPrivilegeEscalation: false
-
-# Liveness and readiness probes
-livenessProbe:
-  httpGet:
-    path: /api/v1/health
-    port: http
-  initialDelaySeconds: 5
-  periodSeconds: 10
-
-readinessProbe:
-  httpGet:
-    path: /api/v1/ready
-    port: http
-  initialDelaySeconds: 5
-  periodSeconds: 10
 
 # ServiceAccount configuration
 serviceAccount:
