@@ -53,3 +53,22 @@ type FileDownloadResponse struct {
 	Size    int64  `json:"size"`
 	Content string `json:"content"`
 }
+
+// SandboxIngressResponse is returned when enabling ingress for a sandbox.
+type SandboxIngressResponse struct {
+	// URL is the public URL where the sandbox can be accessed.
+	// The URL itself acts as authentication (presigned URL pattern).
+	URL string `json:"url"`
+	// Enabled indicates if ingress is enabled.
+	Enabled bool `json:"enabled"`
+}
+
+// SandboxIngressStatus returns the current ingress status for a sandbox.
+type SandboxIngressStatus struct {
+	// Enabled indicates if ingress is enabled.
+	Enabled bool `json:"enabled"`
+	// URL is the public URL if ingress is enabled.
+	URL string `json:"url,omitempty"`
+	// Ready indicates if the ingress is ready to receive traffic.
+	Ready bool `json:"ready"`
+}

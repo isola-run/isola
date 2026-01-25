@@ -70,6 +70,9 @@ func main() {
 	var snapshotCredentialSecret string
 	var snapshotUploaderImage string
 	var snapshotServiceAccount string
+	var ingressDomain string
+	var ingressGatewayName string
+	var ingressGatewayNamespace string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -95,6 +98,9 @@ func main() {
 	flag.StringVar(&snapshotCredentialSecret, "snapshot-credential-secret", os.Getenv("ISOLA_SNAPSHOT_CREDENTIAL_SECRET"), "Secret name for bucket credentials (optional, uses pod identity if not set)")
 	flag.StringVar(&snapshotUploaderImage, "snapshot-uploader-image", os.Getenv("ISOLA_UPLOADER_IMAGE"), "Container image for the snapshot uploader")
 	flag.StringVar(&snapshotServiceAccount, "snapshot-service-account", os.Getenv("ISOLA_SNAPSHOT_SERVICE_ACCOUNT"), "ServiceAccount for snapshot jobs")
+	flag.StringVar(&ingressDomain, "ingress-domain", os.Getenv("ISOLA_INGRESS_DOMAIN"), "Base domain for sandbox ingress URLs (e.g., sandboxes.example.com). Empty disables ingress feature.")
+	flag.StringVar(&ingressGatewayName, "ingress-gateway-name", os.Getenv("ISOLA_INGRESS_GATEWAY_NAME"), "Name of the Gateway resource for sandbox ingress")
+	flag.StringVar(&ingressGatewayNamespace, "ingress-gateway-namespace", os.Getenv("ISOLA_INGRESS_GATEWAY_NAMESPACE"), "Namespace of the Gateway resource for sandbox ingress")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -218,6 +224,19 @@ func main() {
 		SnapshotServiceAccount: snapshotServiceAccount,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RootfsSnapshot")
+		os.Exit(1)
+	}
+
+	// SandboxIngressReconciler manages SandboxIngress resources.
+	// It creates Services and HTTPRoutes to expose sandboxes externally.
+	if err := (&controller.SandboxIngressReconciler{
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		IngressDomain:    ingressDomain,
+		GatewayName:      ingressGatewayName,
+		GatewayNamespace: ingressGatewayNamespace,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "SandboxIngress")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

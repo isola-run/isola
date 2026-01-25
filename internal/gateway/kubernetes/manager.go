@@ -489,6 +489,157 @@ func (m *Manager) ExecuteCommand(ctx context.Context, sandboxID string, command 
 	return stdout.String(), stderr.String(), exitCode, nil
 }
 
+const (
+	sandboxIngressPlural = "sandboxingresses"
+)
+
+// CreateSandboxIngressCR creates a SandboxIngress CR to enable external access.
+// Returns the URL where the sandbox will be accessible.
+func (m *Manager) CreateSandboxIngressCR(ctx context.Context, sandboxID string, port int32) (string, error) {
+	if err := m.Initialize(); err != nil {
+		return "", fmt.Errorf("failed to initialize: %w", err)
+	}
+
+	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
+	ingressName := sandboxName + "-ingress"
+
+	log.Printf("Creating SandboxIngress '%s' for sandbox '%s' in namespace '%s'",
+		ingressName, sandboxName, m.namespace)
+
+	ingressBody := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": fmt.Sprintf("%s/%s", sandboxGroup, sandboxVersion),
+			"kind":       "SandboxIngress",
+			"metadata": map[string]interface{}{
+				"name":      ingressName,
+				"namespace": m.namespace,
+				"labels": map[string]interface{}{
+					"sandbox-id": sandboxID,
+					"managed-by": "isola-gw",
+				},
+			},
+			"spec": map[string]interface{}{
+				"sandboxRef":    sandboxName,
+				"containerPort": port,
+			},
+		},
+	}
+
+	gvr := schema.GroupVersionResource{
+		Group:    sandboxGroup,
+		Version:  sandboxVersion,
+		Resource: sandboxIngressPlural,
+	}
+
+	result, err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Create(ctx, ingressBody, metav1.CreateOptions{})
+	if err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			// Already exists, get the URL from status
+			existing, getErr := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Get(ctx, ingressName, metav1.GetOptions{})
+			if getErr != nil {
+				return "", fmt.Errorf("ingress exists but failed to get: %w", getErr)
+			}
+			url, _, _ := unstructured.NestedString(existing.Object, "status", "url")
+			if url == "" {
+				url = fmt.Sprintf("https://%s.sandboxes.example.com", sandboxID) // Placeholder until status is updated
+			}
+			return url, nil
+		}
+		return "", fmt.Errorf("failed to create SandboxIngress: %w", err)
+	}
+
+	// Extract URL from status (may not be set yet)
+	url, _, _ := unstructured.NestedString(result.Object, "status", "url")
+	if url == "" {
+		// Construct placeholder URL - the actual URL will be set by the operator
+		url = fmt.Sprintf("https://%s.sandboxes.example.com", sandboxID)
+	}
+
+	log.Printf("Created SandboxIngress '%s', URL: %s", ingressName, url)
+	return url, nil
+}
+
+// DeleteSandboxIngressCR deletes the SandboxIngress CR to disable external access.
+func (m *Manager) DeleteSandboxIngressCR(ctx context.Context, sandboxID string) error {
+	if err := m.Initialize(); err != nil {
+		return fmt.Errorf("failed to initialize: %w", err)
+	}
+
+	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
+	ingressName := sandboxName + "-ingress"
+
+	log.Printf("Deleting SandboxIngress '%s'", ingressName)
+
+	gvr := schema.GroupVersionResource{
+		Group:    sandboxGroup,
+		Version:  sandboxVersion,
+		Resource: sandboxIngressPlural,
+	}
+
+	err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Delete(ctx, ingressName, metav1.DeleteOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Printf("SandboxIngress '%s' already deleted", ingressName)
+			return nil
+		}
+		return fmt.Errorf("failed to delete SandboxIngress: %w", err)
+	}
+
+	log.Printf("Deleted SandboxIngress '%s'", ingressName)
+	return nil
+}
+
+// GetSandboxIngressStatus returns the ingress status for a sandbox.
+func (m *Manager) GetSandboxIngressStatus(ctx context.Context, sandboxID string) (*models.SandboxIngressStatus, error) {
+	if err := m.Initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize: %w", err)
+	}
+
+	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
+	ingressName := sandboxName + "-ingress"
+
+	gvr := schema.GroupVersionResource{
+		Group:    sandboxGroup,
+		Version:  sandboxVersion,
+		Resource: sandboxIngressPlural,
+	}
+
+	ingress, err := m.dynamicClient.Resource(gvr).Namespace(m.namespace).Get(ctx, ingressName, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil // Not found = not enabled
+		}
+		return nil, fmt.Errorf("failed to get SandboxIngress: %w", err)
+	}
+
+	// Parse status
+	url, _, _ := unstructured.NestedString(ingress.Object, "status", "url")
+
+	// Check Ready condition
+	ready := false
+	conditions, found, _ := unstructured.NestedSlice(ingress.Object, "status", "conditions")
+	if found {
+		for _, cond := range conditions {
+			condMap, ok := cond.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			condType, _ := condMap["type"].(string)
+			condStatus, _ := condMap["status"].(string)
+			if condType == "Ready" && condStatus == "True" {
+				ready = true
+				break
+			}
+		}
+	}
+
+	return &models.SandboxIngressStatus{
+		Enabled: true,
+		URL:     url,
+		Ready:   ready,
+	}, nil
+}
+
 // Helper functions
 func getImage(img *string) string {
 	if img != nil && *img != "" {

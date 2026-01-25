@@ -64,3 +64,43 @@ snapshot:
     #   iam.gke.io/gcp-service-account: "isola-snapshot@project.iam.gserviceaccount.com"
     #   azure.workload.identity/use: "true"
     annotations: {}
+
+# Sandbox Ingress configuration for exposing sandboxes externally
+# This uses Kubernetes Gateway API for routing.
+ingress:
+  # Enable sandbox ingress feature
+  enabled: false
+
+  # Base domain for sandbox URLs
+  # Each sandbox gets a URL like: https://<sandbox-id>.<domain>
+  # The sandbox ID (UUID) in the URL acts as authentication (presigned URL pattern)
+  # Example: "sandboxes.example.com" -> https://abc123.sandboxes.example.com
+  domain: ""
+
+  # Gateway configuration
+  gateway:
+    # Create a Gateway resource (set to false if using existing Gateway)
+    create: true
+    # Name of the Gateway resource
+    name: "sandbox-gateway"
+    # Namespace for the Gateway (defaults to release namespace if empty)
+    # Set this when using an existing Gateway in a different namespace (e.g., istio-system)
+    namespace: ""
+    # GatewayClass to use (must be installed in cluster)
+    # Common options: istio, envoy-gateway, cilium, nginx
+    gatewayClassName: ""
+
+  # TLS configuration
+  tls:
+    # Enable TLS termination at the Gateway
+    enabled: true
+    # Name of the TLS secret containing wildcard certificate
+    # The secret must contain a wildcard cert for *.<domain>
+    # Example: *.sandboxes.example.com
+    secretName: ""
+    # Use cert-manager to automatically provision certificates
+    certManager:
+      enabled: false
+      issuerRef:
+        name: ""
+        kind: "ClusterIssuer"

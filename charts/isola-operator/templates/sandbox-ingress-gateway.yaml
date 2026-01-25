@@ -1,0 +1,46 @@
+{{- if and .Values.ingress.enabled .Values.ingress.gateway.create }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.ingress.gateway.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: sandbox-gateway
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- if .Values.ingress.tls.certManager.enabled }}
+  annotations:
+    cert-manager.io/issuer: {{ .Values.ingress.tls.certManager.issuerRef.name | quote }}
+    cert-manager.io/issuer-kind: {{ .Values.ingress.tls.certManager.issuerRef.kind | quote }}
+  {{- end }}
+spec:
+  gatewayClassName: {{ required "ingress.gateway.gatewayClassName is required when ingress is enabled" .Values.ingress.gateway.gatewayClassName }}
+  listeners:
+    {{- if .Values.ingress.tls.enabled }}
+    - name: https
+      port: 443
+      protocol: HTTPS
+      hostname: "*.{{ required "ingress.domain is required when ingress is enabled" .Values.ingress.domain }}"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ required "ingress.tls.secretName is required when TLS is enabled" .Values.ingress.tls.secretName }}
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.sandboxNamespace }}
+    {{- else }}
+    - name: http
+      port: 80
+      protocol: HTTP
+      hostname: "*.{{ required "ingress.domain is required when ingress is enabled" .Values.ingress.domain }}"
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.sandboxNamespace }}
+    {{- end }}
+{{- end }}

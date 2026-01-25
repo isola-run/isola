@@ -86,3 +86,11 @@ spec:
         - name: ISOLA_SNAPSHOT_SERVICE_ACCOUNT
           value: {{ .Values.snapshot.serviceAccount.name | quote }}
         {{- end }}
+        {{- if .Values.ingress.enabled }}
+        - name: ISOLA_INGRESS_DOMAIN
+          value: {{ .Values.ingress.domain | quote }}
+        - name: ISOLA_INGRESS_GATEWAY_NAME
+          value: {{ .Values.ingress.gateway.name | quote }}
+        - name: ISOLA_INGRESS_GATEWAY_NAMESPACE
+          value: {{ .Values.ingress.gateway.namespace | default .Release.Namespace | quote }}
+        {{- end }}

@@ -46,6 +46,11 @@ func (h *Handler) SetupRoutes(r *gin.Engine) {
 		api.POST("/sandboxes/:id/files", h.UploadFile)
 		api.POST("/sandboxes/:id/files/upload-url", h.GenerateUploadUrl)
 		api.POST("/sandboxes/:id/files/confirm", h.ConfirmUpload)
+
+		// Ingress management
+		api.GET("/sandboxes/:id/ingress", h.GetIngressStatus)
+		api.POST("/sandboxes/:id/ingress", h.EnableIngress)
+		api.DELETE("/sandboxes/:id/ingress", h.DisableIngress)
 	}
 }
 

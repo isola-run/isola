@@ -1,0 +1,31 @@
+{{- if .Values.ingress.enabled }}
+{{- $gatewayNamespace := .Values.ingress.gateway.namespace | default .Release.Namespace }}
+# NetworkPolicy to allow ingress traffic from Gateway data plane pods to sandbox pods.
+# Gateway API implementations (Envoy Gateway, Istio, etc.) route traffic through
+# their data plane pods directly to backend pods/services.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-ingress
+  namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: isola-operator
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: isola-sandbox
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow from Gateway namespace - Gateway data plane pods route traffic to sandboxes
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $gatewayNamespace }}
+      # Allow all ports since sandboxes can expose any port via SandboxIngress
+      ports:
+        - protocol: TCP
+{{- end }}

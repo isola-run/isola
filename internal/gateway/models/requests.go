@@ -50,3 +50,9 @@ type ListSandboxesParams struct {
 type TerminateSandboxParams struct {
 	Force bool `form:"force,default=false"`
 }
+
+// EnableIngressRequest is the request body for enabling sandbox ingress.
+type EnableIngressRequest struct {
+	// Port is the container port to expose (default: 8080).
+	Port int32 `json:"port,omitempty"`
+}
