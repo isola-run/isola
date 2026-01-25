@@ -5,6 +5,29 @@ image:
 # Agent sidecar image injected into sandbox pods
 agentImage: isola-agent:latest
 
+# Operator resource configuration
+resources:
+  limits:
+    cpu: "2"
+    memory: 1Gi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# Controller configuration
+controller:
+  # Maximum concurrent reconciliations per controller.
+  # Higher values improve throughput but increase resource usage.
+  # Recommended: 5-20 for production workloads.
+  maxConcurrentReconciles: 10
+
+# Profiling configuration
+profiling:
+  # Enable pprof endpoints for performance profiling
+  enabled: false
+  # Port for pprof server (only used if enabled)
+  port: 6060
+
 # RuntimeClassName for sandbox pods.
 # Options:
 #   "gvisor" - Use gVisor (runsc) for stronger isolation. Requires gVisor installed on nodes

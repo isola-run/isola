@@ -6,14 +6,19 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/isola-ai/isola-sb/internal/gateway/handlers"
 	"github.com/isola-ai/isola-sb/internal/gateway/kubernetes"
+	"github.com/isola-ai/isola-sb/internal/gateway/metrics"
+	"github.com/isola-ai/isola-sb/internal/gateway/ratelimit"
 	"github.com/isola-ai/isola-sb/internal/gateway/storage"
 )
 
@@ -23,6 +28,10 @@ const (
 	EnvHTTPPort            = "ISOLA_HTTP_PORT"
 	EnvKubernetesNamespace = "ISOLA_KUBERNETES_NAMESPACE"
 	EnvGinMode             = "GIN_MODE"
+	EnvEnablePprof         = "ISOLA_ENABLE_PPROF"
+	EnvPprofPort           = "ISOLA_PPROF_PORT"
+	EnvRateLimitRPS        = "ISOLA_RATE_LIMIT_RPS"
+	EnvRateLimitBurst      = "ISOLA_RATE_LIMIT_BURST"
 )
 
 // Default values
@@ -30,6 +39,9 @@ const (
 	DefaultHTTPHost            = "0.0.0.0"
 	DefaultHTTPPort            = "8080"
 	DefaultKubernetesNamespace = "isola-sandboxes"
+	DefaultPprofPort           = "6060"
+	DefaultRateLimitRPS        = 50.0
+	DefaultRateLimitBurst      = 100
 )
 
 func main() {
@@ -45,6 +57,29 @@ func main() {
 	ctx := context.Background()
 	storageBucket := initStorage(ctx)
 
+	// Start pprof server if enabled
+	if os.Getenv(EnvEnablePprof) == "true" {
+		pprofPort := getEnvOrDefault(EnvPprofPort, DefaultPprofPort)
+		go func() {
+			pprofAddr := fmt.Sprintf(":%s", pprofPort)
+			log.Printf("pprof listening on %s", pprofAddr)
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				log.Printf("pprof server error: %v", err)
+			}
+		}()
+	}
+
+	// Initialize rate limiter
+	rateLimitConfig := ratelimit.DefaultConfig()
+	if rps := getEnvFloat(EnvRateLimitRPS, DefaultRateLimitRPS); rps > 0 {
+		rateLimitConfig.RequestsPerSecond = rps
+	}
+	if burst := getEnvInt(EnvRateLimitBurst, DefaultRateLimitBurst); burst > 0 {
+		rateLimitConfig.BurstSize = burst
+	}
+	limiter := ratelimit.NewLimiter(rateLimitConfig)
+	defer limiter.Stop()
+
 	handler := handlers.NewHandler(k8sManager, storageBucket)
 
 	r := gin.New()
@@ -52,6 +87,11 @@ func main() {
 	// Add middleware
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
+	r.Use(metrics.MetricsMiddleware())
+	r.Use(ratelimit.Middleware(limiter))
+
+	// Metrics endpoint (unauthenticated)
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	handler.SetupRoutes(r)
 
@@ -112,4 +152,28 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+func getEnvFloat(key string, defaultValue float64) float64 {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	var result float64
+	if _, err := fmt.Sscanf(value, "%f", &result); err != nil {
+		return defaultValue
+	}
+	return result
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	var result int
+	if _, err := fmt.Sscanf(value, "%d", &result); err != nil {
+		return defaultValue
+	}
+	return result
 }

@@ -618,12 +618,29 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 	return ctrl.Result{RequeueAfter: getTTLSeconds(snap)}, nil
 }
 
+// RootfsSnapshotControllerOptions contains options for the RootfsSnapshotReconciler.
+type RootfsSnapshotControllerOptions struct {
+	MaxConcurrentReconciles int
+}
+
+// SetupWithManager sets up the controller with the Manager.
 func (r *RootfsSnapshotReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return r.SetupWithManagerAndOptions(mgr, RootfsSnapshotControllerOptions{MaxConcurrentReconciles: 1})
+}
+
+// SetupWithManagerAndOptions sets up the controller with the Manager and options.
+func (r *RootfsSnapshotReconciler) SetupWithManagerAndOptions(mgr ctrl.Manager, opts RootfsSnapshotControllerOptions) error {
 	r.Recorder = mgr.GetEventRecorderFor("rootfssnapshot-controller")
+
+	maxConcurrent := opts.MaxConcurrentReconciles
+	if maxConcurrent <= 0 {
+		maxConcurrent = 1
+	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.RootfsSnapshot{}).
 		Owns(&batchv1.Job{}).
+		WithOptions(ctrl.Options{MaxConcurrentReconciles: maxConcurrent}).
 		Named("rootfssnapshot").
 		Complete(r)
 }

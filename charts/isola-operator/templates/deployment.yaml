@@ -34,6 +34,17 @@ spec:
         {{- if .Values.runtimeClassName }}
         - --runtime-class={{ .Values.runtimeClassName }}
         {{- end }}
+        {{- if .Values.controller }}
+        {{- if .Values.controller.maxConcurrentReconciles }}
+        - --max-concurrent-reconciles={{ .Values.controller.maxConcurrentReconciles }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.profiling }}
+        {{- if .Values.profiling.enabled }}
+        - --enable-pprof
+        - --pprof-addr=:{{ .Values.profiling.port | default 6060 }}
+        {{- end }}
+        {{- end }}
         securityContext:
           capabilities:
             drop:
@@ -56,12 +67,16 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 10
         resources:
+          {{- if .Values.resources }}
+          {{- toYaml .Values.resources | nindent 10 }}
+          {{- else }}
           limits:
-            cpu: 500m
-            memory: 128Mi
+            cpu: "2"
+            memory: 1Gi
           requests:
-            cpu: 10m
-            memory: 64Mi
+            cpu: 100m
+            memory: 256Mi
+          {{- end }}
         env:
         {{- if .Values.snapshot.storage.bucketUrl }}
         - name: ISOLA_SNAPSHOT_BUCKET_URL

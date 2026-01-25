@@ -1,0 +1,24 @@
+# Kind cluster configuration for benchmark testing
+# Uses a single-node cluster with sufficient resources for load testing
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    # Extra port mappings for accessing services
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 30080
+        protocol: TCP
+    # Increase resources for the control plane node
+    kubeadmConfigPatches:
+      - |
+        kind: KubeletConfiguration
+        evictionHard:
+          memory.available: "200Mi"
+          nodefs.available: "10%"
+        kubeReserved:
+          cpu: "200m"
+          memory: "256Mi"
+        systemReserved:
+          cpu: "200m"
+          memory: "256Mi"

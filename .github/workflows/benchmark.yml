@@ -1,0 +1,288 @@
+name: Performance Benchmarks
+
+on:
+  # Run weekly on Monday at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * 1'
+
+  # Manual trigger with configurable parameters
+  workflow_dispatch:
+    inputs:
+      test_duration:
+        description: 'Load test duration (e.g., 5m, 10m)'
+        default: '5m'
+        type: string
+      max_vus:
+        description: 'Maximum virtual users for k6'
+        default: '50'
+        type: string
+      run_stress_tests:
+        description: 'Run Python stress tests'
+        default: true
+        type: boolean
+      save_baseline:
+        description: 'Save results as new baseline'
+        default: false
+        type: boolean
+
+  # Run on PRs that modify performance-critical code
+  pull_request:
+    paths:
+      - 'internal/operator/controller/**'
+      - 'internal/gateway/**'
+      - 'cmd/operator/**'
+      - 'cmd/gateway/**'
+
+env:
+  GO_VERSION: '1.25.5'
+  K6_VERSION: 'v0.49.0'
+
+jobs:
+  go-benchmarks:
+    name: Go Microbenchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup envtest
+        run: |
+          go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+          setup-envtest use 1.34 --bin-dir /usr/local/bin
+
+      - name: Run Go benchmarks
+        run: |
+          KUBEBUILDER_ASSETS="$(setup-envtest use 1.34 -p path)" \
+            go test -bench=. -benchmem -benchtime=10s -count=5 \
+            ./internal/operator/controller/... \
+            | tee benchmark-go-results.txt
+
+      - name: Upload Go benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-benchmark-results
+          path: benchmark-go-results.txt
+
+  load-tests:
+    name: Load Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Only run on schedule or manual trigger
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: benchmark
+          config: .github/kind-benchmark-config.yaml
+          wait: 120s
+
+      - name: Build images
+        run: |
+          # Build operator
+          docker build -t isola-operator:latest -f Dockerfile.operator .
+          kind load docker-image isola-operator:latest --name benchmark
+
+          # Build gateway
+          docker build -t isola-gw:latest -f Dockerfile.gateway .
+          kind load docker-image isola-gw:latest --name benchmark
+
+          # Build agent
+          docker build -t isola-agent:latest -f Dockerfile.agent .
+          kind load docker-image isola-agent:latest --name benchmark
+
+      - name: Deploy Isola
+        run: |
+          # Install CRDs
+          kubectl apply -f charts/isola-operator/crds/
+
+          # Deploy operator with benchmark settings
+          helm install isola-operator charts/isola-operator \
+            --set image.repository=isola-operator \
+            --set image.tag=latest \
+            --set agentImage=isola-agent:latest \
+            --set runtimeClassName="" \
+            --set controller.maxConcurrentReconciles=10 \
+            --set resources.limits.cpu=2 \
+            --set resources.limits.memory=1Gi \
+            --set resources.requests.cpu=500m \
+            --set resources.requests.memory=512Mi \
+            --wait --timeout 5m
+
+          # Deploy gateway
+          helm install isola-gw charts/isola-gw \
+            --set image.repository=isola-gw \
+            --set image.tag=latest \
+            --set service.type=NodePort \
+            --set service.nodePort=30080 \
+            --wait --timeout 5m
+
+          # Wait for pods
+          kubectl wait --for=condition=ready pod -l app=isola-operator -n isola-system --timeout=120s
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=isola-gw -n isola-system --timeout=120s
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | \
+            sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install k6
+
+      - name: Get gateway URL
+        id: gateway
+        run: |
+          NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+          echo "url=http://${NODE_IP}:30080" >> $GITHUB_OUTPUT
+
+      - name: Run k6 sandbox churn test
+        run: |
+          k6 run tests/benchmark/k6/sandbox_churn.js \
+            --out json=k6-sandbox-churn-results.json \
+            -e ISOLA_API_URL=${{ steps.gateway.outputs.url }} \
+            -e ISOLA_API_KEY=iso_sk_demo \
+            --duration ${{ inputs.test_duration || '5m' }} \
+            --vus ${{ inputs.max_vus || '20' }}
+
+      - name: Run k6 burst traffic test
+        run: |
+          k6 run tests/benchmark/k6/burst_traffic.js \
+            --out json=k6-burst-results.json \
+            -e ISOLA_API_URL=${{ steps.gateway.outputs.url }} \
+            -e ISOLA_API_KEY=iso_sk_demo
+
+      - name: Collect resource metrics
+        if: always()
+        run: |
+          kubectl top pods -n isola-system --containers > pod-resources.txt || true
+          kubectl top pods -n isola-sandboxes --containers > sandbox-resources.txt || true
+          kubectl logs -n isola-system -l app=isola-operator --tail=1000 > operator-logs.txt || true
+          kubectl get events -n isola-sandboxes --sort-by='.lastTimestamp' > events.txt || true
+
+      - name: Compare with baseline
+        if: hashFiles('tests/benchmark/baseline.json') != ''
+        run: |
+          python3 tests/benchmark/scripts/compare_baseline.py \
+            --current k6-sandbox-churn-results.json \
+            --baseline tests/benchmark/baseline.json \
+            --threshold 0.20
+
+      - name: Save baseline
+        if: inputs.save_baseline == true
+        run: |
+          python3 tests/benchmark/scripts/compare_baseline.py \
+            --current k6-sandbox-churn-results.json \
+            --save-baseline
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: |
+            k6-*.json
+            pod-resources.txt
+            sandbox-resources.txt
+            operator-logs.txt
+            events.txt
+
+  stress-tests:
+    name: Python Stress Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    if: github.event_name != 'pull_request' && (github.event.inputs.run_stress_tests == 'true' || github.event_name == 'schedule')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Setup Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: stress-test
+          wait: 120s
+
+      - name: Build and deploy Isola
+        run: |
+          # Build images
+          docker build -t isola-operator:latest -f Dockerfile.operator .
+          docker build -t isola-gw:latest -f Dockerfile.gateway .
+          docker build -t isola-agent:latest -f Dockerfile.agent .
+
+          # Load into kind
+          kind load docker-image isola-operator:latest --name stress-test
+          kind load docker-image isola-gw:latest --name stress-test
+          kind load docker-image isola-agent:latest --name stress-test
+
+          # Deploy
+          kubectl apply -f charts/isola-operator/crds/
+          helm install isola-operator charts/isola-operator \
+            --set image.repository=isola-operator \
+            --set image.tag=latest \
+            --set agentImage=isola-agent:latest \
+            --set runtimeClassName="" \
+            --set controller.maxConcurrentReconciles=10 \
+            --wait --timeout 5m
+
+          helm install isola-gw charts/isola-gw \
+            --set image.repository=isola-gw \
+            --set image.tag=latest \
+            --set service.type=NodePort \
+            --set service.nodePort=30080 \
+            --wait --timeout 5m
+
+          kubectl wait --for=condition=ready pod -l app=isola-operator -n isola-system --timeout=120s
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=isola-gw -n isola-system --timeout=120s
+
+      - name: Run Python stress tests
+        working-directory: tests/e2e
+        env:
+          ISOLA_BASE_URL: http://localhost:30080
+          ISOLA_API_KEY: iso_sk_demo
+        run: |
+          # Port forward gateway
+          kubectl port-forward -n isola-system svc/isola-gw 30080:8080 &
+          sleep 5
+
+          # Run stress tests
+          uv run pytest -m stress -v --tb=short \
+            --html=stress-test-report.html \
+            --self-contained-html \
+            --timeout=1800
+
+      - name: Upload stress test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stress-test-results-${{ github.run_id }}
+          path: tests/e2e/stress-test-report.html

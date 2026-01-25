@@ -1195,8 +1195,18 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 	return ctrl.Result{RequeueAfter: time.Second}, false, nil
 }
 
+// SandboxControllerOptions contains options for the SandboxReconciler.
+type SandboxControllerOptions struct {
+	MaxConcurrentReconciles int
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return r.SetupWithManagerAndOptions(mgr, SandboxControllerOptions{MaxConcurrentReconciles: 1})
+}
+
+// SetupWithManagerAndOptions sets up the controller with the Manager and options.
+func (r *SandboxReconciler) SetupWithManagerAndOptions(mgr ctrl.Manager, opts SandboxControllerOptions) error {
 	r.Recorder = mgr.GetEventRecorderFor("sandbox-controller")
 
 	// Field index for sandbox templateRef lookups
@@ -1209,6 +1219,11 @@ func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
+	maxConcurrent := opts.MaxConcurrentReconciles
+	if maxConcurrent <= 0 {
+		maxConcurrent = 1
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.Sandbox{}).
 		Owns(&corev1.Pod{}).
@@ -1219,6 +1234,7 @@ func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&sandboxv1alpha1.SandboxTemplate{},
 			handler.EnqueueRequestsFromMapFunc(r.findSandboxesForTemplate),
 		).
+		WithOptions(ctrl.Options{MaxConcurrentReconciles: maxConcurrent}).
 		Named("sandbox").
 		Complete(r)
 }

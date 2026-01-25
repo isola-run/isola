@@ -19,6 +19,8 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -37,6 +39,8 @@ import (
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 	"github.com/isola-ai/isola-sb/internal/operator/controller"
+	// Import metrics to register them
+	_ "github.com/isola-ai/isola-sb/internal/operator/controller"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -70,6 +74,9 @@ func main() {
 	var snapshotCredentialSecret string
 	var snapshotUploaderImage string
 	var snapshotServiceAccount string
+	var maxConcurrentReconciles int
+	var enablePprof bool
+	var pprofAddr string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -95,6 +102,9 @@ func main() {
 	flag.StringVar(&snapshotCredentialSecret, "snapshot-credential-secret", os.Getenv("ISOLA_SNAPSHOT_CREDENTIAL_SECRET"), "Secret name for bucket credentials (optional, uses pod identity if not set)")
 	flag.StringVar(&snapshotUploaderImage, "snapshot-uploader-image", os.Getenv("ISOLA_UPLOADER_IMAGE"), "Container image for the snapshot uploader")
 	flag.StringVar(&snapshotServiceAccount, "snapshot-service-account", os.Getenv("ISOLA_SNAPSHOT_SERVICE_ACCOUNT"), "ServiceAccount for snapshot jobs")
+	flag.IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 10, "Maximum number of concurrent reconciles per controller")
+	flag.BoolVar(&enablePprof, "enable-pprof", false, "Enable pprof profiling endpoint")
+	flag.StringVar(&pprofAddr, "pprof-addr", ":6060", "Address to bind pprof server")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -102,6 +112,16 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	// Start pprof server if enabled
+	if enablePprof {
+		go func() {
+			setupLog.Info("Starting pprof server", "addr", pprofAddr)
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				setupLog.Error(err, "pprof server error")
+			}
+		}()
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -201,7 +221,9 @@ func main() {
 		AgentImage:       agentImage,
 		RuntimeClassName: runtimeClassName,
 		Clock:            controller.RealClock{},
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManagerAndOptions(mgr, controller.SandboxControllerOptions{
+		MaxConcurrentReconciles: maxConcurrentReconciles,
+	}); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
 		os.Exit(1)
 	}
@@ -216,7 +238,9 @@ func main() {
 		CredentialSecretName:   snapshotCredentialSecret,
 		UploaderImage:          snapshotUploaderImage,
 		SnapshotServiceAccount: snapshotServiceAccount,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManagerAndOptions(mgr, controller.RootfsSnapshotControllerOptions{
+		MaxConcurrentReconciles: maxConcurrentReconciles,
+	}); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RootfsSnapshot")
 		os.Exit(1)
 	}
