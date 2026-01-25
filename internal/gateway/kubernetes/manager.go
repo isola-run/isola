@@ -306,8 +306,6 @@ func (m *Manager) DeleteSandboxCR(ctx context.Context, sandboxID string) error {
 	return nil
 }
 
-const agentServiceName = "sandbox-agents"
-
 type SandboxStatus struct {
 	State        models.SandboxState
 	ErrorReason  *string
@@ -333,8 +331,8 @@ func (m *Manager) GetSandboxStatus(ctx context.Context, sandboxID string) (*Sand
 	// Parse state from CR conditions
 	state, errorReason := m.parseStateFromConditions(sandbox)
 
-	// Construct DNS address for the agent
-	agentAddress := m.getAgentAddress(sandboxID)
+	// Get agent address from PodIP in status (avoids DNS caching issues)
+	agentAddress := m.getAgentAddressFromStatus(sandbox)
 
 	return &SandboxStatus{
 		State:        state,
@@ -343,12 +341,16 @@ func (m *Manager) GetSandboxStatus(ctx context.Context, sandboxID string) (*Sand
 	}, nil
 }
 
-// getAgentAddress constructs the DNS-resolvable address for the sandbox agent.
-// Format: <pod-name>.<headless-service>.<namespace>.svc.cluster.local
-func (m *Manager) getAgentAddress(sandboxID string) string {
-	sandboxName := fmt.Sprintf("sandbox-%s", sandboxID[:min(8, len(sandboxID))])
-	podName := sandboxName + "-pod"
-	return fmt.Sprintf("%s.%s.%s.svc.cluster.local", podName, agentServiceName, m.namespace)
+// getAgentAddressFromStatus reads the PodIP from the Sandbox CR status.
+// Using the pod IP directly avoids DNS caching issues that could cause
+// requests to be sent to a wrong pod after sandbox recreation.
+func (m *Manager) getAgentAddressFromStatus(sandbox *unstructured.Unstructured) string {
+	status, found, _ := unstructured.NestedMap(sandbox.Object, "status")
+	if !found {
+		return ""
+	}
+	podIP, _, _ := unstructured.NestedString(status, "podIP")
+	return podIP
 }
 
 // parseStateFromConditions derives the SandboxState from the Sandbox CR conditions.
