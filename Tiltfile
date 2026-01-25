@@ -91,12 +91,28 @@ docker_build(
         'api/',
         'cmd/isola-api/',
         'internal/api/',
+        'internal/logging/',
         'go.mod',
         'go.sum',
     ]
 )
 
-# TODO: Add helm_resource for isola-api when chart is created (Phase 2)
+helm_resource(
+    name='isola-api',
+    chart='charts/isola-api',
+    namespace='isola-system',
+    flags=[
+        '--create-namespace',
+        '-f', 'charts/isola-api/values-dev.yaml',
+        '--set', 'image.repository=isola-api',
+        '--set', 'image.tag=latest',
+    ],
+    image_deps=['isola-api'],
+    image_keys=[('image.repository', 'image.tag')],
+    deps=['charts/isola-api'],
+    resource_deps=['isola-operator'],
+    labels=['isola'],
+)
 
 # ==============================================================================
 # isola-uploader (snapshot uploader - built but deployed by operator via Jobs)
@@ -109,6 +125,7 @@ docker_build(
     only=[
         'cmd/uploader/',
         'internal/snapshot/',
+        'internal/logging/',
         'go.mod',
         'go.sum',
     ]
@@ -125,6 +142,7 @@ docker_build(
     only=[
         'cmd/agent/',
         'internal/agent/',
+        'internal/logging/',
         'go.mod',
         'go.sum',
     ]

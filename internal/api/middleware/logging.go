@@ -1,51 +1,57 @@
 package middleware
 
 import (
+	"log/slog"
+	"net/http"
 	"time"
-
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 )
 
-// Logging middleware logs HTTP requests using Zap.
-func Logging(logger *zap.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		path := c.Request.URL.Path
-		query := c.Request.URL.RawQuery
+// responseWriter wraps http.ResponseWriter to capture status code.
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
 
-		c.Next()
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.status = code
+	rw.ResponseWriter.WriteHeader(code)
+}
 
-		latency := time.Since(start)
-		status := c.Writer.Status()
+// Logging middleware logs HTTP requests using slog.
+func Logging(logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
 
-		fields := []zap.Field{
-			zap.String("method", c.Request.Method),
-			zap.String("path", path),
-			zap.Int("status", status),
-			zap.Duration("latency", latency),
-			zap.String("client_ip", c.ClientIP()),
-		}
+			wrapped := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+			next.ServeHTTP(wrapped, r)
 
-		if query != "" {
-			fields = append(fields, zap.String("query", query))
-		}
+			latency := time.Since(start)
+			requestID := GetRequestID(r.Context())
 
-		if requestID, exists := c.Get("request_id"); exists {
-			fields = append(fields, zap.String("request_id", requestID.(string)))
-		}
+			attrs := []any{
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+				slog.Int("status", wrapped.status),
+				slog.Duration("latency", latency),
+				slog.String("client_ip", r.RemoteAddr),
+			}
 
-		if len(c.Errors) > 0 {
-			fields = append(fields, zap.String("errors", c.Errors.String()))
-		}
+			if r.URL.RawQuery != "" {
+				attrs = append(attrs, slog.String("query", r.URL.RawQuery))
+			}
+			if requestID != "" {
+				attrs = append(attrs, slog.String("request_id", requestID))
+			}
 
-		switch {
-		case status >= 500:
-			logger.Error("request completed", fields...)
-		case status >= 400:
-			logger.Warn("request completed", fields...)
-		default:
-			logger.Info("request completed", fields...)
-		}
+			switch {
+			case wrapped.status >= 500:
+				logger.Error("request completed", attrs...)
+			case wrapped.status >= 400:
+				logger.Warn("request completed", attrs...)
+			default:
+				logger.Info("request completed", attrs...)
+			}
+		})
 	}
 }

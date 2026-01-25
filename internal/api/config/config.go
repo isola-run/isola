@@ -11,12 +11,9 @@ type Config struct {
 	// HTTPAddr is the address to listen for HTTP requests (e.g., ":8080").
 	HTTPAddr string
 
-	// MetricsAddr is the address for the metrics endpoint. Set to "0" to disable.
-	MetricsAddr string
-
 	// LogLevel sets the logging level (debug, info, warn, error).
 	LogLevel string
 
-	// DevMode enables development mode with console logging and gin debug mode.
+	// DevMode enables development mode with text logging output.
 	DevMode bool
 }

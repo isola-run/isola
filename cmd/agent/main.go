@@ -2,18 +2,28 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"log"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
+
 	"github.com/isola-ai/isola-sb/internal/agent/handlers"
+	"github.com/isola-ai/isola-sb/internal/logging"
 )
 
 // Environment variable keys
 const (
 	EnvHTTPHost = "ISOLA_HTTP_HOST"
 	EnvHTTPPort = "ISOLA_HTTP_PORT"
+	EnvLogLevel = "ISOLA_LOG_LEVEL"
+	EnvDevMode  = "ISOLA_DEV_MODE"
 )
 
 // Default values
@@ -23,38 +33,61 @@ const (
 )
 
 func main() {
-	host := os.Getenv(EnvHTTPHost)
-	if host == "" {
-		host = DefaultHTTPHost
-	}
+	host := getEnv(EnvHTTPHost, DefaultHTTPHost)
+	port := getEnv(EnvHTTPPort, DefaultHTTPPort)
+	logLevel := getEnv(EnvLogLevel, "info")
+	devMode := os.Getenv(EnvDevMode) != ""
 
-	port := os.Getenv(EnvHTTPPort)
-	if port == "" {
-		port = DefaultHTTPPort
-	}
+	logger := logging.New(logging.Config{
+		Level:   logLevel,
+		DevMode: devMode,
+	})
 
-	// Create handler
-	handler, err := handlers.NewHandler()
+	handler, err := handlers.NewHandler(logger)
 	if err != nil {
-		log.Fatalf("Failed to initialize handler: %v", err)
+		logger.Error("failed to initialize handler", "error", err)
+		os.Exit(1)
 	}
 
-	// Set Gin mode based on environment
-	if os.Getenv("GIN_MODE") == "" {
-		gin.SetMode(gin.ReleaseMode)
-	}
-
-	r := gin.New()
-
-	// Add middleware
-	r.Use(gin.Recovery())
-	r.Use(gin.Logger())
+	r := chi.NewRouter()
+	r.Use(chimiddleware.Recoverer)
+	r.Use(chimiddleware.Logger)
 	handler.RegisterRoutes(r)
 
 	addr := fmt.Sprintf("%s:%s", host, port)
-	log.Printf("Starting isola-agent server on %s", addr)
-
-	if err := r.Run(addr); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: r,
 	}
+
+	// Graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		logger.Info("starting isola-agent server", "addr", addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server error", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done()
+	logger.Info("shutting down server")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("server shutdown error", "error", err)
+	}
+
+	logger.Info("server stopped")
+}
+
+func getEnv(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
 }

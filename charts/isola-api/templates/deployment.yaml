@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "isola-api.fullname" . }}
+  labels:
+    {{- include "isola-api.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "isola-api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "isola-api.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "isola-api.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --http-addr=:{{ .Values.service.targetPort }}
+            - --log-level={{ .Values.logging.level }}
+            {{- if .Values.logging.devMode }}
+            - --dev
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: ISOLA_SANDBOX_NAMESPACE
+              value: {{ .Values.sandboxNamespace | quote }}
+            {{- if .Values.storage.bucketUrl }}
+            - name: ISOLA_BUCKET_URL
+              value: {{ .Values.storage.bucketUrl | quote }}
+            {{- end }}
+            {{- $credentialSecret := include "isola-api.credentialSecretName" . }}
+            {{- if $credentialSecret }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $credentialSecret }}
+                  key: AWS_ACCESS_KEY_ID
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $credentialSecret }}
+                  key: AWS_SECRET_ACCESS_KEY
+                  optional: true
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $credentialSecret }}
+                  key: AWS_REGION
+                  optional: true
+            {{- end }}

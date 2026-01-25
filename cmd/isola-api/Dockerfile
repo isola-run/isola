@@ -12,6 +12,7 @@ RUN go mod download
 COPY api/ api/
 COPY cmd/isola-api/ cmd/isola-api/
 COPY internal/api/ internal/api/
+COPY internal/logging/ internal/logging/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o isola-api ./cmd/isola-api/main.go

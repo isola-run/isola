@@ -9,6 +9,7 @@ RUN go mod download
 # Copy required source
 COPY cmd/uploader/ cmd/uploader/
 COPY internal/snapshot/ internal/snapshot/
+COPY internal/logging/ internal/logging/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o uploader ./cmd/uploader/main.go
