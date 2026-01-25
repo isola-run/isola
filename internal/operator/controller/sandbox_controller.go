@@ -580,6 +580,12 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod)
 	conditions = append(conditions, readyCondition)
 
+	// Update PodIP from the sandbox pod status.
+	// Used by gateway to communicate directly with agent, avoiding DNS caching issues.
+	if sandboxPod != nil && sandboxPod.Status.PodIP != "" {
+		sandbox.Status.PodIP = sandboxPod.Status.PodIP
+	}
+
 	return r.patchStatus(ctx, baseSandbox, sandbox, conditions)
 }
 
