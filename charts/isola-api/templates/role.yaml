@@ -12,7 +12,10 @@ rules:
   - apiGroups: ["sandbox.isola.run"]
     resources: ["sandboxes/status"]
     verbs: ["get"]
-  # Pod access for sandbox status
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "list", "watch"]
+  # RootfsSnapshot management (TTL handles deletion)
+  - apiGroups: ["sandbox.isola.run"]
+    resources: ["rootfssnapshots"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: ["sandbox.isola.run"]
+    resources: ["rootfssnapshots/status"]
+    verbs: ["get"]

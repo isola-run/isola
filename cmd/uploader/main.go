@@ -45,6 +45,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -64,18 +65,14 @@ import (
 )
 
 const (
-	// EnvBucketURL is the bucket URL (e.g., s3://bucket?region=us-east-1)
-	EnvBucketURL = "ISOLA_BUCKET_URL"
+	EnvBucketURL             = "ISOLA_BUCKET_URL"
+	EnvSnapshotNamespace     = "SNAPSHOT_NAMESPACE"
+	EnvSnapshotSandboxName   = "SNAPSHOT_SANDBOX_NAME"
+	EnvSnapshotContainerName = "SNAPSHOT_CONTAINER_NAME"
+	EnvLogLevel              = "ISOLA_LOG_LEVEL"
+
 	// EnvSnapshotFile is the path to the local file to upload
 	EnvSnapshotFile = "SNAPSHOT_FILE"
-	// EnvSnapshotNamespace is the namespace of the sandbox
-	EnvSnapshotNamespace = "SNAPSHOT_NAMESPACE"
-	// EnvSnapshotSandboxName is the name of the sandbox
-	EnvSnapshotSandboxName = "SNAPSHOT_SANDBOX_NAME"
-	// EnvSnapshotContainerName is the name of the container being snapshotted
-	EnvSnapshotContainerName = "SNAPSHOT_CONTAINER_NAME"
-	// EnvLogLevel is the log level
-	EnvLogLevel = "ISOLA_LOG_LEVEL"
 
 	// terminationLogPath is where we write the result for the controller to read
 	terminationLogPath = "/dev/termination-log"
@@ -251,16 +248,8 @@ func writeTerminationLog(result snapshot.UploadResult) error {
 	return os.WriteFile(terminationLogPath, data, 0600)
 }
 
-type envError struct {
-	name string
-}
-
-func (e envError) Error() string {
-	return e.name + " environment variable is required"
-}
-
 func errMissingEnv(name string) error {
-	return envError{name: name}
+	return fmt.Errorf("%s environment variable is required", name)
 }
 
 func getEnv(key, defaultValue string) string {

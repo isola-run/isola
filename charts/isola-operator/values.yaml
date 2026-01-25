@@ -1,6 +1,20 @@
 image:
   repository: isola-operator
   tag: "latest"
+  pullSecrets: []
+
+# Pod annotations (e.g., for Prometheus scraping)
+podAnnotations: {}
+
+# Pod scheduling
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
 
 # Agent sidecar image injected into sandbox pods
 agentImage: isola-agent:latest

@@ -19,6 +19,7 @@ make build              # Build all binaries to bin/
 # Local dev
 ./hack/setup.sh         # One-time: Kind cluster + registry
 tilt up                 # Start dev environment (http://localhost:10350)
+# Make sure to keep the Tiltfile updated on changes to the cluster
 ```
 
 ## CRD Workflow
@@ -49,7 +50,7 @@ The generated code is committed to the repo. CI runs `make check-api-codegen` to
 - `api/v1alpha1/` - CRD type definitions (Sandbox, SandboxTemplate, RootfsSnapshot)
 - `api/openapi.yaml` - OpenAPI spec for isola-api (source of truth for REST API)
 - `cmd/operator/` - Kubebuilder operator entry point
-- `cmd/isola-api/` - REST API gateway for external clients
+- `cmd/isola-api/` - API gateway for external clients
 - `cmd/agent/` - Gin sidecar injected into sandbox pods by operator
 - `cmd/uploader/` - Snapshot uploader job (uploads tarballs to S3/GCS/Azure)
 - `internal/operator/controller/` - Reconciler implementations
@@ -59,7 +60,7 @@ The generated code is committed to the repo. CI runs `make check-api-codegen` to
 - `config/` - Kustomize manifests (for controller-gen output)
 - `charts/` - Helm charts (source of truth for deployment)
 
-**Namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
+**Default namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
 
 **Helm charts are source of truth** - CRDs must be synced from operator (see workflow above)
 
