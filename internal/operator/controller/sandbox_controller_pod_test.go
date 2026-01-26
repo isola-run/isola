@@ -143,9 +143,14 @@ var _ = Describe("Sandbox Controller", func() {
 
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
-			Expect(pod.Labels).To(HaveKeyWithValue("app", "isola-sandbox"))
-			Expect(pod.Labels).To(HaveKeyWithValue("sandbox.isola.run/id", sandboxName))
+			// Standard Kubernetes recommended labels
+			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "isola-sandbox"))
+			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/instance", sandboxName))
+			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/component", "sandbox"))
+			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/part-of", "isola"))
 			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "isola-operator"))
+			// Isola-specific labels
+			Expect(pod.Labels).To(HaveKeyWithValue("sandbox.isola.run/id", sandboxName))
 		})
 
 		It("should add gvisor overlay2 annotation when RuntimeClassName is set", func() {
@@ -463,6 +468,42 @@ var _ = Describe("Sandbox Controller", func() {
 			for _, cond := range sandbox.Status.Conditions {
 				Expect(cond.ObservedGeneration).To(Equal(sandbox.Generation))
 			}
+		})
+
+		It("should set PodIP in sandbox status when pod has IP", func() {
+			sandboxName := "sandbox-pod-ip"
+			templateName := "template-pod-ip"
+
+			createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
+
+			createSandbox(ctx, sandboxName, templateName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			pod.Status.Phase = corev1.PodRunning
+			pod.Status.PodIP = "10.244.0.42"
+			pod.Status.Conditions = append(pod.Status.Conditions, corev1.PodCondition{
+				Type:   corev1.PodReady,
+				Status: corev1.ConditionTrue,
+			})
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox.Status.PodIP).To(Equal("10.244.0.42"))
 		})
 	})
 })

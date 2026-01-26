@@ -30,6 +30,11 @@ agentImage: isola-agent:latest
 # For production, use gvisor.
 runtimeClassName: "gvisor"
 
+# PriorityClassName for sandbox pods.
+# Used to prevent sandbox pods from being preempted by other workloads.
+# If set, the chart creates a PriorityClass with this name. Leave empty to skip creation and use cluster default.
+priorityClassName: "isola-sandbox"
+
 # ServiceAccount for the operator
 serviceAccount:
   create: true

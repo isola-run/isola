@@ -160,7 +160,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			sandbox := &sandboxv1alpha1.Sandbox{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, sandbox)
-			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 
 		It("should set TimedOut condition reason before deleting sandbox", func() {
@@ -191,7 +191,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			// Verify sandbox was deleted (confirms timeout path with Delete policy)
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(err).To(Satisfy(errors.IsNotFound))
 			_ = originalUID // Used to confirm we're talking about the right sandbox
 		})
 

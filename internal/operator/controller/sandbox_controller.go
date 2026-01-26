@@ -93,11 +93,12 @@ const (
 
 type SandboxReconciler struct {
 	client.Client
-	Scheme           *runtime.Scheme
-	Recorder         record.EventRecorder
-	AgentImage       string
-	RuntimeClassName string // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
-	Clock            Clock  // Clock interface for time operations, allows mocking in tests
+	Scheme            *runtime.Scheme
+	Recorder          record.EventRecorder
+	AgentImage        string
+	RuntimeClassName  string // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
+	PriorityClassName string // PriorityClassName to use for sandbox pods. Empty means use cluster default.
+	Clock             Clock  // Clock interface for time operations, allows mocking in tests
 }
 
 const (
@@ -186,15 +187,21 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// todo benl reduce verbose logging
 	log.Info("Creating Pod")
 
-	// Apply template labels first to prevent templates from overriding app, sandbox.isola.run/*, isola.run/*, etc.
+	// Apply template labels first, then override with standard Kubernetes labels.
+	// This prevents templates from overriding app.kubernetes.io/*, isola.run/*, etc.
 	labels := make(map[string]string)
 	if template.Spec.PodTemplate.Labels != nil {
 		maps.Copy(labels, template.Spec.PodTemplate.Labels)
 	}
 
-	labels["app"] = "isola-sandbox"
-	labels["sandbox.isola.run/id"] = sandbox.Name
+	// Standard Kubernetes recommended labels (https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
+	labels["app.kubernetes.io/name"] = "isola-sandbox"
+	labels["app.kubernetes.io/instance"] = sandbox.Name
+	labels["app.kubernetes.io/component"] = "sandbox"
+	labels["app.kubernetes.io/part-of"] = "isola"
 	labels["app.kubernetes.io/managed-by"] = "isola-operator"
+
+	labels["sandbox.isola.run/id"] = sandbox.Name
 	labels["cluster-autoscaler.kubernetes.io/safe-to-evict"] = "false"
 
 	maps.Copy(labels, buildNetworkLabels(sandbox.Spec.Network))
@@ -231,16 +238,12 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		sandboxPod.Annotations["dev.gvisor.flag.overlay2"] = "root:self"
 	}
 
-	// Set hostname and subdomain to enable DNS-based addressing via headless service.
-	// Both are required for DNS to work: <hostname>.<subdomain>.<namespace>.svc.cluster.local
-	sandboxPod.Spec.Hostname = getSandboxPodName(sandbox)
-	sandboxPod.Spec.Subdomain = "sandbox-agents"
-
 	// Enable shared PID namespace so the isola agent can locate the main container and access it's filesystem via /proc/<pid>/root
 	sandboxPod.Spec.ShareProcessNamespace = ptr.To(true)
 
-	// Set high priority to prevent preemption by applicative non-sandbox pods
-	sandboxPod.Spec.PriorityClassName = "isola-sandbox"
+	if r.PriorityClassName != "" {
+		sandboxPod.Spec.PriorityClassName = r.PriorityClassName
+	}
 
 	configureDNS(sandboxPod, sandbox.Spec.Network)
 
@@ -565,6 +568,10 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 
 	podCondition := r.determinePodCondition(sandbox, sandboxPod)
 	conditions = append(conditions, podCondition)
+
+	if sandboxPod != nil {
+		sandbox.Status.PodIP = sandboxPod.Status.PodIP
+	}
 
 	networkCondition := r.determineNetworkCondition(sandbox)
 	conditions = append(conditions, networkCondition)
