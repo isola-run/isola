@@ -2,9 +2,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: isola-operator-leader-election
+  name: {{ include "isola-operator.fullname" . }}-leader-election
   labels:
-    app: isola-operator
+    {{- include "isola-operator.labels" . | nindent 4 }}
 rules:
 - apiGroups:
   - ""

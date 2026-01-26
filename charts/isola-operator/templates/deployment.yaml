@@ -1,12 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: isola-operator
+  name: {{ include "isola-operator.fullname" . }}
   labels:
-    app: isola-operator
-    control-plane: controller-manager
+    {{- include "isola-operator.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       {{- include "isola-operator.selectorLabels" . | nindent 6 }}
@@ -20,7 +19,7 @@ spec:
       labels:
         {{- include "isola-operator.selectorLabels" . | nindent 8 }}
     spec:
-      serviceAccountName: isola-operator
+      serviceAccountName: {{ include "isola-operator.serviceAccountName" . }}
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -32,6 +31,8 @@ spec:
       terminationGracePeriodSeconds: 10
       containers:
       - name: manager
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: IfNotPresent
         command:
         - /manager
         args:
@@ -41,40 +42,35 @@ spec:
         {{- if .Values.runtimeClassName }}
         - --runtime-class={{ .Values.runtimeClassName }}
         {{- end }}
+        ports:
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
         securityContext:
           capabilities:
             drop:
             - ALL
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        imagePullPolicy: IfNotPresent
-        ports: []
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8081
-          initialDelaySeconds: 15
-          periodSeconds: 20
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: 8081
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        resources:
-          {{- toYaml .Values.resources | nindent 10 }}
         env:
         {{- if .Values.snapshot.storage.bucketUrl }}
         - name: ISOLA_SNAPSHOT_BUCKET_URL
           value: {{ .Values.snapshot.storage.bucketUrl | quote }}
-        {{- /* Determine which secret to use for snapshot credentials */ -}}
-        {{- $credentialSecretName := "" }}
-        {{- if .Values.snapshot.storage.credentials.existingSecret }}
-        {{- $credentialSecretName = .Values.snapshot.storage.credentials.existingSecret }}
-        {{- else if and .Values.snapshot.storage.credentials.accessKeyId .Values.snapshot.storage.credentials.secretAccessKey }}
-        {{- $credentialSecretName = "isola-snapshot-credentials" }}
-        {{- end }}
+        {{- $credentialSecretName := include "isola-operator.snapshotCredentialSecretName" . }}
         {{- if $credentialSecretName }}
         - name: ISOLA_SNAPSHOT_CREDENTIAL_SECRET
           value: {{ $credentialSecretName | quote }}
