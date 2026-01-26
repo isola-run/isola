@@ -187,15 +187,21 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// todo benl reduce verbose logging
 	log.Info("Creating Pod")
 
-	// Apply template labels first to prevent templates from overriding app, sandbox.isola.run/*, isola.run/*, etc.
+	// Apply template labels first, then override with standard Kubernetes labels.
+	// This prevents templates from overriding app.kubernetes.io/*, isola.run/*, etc.
 	labels := make(map[string]string)
 	if template.Spec.PodTemplate.Labels != nil {
 		maps.Copy(labels, template.Spec.PodTemplate.Labels)
 	}
 
-	labels["app"] = "isola-sandbox"
-	labels["sandbox.isola.run/id"] = sandbox.Name
+	// Standard Kubernetes recommended labels (https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
+	labels["app.kubernetes.io/name"] = "isola-sandbox"
+	labels["app.kubernetes.io/instance"] = sandbox.Name
+	labels["app.kubernetes.io/component"] = "sandbox"
+	labels["app.kubernetes.io/part-of"] = "isola"
 	labels["app.kubernetes.io/managed-by"] = "isola-operator"
+
+	labels["sandbox.isola.run/id"] = sandbox.Name
 	labels["cluster-autoscaler.kubernetes.io/safe-to-evict"] = "false"
 
 	maps.Copy(labels, buildNetworkLabels(sandbox.Spec.Network))

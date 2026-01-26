@@ -11,7 +11,8 @@ metadata:
 spec:
   clusterIP: None
   selector:
-    app: isola-sandbox
+    app.kubernetes.io/name: isola-sandbox
+    app.kubernetes.io/managed-by: isola-operator
   ports:
     - name: agent
       port: 8080

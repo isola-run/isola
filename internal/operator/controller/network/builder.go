@@ -21,7 +21,7 @@ network configurations (custom CIDRs, pod egress rules, or custom DNS).
 # Architecture
 
 Most sandboxes use static Helm-installed NetworkPolicies based on pod labels:
-  - sandbox-default-deny: Denies all traffic for pods with app=isola-sandbox
+  - sandbox-default-deny: Denies all traffic for pods with app.kubernetes.io/name=isola-sandbox
   - sandbox-allow-internet: Allows internet egress for pods with isola.run/allow-internet=true
   - sandbox-allow-cluster-dns: Allows cluster DNS for pods with isola.run/allow-cluster-dns=true
 
