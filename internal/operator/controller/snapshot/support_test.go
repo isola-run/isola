@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -116,22 +117,19 @@ func TestCheckRootfsSnapshotSupport(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
 			objs := tt.runtimeClasses
 			c := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objs...).Build()
 
 			supported, err := CheckRootfsSnapshotSupport(context.Background(), c, tt.pod)
 
 			if tt.wantErr {
-				if err == nil {
-					t.Errorf("CheckRootfsSnapshotSupport() expected error, got nil")
-				}
-			} else if err != nil {
-				t.Errorf("CheckRootfsSnapshotSupport() unexpected error = %v", err)
+				g.Expect(err).To(HaveOccurred())
+			} else {
+				g.Expect(err).ToNot(HaveOccurred())
 			}
 
-			if supported != tt.wantSupported {
-				t.Errorf("CheckRootfsSnapshotSupport() supported = %v, want %v", supported, tt.wantSupported)
-			}
+			g.Expect(supported).To(Equal(tt.wantSupported))
 		})
 	}
 }
