@@ -97,12 +97,16 @@ test-operator: ## Run operator tests (supports FOCUS=pattern)
 test-api: ## Run isola-api tests (supports FOCUS=pattern)
 	go test ./internal/api/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
 
+.PHONY: test-sidecar
+test-sidecar: ## Run isola-sidecar tests (supports FOCUS=pattern)
+	go test ./internal/sidecar/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
+
 ##@ Build
 
 .PHONY: build
 build: ## Build all binaries
 	go build -o bin/operator ./cmd/operator
-	go build -o bin/agent ./cmd/agent
+	go build -o bin/isola-sidecar ./cmd/isola-sidecar
 	go build -o bin/uploader ./cmd/uploader
 	go build -o bin/isola-api ./cmd/isola-api
 

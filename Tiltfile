@@ -13,9 +13,9 @@ allow_k8s_contexts('kind-isola-dev')
 default_registry('localhost:5001')
 
 # Suppress warning for images that are built but deployed indirectly
-# - isola-agent: used as sidecar, injected by operator
+# - isola-sidecar: injected by operator into sandbox pods
 # - isola-uploader: used by triggered snapshot jobs
-update_settings(suppress_unused_image_warnings=["isola-agent", "isola-uploader"])
+update_settings(suppress_unused_image_warnings=["isola-sidecar", "isola-uploader"])
 
 # ==============================================================================
 # LocalStack (S3 storage backend)
@@ -62,16 +62,16 @@ helm_resource(
         '-f', 'charts/isola-operator/values-dev.yaml',
         '--set', 'image.repository=isola-operator',
         '--set', 'image.tag=latest',
-        '--set', 'agentImage=isola-agent:dev',
+        '--set', 'sidecarImage=isola-sidecar:dev',
         '--set', 'snapshot.uploaderImage=isola-uploader:dev',
     ],
     # image_deps and image-keys instruct tilt on how to patch the helm charts with the newly built images
     # in values.yaml, new isola-operator image should patch image.{repository, tag}
-    # while once a new agentImage is built, the agentImage: (string value) needs to be patched
-    image_deps=['isola-operator', 'isola-agent', 'isola-uploader'],
+    # while once a new sidecarImage is built, the sidecarImage: (string value) needs to be patched
+    image_deps=['isola-operator', 'isola-sidecar', 'isola-uploader'],
     image_keys=[
         ('image.repository', 'image.tag'),
-        'agentImage',
+        'sidecarImage',
         'snapshot.uploaderImage',
     ],
     deps=['charts/isola-operator'],
@@ -132,16 +132,16 @@ docker_build(
 )
 
 # ==============================================================================
-# isola-agent (sidecar - built but deployed by operator)
+# isola-sidecar (injected by operator into sandbox pods)
 # ==============================================================================
 
 docker_build(
-    'isola-agent',
+    'isola-sidecar',
     context='.',
-    dockerfile='cmd/agent/Dockerfile',
+    dockerfile='cmd/isola-sidecar/Dockerfile',
     only=[
-        'cmd/agent/',
-        'internal/agent/',
+        'cmd/isola-sidecar/',
+        'internal/sidecar/',
         'internal/logging/',
         'go.mod',
         'go.sum',
