@@ -102,10 +102,6 @@ type ContainerSnapshotStatus struct {
 	// +optional
 	ContainerID string `json:"containerID,omitempty"`
 
-	// SnapshotURI is the full bucket URI where the snapshot tarball is stored
-	// +optional
-	SnapshotURI string `json:"snapshotURI,omitempty"`
-
 	// SnapshotKey is the object key within the bucket (without the bucket URL prefix)
 	// +optional
 	SnapshotKey string `json:"snapshotKey,omitempty"`

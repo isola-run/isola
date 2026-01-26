@@ -111,9 +111,8 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(snap.Status.ContainerSnapshots).To(HaveLen(1))
 			Expect(snap.Status.ContainerSnapshots[0].ContainerName).To(Equal("sandbox"))
 			Expect(snap.Status.ContainerSnapshots[0].ContainerID).To(Equal("abc123"))
-			// SnapshotKey and URI are empty until job completes with termination message
+			// SnapshotKey is empty until job completes with termination message
 			Expect(snap.Status.ContainerSnapshots[0].SnapshotKey).To(BeEmpty())
-			Expect(snap.Status.ContainerSnapshots[0].SnapshotURI).To(BeEmpty())
 			// Revision is 0 until job completes and reports actual revision
 			Expect(snap.Status.Revision).To(Equal(int32(0)))
 		})

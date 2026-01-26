@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -329,12 +328,6 @@ func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *bat
 	return nil, fmt.Errorf("uploader container not found or not terminated")
 }
 
-// buildSnapshotURI constructs a display URI for a snapshot (e.g., s3://bucket/key).
-// BucketURL is validated at controller startup, so parse errors are not expected.
-func (r *RootfsSnapshotReconciler) buildSnapshotURI(snapshotKey string) string {
-	u, _ := url.Parse(r.BucketURL)
-	return fmt.Sprintf("%s://%s/%s", u.Scheme, u.Host, snapshotKey)
-}
 
 // getSnapshotSizeLimit returns the ephemeral storage limit for a container.
 // With gVisor's root:self overlay2, the rootfs upper layer is stored on disk
@@ -571,7 +564,6 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap 
 		snap.Status.Revision = result.Revision
 		if len(snap.Status.ContainerSnapshots) > 0 {
 			snap.Status.ContainerSnapshots[0].SnapshotKey = result.SnapshotKey
-			snap.Status.ContainerSnapshots[0].SnapshotURI = r.buildSnapshotURI(result.SnapshotKey)
 		}
 	}
 
