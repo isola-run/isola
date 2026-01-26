@@ -20,8 +20,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	. "github.com/onsi/gomega"
 )
 
 func TestPrefixContains(t *testing.T) {
@@ -95,10 +94,11 @@ func TestPrefixContains(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			g := NewGomegaWithT(t)
 			outer := netip.MustParsePrefix(tt.outer)
 			inner := netip.MustParsePrefix(tt.inner)
 			result := prefixContains(outer, inner)
-			assert.Equal(t, tt.expected, result)
+			g.Expect(result).To(Equal(tt.expected))
 		})
 	}
 }
@@ -187,26 +187,27 @@ func TestComputeExcept(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			g := NewGomegaWithT(t)
 			prefix := netip.MustParsePrefix(tt.allowed)
 			except, err := ComputeExcept(prefix)
 
 			if tt.expectError {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorContains)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring(tt.errorContains))
 				return
 			}
 
-			require.NoError(t, err)
+			g.Expect(err).NotTo(HaveOccurred())
 
 			if tt.expectedExcept == nil {
-				assert.Empty(t, except)
+				g.Expect(except).To(BeEmpty())
 			} else {
 				// Convert to strings for comparison
 				var exceptStrs []string
 				for _, p := range except {
 					exceptStrs = append(exceptStrs, p.String())
 				}
-				assert.ElementsMatch(t, tt.expectedExcept, exceptStrs)
+				g.Expect(exceptStrs).To(ConsistOf(tt.expectedExcept))
 			}
 		})
 	}
@@ -248,39 +249,42 @@ func TestParsePrefix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			g := NewGomegaWithT(t)
 			prefix, err := ParsePrefix(tt.cidr)
 
 			if tt.expectError {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorContains)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring(tt.errorContains))
 				return
 			}
 
-			require.NoError(t, err)
-			assert.Equal(t, tt.expectedCIDR, prefix.String())
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(prefix.String()).To(Equal(tt.expectedCIDR))
 		})
 	}
 }
 
 func TestIPv4DoesNotGetIPv6Except(t *testing.T) {
+	g := NewGomegaWithT(t)
 	// Ensure IPv4 allowed never gets IPv6 blocked CIDRs in except
 	prefix := netip.MustParsePrefix("0.0.0.0/0")
 	except, err := ComputeExcept(prefix)
-	require.NoError(t, err)
+	g.Expect(err).NotTo(HaveOccurred())
 
 	for _, p := range except {
-		assert.True(t, p.Addr().Is4(), "IPv4 allowed should not have IPv6 in except: %s", p)
+		g.Expect(p.Addr().Is4()).To(BeTrue(), "IPv4 allowed should not have IPv6 in except: %s", p)
 	}
 }
 
 func TestIPv6DoesNotGetIPv4Except(t *testing.T) {
+	g := NewGomegaWithT(t)
 	// Ensure IPv6 allowed never gets IPv4 blocked CIDRs in except
 	prefix := netip.MustParsePrefix("::/0")
 	except, err := ComputeExcept(prefix)
-	require.NoError(t, err)
+	g.Expect(err).NotTo(HaveOccurred())
 
 	for _, p := range except {
-		assert.True(t, p.Addr().Is6(), "IPv6 allowed should not have IPv4 in except: %s", p)
+		g.Expect(p.Addr().Is6()).To(BeTrue(), "IPv6 allowed should not have IPv4 in except: %s", p)
 	}
 }
 
@@ -350,16 +354,17 @@ func TestParseDNSServerIP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			g := NewGomegaWithT(t)
 			addr, err := ParseDNSServerIP(tt.ip)
 
 			if tt.expectError {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorContains)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring(tt.errorContains))
 				return
 			}
 
-			require.NoError(t, err)
-			assert.Equal(t, tt.expectedIP, addr.String())
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(addr.String()).To(Equal(tt.expectedIP))
 		})
 	}
 }
