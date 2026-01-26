@@ -80,6 +80,41 @@ helm_resource(
 )
 
 # ==============================================================================
+# isola-api
+# ==============================================================================
+
+docker_build(
+    'isola-api',
+    context='.',
+    dockerfile='cmd/isola-api/Dockerfile',
+    only=[
+        'api/',
+        'cmd/isola-api/',
+        'internal/api/',
+        'internal/logging/',
+        'go.mod',
+        'go.sum',
+    ]
+)
+
+helm_resource(
+    name='isola-api',
+    chart='charts/isola-api',
+    namespace='isola-system',
+    flags=[
+        '--create-namespace',
+        '-f', 'charts/isola-api/values-dev.yaml',
+        '--set', 'image.repository=isola-api',
+        '--set', 'image.tag=latest',
+    ],
+    image_deps=['isola-api'],
+    image_keys=[('image.repository', 'image.tag')],
+    deps=['charts/isola-api'],
+    resource_deps=['isola-operator'],
+    labels=['isola'],
+)
+
+# ==============================================================================
 # isola-uploader (snapshot uploader - built but deployed by operator via Jobs)
 # ==============================================================================
 
@@ -90,6 +125,7 @@ docker_build(
     only=[
         'cmd/uploader/',
         'internal/snapshot/',
+        'internal/logging/',
         'go.mod',
         'go.sum',
     ]
@@ -106,52 +142,10 @@ docker_build(
     only=[
         'cmd/agent/',
         'internal/agent/',
+        'internal/logging/',
         'go.mod',
         'go.sum',
     ]
-)
-
-# ==============================================================================
-# isola-gw (API Gateway)
-# ==============================================================================
-
-docker_build(
-    'isola-gw',
-    context='.',
-    dockerfile='cmd/gateway/Dockerfile',
-    only=[
-        'cmd/gateway/',
-        'internal/gateway/',
-        'go.mod',
-        'go.sum',
-    ]
-)
-
-helm_resource(
-    'isola-gw',
-    'charts/isola-gw',
-    namespace='isola-system',
-    flags=[
-        '--create-namespace',
-        '-f', 'charts/isola-gw/values-dev.yaml',
-        '--set', 'image.repository=isola-gw',
-        '--set', 'image.tag=latest',
-    ],
-    image_deps=['isola-gw'],
-    image_keys=[('image.repository', 'image.tag')],
-    resource_deps=['isola-operator', 'localstack'],
-    deps=['charts/isola-gw'],
-    labels=['isola'],
-)
-
-# ==============================================================================
-# Port Forward
-# ==============================================================================
-
-k8s_resource(
-    workload='isola-gw',
-    port_forwards=['30080:8080'],
-    labels=['isola'],
 )
 
 # ==============================================================================

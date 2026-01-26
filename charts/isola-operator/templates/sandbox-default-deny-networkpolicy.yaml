@@ -1,15 +1,12 @@
-# Default deny policy for all sandbox pods.
-# Denies all ingress and egress by default - other policies add specific allowances.
----
+# Default deny policy for all sandbox pods
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: sandbox-default-deny
-  namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  namespace: {{ .Values.sandboxNamespace }}
   labels:
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/name: isola-operator
-    app.kubernetes.io/component: network-policy
+    {{- include "isola-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
 spec:
   podSelector:
     matchLabels:
@@ -17,6 +14,5 @@ spec:
   policyTypes:
     - Ingress
     - Egress
-  # Empty rules = deny all
   ingress: []
   egress: []

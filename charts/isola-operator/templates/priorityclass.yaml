@@ -3,8 +3,9 @@ kind: PriorityClass
 metadata:
   name: isola-sandbox
   labels:
-    app: isola-operator
+    {{- include "isola-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
 value: 900000000
 globalDefault: false
 preemptionPolicy: PreemptLowerPriority
-description: "High priority for isola sandbox pods to prevent preemption by applicative non-sandbox pods"
+description: "High priority for sandbox pods to prevent preemption"

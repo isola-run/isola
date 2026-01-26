@@ -11,8 +11,21 @@ help: ## Display this help
 
 ##@ Development
 
+.PHONY: generate-api
+generate-api: ## Generate isola-api OpenAPI code
+	go generate ./cmd/isola-api/...
+
+.PHONY: check-api-codegen
+check-api-codegen: generate-api ## Verify isola-api OpenAPI code is up-to-date
+	@if ! git diff --quiet -- api/openapi.yaml internal/api/generated/; then \
+		echo "ERROR: API generated code is out of sync with spec"; \
+		echo "Run 'make generate-api' and commit the changes"; \
+		git diff --stat -- api/openapi.yaml internal/api/generated/; \
+		exit 1; \
+	fi
+
 .PHONY: generate
-generate: ## Generate code (DeepCopy methods)
+generate: generate-api ## Generate all code (CRD DeepCopy + OpenAPI)
 	controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 
 .PHONY: manifests
@@ -47,38 +60,51 @@ tidy: ## Run go mod tidy
 	go mod tidy
 
 .PHONY: check-all
-check-all: vet lint vulncheck ## Run all checks (read-only, CI-safe)
+check-all: vet lint vulncheck check-api-codegen ## Run all checks (read-only, CI-safe)
 
 .PHONY: fix-all
 fix-all: fmt lint-fix ## Fix all auto-fixable issues
 
 ##@ Testing
+#
+# Variables for test filtering (following Cluster API / Kubernetes patterns):
+#   FOCUS        - Ginkgo focus pattern (e.g., FOCUS="Reconcile")
+#   SKIP         - Ginkgo skip pattern
+#   GO_TEST_FLAGS - Additional go test flags (e.g., GO_TEST_FLAGS="-race")
 
 ENVTEST_K8S_VERSION ?= 1.34
+FOCUS ?=
+SKIP ?=
+GO_TEST_FLAGS ?=
 
 .PHONY: test
-test: ## Run tests
+test: ## Run all tests
 	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
-		go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+		go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out $(GO_TEST_FLAGS)
 
 .PHONY: test-verbose
-test-verbose: ## Run tests with verbose output
+test-verbose: ## Run all tests with verbose output
 	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
-		go test ./internal/operator/controller/... -v -ginkgo.v -coverprofile cover.out
+		go test $$(go list ./... | grep -v /e2e) -v -coverprofile cover.out $(GO_TEST_FLAGS)
 
-.PHONY: test-focus
-test-focus: ## Run tests matching FOCUS pattern
+.PHONY: test-operator
+test-operator: ## Run operator tests (supports FOCUS=pattern)
 	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
-		go test ./internal/operator/controller/... -v -ginkgo.v -ginkgo.focus="$(FOCUS)"
+		go test $(if $(FOCUS),./internal/operator/controller,./internal/operator/...) -v \
+		$(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
+
+.PHONY: test-api
+test-api: ## Run isola-api tests (supports FOCUS=pattern)
+	go test ./internal/api/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
 
 ##@ Build
 
 .PHONY: build
 build: ## Build all binaries
 	go build -o bin/operator ./cmd/operator
-	go build -o bin/gateway ./cmd/gateway
 	go build -o bin/agent ./cmd/agent
 	go build -o bin/uploader ./cmd/uploader
+	go build -o bin/isola-api ./cmd/isola-api
 
 .PHONY: run-operator
 run-operator: ## Run operator from your host

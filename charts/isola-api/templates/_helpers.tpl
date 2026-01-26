@@ -1,14 +1,14 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "isola-operator.name" -}}
+{{- define "isola-api.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create a default fully qualified app name.
 */}}
-{{- define "isola-operator.fullname" -}}
+{{- define "isola-api.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -24,16 +24,16 @@ Create a default fully qualified app name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "isola-operator.chart" -}}
+{{- define "isola-api.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "isola-operator.labels" -}}
-helm.sh/chart: {{ include "isola-operator.chart" . }}
-{{ include "isola-operator.selectorLabels" . }}
+{{- define "isola-api.labels" -}}
+helm.sh/chart: {{ include "isola-api.chart" . }}
+{{ include "isola-api.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -43,30 +43,30 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "isola-operator.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "isola-operator.name" . }}
+{{- define "isola-api.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "isola-api.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 Create the name of the service account to use
 */}}
-{{- define "isola-operator.serviceAccountName" -}}
+{{- define "isola-api.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "isola-operator.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "isola-api.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
 
 {{/*
-Determine the credential secret name for snapshots
+Determine the credential secret name
 Returns empty string if no credentials are configured (pod identity mode)
 */}}
-{{- define "isola-operator.snapshotCredentialSecretName" -}}
-{{- if .Values.snapshot.storage.credentials.existingSecret }}
-{{- .Values.snapshot.storage.credentials.existingSecret }}
-{{- else if and .Values.snapshot.storage.credentials.accessKeyId .Values.snapshot.storage.credentials.secretAccessKey }}
-{{- printf "%s-snapshot-credentials" (include "isola-operator.fullname" .) }}
+{{- define "isola-api.credentialSecretName" -}}
+{{- if .Values.storage.credentials.existingSecret }}
+{{- .Values.storage.credentials.existingSecret }}
+{{- else if and .Values.storage.credentials.accessKeyId .Values.storage.credentials.secretAccessKey }}
+{{- printf "%s-storage-credentials" (include "isola-api.fullname" .) }}
 {{- end }}
 {{- end }}

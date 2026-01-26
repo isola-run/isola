@@ -1,15 +1,12 @@
-# Allow cluster DNS egress for sandbox pods with isola.run/allow-cluster-dns=true label.
-# Allows egress to kube-dns/CoreDNS in kube-system namespace on port 53.
----
+# Allow cluster DNS egress for sandbox pods with isola.run/allow-cluster-dns=true label
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: sandbox-allow-cluster-dns
-  namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  namespace: {{ .Values.sandboxNamespace }}
   labels:
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/name: isola-operator
-    app.kubernetes.io/component: network-policy
+    {{- include "isola-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
 spec:
   podSelector:
     matchLabels:

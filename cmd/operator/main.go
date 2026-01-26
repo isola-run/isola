@@ -64,8 +64,8 @@ func main() {
 	var tlsOpts []func(*tls.Config)
 	var agentImage string
 	var runtimeClassName string
-	var isolaGatewayNamespace string
-	var isolaGatewayLabelName string
+	var isolaAPINamespace string
+	var isolaAPILabelName string
 	var snapshotBucketURL string
 	var snapshotCredentialSecret string
 	var snapshotUploaderImage string
@@ -89,8 +89,8 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&agentImage, "agent-image", "isola-agent:latest", "Container image for the isola-agent sidecar")
 	flag.StringVar(&runtimeClassName, "runtime-class", "", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
-	flag.StringVar(&isolaGatewayNamespace, "gateway-namespace", "isola-system", "Namespace where isola-gw runs (for NetworkPolicy ingress rules)")
-	flag.StringVar(&isolaGatewayLabelName, "gateway-label-name", "isola-gw", "Value of app.kubernetes.io/name label for isola-gw pods")
+	flag.StringVar(&isolaAPINamespace, "api-namespace", "isola-system", "Namespace where isola-api runs (for NetworkPolicy ingress rules)")
+	flag.StringVar(&isolaAPILabelName, "api-label-name", "isola-api", "Value of app.kubernetes.io/name label for isola-api pods")
 	flag.StringVar(&snapshotBucketURL, "snapshot-bucket-url", os.Getenv("ISOLA_SNAPSHOT_BUCKET_URL"), "Bucket URL for snapshot storage (e.g., s3://bucket?region=us-east-1)")
 	flag.StringVar(&snapshotCredentialSecret, "snapshot-credential-secret", os.Getenv("ISOLA_SNAPSHOT_CREDENTIAL_SECRET"), "Secret name for bucket credentials (optional, uses pod identity if not set)")
 	flag.StringVar(&snapshotUploaderImage, "snapshot-uploader-image", os.Getenv("ISOLA_UPLOADER_IMAGE"), "Container image for the snapshot uploader")

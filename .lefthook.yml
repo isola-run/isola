@@ -4,36 +4,12 @@
 pre-commit:
   parallel: true
   commands:
-    # isola-operator - lint on .go, .mod, .sum changes
-    lint-operator:
+    lint:
       skip:
         - run: "! command -v golangci-lint >/dev/null 2>&1"
-      glob: "services/isola-operator/**/*.{go,mod,sum}"
-      run: make -C services/isola-operator lint
+      glob: "**/*.{go,mod,sum}"
+      run: make lint
 
-    # isola-gw
-    lint-gw:
-      skip:
-        - run: "! command -v golangci-lint >/dev/null 2>&1"
-      glob: "services/isola-gw/**/*.{go,mod,sum}"
-      run: make -C services/isola-gw lint
-
-    # isola-agent
-    lint-agent:
-      skip:
-        - run: "! command -v golangci-lint >/dev/null 2>&1"
-      glob: "services/isola-agent/**/*.{go,mod,sum}"
-      run: make -C services/isola-agent lint
-
-    # go mod tidy - only when go.mod/go.sum change
-    tidy-operator:
-      glob: "services/isola-operator/{go.mod,go.sum}"
-      run: cd services/isola-operator && go mod tidy && git add go.mod go.sum
-
-    tidy-gw:
-      glob: "services/isola-gw/{go.mod,go.sum}"
-      run: cd services/isola-gw && go mod tidy && git add go.mod go.sum
-
-    tidy-agent:
-      glob: "services/isola-agent/{go.mod,go.sum}"
-      run: cd services/isola-agent && go mod tidy && git add go.mod go.sum
+    tidy:
+      glob: "{go.mod,go.sum}"
+      run: go mod tidy && git add go.mod go.sum
