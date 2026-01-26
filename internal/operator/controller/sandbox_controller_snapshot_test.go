@@ -100,7 +100,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Eventually(recorder.Events).Should(Receive(ContainSubstring("RuntimeNotSupported")))
 
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 
 		It("should skip snapshot when runtime handler is not supported", func() {
@@ -161,7 +161,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			// Sandbox deleted after snapshot skipped
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 
 		It("should create RootfsSnapshot for supported runtime (runsc)", func() {
@@ -277,7 +277,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 
 		It("should mark snapshot complete when RootfsSnapshot Ready=True", func() {
@@ -356,7 +356,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			// Sandbox deleted after successful snapshot
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 
 		It("should mark snapshot failed when RootfsSnapshot fails", func() {
@@ -418,7 +418,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 
 		It("should use default activeDeadlineSeconds when not specified", func() {

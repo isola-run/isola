@@ -10,7 +10,8 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: isola-sandbox
+      app.kubernetes.io/name: isola-sandbox
+      app.kubernetes.io/managed-by: isola-operator
   policyTypes:
     - Ingress
     - Egress

@@ -172,6 +172,10 @@ type SandboxStatus struct {
 	// It is set by the controller (derived from template timeout + chosen start time).
 	// +optional
 	TimeoutAt *metav1.Time `json:"timeoutAt,omitempty"`
+
+	// PodIP is the IP address of the sandbox pod.
+	// +optional
+	PodIP string `json:"podIP,omitempty"`
 }
 
 // +kubebuilder:object:root=true

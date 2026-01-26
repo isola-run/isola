@@ -11,6 +11,7 @@ REGISTRY_PORT="${REGISTRY_PORT:-5001}"
 GOLANGCI_LINT_VERSION="v2.8.0"
 GOVULNCHECK_VERSION="v1.1.4"
 SETUP_ENVTEST_VERSION="v0.23.0"
+CONTROLLER_GEN_VERSION="v0.20.0"
 LEFTHOOK_VERSION="v2.0.15"
 GVISOR_VERSION="20260112"
 
@@ -118,6 +119,7 @@ fi
 check_optional_tool "lefthook" "Install: go install github.com/evilmartians/lefthook/v2@${LEFTHOOK_VERSION}" && HAS_LEFTHOOK=1
 
 check_optional_tool "setup-envtest" "Install: go install sigs.k8s.io/controller-runtime/tools/setup-envtest@${SETUP_ENVTEST_VERSION}"
+check_optional_tool "controller-gen" "Install: go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}"
 
 # https://kind.sigs.k8s.io/docs/user/local-registry/
 echo ""
