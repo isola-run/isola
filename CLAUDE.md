@@ -6,6 +6,7 @@
 # Lint/format (from repo root)
 make check-all          # vet + lint + vulncheck (CI-safe)
 make fix-all            # Auto-fix formatting and lint issues
+make nilaway            # Run NilAway nil-safety analysis (requires custom-gcl)
 
 # Testing
 make test               # Unit tests with coverage
@@ -132,6 +133,7 @@ Tool versions are pinned and must be kept in sync:
 | envtest K8s | `Makefile` | k8s.io/api in go.mod |
 | lefthook | `hack/setup.sh` | - |
 | gVisor | `hack/setup.sh` | `.github/workflows/e2e.yml` |
+| nilaway | `.custom-gcl.yml` | - |
 
 ## Comment Policy
 

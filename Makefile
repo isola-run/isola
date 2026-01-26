@@ -51,6 +51,14 @@ lint: ## Run golangci-lint
 lint-fix: ## Run golangci-lint --fix
 	golangci-lint run --fix
 
+.PHONY: custom-gcl
+custom-gcl: ## Build custom golangci-lint with NilAway
+	golangci-lint custom
+
+.PHONY: nilaway
+nilaway: custom-gcl ## Run NilAway nil-safety analysis
+	./custom-gcl run -c .golangci-nilaway.yml
+
 .PHONY: vulncheck
 vulncheck: ## Run govulncheck
 	govulncheck ./...

@@ -1,0 +1,25 @@
+version: "2"
+
+run:
+  allow-parallel-runners: true
+  timeout: 10m
+
+linters:
+  default: none
+  enable:
+    - nilaway
+
+  settings:
+    custom:
+      nilaway:
+        type: module
+        description: Static analysis tool to detect potential nil panics in Go code.
+        settings:
+          include-pkgs: github.com/isola-ai/isola-sb
+
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
