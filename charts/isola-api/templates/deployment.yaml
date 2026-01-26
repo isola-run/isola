@@ -32,8 +32,7 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: IfNotPresent
           args:
-            - --http-addr=:8080
-            - --log-level={{ .Values.logging.level }}
+            - -log-level={{ .Values.logging.level }}
             {{- if .Values.logging.devMode }}
             - --dev
             {{- end }}
