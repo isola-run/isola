@@ -569,6 +569,10 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	podCondition := r.determinePodCondition(sandbox, sandboxPod)
 	conditions = append(conditions, podCondition)
 
+	if sandboxPod != nil {
+		sandbox.Status.PodIP = sandboxPod.Status.PodIP
+	}
+
 	networkCondition := r.determineNetworkCondition(sandbox)
 	conditions = append(conditions, networkCondition)
 
