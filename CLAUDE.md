@@ -9,7 +9,8 @@ make fix-all            # Auto-fix formatting and lint issues
 
 # Testing
 make test               # Unit tests with coverage
-make test-focus FOCUS="TestName"  # Run specific test
+make test-operator FOCUS="TestName"  # Run focused operator test
+make test-api           # Run isola-api tests
 make generate           # Regenerate DeepCopy methods after CRD changes
 make manifests          # Regenerate CRD YAML after CRD changes
 
@@ -104,9 +105,20 @@ The generated code is committed to the repo. CI runs `make check-api-codegen` to
 ## Testing
 
 **Go tests:** Ginkgo/Gomega with envtest (K8s API simulation)
+
 ```bash
-make test
+make test                            # Run all tests
+make test-verbose                    # All tests with verbose output
+make test-operator                   # Operator tests only
+make test-api                        # isola-api tests only
+make test-operator FOCUS="Reconcile" # Focused by Ginkgo pattern
+make test GO_TEST_FLAGS="-race"      # With race detector
 ```
+
+**Variables** (following Cluster API / Kubernetes patterns):
+- `FOCUS` - Ginkgo focus pattern for component targets
+- `SKIP` - Ginkgo skip pattern
+- `GO_TEST_FLAGS` - Additional go test flags
 
 ## Tooling Versions
 
