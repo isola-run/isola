@@ -10,7 +10,7 @@ env:
   KIND_CLUSTER_NAME: isola-e2e
   # Image names (no registry prefix - loaded directly into Kind)
   OPERATOR_IMAGE: isola-operator
-  AGENT_IMAGE: isola-agent
+  SIDECAR_IMAGE: isola-sidecar
   UPLOADER_IMAGE: isola-uploader
   API_IMAGE: isola-api
 
@@ -38,15 +38,15 @@ jobs:
           cache-from: type=gha,scope=operator
           cache-to: type=gha,mode=max,scope=operator
 
-      - name: Build isola-agent image
+      - name: Build isola-sidecar image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: cmd/agent/Dockerfile
+          file: cmd/isola-sidecar/Dockerfile
           load: true
-          tags: ${{ env.AGENT_IMAGE }}:ci
-          cache-from: type=gha,scope=agent
-          cache-to: type=gha,mode=max,scope=agent
+          tags: ${{ env.SIDECAR_IMAGE }}:ci
+          cache-from: type=gha,scope=sidecar
+          cache-to: type=gha,mode=max,scope=sidecar
 
       - name: Build isola-uploader image
         uses: docker/build-push-action@v5
@@ -117,7 +117,7 @@ jobs:
       - name: Load images into Kind
         run: |
           kind load docker-image ${{ env.OPERATOR_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
-          kind load docker-image ${{ env.AGENT_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.SIDECAR_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.UPLOADER_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.API_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
 
@@ -142,7 +142,7 @@ jobs:
             -f charts/isola-operator/values-dev.yaml \
             --set image.tag=ci \
             --set image.pullPolicy=Never \
-            --set agentImage=${{ env.AGENT_IMAGE }}:ci \
+            --set sidecarImage=${{ env.SIDECAR_IMAGE }}:ci \
             --set snapshot.uploaderImage=${{ env.UPLOADER_IMAGE }}:ci \
             --wait --timeout 3m
 
