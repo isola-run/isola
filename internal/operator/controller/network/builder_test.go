@@ -19,8 +19,7 @@ package network
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,134 +28,143 @@ import (
 )
 
 func TestBuildCustomNetworkPolicy_NilNetwork(t *testing.T) {
+	g := NewWithT(t)
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", nil)
-	require.NoError(t, err)
-	assert.Nil(t, np)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).To(BeNil())
 }
 
 func TestBuildCustomNetworkPolicy_EmptyNetwork(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
-	assert.Nil(t, np, "empty network should not create policy")
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).To(BeNil(), "empty network should not create policy")
 }
 
 func TestBuildCustomNetworkPolicy_WithAllowedEgressCIDRs(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
-	require.NotNil(t, np)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).ToNot(BeNil())
 
-	assert.Equal(t, "test-sandbox-custom-netpol", np.Name)
-	assert.Equal(t, "default", np.Namespace)
-	assert.Equal(t, "test-sandbox", np.Labels[SandboxIDLabelKey])
-	assert.Equal(t, "test-sandbox", np.Spec.PodSelector.MatchLabels[SandboxIDLabelKey])
-	assert.Contains(t, np.Spec.PolicyTypes, networkingv1.PolicyTypeEgress)
+	g.Expect(np.Name).To(Equal("test-sandbox-custom-netpol"))
+	g.Expect(np.Namespace).To(Equal("default"))
+	g.Expect(np.Labels[SandboxIDLabelKey]).To(Equal("test-sandbox"))
+	g.Expect(np.Spec.PodSelector.MatchLabels[SandboxIDLabelKey]).To(Equal("test-sandbox"))
+	g.Expect(np.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeEgress))
 
-	require.Len(t, np.Spec.Egress, 1)
-	assert.Equal(t, "8.8.8.0/24", np.Spec.Egress[0].To[0].IPBlock.CIDR)
+	g.Expect(np.Spec.Egress).To(HaveLen(1))
+	g.Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
 }
 
 func TestBuildCustomNetworkPolicy_BlocksRiskyCIDRs(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		AllowedEgressCIDRs: []string{"0.0.0.0/0"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
-	require.NotNil(t, np)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).ToNot(BeNil())
 
-	require.Len(t, np.Spec.Egress, 1)
+	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	egressRule := np.Spec.Egress[0]
-	require.Len(t, egressRule.To, 1)
+	g.Expect(egressRule.To).To(HaveLen(1))
 
 	ipBlock := egressRule.To[0].IPBlock
-	assert.Equal(t, "0.0.0.0/0", ipBlock.CIDR)
+	g.Expect(ipBlock.CIDR).To(Equal("0.0.0.0/0"))
 
 	// Should block all private/internal CIDRs
-	assert.Contains(t, ipBlock.Except, "10.0.0.0/8")
-	assert.Contains(t, ipBlock.Except, "172.16.0.0/12")
-	assert.Contains(t, ipBlock.Except, "192.168.0.0/16")
-	assert.Contains(t, ipBlock.Except, "169.254.0.0/16")
+	g.Expect(ipBlock.Except).To(ContainElement("10.0.0.0/8"))
+	g.Expect(ipBlock.Except).To(ContainElement("172.16.0.0/12"))
+	g.Expect(ipBlock.Except).To(ContainElement("192.168.0.0/16"))
+	g.Expect(ipBlock.Except).To(ContainElement("169.254.0.0/16"))
 }
 
 func TestBuildCustomNetworkPolicy_DoesNotBlockNonOverlappingCIDRs(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		AllowedEgressCIDRs: []string{"8.8.0.0/16"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
-	require.NotNil(t, np)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).ToNot(BeNil())
 
-	require.Len(t, np.Spec.Egress, 1)
+	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	ipBlock := np.Spec.Egress[0].To[0].IPBlock
-	assert.Equal(t, "8.8.0.0/16", ipBlock.CIDR)
-	assert.Empty(t, ipBlock.Except)
+	g.Expect(ipBlock.CIDR).To(Equal("8.8.0.0/16"))
+	g.Expect(ipBlock.Except).To(BeEmpty())
 }
 
 func TestBuildCustomNetworkPolicy_WithNameservers(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		Nameservers: []string{"8.8.8.8", "1.1.1.1"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
-	require.NotNil(t, np)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).ToNot(BeNil())
 
-	require.Len(t, np.Spec.Egress, 1)
+	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	dnsRule := np.Spec.Egress[0]
 
-	require.Len(t, dnsRule.To, 2)
+	g.Expect(dnsRule.To).To(HaveLen(2))
 	cidrs := []string{dnsRule.To[0].IPBlock.CIDR, dnsRule.To[1].IPBlock.CIDR}
-	assert.Contains(t, cidrs, "8.8.8.8/32")
-	assert.Contains(t, cidrs, "1.1.1.1/32")
+	g.Expect(cidrs).To(ContainElement("8.8.8.8/32"))
+	g.Expect(cidrs).To(ContainElement("1.1.1.1/32"))
 
-	require.Len(t, dnsRule.Ports, 2)
+	g.Expect(dnsRule.Ports).To(HaveLen(2))
 }
 
 func TestBuildCustomNetworkPolicy_NameserversWithInternetAccess(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		AllowAllInternet: true,
 		Nameservers:      []string{"8.8.8.8"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
+	g.Expect(err).ToNot(HaveOccurred())
 	// Custom policy created even with internet access - nameservers may be private IPs
 	// that fall within blocked ranges
-	require.NotNil(t, np)
-	require.Len(t, np.Spec.Egress, 1)
-	require.Len(t, np.Spec.Egress[0].Ports, 2)
+	g.Expect(np).ToNot(BeNil())
+	g.Expect(np.Spec.Egress).To(HaveLen(1))
+	g.Expect(np.Spec.Egress[0].Ports).To(HaveLen(2))
 	protocols := []corev1.Protocol{*np.Spec.Egress[0].Ports[0].Protocol, *np.Spec.Egress[0].Ports[1].Protocol}
-	assert.Contains(t, protocols, corev1.ProtocolUDP)
-	assert.Contains(t, protocols, corev1.ProtocolTCP)
-	assert.Equal(t, int32(53), np.Spec.Egress[0].Ports[0].Port.IntVal)
-	assert.Equal(t, int32(53), np.Spec.Egress[0].Ports[1].Port.IntVal)
+	g.Expect(protocols).To(ContainElement(corev1.ProtocolUDP))
+	g.Expect(protocols).To(ContainElement(corev1.ProtocolTCP))
+	g.Expect(np.Spec.Egress[0].Ports[0].Port.IntVal).To(Equal(int32(53)))
+	g.Expect(np.Spec.Egress[0].Ports[1].Port.IntVal).To(Equal(int32(53)))
 }
 
 func TestBuildCustomNetworkPolicy_InvalidNameserver(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		Nameservers: []string{"not-an-ip"},
 	}
 
 	_, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid DNS server IP")
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("invalid DNS server IP"))
 }
 
 func TestBuildCustomNetworkPolicy_InvalidEgressCIDR(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		AllowedEgressCIDRs: []string{"also-invalid"},
 	}
 
 	_, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid CIDR")
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("invalid CIDR"))
 }
 
 func TestBuildCustomNetworkPolicy_BlockedEgressCIDR(t *testing.T) {
@@ -184,18 +192,20 @@ func TestBuildCustomNetworkPolicy_BlockedEgressCIDR(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowedEgressCIDRs: []string{tt.cidr},
 			}
 
 			_, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.errorContains)
+			g.Expect(err).To(HaveOccurred())
+			g.Expect(err.Error()).To(ContainSubstring(tt.errorContains))
 		})
 	}
 }
 
 func TestBuildCustomNetworkPolicy_WithEgressPods(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
 			{
@@ -213,26 +223,27 @@ func TestBuildCustomNetworkPolicy_WithEgressPods(t *testing.T) {
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
-	require.NotNil(t, np)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).ToNot(BeNil())
 
-	require.Len(t, np.Spec.Egress, 1)
+	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	egressRule := np.Spec.Egress[0]
 
-	require.Len(t, egressRule.To, 1)
+	g.Expect(egressRule.To).To(HaveLen(1))
 	peer := egressRule.To[0]
 
-	require.NotNil(t, peer.NamespaceSelector)
-	assert.Equal(t, "kube-system", peer.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"])
+	g.Expect(peer.NamespaceSelector).ToNot(BeNil())
+	g.Expect(peer.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"]).To(Equal("kube-system"))
 
-	require.NotNil(t, peer.PodSelector)
-	assert.Equal(t, "kube-dns", peer.PodSelector.MatchLabels["k8s-app"])
+	g.Expect(peer.PodSelector).ToNot(BeNil())
+	g.Expect(peer.PodSelector.MatchLabels["k8s-app"]).To(Equal("kube-dns"))
 
-	require.Len(t, egressRule.Ports, 1)
-	assert.Equal(t, int32(53), egressRule.Ports[0].Port.IntVal)
+	g.Expect(egressRule.Ports).To(HaveLen(1))
+	g.Expect(egressRule.Ports[0].Port.IntVal).To(Equal(int32(53)))
 }
 
 func TestBuildCustomNetworkPolicy_CombinedRules(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		Nameservers:        []string{"8.8.8.8"},
 		AllowedEgressCIDRs: []string{"1.1.1.0/24"},
@@ -245,100 +256,105 @@ func TestBuildCustomNetworkPolicy_CombinedRules(t *testing.T) {
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
-	require.NotNil(t, np)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).ToNot(BeNil())
 
 	// Should have 3 egress rules: DNS IP + CIDR + pod selector
-	require.Len(t, np.Spec.Egress, 3)
+	g.Expect(np.Spec.Egress).To(HaveLen(3))
 }
 
 func TestBuildCustomNetworkPolicy_DeduplicatesCIDRs(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		AllowedEgressCIDRs: []string{"8.8.8.0/24", "8.8.8.0/24", "1.1.1.0/24"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
-	require.NotNil(t, np)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).ToNot(BeNil())
 
 	// Should have 2 egress rules (deduplicated)
-	require.Len(t, np.Spec.Egress, 2)
+	g.Expect(np.Spec.Egress).To(HaveLen(2))
 }
 
 // IPv6 Tests
 
 func TestBuildCustomNetworkPolicy_IPv6Nameservers(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		Nameservers: []string{"2001:4860:4860::8888", "2001:4860:4860::8844"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
-	require.NotNil(t, np)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).ToNot(BeNil())
 
-	require.Len(t, np.Spec.Egress, 1)
+	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	dnsRule := np.Spec.Egress[0]
 
-	require.Len(t, dnsRule.To, 2)
+	g.Expect(dnsRule.To).To(HaveLen(2))
 	cidrs := []string{dnsRule.To[0].IPBlock.CIDR, dnsRule.To[1].IPBlock.CIDR}
 	// IPv6 addresses should use /128 prefix
-	assert.Contains(t, cidrs, "2001:4860:4860::8888/128")
-	assert.Contains(t, cidrs, "2001:4860:4860::8844/128")
+	g.Expect(cidrs).To(ContainElement("2001:4860:4860::8888/128"))
+	g.Expect(cidrs).To(ContainElement("2001:4860:4860::8844/128"))
 
-	require.Len(t, dnsRule.Ports, 2)
+	g.Expect(dnsRule.Ports).To(HaveLen(2))
 }
 
 func TestBuildCustomNetworkPolicy_MixedIPv4IPv6Nameservers(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		Nameservers: []string{"8.8.8.8", "2001:4860:4860::8888"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
-	require.NotNil(t, np)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).ToNot(BeNil())
 
-	require.Len(t, np.Spec.Egress, 1)
+	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	dnsRule := np.Spec.Egress[0]
 
-	require.Len(t, dnsRule.To, 2)
+	g.Expect(dnsRule.To).To(HaveLen(2))
 	cidrs := []string{dnsRule.To[0].IPBlock.CIDR, dnsRule.To[1].IPBlock.CIDR}
-	assert.Contains(t, cidrs, "8.8.8.8/32")
-	assert.Contains(t, cidrs, "2001:4860:4860::8888/128")
+	g.Expect(cidrs).To(ContainElement("8.8.8.8/32"))
+	g.Expect(cidrs).To(ContainElement("2001:4860:4860::8888/128"))
 }
 
 func TestBuildCustomNetworkPolicy_IPv6AllowedEgressCIDR(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		AllowedEgressCIDRs: []string{"2001:4860::/32"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
-	require.NotNil(t, np)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).ToNot(BeNil())
 
-	require.Len(t, np.Spec.Egress, 1)
+	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	ipBlock := np.Spec.Egress[0].To[0].IPBlock
-	assert.Equal(t, "2001:4860::/32", ipBlock.CIDR)
+	g.Expect(ipBlock.CIDR).To(Equal("2001:4860::/32"))
 	// Public IPv6 range should have no exceptions
-	assert.Empty(t, ipBlock.Except)
+	g.Expect(ipBlock.Except).To(BeEmpty())
 }
 
 func TestBuildCustomNetworkPolicy_IPv6AllInternet(t *testing.T) {
+	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		AllowedEgressCIDRs: []string{"::/0"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	require.NoError(t, err)
-	require.NotNil(t, np)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).ToNot(BeNil())
 
-	require.Len(t, np.Spec.Egress, 1)
+	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	ipBlock := np.Spec.Egress[0].To[0].IPBlock
-	assert.Equal(t, "::/0", ipBlock.CIDR)
+	g.Expect(ipBlock.CIDR).To(Equal("::/0"))
 
 	// Should block IPv6 private/internal ranges
-	assert.Contains(t, ipBlock.Except, "fc00::/7")  // ULA
-	assert.Contains(t, ipBlock.Except, "fe80::/10") // Link-local
-	assert.Contains(t, ipBlock.Except, "ff00::/8")  // Multicast
+	g.Expect(ipBlock.Except).To(ContainElement("fc00::/7"))  // ULA
+	g.Expect(ipBlock.Except).To(ContainElement("fe80::/10")) // Link-local
+	g.Expect(ipBlock.Except).To(ContainElement("ff00::/8"))  // Multicast
 }
 
 func TestBuildCustomNetworkPolicy_BlockedIPv6CIDRs(t *testing.T) {
@@ -366,13 +382,14 @@ func TestBuildCustomNetworkPolicy_BlockedIPv6CIDRs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowedEgressCIDRs: []string{tt.cidr},
 			}
 
 			_, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), tt.errorContains)
+			g.Expect(err).To(HaveOccurred())
+			g.Expect(err.Error()).To(ContainSubstring(tt.errorContains))
 		})
 	}
 }
