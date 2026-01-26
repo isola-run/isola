@@ -231,11 +231,6 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		sandboxPod.Annotations["dev.gvisor.flag.overlay2"] = "root:self"
 	}
 
-	// Set hostname and subdomain to enable DNS-based addressing via headless service.
-	// Both are required for DNS to work: <hostname>.<subdomain>.<namespace>.svc.cluster.local
-	sandboxPod.Spec.Hostname = getSandboxPodName(sandbox)
-	sandboxPod.Spec.Subdomain = "sandbox-agents"
-
 	// Enable shared PID namespace so the isola agent can locate the main container and access it's filesystem via /proc/<pid>/root
 	sandboxPod.Spec.ShareProcessNamespace = ptr.To(true)
 
@@ -579,6 +574,11 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod)
 	conditions = append(conditions, readyCondition)
+
+	// Update pod IP in status
+	if sandboxPod != nil && sandboxPod.Status.PodIP != "" {
+		sandbox.Status.PodIP = sandboxPod.Status.PodIP
+	}
 
 	return r.patchStatus(ctx, baseSandbox, sandbox, conditions)
 }
