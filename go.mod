@@ -8,7 +8,6 @@ require (
 	github.com/go-chi/httplog/v2 v2.1.1
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
-	github.com/stretchr/testify v1.11.1
 	gocloud.dev v0.44.0
 	k8s.io/api v0.34.1
 	k8s.io/apimachinery v0.34.1
