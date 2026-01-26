@@ -66,23 +66,36 @@ check-all: vet lint vulncheck check-api-codegen ## Run all checks (read-only, CI
 fix-all: fmt lint-fix ## Fix all auto-fixable issues
 
 ##@ Testing
+#
+# Variables for test filtering (following Cluster API / Kubernetes patterns):
+#   FOCUS        - Ginkgo focus pattern (e.g., FOCUS="Reconcile")
+#   SKIP         - Ginkgo skip pattern
+#   GO_TEST_FLAGS - Additional go test flags (e.g., GO_TEST_FLAGS="-race")
 
 ENVTEST_K8S_VERSION ?= 1.34
+FOCUS ?=
+SKIP ?=
+GO_TEST_FLAGS ?=
 
 .PHONY: test
-test: ## Run tests
+test: ## Run all tests
 	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
-		go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+		go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out $(GO_TEST_FLAGS)
 
 .PHONY: test-verbose
-test-verbose: ## Run tests with verbose output
+test-verbose: ## Run all tests with verbose output
 	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
-		go test ./internal/operator/controller/... -v -ginkgo.v -coverprofile cover.out
+		go test $$(go list ./... | grep -v /e2e) -v -coverprofile cover.out $(GO_TEST_FLAGS)
 
-.PHONY: test-focus
-test-focus: ## Run tests matching FOCUS pattern
+.PHONY: test-operator
+test-operator: ## Run operator tests (supports FOCUS=pattern)
 	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
-		go test ./internal/operator/controller/... -v -ginkgo.v -ginkgo.focus="$(FOCUS)"
+		go test $(if $(FOCUS),./internal/operator/controller,./internal/operator/...) -v \
+		$(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
+
+.PHONY: test-api
+test-api: ## Run isola-api tests (supports FOCUS=pattern)
+	go test ./internal/api/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
 
 ##@ Build
 
