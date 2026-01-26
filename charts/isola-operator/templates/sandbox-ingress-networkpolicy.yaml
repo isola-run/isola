@@ -1,4 +1,4 @@
-# Allow ingress from isola-api to sandbox agent sidecars
+# Allow ingress from isola-api to sandbox sidecars
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -24,4 +24,4 @@ spec:
               app.kubernetes.io/name: isola-api
       ports:
         - protocol: TCP
-          port: 8080
+          port: 10032

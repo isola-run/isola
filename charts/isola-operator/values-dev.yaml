@@ -2,7 +2,7 @@ image:
   repository: isola-operator
   tag: "dev"
 
-agentImage: isola-agent:dev
+sidecarImage: isola-sidecar:dev
 
 # Use gVisor runtime (installed by setup.sh)
 runtimeClassName: "gvisor"

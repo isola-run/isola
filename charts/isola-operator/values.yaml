@@ -18,8 +18,8 @@ resources:
     cpu: 50m
     memory: 128Mi
 
-# Agent sidecar image injected into sandbox pods
-agentImage: isola-agent:latest
+# Sidecar image injected into sandbox pods
+sidecarImage: isola-sidecar:latest
 
 # RuntimeClassName for sandbox pods.
 # Options:
