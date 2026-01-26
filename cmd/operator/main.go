@@ -64,6 +64,7 @@ func main() {
 	var tlsOpts []func(*tls.Config)
 	var agentImage string
 	var runtimeClassName string
+	var priorityClassName string
 	var isolaAPINamespace string
 	var isolaAPILabelName string
 	var snapshotBucketURL string
@@ -89,6 +90,7 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&agentImage, "agent-image", "isola-agent:latest", "Container image for the isola-agent sidecar")
 	flag.StringVar(&runtimeClassName, "runtime-class", "", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
+	flag.StringVar(&priorityClassName, "priority-class", "", "PriorityClassName to use for sandbox pods. Empty means use cluster default.")
 	flag.StringVar(&isolaAPINamespace, "api-namespace", "isola-system", "Namespace where isola-api runs (for NetworkPolicy ingress rules)")
 	flag.StringVar(&isolaAPILabelName, "api-label-name", "isola-api", "Value of app.kubernetes.io/name label for isola-api pods")
 	flag.StringVar(&snapshotBucketURL, "snapshot-bucket-url", os.Getenv("ISOLA_SNAPSHOT_BUCKET_URL"), "Bucket URL for snapshot storage (e.g., s3://bucket?region=us-east-1)")
@@ -196,11 +198,12 @@ func main() {
 
 	// SandboxReconciler manages Sandbox resources.
 	if err := (&controller.SandboxReconciler{
-		Client:           mgr.GetClient(),
-		Scheme:           mgr.GetScheme(),
-		AgentImage:       agentImage,
-		RuntimeClassName: runtimeClassName,
-		Clock:            controller.RealClock{},
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		AgentImage:        agentImage,
+		RuntimeClassName:  runtimeClassName,
+		PriorityClassName: priorityClassName,
+		Clock:             controller.RealClock{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
 		os.Exit(1)

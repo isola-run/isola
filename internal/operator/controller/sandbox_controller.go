@@ -93,11 +93,12 @@ const (
 
 type SandboxReconciler struct {
 	client.Client
-	Scheme           *runtime.Scheme
-	Recorder         record.EventRecorder
-	AgentImage       string
-	RuntimeClassName string // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
-	Clock            Clock  // Clock interface for time operations, allows mocking in tests
+	Scheme            *runtime.Scheme
+	Recorder          record.EventRecorder
+	AgentImage        string
+	RuntimeClassName  string // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
+	PriorityClassName string // PriorityClassName to use for sandbox pods. Empty means use cluster default.
+	Clock             Clock  // Clock interface for time operations, allows mocking in tests
 }
 
 const (
@@ -234,8 +235,9 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// Enable shared PID namespace so the isola agent can locate the main container and access it's filesystem via /proc/<pid>/root
 	sandboxPod.Spec.ShareProcessNamespace = ptr.To(true)
 
-	// Set high priority to prevent preemption by applicative non-sandbox pods
-	sandboxPod.Spec.PriorityClassName = "isola-sandbox"
+	if r.PriorityClassName != "" {
+		sandboxPod.Spec.PriorityClassName = r.PriorityClassName
+	}
 
 	configureDNS(sandboxPod, sandbox.Spec.Network)
 
