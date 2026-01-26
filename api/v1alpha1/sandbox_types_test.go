@@ -19,7 +19,7 @@ package v1alpha1
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -119,8 +119,9 @@ func TestNeedsCustomNetworkPolicy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
 			result := tt.sandbox.NeedsCustomNetworkPolicy()
-			assert.Equal(t, tt.expected, result)
+			g.Expect(result).To(Equal(tt.expected))
 		})
 	}
 }
