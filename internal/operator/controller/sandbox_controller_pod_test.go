@@ -200,6 +200,43 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.overlay2"))
 		})
 
+		It("should set PodIP in sandbox status when pod has IP", func() {
+			sandboxName := "sandbox-pod-ip"
+			templateName := "template-pod-ip"
+
+			createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
+
+			createSandbox(ctx, sandboxName, templateName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// Simulate pod running with IP assigned
+			pod.Status.Phase = corev1.PodRunning
+			pod.Status.PodIP = "10.0.0.42"
+			pod.Status.Conditions = append(pod.Status.Conditions, corev1.PodCondition{
+				Type:   corev1.PodReady,
+				Status: corev1.ConditionTrue,
+			})
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox.Status.PodIP).To(Equal("10.0.0.42"))
+		})
+
 		It("should preserve template init containers when injecting agent sidecar", func() {
 			sandboxName := "sandbox-preserve-init"
 			templateName := "template-preserve-init"

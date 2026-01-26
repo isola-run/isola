@@ -158,7 +158,6 @@ func (s *Sandbox) GetCustomNetworkPolicyName() string {
 	return s.Name + "-custom-netpol"
 }
 
-// todo benl: for now, not storing sandbox pod or snapshotter pod info anywhere in the sandbox CRD
 // SandboxStatus defines the observed state of Sandbox.
 type SandboxStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
@@ -172,6 +171,11 @@ type SandboxStatus struct {
 	// It is set by the controller (derived from template timeout + chosen start time).
 	// +optional
 	TimeoutAt *metav1.Time `json:"timeoutAt,omitempty"`
+
+	// PodIP is the IP address of the sandbox pod.
+	// Set once the pod is running and has an IP assigned.
+	// +optional
+	PodIP string `json:"podIP,omitempty"`
 }
 
 // +kubebuilder:object:root=true
