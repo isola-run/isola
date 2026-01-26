@@ -30,6 +30,9 @@ linters:
     - noctx
     - bodyclose
 
+    # Nil safety
+    - nilaway
+
   settings:
     revive:
       rules:
@@ -38,6 +41,11 @@ linters:
     gosec:
       severity: medium
       confidence: medium
+    custom:
+      nilaway:
+        type: module
+        settings:
+          include-pkgs: github.com/isola-ai/isola-sb
 
   exclusions:
     generated: lax

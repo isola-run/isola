@@ -219,3 +219,4 @@ bin/
 cover.out
 go.work
 go.work.sum
+custom-gcl

@@ -1,0 +1,8 @@
+# Custom golangci-lint configuration for building plugins
+# See: https://golangci-lint.run/plugins/module-plugins/
+version: v2.8.0
+
+plugins:
+  - module: go.uber.org/nilaway
+    import: go.uber.org/nilaway/cmd/gclplugin
+    version: latest

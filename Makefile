@@ -35,6 +35,16 @@ manifests: ## Generate CRD and RBAC manifests
 		output:crd:artifacts:config=config/crd/bases \
 		output:rbac:artifacts:config=config/rbac
 
+# Custom golangci-lint binary with nilaway plugin
+CUSTOM_GCL ?= ./custom-gcl
+
+.PHONY: custom-gcl
+custom-gcl: ## Build custom golangci-lint with nilaway plugin
+	@if [ ! -f "$(CUSTOM_GCL)" ] || [ ".custom-gcl.yml" -nt "$(CUSTOM_GCL)" ]; then \
+		echo "Building custom golangci-lint with nilaway..."; \
+		golangci-lint custom; \
+	fi
+
 .PHONY: fmt
 fmt: ## Run golangci-lint fmt
 	golangci-lint fmt ./...
@@ -44,12 +54,12 @@ vet: ## Run go vet
 	go vet ./...
 
 .PHONY: lint
-lint: ## Run golangci-lint
-	golangci-lint run
+lint: custom-gcl ## Run golangci-lint (with nilaway)
+	$(CUSTOM_GCL) run
 
 .PHONY: lint-fix
-lint-fix: ## Run golangci-lint --fix
-	golangci-lint run --fix
+lint-fix: custom-gcl ## Run golangci-lint --fix (with nilaway)
+	$(CUSTOM_GCL) run --fix
 
 .PHONY: vulncheck
 vulncheck: ## Run govulncheck

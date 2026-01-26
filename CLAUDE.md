@@ -127,6 +127,7 @@ Tool versions are pinned and must be kept in sync:
 | Tool | Location | Also sync with |
 |------|----------|----------------|
 | golangci-lint | `hack/setup.sh` | `.github/workflows/lint.yml` |
+| nilaway | `.custom-gcl.yml` (uses `latest`) | - |
 | govulncheck | `hack/setup.sh` | - |
 | setup-envtest | `hack/setup.sh`, `.github/workflows/test.yml` | - |
 | envtest K8s | `Makefile` | k8s.io/api in go.mod |

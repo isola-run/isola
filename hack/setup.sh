@@ -13,6 +13,7 @@ GOVULNCHECK_VERSION="v1.1.4"
 SETUP_ENVTEST_VERSION="v0.23.0"
 LEFTHOOK_VERSION="v2.0.15"
 GVISOR_VERSION="20260112"
+# NilAway uses "latest" in .custom-gcl.yml (no official releases yet)
 
 GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/${GVISOR_VERSION}"
 
@@ -107,6 +108,14 @@ if check_optional_tool "golangci-lint" "Install: go install github.com/golangci/
     installed_version=$(golangci-lint version --short 2>/dev/null || echo "unknown")
     if [ "$installed_version" != "${GOLANGCI_LINT_VERSION#v}" ]; then
         echo "    [WARN] Version mismatch: installed $installed_version, expected ${GOLANGCI_LINT_VERSION#v}"
+    fi
+    # Build custom golangci-lint with nilaway plugin
+    if [ ! -f "${ROOT_DIR}/custom-gcl" ] || [ "${ROOT_DIR}/.custom-gcl.yml" -nt "${ROOT_DIR}/custom-gcl" ]; then
+        echo "  Building custom golangci-lint with nilaway plugin..."
+        (cd "${ROOT_DIR}" && golangci-lint custom)
+        echo "    [OK] custom-gcl binary built"
+    else
+        echo "    [OK] custom-gcl binary exists"
     fi
 fi
 if check_optional_tool "govulncheck" "Install: go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"; then
