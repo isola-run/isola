@@ -3,6 +3,8 @@ image:
   tag: "latest"
   pullSecrets: []
 
+replicaCount: 1
+
 # Pod annotations (e.g., for Prometheus scraping)
 podAnnotations: {}
 
@@ -27,6 +29,12 @@ agentImage: isola-agent:latest
 #              but provides weaker isolation between sandboxes and the host, and less isola features supported.
 # For production, use gvisor.
 runtimeClassName: "gvisor"
+
+# ServiceAccount for the operator
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
 
 # Namespace where sandbox pods are created
 sandboxNamespace: isola-sandboxes

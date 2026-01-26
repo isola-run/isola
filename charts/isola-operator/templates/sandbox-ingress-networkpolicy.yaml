@@ -1,13 +1,12 @@
----
+# Allow ingress from isola-api to sandbox agent sidecars
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-isola-api-ingress
-  namespace: {{ .Values.sandboxNamespace | default "isola-sandboxes" }}
+  namespace: {{ .Values.sandboxNamespace }}
   labels:
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/name: isola-operator
-    app.kubernetes.io/component: network-policy
+    {{- include "isola-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
 spec:
   podSelector:
     matchLabels:

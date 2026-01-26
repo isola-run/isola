@@ -1,8 +1,9 @@
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: isola-operator-manager-role
+  name: {{ include "isola-operator.fullname" . }}
+  labels:
+    {{- include "isola-operator.labels" . | nindent 4 }}
 rules:
 - apiGroups:
   - ""
