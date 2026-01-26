@@ -11,6 +11,7 @@ RUN go mod download
 # Copy required source
 COPY cmd/agent/ cmd/agent/
 COPY internal/agent/ internal/agent/
+COPY internal/logging/ internal/logging/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o isola-agent ./cmd/agent/main.go
