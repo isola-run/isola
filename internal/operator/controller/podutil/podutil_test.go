@@ -19,6 +19,7 @@ package podutil
 import (
 	"testing"
 
+	. "github.com/onsi/gomega"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -90,9 +91,8 @@ func TestIsPodReady(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsPodReady(tt.pod); got != tt.want {
-				t.Errorf("IsPodReady() = %v, want %v", got, tt.want)
-			}
+			g := NewWithT(t)
+			g.Expect(IsPodReady(tt.pod)).To(Equal(tt.want))
 		})
 	}
 }
@@ -148,9 +148,8 @@ func TestIsPodTerminated(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsPodTerminated(tt.pod); got != tt.want {
-				t.Errorf("IsPodTerminated() = %v, want %v", got, tt.want)
-			}
+			g := NewWithT(t)
+			g.Expect(IsPodTerminated(tt.pod)).To(Equal(tt.want))
 		})
 	}
 }
@@ -168,9 +167,8 @@ func TestGetSandboxPodName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := GetSandboxPodName(tt.sandboxName); got != tt.want {
-				t.Errorf("GetSandboxPodName(%q) = %q, want %q", tt.sandboxName, got, tt.want)
-			}
+			g := NewWithT(t)
+			g.Expect(GetSandboxPodName(tt.sandboxName)).To(Equal(tt.want))
 		})
 	}
 }
@@ -285,23 +283,16 @@ func TestExtractContainerID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
 			got, err := ExtractContainerID(tt.pod, tt.containerName)
 
 			if tt.wantErr {
-				if err == nil {
-					t.Errorf("ExtractContainerID() expected error, got nil")
-				}
+				g.Expect(err).To(HaveOccurred())
 				return
 			}
 
-			if err != nil {
-				t.Errorf("ExtractContainerID() unexpected error = %v", err)
-				return
-			}
-
-			if got != tt.wantID {
-				t.Errorf("ExtractContainerID() = %q, want %q", got, tt.wantID)
-			}
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(got).To(Equal(tt.wantID))
 		})
 	}
 }
@@ -361,9 +352,8 @@ func TestIsJobComplete(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsJobComplete(tt.job); got != tt.want {
-				t.Errorf("IsJobComplete() = %v, want %v", got, tt.want)
-			}
+			g := NewWithT(t)
+			g.Expect(IsJobComplete(tt.job)).To(Equal(tt.want))
 		})
 	}
 }
@@ -423,9 +413,8 @@ func TestIsJobFailed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsJobFailed(tt.job); got != tt.want {
-				t.Errorf("IsJobFailed() = %v, want %v", got, tt.want)
-			}
+			g := NewWithT(t)
+			g.Expect(IsJobFailed(tt.job)).To(Equal(tt.want))
 		})
 	}
 }
@@ -491,9 +480,8 @@ func TestGetJobConditionMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := GetJobConditionMessage(tt.job, tt.conditionType); got != tt.want {
-				t.Errorf("GetJobConditionMessage() = %q, want %q", got, tt.want)
-			}
+			g := NewWithT(t)
+			g.Expect(GetJobConditionMessage(tt.job, tt.conditionType)).To(Equal(tt.want))
 		})
 	}
 }

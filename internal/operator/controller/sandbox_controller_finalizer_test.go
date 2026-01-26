@@ -128,7 +128,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 
 		It("should remove finalizer if template not found during deletion", func() {
@@ -156,7 +156,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 
 		It("should execute SnapshotRootfs policy on deletion", func() {
@@ -243,7 +243,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			// Sandbox should be gone
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 	})
 })
