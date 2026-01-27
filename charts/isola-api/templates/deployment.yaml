@@ -19,18 +19,15 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "isola-api.serviceAccountName" . }}
-      {{- with .Values.image.pullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "isola-api.imagePullSecrets" . | nindent 6 }}
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: IfNotPresent
+          image: {{ include "isola-api.apiImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - -log-level={{ .Values.logging.level }}
             {{- if .Values.logging.devMode }}
