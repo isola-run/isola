@@ -1,93 +1,12 @@
----
+{{- $generated := .Files.Get "generated/role.yaml" | fromYaml }}
+{{- if not $generated }}
+{{- fail "generated/role.yaml is missing. Run 'make manifests' first." }}
+{{- end }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: isola-operator-manager-role
+  name: {{ include "isola-operator.fullname" . }}
+  labels:
+    {{- include "isola-operator.labels" . | nindent 4 }}
 rules:
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - batch
-  resources:
-  - jobs
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - networking.k8s.io
-  resources:
-  - networkpolicies
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - node.k8s.io
-  resources:
-  - runtimeclasses
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - sandbox.isola.run
-  resources:
-  - rootfssnapshots
-  - sandboxes
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - sandbox.isola.run
-  resources:
-  - rootfssnapshots/status
-  - sandboxes/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - sandbox.isola.run
-  resources:
-  - sandboxes/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - sandbox.isola.run
-  resources:
-  - sandboxtemplates
-  verbs:
-  - get
-  - list
-  - watch
+  {{- toYaml $generated.rules | nindent 2 }}
