@@ -1,6 +1,12 @@
+# Development values - used by Tilt for local development
+# Tilt overrides image references via --set flags, so these are defaults
+
 image:
+  # Tilt will override with localhost:5001/isola-api
+  registry: ""
   repository: isola-api
   tag: "dev"
+  pullPolicy: Never  # Images are loaded directly into Kind
 
 logging:
   level: debug

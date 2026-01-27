@@ -20,11 +20,13 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -71,6 +73,7 @@ func main() {
 	var snapshotCredentialSecret string
 	var snapshotUploaderImage string
 	var snapshotServiceAccount string
+	var imagePullSecretsStr string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -97,6 +100,7 @@ func main() {
 	flag.StringVar(&snapshotCredentialSecret, "snapshot-credential-secret", os.Getenv("ISOLA_SNAPSHOT_CREDENTIAL_SECRET"), "Secret name for bucket credentials (optional, uses pod identity if not set)")
 	flag.StringVar(&snapshotUploaderImage, "snapshot-uploader-image", os.Getenv("ISOLA_UPLOADER_IMAGE"), "Container image for the snapshot uploader")
 	flag.StringVar(&snapshotServiceAccount, "snapshot-service-account", os.Getenv("ISOLA_SNAPSHOT_SERVICE_ACCOUNT"), "ServiceAccount for snapshot jobs")
+	flag.StringVar(&imagePullSecretsStr, "image-pull-secrets", os.Getenv("ISOLA_IMAGE_PULL_SECRETS"), "Comma-separated list of imagePullSecret names for sandbox pods and snapshot jobs")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -196,6 +200,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Parse imagePullSecrets from comma-separated string
+	var imagePullSecrets []corev1.LocalObjectReference
+	if imagePullSecretsStr != "" {
+		for _, name := range strings.Split(imagePullSecretsStr, ",") {
+			name = strings.TrimSpace(name)
+			if name != "" {
+				imagePullSecrets = append(imagePullSecrets, corev1.LocalObjectReference{Name: name})
+			}
+		}
+	}
+
 	// SandboxReconciler manages Sandbox resources.
 	if err := (&controller.SandboxReconciler{
 		Client:            mgr.GetClient(),
@@ -203,6 +218,7 @@ func main() {
 		SidecarImage:      sidecarImage,
 		RuntimeClassName:  runtimeClassName,
 		PriorityClassName: priorityClassName,
+		ImagePullSecrets:  imagePullSecrets,
 		Clock:             controller.RealClock{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
@@ -219,6 +235,7 @@ func main() {
 		CredentialSecretName:   snapshotCredentialSecret,
 		UploaderImage:          snapshotUploaderImage,
 		SnapshotServiceAccount: snapshotServiceAccount,
+		ImagePullSecrets:       imagePullSecrets,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RootfsSnapshot")
 		os.Exit(1)

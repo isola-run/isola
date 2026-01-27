@@ -70,6 +70,8 @@ type RootfsSnapshotReconciler struct {
 	UploaderImage string
 	// SnapshotServiceAccount is the ServiceAccount for snapshot jobs
 	SnapshotServiceAccount string
+	// ImagePullSecrets for pulling uploader images from private registries
+	ImagePullSecrets []corev1.LocalObjectReference
 }
 
 func (r *RootfsSnapshotReconciler) clock() Clock {
@@ -408,7 +410,8 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 					NodeSelector: map[string]string{
 						"kubernetes.io/hostname": sandboxPod.Spec.NodeName,
 					},
-					RestartPolicy: corev1.RestartPolicyNever,
+					RestartPolicy:    corev1.RestartPolicyNever,
+					ImagePullSecrets: r.ImagePullSecrets,
 
 					// Init container runs runsc tar to create the snapshot
 					InitContainers: []corev1.Container{
