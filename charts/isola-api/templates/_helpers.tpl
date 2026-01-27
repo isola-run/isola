@@ -46,6 +46,7 @@ Selector labels
 {{- define "isola-api.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "isola-api.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: api
 {{- end }}
 
 {{/*
