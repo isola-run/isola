@@ -9,19 +9,20 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy required source
-COPY cmd/agent/ cmd/agent/
-COPY internal/agent/ internal/agent/
+COPY cmd/isola-sidecar/ cmd/isola-sidecar/
+COPY internal/sidecar/ internal/sidecar/
 COPY internal/logging/ internal/logging/
 
 # Build
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o isola-agent ./cmd/agent/main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o isola-sidecar ./cmd/isola-sidecar/main.go
 
 # Use distroless as minimal base image
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /
-COPY --from=builder /workspace/isola-agent .
+COPY --from=builder /workspace/isola-sidecar .
+USER 65532:65532
 
-EXPOSE 8080
+EXPOSE 10032
 
-ENTRYPOINT ["/isola-agent"]
+ENTRYPOINT ["/isola-sidecar"]
