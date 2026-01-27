@@ -1,3 +1,8 @@
+# Override the chart name
+nameOverride: ""
+# Override the full release name
+fullnameOverride: ""
+
 # Global settings applied to all images (operator, sidecar, uploader)
 # For air-gapped environments, set imageRegistry to your internal registry
 global:
