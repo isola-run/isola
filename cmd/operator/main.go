@@ -62,7 +62,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
-	var agentImage string
+	var sidecarImage string
 	var runtimeClassName string
 	var priorityClassName string
 	var isolaAPINamespace string
@@ -88,7 +88,7 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&agentImage, "agent-image", "isola-agent:latest", "Container image for the isola-agent sidecar")
+	flag.StringVar(&sidecarImage, "sidecar-image", "isola-sidecar:latest", "Container image for the isola-sidecar")
 	flag.StringVar(&runtimeClassName, "runtime-class", "", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
 	flag.StringVar(&priorityClassName, "priority-class", "", "PriorityClassName to use for sandbox pods. Empty means use cluster default.")
 	flag.StringVar(&isolaAPINamespace, "api-namespace", "isola-system", "Namespace where isola-api runs (for NetworkPolicy ingress rules)")
@@ -200,7 +200,7 @@ func main() {
 	if err := (&controller.SandboxReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
-		AgentImage:        agentImage,
+		SidecarImage:      sidecarImage,
 		RuntimeClassName:  runtimeClassName,
 		PriorityClassName: priorityClassName,
 		Clock:             controller.RealClock{},

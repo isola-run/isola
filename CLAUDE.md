@@ -52,11 +52,11 @@ The generated code is committed to the repo. CI runs `make check-api-codegen` to
 - `api/openapi.yaml` - OpenAPI spec for isola-api (source of truth for REST API)
 - `cmd/operator/` - Kubebuilder operator entry point
 - `cmd/isola-api/` - API gateway for external clients
-- `cmd/agent/` - Gin sidecar injected into sandbox pods by operator
+- `cmd/isola-sidecar/` - Sidecar injected into sandbox pods by operator
 - `cmd/uploader/` - Snapshot uploader job (uploads tarballs to S3/GCS/Azure)
 - `internal/operator/controller/` - Reconciler implementations
 - `internal/api/` - isola-api handlers, middleware, and generated OpenAPI code
-- `internal/agent/` - Agent handlers
+- `internal/sidecar/` - Sidecar handlers
 - `internal/snapshot/` - Shared snapshot types (used by operator and uploader)
 - `config/` - Kustomize manifests (for controller-gen output)
 - `charts/` - Helm charts (source of truth for deployment)

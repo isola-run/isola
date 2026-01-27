@@ -328,7 +328,6 @@ func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *bat
 	return nil, fmt.Errorf("uploader container not found or not terminated")
 }
 
-
 // getSnapshotSizeLimit returns the ephemeral storage limit for a container.
 // With gVisor's root:self overlay2, the rootfs upper layer is stored on disk
 // in the container's root filesystem, so Kubernetes ephemeral storage limits apply directly.

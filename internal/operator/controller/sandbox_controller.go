@@ -95,14 +95,14 @@ type SandboxReconciler struct {
 	client.Client
 	Scheme            *runtime.Scheme
 	Recorder          record.EventRecorder
-	AgentImage        string
+	SidecarImage      string
 	RuntimeClassName  string // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
 	PriorityClassName string // PriorityClassName to use for sandbox pods. Empty means use cluster default.
 	Clock             Clock  // Clock interface for time operations, allows mocking in tests
 }
 
 const (
-	agentContainerName = "isola-agent"
+	sidecarContainerName = "isola-sidecar"
 
 	// Field index for efficient lookup of sandboxes by templates references
 	sandboxTemplateRefField = ".spec.templateRef.name"
@@ -133,11 +133,11 @@ func buildNetworkLabels(network *sandboxv1alpha1.NetworkSpec) map[string]string 
 	return labels
 }
 
-func (r *SandboxReconciler) buildAgentContainer() corev1.Container {
+func (r *SandboxReconciler) buildSidecarContainer() corev1.Container {
 	rp := corev1.ContainerRestartPolicyAlways
 	return corev1.Container{
-		Name:          agentContainerName,
-		Image:         r.AgentImage,
+		Name:          sidecarContainerName,
+		Image:         r.SidecarImage,
 		RestartPolicy: &rp,
 		// RunAsUser 0 (root) is needed to read /proc/<pid>/environ of other users' processes
 		// and to access /proc/<pid>/root when using shared PID namespace.
@@ -154,15 +154,15 @@ func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
 	}
 
 	// todo benl: Mark with sandboxPod.Spec.Containers[i].Name
-	// Mark the first container as the main container so the agent can discover it via /proc/<pid>/environ.
-	// Note: a single main container is supported. The agent's findMarkedProcess() returns the first PID it finds with the ISOLA_MAIN_CONTAINER marker.
+	// Mark the first container as the main container so the sidecar can discover it via /proc/<pid>/environ.
+	// Note: a single main container is supported. The sidecar's findMarkedProcess() returns the first PID it finds with the ISOLA_MAIN_CONTAINER marker.
 	sandboxPod.Spec.Containers[0].Env = append(sandboxPod.Spec.Containers[0].Env, corev1.EnvVar{
 		Name:  "ISOLA_MAIN_CONTAINER",
 		Value: "true",
 	})
 
-	agentContainer := r.buildAgentContainer()
-	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, agentContainer)
+	sidecarContainer := r.buildSidecarContainer()
+	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, sidecarContainer)
 	return nil
 }
 
@@ -238,7 +238,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		sandboxPod.Annotations["dev.gvisor.flag.overlay2"] = "root:self"
 	}
 
-	// Enable shared PID namespace so the isola agent can locate the main container and access it's filesystem via /proc/<pid>/root
+	// Enable shared PID namespace so the sidecar can locate the main container and access its filesystem via /proc/<pid>/root
 	sandboxPod.Spec.ShareProcessNamespace = ptr.To(true)
 
 	if r.PriorityClassName != "" {
