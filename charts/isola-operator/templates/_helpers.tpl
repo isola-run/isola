@@ -46,6 +46,7 @@ Selector labels
 {{- define "isola-operator.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "isola-operator.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: operator
 {{- end }}
 
 {{/*
