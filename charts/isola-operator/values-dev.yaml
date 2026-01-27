@@ -6,7 +6,7 @@ image:
   registry: ""
   repository: isola-operator
   tag: "dev"
-  pullPolicy: Never  # Images are loaded directly into Kind
+  pullPolicy: IfNotPresent
 
 sidecar:
   image:

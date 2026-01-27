@@ -31,7 +31,7 @@ spec:
         image: {{ include "isola-operator.operatorImage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command:
-        - /manager
+        - /operator
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081

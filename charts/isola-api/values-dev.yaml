@@ -6,7 +6,7 @@ image:
   registry: ""
   repository: isola-api
   tag: "dev"
-  pullPolicy: Never  # Images are loaded directly into Kind
+  pullPolicy: IfNotPresent
 
 logging:
   level: debug

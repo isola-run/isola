@@ -29,11 +29,12 @@ generate: generate-api ## Generate all code (CRD DeepCopy + OpenAPI)
 	controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 
 .PHONY: manifests
-manifests: ## Generate CRD and RBAC manifests
-	controller-gen rbac:roleName=isola-operator-manager-role crd webhook \
+manifests: ## Generate CRD and RBAC manifests directly to Helm chart
+	@mkdir -p charts/isola-operator/generated
+	controller-gen rbac:roleName=isola-operator crd webhook \
 		paths="./api/..." paths="./internal/operator/controller/..." \
-		output:crd:artifacts:config=config/crd/bases \
-		output:rbac:artifacts:config=config/rbac
+		output:crd:artifacts:config=charts/isola-operator/crds \
+		output:rbac:artifacts:config=charts/isola-operator/generated
 
 .PHONY: fmt
 fmt: ## Run golangci-lint fmt
@@ -59,8 +60,17 @@ vulncheck: ## Run govulncheck
 tidy: ## Run go mod tidy
 	go mod tidy
 
+.PHONY: check-manifests
+check-manifests: manifests ## Verify generated manifests are up-to-date
+	@if ! git diff --quiet -- charts/isola-operator/crds/ charts/isola-operator/generated/; then \
+		echo "ERROR: Generated manifests are out of sync"; \
+		echo "Run 'make manifests' and commit the changes"; \
+		git diff --stat -- charts/isola-operator/crds/ charts/isola-operator/generated/; \
+		exit 1; \
+	fi
+
 .PHONY: check-all
-check-all: vet lint vulncheck check-api-codegen ## Run all checks (read-only, CI-safe)
+check-all: vet lint vulncheck check-api-codegen check-manifests ## Run all checks (read-only, CI-safe)
 
 .PHONY: fix-all
 fix-all: fmt lint-fix ## Fix all auto-fixable issues

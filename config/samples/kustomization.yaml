@@ -1,7 +1,0 @@
-## Append samples of your project ##
-resources:
-- sandbox_v1alpha1_sandbox.yaml
-- sandbox_v1alpha1_sandboxtemplate.yaml
-- sandbox_v1alpha1_networktemplate_isolated.yaml
-- sandbox_v1alpha1_networktemplate_egress_only.yaml
-# +kubebuilder:scaffold:manifestskustomizesamples
