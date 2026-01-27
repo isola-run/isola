@@ -27,10 +27,15 @@ tilt up                 # Start dev environment (http://localhost:10350)
 
 After modifying `api/v1alpha1/*_types.go`:
 ```bash
-make generate manifests && \
-  cp config/crd/bases/*.yaml charts/isola-operator/crds/ && \
-  cp config/rbac/role.yaml charts/isola-operator/templates/clusterrole.yaml
+make generate manifests
 ```
+
+This generates CRDs and RBAC directly to the Helm chart:
+- CRDs → `charts/isola-operator/crds/`
+- RBAC → `charts/isola-operator/generated/role.yaml`
+
+The Helm `clusterrole.yaml` template uses `.Files.Get` to include the generated RBAC rules
+with proper Helm templating for name/labels.
 
 ## OpenAPI Workflow
 
@@ -58,12 +63,12 @@ The generated code is committed to the repo. CI runs `make check-api-codegen` to
 - `internal/api/` - isola-api handlers, middleware, and generated OpenAPI code
 - `internal/sidecar/` - Sidecar handlers
 - `internal/snapshot/` - Shared snapshot types (used by operator and uploader)
-- `config/` - Kustomize manifests (for controller-gen output)
 - `charts/` - Helm charts (source of truth for deployment)
+- `charts/isola-operator/generated/` - Auto-generated RBAC from kubebuilder annotations (do not edit)
 
 **Default namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
 
-**Helm charts are source of truth** - CRDs must be synced from operator (see workflow above)
+**Helm charts are source of truth** - CRDs and RBAC are generated directly to Helm chart via `make manifests`
 
 ## CRDs
 

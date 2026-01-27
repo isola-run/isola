@@ -20,10 +20,7 @@ spec:
         {{- include "isola-operator.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "isola-operator.serviceAccountName" . }}
-      {{- with .Values.image.pullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "isola-operator.imagePullSecrets" . | nindent 6 }}
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -31,14 +28,14 @@ spec:
       terminationGracePeriodSeconds: 10
       containers:
       - name: manager
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        imagePullPolicy: IfNotPresent
+        image: {{ include "isola-operator.operatorImage" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
         command:
-        - /manager
+        - /operator
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081
-        - --sidecar-image={{ .Values.sidecarImage }}
+        - --sidecar-image={{ include "isola-operator.sidecarImage" . }}
         {{- if .Values.runtimeClassName }}
         - --runtime-class={{ .Values.runtimeClassName }}
         {{- end }}
@@ -79,13 +76,16 @@ spec:
           value: {{ $credentialSecretName | quote }}
         {{- end }}
         {{- end }}
-        {{- if .Values.snapshot.uploaderImage }}
         - name: ISOLA_UPLOADER_IMAGE
-          value: {{ .Values.snapshot.uploaderImage | quote }}
-        {{- end }}
+          value: {{ include "isola-operator.uploaderImage" . | quote }}
         {{- if .Values.snapshot.serviceAccount.name }}
         - name: ISOLA_SNAPSHOT_SERVICE_ACCOUNT
           value: {{ .Values.snapshot.serviceAccount.name | quote }}
+        {{- end }}
+        {{- $imagePullSecretNames := include "isola-operator.imagePullSecretNames" . }}
+        {{- if $imagePullSecretNames }}
+        - name: ISOLA_IMAGE_PULL_SECRETS
+          value: {{ $imagePullSecretNames | quote }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

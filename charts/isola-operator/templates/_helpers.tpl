@@ -70,3 +70,66 @@ Returns empty string if no credentials are configured (pod identity mode)
 {{- printf "%s-snapshot-credentials" (include "isola-operator.fullname" .) }}
 {{- end }}
 {{- end }}
+
+{{/*
+Build a full image reference from registry, repository, and tag
+Usage: {{ include "isola-operator.image" (dict "imageConfig" .Values.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
+*/}}
+{{- define "isola-operator.image" -}}
+{{- $registry := .imageConfig.registry -}}
+{{- if .global.imageRegistry -}}
+{{- $registry = .global.imageRegistry -}}
+{{- end -}}
+{{- $tag := .imageConfig.tag | default .appVersion -}}
+{{- if $registry -}}
+{{- printf "%s/%s:%s" $registry .imageConfig.repository $tag -}}
+{{- else -}}
+{{- printf "%s:%s" .imageConfig.repository $tag -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Build the operator image reference
+*/}}
+{{- define "isola-operator.operatorImage" -}}
+{{- include "isola-operator.image" (dict "imageConfig" .Values.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- end }}
+
+{{/*
+Build the sidecar image reference
+*/}}
+{{- define "isola-operator.sidecarImage" -}}
+{{- include "isola-operator.image" (dict "imageConfig" .Values.sidecar.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- end }}
+
+{{/*
+Build the uploader image reference
+*/}}
+{{- define "isola-operator.uploaderImage" -}}
+{{- include "isola-operator.image" (dict "imageConfig" .Values.snapshot.uploader.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- end }}
+
+{{/*
+Return imagePullSecrets (global takes precedence)
+*/}}
+{{- define "isola-operator.imagePullSecrets" -}}
+{{- $secrets := .Values.global.imagePullSecrets -}}
+{{- if $secrets -}}
+imagePullSecrets:
+{{- range $secrets }}
+  - name: {{ .name }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Return imagePullSecret names as comma-separated string (for passing to operator)
+*/}}
+{{- define "isola-operator.imagePullSecretNames" -}}
+{{- $secrets := .Values.global.imagePullSecrets -}}
+{{- $names := list -}}
+{{- range $secrets -}}
+{{- $names = append $names .name -}}
+{{- end -}}
+{{- join "," $names -}}
+{{- end }}

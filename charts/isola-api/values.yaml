@@ -1,7 +1,18 @@
+# Global settings (should match isola-operator for consistency)
+global:
+  # Override registry for all images (e.g., "my-registry.example.com/isola")
+  imageRegistry: ""
+  # Image pull secrets applied to all pods
+  # Example: [{ name: "my-registry-secret" }]
+  imagePullSecrets: []
+
+# API image configuration
 image:
+  registry: ghcr.io/isola-ai
   repository: isola-api
-  tag: "latest"
-  pullSecrets: []
+  # Tag defaults to Chart.appVersion if empty
+  tag: ""
+  pullPolicy: IfNotPresent
 
 replicaCount: 1
 

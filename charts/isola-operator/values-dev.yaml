@@ -1,15 +1,29 @@
+# Development values - used by Tilt for local development
+# Tilt overrides image references via --set flags, so these are defaults
+
 image:
+  # Tilt will override with localhost:5001/isola-operator
+  registry: ""
   repository: isola-operator
   tag: "dev"
+  pullPolicy: IfNotPresent
 
-sidecarImage: isola-sidecar:dev
+sidecar:
+  image:
+    registry: ""
+    repository: isola-sidecar
+    tag: "dev"
 
 # Use gVisor runtime (installed by setup.sh)
 runtimeClassName: "gvisor"
 
 # Snapshot configuration (uses LocalStack in dev)
 snapshot:
-  uploaderImage: "isola-uploader:dev"
+  uploader:
+    image:
+      registry: ""
+      repository: isola-uploader
+      tag: "dev"
   storage:
     bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
     # LocalStack credentials - chart creates isola-snapshot-credentials secret

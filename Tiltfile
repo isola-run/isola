@@ -60,19 +60,15 @@ helm_resource(
     flags=[
         '--create-namespace',
         '-f', 'charts/isola-operator/values-dev.yaml',
-        '--set', 'image.repository=isola-operator',
-        '--set', 'image.tag=latest',
-        '--set', 'sidecarImage=isola-sidecar:dev',
-        '--set', 'snapshot.uploaderImage=isola-uploader:dev',
     ],
-    # image_deps and image-keys instruct tilt on how to patch the helm charts with the newly built images
-    # in values.yaml, new isola-operator image should patch image.{repository, tag}
-    # while once a new sidecarImage is built, the sidecarImage: (string value) needs to be patched
+    # image_deps and image_keys instruct Tilt on how to patch the Helm values with newly built images.
+    # Tilt sets repository to the full registry+repo path (e.g., localhost:5001/isola-operator)
+    # and tag to the Tilt-generated tag. The helper templates handle empty registry gracefully.
     image_deps=['isola-operator', 'isola-sidecar', 'isola-uploader'],
     image_keys=[
         ('image.repository', 'image.tag'),
-        'sidecarImage',
-        'snapshot.uploaderImage',
+        ('sidecar.image.repository', 'sidecar.image.tag'),
+        ('snapshot.uploader.image.repository', 'snapshot.uploader.image.tag'),
     ],
     deps=['charts/isola-operator'],
     resource_deps=['localstack'],
@@ -104,8 +100,6 @@ helm_resource(
     flags=[
         '--create-namespace',
         '-f', 'charts/isola-api/values-dev.yaml',
-        '--set', 'image.repository=isola-api',
-        '--set', 'image.tag=latest',
     ],
     image_deps=['isola-api'],
     image_keys=[('image.repository', 'image.tag')],
