@@ -50,7 +50,8 @@ func main() {
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: r,
 	}
-
+	// currently no graceful shutdown, but it might make sense to have a short grace period
+	// to allow completing retrieval of sandbox app stdout for example (if in progress)
 	logger.Info("starting isola-sidecar server", "port", port)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error("server error", "error", err)
