@@ -70,3 +70,40 @@ Returns empty string if no credentials are configured (pod identity mode)
 {{- printf "%s-storage-credentials" (include "isola-api.fullname" .) }}
 {{- end }}
 {{- end }}
+
+{{/*
+Build a full image reference from registry, repository, and tag
+Usage: {{ include "isola-api.image" (dict "imageConfig" .Values.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
+*/}}
+{{- define "isola-api.image" -}}
+{{- $registry := .imageConfig.registry -}}
+{{- if .global.imageRegistry -}}
+{{- $registry = .global.imageRegistry -}}
+{{- end -}}
+{{- $tag := .imageConfig.tag | default .appVersion -}}
+{{- if $registry -}}
+{{- printf "%s/%s:%s" $registry .imageConfig.repository $tag -}}
+{{- else -}}
+{{- printf "%s:%s" .imageConfig.repository $tag -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Build the API image reference
+*/}}
+{{- define "isola-api.apiImage" -}}
+{{- include "isola-api.image" (dict "imageConfig" .Values.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- end }}
+
+{{/*
+Return imagePullSecrets (global takes precedence)
+*/}}
+{{- define "isola-api.imagePullSecrets" -}}
+{{- $secrets := .Values.global.imagePullSecrets -}}
+{{- if $secrets -}}
+imagePullSecrets:
+{{- range $secrets }}
+  - name: {{ .name }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -96,9 +96,10 @@ type SandboxReconciler struct {
 	Scheme            *runtime.Scheme
 	Recorder          record.EventRecorder
 	SidecarImage      string
-	RuntimeClassName  string // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
-	PriorityClassName string // PriorityClassName to use for sandbox pods. Empty means use cluster default.
-	Clock             Clock  // Clock interface for time operations, allows mocking in tests
+	RuntimeClassName  string                        // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
+	PriorityClassName string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
+	ImagePullSecrets  []corev1.LocalObjectReference // ImagePullSecrets for pulling sidecar images from private registries.
+	Clock             Clock                         // Clock interface for time operations, allows mocking in tests
 }
 
 const (
@@ -246,6 +247,11 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	}
 
 	configureDNS(sandboxPod, sandbox.Spec.Network)
+
+	// Inject imagePullSecrets for private registries (configured via Helm global.imagePullSecrets)
+	if len(r.ImagePullSecrets) > 0 {
+		sandboxPod.Spec.ImagePullSecrets = append(sandboxPod.Spec.ImagePullSecrets, r.ImagePullSecrets...)
+	}
 
 	if err := r.injectSidecar(sandboxPod); err != nil {
 		log.Error(err, "Failed to inject sidecar")
