@@ -105,7 +105,8 @@ test-operator: ## Run operator tests (supports FOCUS=pattern)
 
 .PHONY: test-api
 test-api: ## Run api-gateway tests (supports FOCUS=pattern)
-	go test ./internal/api-gateway/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
+	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
+		go test ./internal/api-gateway/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
 
 .PHONY: test-sidecar
 test-sidecar: ## Run sandbox-sidecar tests (supports FOCUS=pattern)
