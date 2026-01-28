@@ -30,6 +30,17 @@ helm install isola oci://ghcr.io/isola-ai/charts/isola \
   --set global.storage.bucketUrl="s3://my-bucket?region=us-east-1"
 ```
 
+### Installing from Source
+
+When installing from a local clone of the repository, build dependencies first:
+
+```bash
+helm dependency build charts/isola
+helm install isola charts/isola \
+  --namespace isola-system \
+  --create-namespace
+```
+
 ## Prerequisites
 
 - Kubernetes 1.25+

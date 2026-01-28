@@ -136,9 +136,10 @@ Get sandboxNamespace (global takes precedence over local for umbrella chart supp
 
 {{/*
 Get storage bucket URL (global takes precedence over local for umbrella chart support)
+Note: We check for the specific value, not just the parent map, because empty maps {} are truthy in Helm.
 */}}
 {{- define "isola-operator.storageBucketUrl" -}}
-{{- if .Values.global.storage -}}
+{{- if .Values.global.storage.bucketUrl -}}
 {{- .Values.global.storage.bucketUrl -}}
 {{- else -}}
 {{- .Values.snapshot.storage.bucketUrl -}}
@@ -149,7 +150,7 @@ Get storage bucket URL (global takes precedence over local for umbrella chart su
 Get storage credentials existingSecret (global takes precedence)
 */}}
 {{- define "isola-operator.storageCredentialsExistingSecret" -}}
-{{- if and .Values.global.storage .Values.global.storage.credentials -}}
+{{- if .Values.global.storage.credentials.existingSecret -}}
 {{- .Values.global.storage.credentials.existingSecret -}}
 {{- else -}}
 {{- .Values.snapshot.storage.credentials.existingSecret -}}
@@ -160,7 +161,7 @@ Get storage credentials existingSecret (global takes precedence)
 Get storage credentials accessKeyId (global takes precedence)
 */}}
 {{- define "isola-operator.storageCredentialsAccessKeyId" -}}
-{{- if and .Values.global.storage .Values.global.storage.credentials -}}
+{{- if .Values.global.storage.credentials.accessKeyId -}}
 {{- .Values.global.storage.credentials.accessKeyId -}}
 {{- else -}}
 {{- .Values.snapshot.storage.credentials.accessKeyId -}}
@@ -171,7 +172,7 @@ Get storage credentials accessKeyId (global takes precedence)
 Get storage credentials secretAccessKey (global takes precedence)
 */}}
 {{- define "isola-operator.storageCredentialsSecretAccessKey" -}}
-{{- if and .Values.global.storage .Values.global.storage.credentials -}}
+{{- if .Values.global.storage.credentials.secretAccessKey -}}
 {{- .Values.global.storage.credentials.secretAccessKey -}}
 {{- else -}}
 {{- .Values.snapshot.storage.credentials.secretAccessKey -}}
@@ -182,7 +183,7 @@ Get storage credentials secretAccessKey (global takes precedence)
 Get storage credentials region (global takes precedence)
 */}}
 {{- define "isola-operator.storageCredentialsRegion" -}}
-{{- if and .Values.global.storage .Values.global.storage.credentials -}}
+{{- if .Values.global.storage.credentials.region -}}
 {{- .Values.global.storage.credentials.region -}}
 {{- else -}}
 {{- .Values.snapshot.storage.credentials.region -}}

@@ -15,7 +15,14 @@ global:
   # Sandbox namespace (when empty, uses local sandboxNamespace value)
   sandboxNamespace: ""
   # Storage configuration (when empty, uses local snapshot.storage values)
-  storage: {}
+  # Structure must match the nested access pattern in helpers
+  storage:
+    bucketUrl: ""
+    credentials:
+      existingSecret: ""
+      accessKeyId: ""
+      secretAccessKey: ""
+      region: ""
 
 # Operator image configuration
 image:
