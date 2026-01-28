@@ -61,18 +61,6 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-Determine the credential secret name for snapshots
-Returns empty string if no credentials are configured (pod identity mode)
-*/}}
-{{- define "isola-operator.snapshotCredentialSecretName" -}}
-{{- if .Values.snapshot.storage.credentials.existingSecret }}
-{{- .Values.snapshot.storage.credentials.existingSecret }}
-{{- else if and .Values.snapshot.storage.credentials.accessKeyId .Values.snapshot.storage.credentials.secretAccessKey }}
-{{- printf "%s-snapshot-credentials" (include "isola-operator.fullname" .) }}
-{{- end }}
-{{- end }}
-
-{{/*
 Build a full image reference from registry, repository, and tag
 Usage: {{ include "isola-operator.image" (dict "imageConfig" .Values.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
 */}}

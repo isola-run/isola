@@ -61,18 +61,6 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
-Determine the credential secret name
-Returns empty string if no credentials are configured (pod identity mode)
-*/}}
-{{- define "api-gateway.credentialSecretName" -}}
-{{- if .Values.storage.credentials.existingSecret }}
-{{- .Values.storage.credentials.existingSecret }}
-{{- else if and .Values.storage.credentials.accessKeyId .Values.storage.credentials.secretAccessKey }}
-{{- printf "%s-storage-credentials" (include "api-gateway.fullname" .) }}
-{{- end }}
-{{- end }}
-
-{{/*
 Build a full image reference from registry, repository, and tag
 Usage: {{ include "api-gateway.image" (dict "imageConfig" .Values.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
 */}}
@@ -117,75 +105,5 @@ Get sandboxNamespace (global takes precedence over local for umbrella chart supp
 {{- .Values.global.sandboxNamespace -}}
 {{- else -}}
 {{- .Values.sandboxNamespace -}}
-{{- end -}}
-{{- end }}
-
-{{/*
-Get storage bucket URL (global takes precedence over local for umbrella chart support)
-*/}}
-{{- define "api-gateway.storageBucketUrl" -}}
-{{- if .Values.global.storage -}}
-{{- .Values.global.storage.bucketUrl -}}
-{{- else -}}
-{{- .Values.storage.bucketUrl -}}
-{{- end -}}
-{{- end }}
-
-{{/*
-Get storage credentials existingSecret (global takes precedence)
-*/}}
-{{- define "api-gateway.storageCredentialsExistingSecret" -}}
-{{- if and .Values.global.storage .Values.global.storage.credentials -}}
-{{- .Values.global.storage.credentials.existingSecret -}}
-{{- else -}}
-{{- .Values.storage.credentials.existingSecret -}}
-{{- end -}}
-{{- end }}
-
-{{/*
-Get storage credentials accessKeyId (global takes precedence)
-*/}}
-{{- define "api-gateway.storageCredentialsAccessKeyId" -}}
-{{- if and .Values.global.storage .Values.global.storage.credentials -}}
-{{- .Values.global.storage.credentials.accessKeyId -}}
-{{- else -}}
-{{- .Values.storage.credentials.accessKeyId -}}
-{{- end -}}
-{{- end }}
-
-{{/*
-Get storage credentials secretAccessKey (global takes precedence)
-*/}}
-{{- define "api-gateway.storageCredentialsSecretAccessKey" -}}
-{{- if and .Values.global.storage .Values.global.storage.credentials -}}
-{{- .Values.global.storage.credentials.secretAccessKey -}}
-{{- else -}}
-{{- .Values.storage.credentials.secretAccessKey -}}
-{{- end -}}
-{{- end }}
-
-{{/*
-Get storage credentials region (global takes precedence)
-*/}}
-{{- define "api-gateway.storageCredentialsRegion" -}}
-{{- if and .Values.global.storage .Values.global.storage.credentials -}}
-{{- .Values.global.storage.credentials.region -}}
-{{- else -}}
-{{- .Values.storage.credentials.region -}}
-{{- end -}}
-{{- end }}
-
-{{/*
-Determine the credential secret name (updated for global support)
-Returns empty string if no credentials are configured (pod identity mode)
-*/}}
-{{- define "api-gateway.credentialSecretNameResolved" -}}
-{{- $existingSecret := include "api-gateway.storageCredentialsExistingSecret" . -}}
-{{- $accessKeyId := include "api-gateway.storageCredentialsAccessKeyId" . -}}
-{{- $secretAccessKey := include "api-gateway.storageCredentialsSecretAccessKey" . -}}
-{{- if $existingSecret -}}
-{{- $existingSecret -}}
-{{- else if and $accessKeyId $secretAccessKey -}}
-{{- printf "%s-storage-credentials" (include "api-gateway.fullname" .) -}}
 {{- end -}}
 {{- end }}

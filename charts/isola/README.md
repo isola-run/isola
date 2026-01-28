@@ -158,7 +158,7 @@ api-gateway:
 
 ```bash
 # Step 1: Mirror images to your registry
-VERSION=v0.1.0
+VERSION=<version>  # Use the version you want to deploy
 REGISTRY=my-registry.example.com/isola
 
 for img in isola-operator sandbox-sidecar isola-uploader api-gateway; do

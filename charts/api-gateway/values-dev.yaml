@@ -15,10 +15,3 @@ logging:
 service:
   type: NodePort
   nodePort: 30080
-
-storage:
-  bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
-  credentials:
-    accessKeyId: "test"
-    secretAccessKey: "test"
-    region: "us-east-1"

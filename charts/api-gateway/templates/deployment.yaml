@@ -60,32 +60,6 @@ spec:
           env:
             - name: ISOLA_SANDBOX_NAMESPACE
               value: {{ include "api-gateway.sandboxNamespace" . | quote }}
-            {{- $bucketUrl := include "api-gateway.storageBucketUrl" . }}
-            {{- if $bucketUrl }}
-            - name: ISOLA_BUCKET_URL
-              value: {{ $bucketUrl | quote }}
-            {{- end }}
-            {{- $credentialSecret := include "api-gateway.credentialSecretNameResolved" . }}
-            {{- if $credentialSecret }}
-            - name: AWS_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $credentialSecret }}
-                  key: AWS_ACCESS_KEY_ID
-                  optional: true
-            - name: AWS_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $credentialSecret }}
-                  key: AWS_SECRET_ACCESS_KEY
-                  optional: true
-            - name: AWS_REGION
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $credentialSecret }}
-                  key: AWS_REGION
-                  optional: true
-            {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

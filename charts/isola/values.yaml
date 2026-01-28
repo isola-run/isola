@@ -35,9 +35,9 @@ global:
   sandboxNamespace: isola-sandboxes
 
   # ---------------------------------------------------------------------------
-  # Storage Configuration
+  # Storage Configuration (Operator Only)
   # ---------------------------------------------------------------------------
-  # Used by both isola-operator (snapshot uploads) and api-gateway (presigned URLs).
+  # Used by isola-operator for snapshot uploads to cloud storage.
 
   storage:
     # Bucket URL for storage operations (required for snapshotting to work)

@@ -3,14 +3,19 @@ nameOverride: ""
 # Override the full release name
 fullnameOverride: ""
 
-# Global settings applied to all images (operator, sidecar, uploader)
-# For air-gapped environments, set imageRegistry to your internal registry
+# Global settings
+# When installed as part of the umbrella chart, these are set by the parent.
+# When installed standalone, these provide defaults.
 global:
   # Override registry for all images (e.g., "my-registry.example.com/isola")
   imageRegistry: ""
   # Image pull secrets applied to all pods (operator deployment, snapshot jobs, sandbox sidecars)
   # Example: [{ name: "my-registry-secret" }]
   imagePullSecrets: []
+  # Sandbox namespace (when empty, uses local sandboxNamespace value)
+  sandboxNamespace: ""
+  # Storage configuration (when empty, uses local snapshot.storage values)
+  storage: {}
 
 # Operator image configuration
 image:
