@@ -2,7 +2,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ include "api-gateway.fullname" . }}-pods
-  namespace: {{ .Values.sandboxNamespace }}
+  namespace: {{ include "api-gateway.sandboxNamespace" . }}
   labels:
     {{- include "api-gateway.labels" . | nindent 4 }}
 rules:

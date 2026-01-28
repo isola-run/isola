@@ -1,0 +1,44 @@
+Isola has been installed successfully!
+
+COMPONENTS DEPLOYED:
+{{- if index .Values "isola-operator" "enabled" }}
+  - isola-operator: Kubernetes operator for sandbox lifecycle management
+{{- end }}
+{{- if index .Values "api-gateway" "enabled" }}
+  - api-gateway: REST API for sandbox orchestration
+{{- end }}
+
+SANDBOX NAMESPACE: {{ .Values.global.sandboxNamespace }}
+
+{{- if index .Values "api-gateway" "enabled" }}
+
+ACCESS THE API:
+{{- $svcType := index .Values "api-gateway" "service" "type" }}
+{{- if eq $svcType "LoadBalancer" }}
+  External IP (may take a few minutes):
+    kubectl get svc -n {{ .Release.Namespace }} -l app.kubernetes.io/name=api-gateway -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
+{{- else if eq $svcType "NodePort" }}
+  Node Port:
+    export NODE_PORT=$(kubectl get svc -n {{ .Release.Namespace }} -l app.kubernetes.io/name=api-gateway -o jsonpath='{.items[0].spec.ports[0].nodePort}')
+    export NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}')
+    echo "API: http://$NODE_IP:$NODE_PORT"
+{{- else }}
+  Port forward to access locally:
+    kubectl port-forward svc/{{ .Release.Name }}-api-gateway 8080:80 -n {{ .Release.Namespace }}
+    curl http://localhost:8080/api/v1/health
+{{- end }}
+{{- end }}
+
+VERIFY INSTALLATION:
+  kubectl get pods -n {{ .Release.Namespace }}
+  kubectl get sandboxtemplates -A
+  kubectl get sandboxes -A
+
+{{- if not .Values.global.storage.bucketUrl }}
+
+NOTE: Snapshot storage is not configured. To enable snapshots:
+  helm upgrade {{ .Release.Name }} isola/isola \
+    --set global.storage.bucketUrl="s3://your-bucket?region=us-east-1"
+{{- end }}
+
+DOCUMENTATION: https://github.com/isola-ai/isola-sb

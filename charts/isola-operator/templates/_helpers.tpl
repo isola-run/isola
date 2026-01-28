@@ -134,3 +134,84 @@ Return imagePullSecret names as comma-separated string (for passing to operator)
 {{- end -}}
 {{- join "," $names -}}
 {{- end }}
+
+{{/*
+Get sandboxNamespace (global takes precedence over local for umbrella chart support)
+*/}}
+{{- define "isola-operator.sandboxNamespace" -}}
+{{- if .Values.global.sandboxNamespace -}}
+{{- .Values.global.sandboxNamespace -}}
+{{- else -}}
+{{- .Values.sandboxNamespace -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get storage bucket URL (global takes precedence over local for umbrella chart support)
+*/}}
+{{- define "isola-operator.storageBucketUrl" -}}
+{{- if .Values.global.storage -}}
+{{- .Values.global.storage.bucketUrl -}}
+{{- else -}}
+{{- .Values.snapshot.storage.bucketUrl -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get storage credentials existingSecret (global takes precedence)
+*/}}
+{{- define "isola-operator.storageCredentialsExistingSecret" -}}
+{{- if and .Values.global.storage .Values.global.storage.credentials -}}
+{{- .Values.global.storage.credentials.existingSecret -}}
+{{- else -}}
+{{- .Values.snapshot.storage.credentials.existingSecret -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get storage credentials accessKeyId (global takes precedence)
+*/}}
+{{- define "isola-operator.storageCredentialsAccessKeyId" -}}
+{{- if and .Values.global.storage .Values.global.storage.credentials -}}
+{{- .Values.global.storage.credentials.accessKeyId -}}
+{{- else -}}
+{{- .Values.snapshot.storage.credentials.accessKeyId -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get storage credentials secretAccessKey (global takes precedence)
+*/}}
+{{- define "isola-operator.storageCredentialsSecretAccessKey" -}}
+{{- if and .Values.global.storage .Values.global.storage.credentials -}}
+{{- .Values.global.storage.credentials.secretAccessKey -}}
+{{- else -}}
+{{- .Values.snapshot.storage.credentials.secretAccessKey -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Get storage credentials region (global takes precedence)
+*/}}
+{{- define "isola-operator.storageCredentialsRegion" -}}
+{{- if and .Values.global.storage .Values.global.storage.credentials -}}
+{{- .Values.global.storage.credentials.region -}}
+{{- else -}}
+{{- .Values.snapshot.storage.credentials.region -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Determine the credential secret name for snapshots (updated for global support)
+Returns empty string if no credentials are configured (pod identity mode)
+*/}}
+{{- define "isola-operator.snapshotCredentialSecretNameResolved" -}}
+{{- $existingSecret := include "isola-operator.storageCredentialsExistingSecret" . -}}
+{{- $accessKeyId := include "isola-operator.storageCredentialsAccessKeyId" . -}}
+{{- $secretAccessKey := include "isola-operator.storageCredentialsSecretAccessKey" . -}}
+{{- if $existingSecret -}}
+{{- $existingSecret -}}
+{{- else if and $accessKeyId $secretAccessKey -}}
+{{- printf "%s-snapshot-credentials" (include "isola-operator.fullname" .) -}}
+{{- end -}}
+{{- end }}

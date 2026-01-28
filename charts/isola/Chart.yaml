@@ -1,0 +1,33 @@
+apiVersion: v2
+name: isola
+description: |
+  Isola - Secure sandbox orchestration for Kubernetes.
+  This umbrella chart installs the complete Isola stack including the operator and API gateway.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - isola
+  - sandbox
+  - kubernetes
+  - operator
+  - security
+  - gvisor
+home: https://github.com/isola-ai/isola-sb
+sources:
+  - https://github.com/isola-ai/isola-sb
+maintainers:
+  - name: Isola Team
+    url: https://github.com/isola-ai
+
+# Dependencies are bundled subcharts
+# Each can be disabled via values.yaml conditions
+dependencies:
+  - name: isola-operator
+    version: "0.1.0"
+    repository: "file://../isola-operator"
+    condition: isola-operator.enabled
+  - name: api-gateway
+    version: "0.1.0"
+    repository: "file://../api-gateway"
+    condition: api-gateway.enabled

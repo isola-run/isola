@@ -3,7 +3,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-api-gateway-ingress
-  namespace: {{ .Values.sandboxNamespace }}
+  namespace: {{ include "isola-operator.sandboxNamespace" . }}
   labels:
     {{- include "isola-operator.labels" . | nindent 4 }}
     app.kubernetes.io/component: sandbox

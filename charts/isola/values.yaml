@@ -1,0 +1,175 @@
+# Isola Umbrella Chart - Unified Configuration
+#
+# This chart installs the complete Isola stack:
+#   - isola-operator: Kubernetes operator for sandbox lifecycle management
+#   - api-gateway: REST API for sandbox orchestration
+#
+# Configuration is organized as:
+#   - Global settings (auto-propagated to all subcharts)
+#   - Subchart-specific overrides (isola-operator.*, api-gateway.*)
+
+# =============================================================================
+# Global Settings
+# =============================================================================
+# These values are automatically propagated to all subcharts.
+# Subcharts access them as .Values.global.*
+
+global:
+  # ---------------------------------------------------------------------------
+  # Image Registry Settings
+  # ---------------------------------------------------------------------------
+  # Override registry for all images (operator, sidecar, uploader, api-gateway)
+  # Useful for air-gapped environments or private registries.
+  # Example: "my-registry.example.com/isola"
+  imageRegistry: ""
+
+  # Image pull secrets applied to all pods
+  # Example: [{ name: "my-registry-secret" }]
+  imagePullSecrets: []
+
+  # ---------------------------------------------------------------------------
+  # Shared Namespace
+  # ---------------------------------------------------------------------------
+  # Namespace where sandbox pods are created.
+  # Both the operator and api-gateway use this namespace.
+  sandboxNamespace: isola-sandboxes
+
+  # ---------------------------------------------------------------------------
+  # Storage Configuration
+  # ---------------------------------------------------------------------------
+  # Used by both isola-operator (snapshot uploads) and api-gateway (presigned URLs).
+
+  storage:
+    # Bucket URL for storage operations (required for snapshotting to work)
+    # Examples:
+    #   s3://bucket-name?region=us-east-1 (AWS S3)
+    #   s3://bucket-name?endpoint=http://localstack:4566&use_path_style=true (LocalStack/MinIO)
+    #   gs://bucket-name (Google Cloud Storage)
+    #   azblob://container-name (Azure Blob Storage)
+    bucketUrl: ""
+
+    # Storage credentials - three modes of operation:
+    #   1. Pod/Workload Identity (recommended): Leave all fields empty
+    #   2. Existing Secret: Set existingSecret to reference a pre-created secret
+    #   3. Chart-managed Secret: Provide accessKeyId/secretAccessKey (dev/CI only)
+    credentials:
+      # Name of existing secret containing storage credentials
+      # When set, inline credentials below are ignored.
+      existingSecret: ""
+
+      # AWS/S3-compatible credentials (only used when existingSecret is empty)
+      accessKeyId: ""
+      secretAccessKey: ""
+      region: ""
+
+# =============================================================================
+# Isola Operator
+# =============================================================================
+# Configuration for the isola-operator subchart.
+# For full options, see: charts/isola-operator/values.yaml
+
+isola-operator:
+  # Enable/disable the operator (default: true)
+  enabled: true
+
+  # Operator image configuration
+  image:
+    registry: ghcr.io/isola-ai
+    repository: isola-operator
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+  # Sidecar image injected into sandbox pods
+  sidecar:
+    image:
+      registry: ghcr.io/isola-ai
+      repository: sandbox-sidecar
+      tag: ""
+
+  # RuntimeClassName for sandbox pods
+  # Use "gvisor" for production (stronger isolation)
+  # Use "" for development without gVisor installed
+  runtimeClassName: "gvisor"
+
+  # PriorityClassName for sandbox pods
+  priorityClassName: "isola-sandbox"
+
+  # ServiceAccount for the operator
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
+  # Snapshot uploader configuration
+  snapshot:
+    uploader:
+      image:
+        registry: ghcr.io/isola-ai
+        repository: isola-uploader
+        tag: ""
+
+    # ServiceAccount for snapshot jobs
+    serviceAccount:
+      create: true
+      name: "isola-snapshot-job"
+      # Annotations for pod identity (IRSA, Workload Identity, etc.)
+      annotations: {}
+
+  # Pod scheduling
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+# =============================================================================
+# API Gateway
+# =============================================================================
+# Configuration for the api-gateway subchart.
+# For full options, see: charts/api-gateway/values.yaml
+
+api-gateway:
+  # Enable/disable the API gateway (default: true)
+  enabled: true
+
+  # API gateway image configuration
+  image:
+    registry: ghcr.io/isola-ai
+    repository: api-gateway
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    nodePort: null
+
+  # Logging configuration
+  logging:
+    level: info
+    devMode: false
+
+  # ServiceAccount for the API gateway
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
+  # Pod scheduling
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}

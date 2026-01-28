@@ -3,7 +3,7 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: isola-sandbox-pdb
-  namespace: {{ .Values.sandboxNamespace }}
+  namespace: {{ include "isola-operator.sandboxNamespace" . }}
   labels:
     {{- include "isola-operator.labels" . | nindent 4 }}
     app.kubernetes.io/component: sandbox

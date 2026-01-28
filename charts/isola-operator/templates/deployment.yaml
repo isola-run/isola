@@ -67,10 +67,11 @@ spec:
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
         env:
-        {{- if .Values.snapshot.storage.bucketUrl }}
+        {{- $bucketUrl := include "isola-operator.storageBucketUrl" . }}
+        {{- if $bucketUrl }}
         - name: ISOLA_SNAPSHOT_BUCKET_URL
-          value: {{ .Values.snapshot.storage.bucketUrl | quote }}
-        {{- $credentialSecretName := include "isola-operator.snapshotCredentialSecretName" . }}
+          value: {{ $bucketUrl | quote }}
+        {{- $credentialSecretName := include "isola-operator.snapshotCredentialSecretNameResolved" . }}
         {{- if $credentialSecretName }}
         - name: ISOLA_SNAPSHOT_CREDENTIAL_SECRET
           value: {{ $credentialSecretName | quote }}

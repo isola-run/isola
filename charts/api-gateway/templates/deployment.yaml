@@ -59,12 +59,13 @@ spec:
             allowPrivilegeEscalation: false
           env:
             - name: ISOLA_SANDBOX_NAMESPACE
-              value: {{ .Values.sandboxNamespace | quote }}
-            {{- if .Values.storage.bucketUrl }}
+              value: {{ include "api-gateway.sandboxNamespace" . | quote }}
+            {{- $bucketUrl := include "api-gateway.storageBucketUrl" . }}
+            {{- if $bucketUrl }}
             - name: ISOLA_BUCKET_URL
-              value: {{ .Values.storage.bucketUrl | quote }}
+              value: {{ $bucketUrl | quote }}
             {{- end }}
-            {{- $credentialSecret := include "api-gateway.credentialSecretName" . }}
+            {{- $credentialSecret := include "api-gateway.credentialSecretNameResolved" . }}
             {{- if $credentialSecret }}
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
