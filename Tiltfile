@@ -105,9 +105,6 @@ helm_resource(
         '--create-namespace',
         '-f', 'charts/isola/values-dev.yaml',
     ],
-    # image_deps and image_keys instruct Tilt on how to patch the Helm values with newly built images.
-    # Tilt sets repository to the full registry+repo path (e.g., localhost:5001/isola-operator)
-    # and tag to the Tilt-generated tag. The helper templates handle empty registry gracefully.
     image_deps=['isola-operator', 'isola-sidecar', 'isola-uploader', 'isola-api'],
     image_keys=[
         ('operator.image.repository', 'operator.image.tag'),
