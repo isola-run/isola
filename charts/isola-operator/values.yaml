@@ -39,7 +39,7 @@ resources:
 sidecar:
   image:
     registry: ghcr.io/isola-ai
-    repository: isola-sidecar
+    repository: sandbox-sidecar
     # Tag defaults to Chart.appVersion if empty
     tag: ""
 

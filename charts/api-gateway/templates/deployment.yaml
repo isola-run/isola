@@ -1,32 +1,32 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "isola-api.fullname" . }}
+  name: {{ include "api-gateway.fullname" . }}
   labels:
-    {{- include "isola-api.labels" . | nindent 4 }}
+    {{- include "api-gateway.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "isola-api.selectorLabels" . | nindent 6 }}
+      {{- include "api-gateway.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "isola-api.selectorLabels" . | nindent 8 }}
+        {{- include "api-gateway.selectorLabels" . | nindent 8 }}
       {{- with .Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
-      serviceAccountName: {{ include "isola-api.serviceAccountName" . }}
-      {{- include "isola-api.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "api-gateway.serviceAccountName" . }}
+      {{- include "api-gateway.imagePullSecrets" . | nindent 6 }}
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: {{ .Chart.Name }}
-          image: {{ include "isola-api.apiImage" . }}
+          image: {{ include "api-gateway.apiImage" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - -log-level={{ .Values.logging.level }}
@@ -64,7 +64,7 @@ spec:
             - name: ISOLA_BUCKET_URL
               value: {{ .Values.storage.bucketUrl | quote }}
             {{- end }}
-            {{- $credentialSecret := include "isola-api.credentialSecretName" . }}
+            {{- $credentialSecret := include "api-gateway.credentialSecretName" . }}
             {{- if $credentialSecret }}
             - name: AWS_ACCESS_KEY_ID
               valueFrom:

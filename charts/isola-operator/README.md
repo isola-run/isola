@@ -43,9 +43,9 @@ Copy these images to your internal registry:
 ```bash
 # isola images (from ghcr.io/isola-ai)
 ghcr.io/isola-ai/isola-operator:<version>
-ghcr.io/isola-ai/isola-sidecar:<version>
+ghcr.io/isola-ai/sandbox-sidecar:<version>
 ghcr.io/isola-ai/isola-uploader:<version>
-ghcr.io/isola-ai/isola-api:<version>
+ghcr.io/isola-ai/api-gateway:<version>
 
 # Third-party dependency (used by snapshot jobs)
 gcr.io/distroless/static:nonroot
@@ -57,7 +57,7 @@ VERSION=v0.1.0
 PRIVATE_REGISTRY=my-registry.example.com/isola
 
 # Mirror isola images
-for img in isola-operator isola-sidecar isola-uploader isola-api; do
+for img in isola-operator sandbox-sidecar isola-uploader api-gateway; do
   skopeo copy \
     docker://ghcr.io/isola-ai/${img}:${VERSION} \
     docker://${PRIVATE_REGISTRY}/${img}:${VERSION}
@@ -114,7 +114,7 @@ This configures:
 | `image.repository` | Operator image repository | `isola-operator` |
 | `image.tag` | Operator image tag | Chart appVersion |
 | `sidecar.image.registry` | Sidecar image registry | `ghcr.io/isola-ai` |
-| `sidecar.image.repository` | Sidecar image repository | `isola-sidecar` |
+| `sidecar.image.repository` | Sidecar image repository | `sandbox-sidecar` |
 | `sidecar.image.tag` | Sidecar image tag | Chart appVersion |
 | `snapshot.uploader.image.registry` | Uploader image registry | `ghcr.io/isola-ai` |
 | `snapshot.uploader.image.repository` | Uploader image repository | `isola-uploader` |

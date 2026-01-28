@@ -5,9 +5,9 @@
 #
 # Published images:
 #   - ghcr.io/isola-ai/isola-operator:<tag>
-#   - ghcr.io/isola-ai/isola-sidecar:<tag>
+#   - ghcr.io/isola-ai/sandbox-sidecar:<tag>
 #   - ghcr.io/isola-ai/isola-uploader:<tag>
-#   - ghcr.io/isola-ai/isola-api:<tag>
+#   - ghcr.io/isola-ai/api-gateway:<tag>
 
 name: Release
 
@@ -34,12 +34,12 @@ jobs:
         image:
           - name: isola-operator
             dockerfile: cmd/operator/Dockerfile
-          - name: isola-sidecar
-            dockerfile: cmd/isola-sidecar/Dockerfile
+          - name: sandbox-sidecar
+            dockerfile: cmd/sandbox-sidecar/Dockerfile
           - name: isola-uploader
             dockerfile: cmd/uploader/Dockerfile
-          - name: isola-api
-            dockerfile: cmd/isola-api/Dockerfile
+          - name: api-gateway
+            dockerfile: cmd/api-gateway/Dockerfile
 
     steps:
       - name: Checkout
@@ -97,8 +97,8 @@ jobs:
           # Update isola-operator Chart.yaml
           sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" charts/isola-operator/Chart.yaml
 
-          # Update isola-api Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" charts/isola-api/Chart.yaml
+          # Update api-gateway Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" charts/api-gateway/Chart.yaml
 
       - name: Commit and push
         run: |

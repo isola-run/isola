@@ -12,15 +12,15 @@ help: ## Display this help
 ##@ Development
 
 .PHONY: generate-api
-generate-api: ## Generate isola-api OpenAPI code
-	go generate ./cmd/isola-api/...
+generate-api: ## Generate api-gateway OpenAPI code
+	go generate ./cmd/api-gateway/...
 
 .PHONY: check-api-codegen
-check-api-codegen: generate-api ## Verify isola-api OpenAPI code is up-to-date
-	@if ! git diff --quiet -- api/openapi.yaml internal/api/generated/; then \
+check-api-codegen: generate-api ## Verify api-gateway OpenAPI code is up-to-date
+	@if ! git diff --quiet -- api/openapi.yaml internal/api-gateway/generated/; then \
 		echo "ERROR: API generated code is out of sync with spec"; \
 		echo "Run 'make generate-api' and commit the changes"; \
-		git diff --stat -- api/openapi.yaml internal/api/generated/; \
+		git diff --stat -- api/openapi.yaml internal/api-gateway/generated/; \
 		exit 1; \
 	fi
 
@@ -104,21 +104,21 @@ test-operator: ## Run operator tests (supports FOCUS=pattern)
 		$(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
 
 .PHONY: test-api
-test-api: ## Run isola-api tests (supports FOCUS=pattern)
-	go test ./internal/api/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
+test-api: ## Run api-gateway tests (supports FOCUS=pattern)
+	go test ./internal/api-gateway/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
 
 .PHONY: test-sidecar
-test-sidecar: ## Run isola-sidecar tests (supports FOCUS=pattern)
-	go test ./internal/sidecar/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
+test-sidecar: ## Run sandbox-sidecar tests (supports FOCUS=pattern)
+	go test ./internal/sandbox-sidecar/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
 
 ##@ Build
 
 .PHONY: build
 build: ## Build all binaries
 	go build -o bin/operator ./cmd/operator
-	go build -o bin/isola-sidecar ./cmd/isola-sidecar
+	go build -o bin/sandbox-sidecar ./cmd/sandbox-sidecar
 	go build -o bin/uploader ./cmd/uploader
-	go build -o bin/isola-api ./cmd/isola-api
+	go build -o bin/api-gateway ./cmd/api-gateway
 
 .PHONY: run-operator
 run-operator: ## Run operator from your host

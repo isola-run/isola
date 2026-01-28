@@ -13,7 +13,7 @@ import (
 	"github.com/go-chi/httplog/v2"
 
 	"github.com/isola-ai/isola-sb/internal/logging"
-	"github.com/isola-ai/isola-sb/internal/sidecar/handlers"
+	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/handlers"
 )
 
 const port = 10032
@@ -38,7 +38,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
-	r.Use(httplog.RequestLogger(httplog.NewLogger("isola-sidecar", httplog.Options{
+	r.Use(httplog.RequestLogger(httplog.NewLogger("sandbox-sidecar", httplog.Options{
 		LogLevel: slog.LevelInfo,
 		JSON:     !cfg.devMode,
 	})))
@@ -52,7 +52,7 @@ func main() {
 	}
 	// currently no graceful shutdown, but it might make sense to have a short grace period
 	// to allow completing retrieval of sandbox app stdout for example (if in progress)
-	logger.Info("starting isola-sidecar server", "port", port)
+	logger.Info("starting sandbox-sidecar server", "port", port)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error("server error", "error", err)
 		os.Exit(1)

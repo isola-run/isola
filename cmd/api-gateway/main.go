@@ -19,8 +19,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httplog/v2"
 
-	"github.com/isola-ai/isola-sb/internal/api/generated"
-	"github.com/isola-ai/isola-sb/internal/api/handlers"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/generated"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/handlers"
 	"github.com/isola-ai/isola-sb/internal/logging"
 )
 
@@ -48,7 +48,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	// todo benl: go over the configuration below
-	r.Use(httplog.RequestLogger(httplog.NewLogger("isola-api", httplog.Options{
+	r.Use(httplog.RequestLogger(httplog.NewLogger("api-gateway", httplog.Options{
 		LogLevel: slog.LevelInfo,
 		JSON:     !cfg.devMode,
 	})))
@@ -69,7 +69,7 @@ func main() {
 	defer stop()
 
 	go func() {
-		logger.Info("starting isola-api server", "port", cfg.httpPort)
+		logger.Info("starting api-gateway server", "port", cfg.httpPort)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("server error", "error", err)
 			os.Exit(1)

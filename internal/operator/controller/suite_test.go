@@ -94,7 +94,7 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "charts", "isola-operator", "crds")},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -174,11 +174,11 @@ var _ = AfterSuite(func() {
 func newTestReconciler(clock Clock) *SandboxReconciler {
 	rec := record.NewFakeRecorder(100)
 	return &SandboxReconciler{
-		Client:       k8sClient,
-		Scheme:       scheme.Scheme,
-		Recorder:     rec,
-		SidecarImage: "isola-sidecar:test",
-		Clock:        clock,
+		Client:              k8sClient,
+		Scheme:              scheme.Scheme,
+		Recorder:            rec,
+		SandboxSidecarImage: "sandbox-sidecar:test",
+		Clock:               clock,
 		// ControllerNamespace not set - defaults to sandbox namespace
 		// ControllerLabels not set - defaults to {"app.kubernetes.io/name": "isola-controller"}
 	}
@@ -188,11 +188,11 @@ func newTestReconciler(clock Clock) *SandboxReconciler {
 // Uses direct k8sClient for immediate consistency in tests.
 func newTestReconcilerWithRecorder(clock Clock, recorder record.EventRecorder) *SandboxReconciler {
 	return &SandboxReconciler{
-		Client:       k8sClient,
-		Scheme:       scheme.Scheme,
-		Recorder:     recorder,
-		SidecarImage: "isola-sidecar:test",
-		Clock:        clock,
+		Client:              k8sClient,
+		Scheme:              scheme.Scheme,
+		Recorder:            recorder,
+		SandboxSidecarImage: "sandbox-sidecar:test",
+		Clock:               clock,
 	}
 }
 
@@ -201,12 +201,12 @@ func newTestReconcilerWithRecorder(clock Clock, recorder record.EventRecorder) *
 func newTestReconcilerWithRuntimeClass(clock Clock, runtimeClassName string) *SandboxReconciler {
 	rec := record.NewFakeRecorder(100)
 	return &SandboxReconciler{
-		Client:           k8sClient,
-		Scheme:           scheme.Scheme,
-		Recorder:         rec,
-		SidecarImage:     "isola-sidecar:test",
-		Clock:            clock,
-		RuntimeClassName: runtimeClassName,
+		Client:              k8sClient,
+		Scheme:              scheme.Scheme,
+		Recorder:            rec,
+		SandboxSidecarImage: "sandbox-sidecar:test",
+		Clock:               clock,
+		RuntimeClassName:    runtimeClassName,
 	}
 }
 
@@ -215,10 +215,10 @@ func newTestReconcilerWithRuntimeClass(clock Clock, runtimeClassName string) *Sa
 func newTestReconcilerWithCache(clock Clock) *SandboxReconciler {
 	rec := record.NewFakeRecorder(100)
 	return &SandboxReconciler{
-		Client:       k8sCache,
-		Scheme:       scheme.Scheme,
-		Recorder:     rec,
-		SidecarImage: "isola-sidecar:test",
-		Clock:        clock,
+		Client:              k8sCache,
+		Scheme:              scheme.Scheme,
+		Recorder:            rec,
+		SandboxSidecarImage: "sandbox-sidecar:test",
+		Clock:               clock,
 	}
 }

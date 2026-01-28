@@ -10,9 +10,9 @@ env:
   KIND_CLUSTER_NAME: isola-e2e
   # Image names (no registry prefix - loaded directly into Kind)
   OPERATOR_IMAGE: isola-operator
-  SIDECAR_IMAGE: isola-sidecar
+  SIDECAR_IMAGE: sandbox-sidecar
   UPLOADER_IMAGE: isola-uploader
-  API_IMAGE: isola-api
+  API_IMAGE: api-gateway
 
 jobs:
   e2e:
@@ -38,11 +38,11 @@ jobs:
           cache-from: type=gha,scope=operator
           cache-to: type=gha,mode=max,scope=operator
 
-      - name: Build isola-sidecar image
+      - name: Build sandbox-sidecar image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: cmd/isola-sidecar/Dockerfile
+          file: cmd/sandbox-sidecar/Dockerfile
           load: true
           tags: ${{ env.SIDECAR_IMAGE }}:ci
           cache-from: type=gha,scope=sidecar
@@ -58,11 +58,11 @@ jobs:
           cache-from: type=gha,scope=uploader
           cache-to: type=gha,mode=max,scope=uploader
 
-      - name: Build isola-api image
+      - name: Build api-gateway image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: cmd/isola-api/Dockerfile
+          file: cmd/api-gateway/Dockerfile
           load: true
           tags: ${{ env.API_IMAGE }}:ci
           cache-from: type=gha,scope=api
@@ -149,11 +149,11 @@ jobs:
             --set snapshot.uploader.image.tag=ci \
             --wait --timeout 3m
 
-      - name: Deploy isola-api
+      - name: Deploy api-gateway
         run: |
-          helm install isola-api charts/isola-api \
+          helm install api-gateway charts/api-gateway \
             --namespace isola-system \
-            -f charts/isola-api/values-dev.yaml \
+            -f charts/api-gateway/values-dev.yaml \
             --set image.repository=${{ env.API_IMAGE }} \
             --set image.tag=ci \
             --set image.pullPolicy=Never \
@@ -164,8 +164,8 @@ jobs:
           echo "Waiting for isola-operator..."
           kubectl rollout status deployment/isola-operator -n isola-system --timeout=120s
 
-          echo "Waiting for isola-api..."
-          kubectl rollout status deployment/isola-api -n isola-system --timeout=120s
+          echo "Waiting for api-gateway..."
+          kubectl rollout status deployment/api-gateway -n isola-system --timeout=120s
 
           echo "Checking pod status..."
           kubectl get pods -n isola-system
@@ -211,8 +211,8 @@ jobs:
           echo "=== isola-operator logs ===" > ./debug-logs/operator.log
           kubectl logs -l app.kubernetes.io/name=isola-operator -n isola-system --tail=500 >> ./debug-logs/operator.log 2>&1 || true
 
-          echo "=== isola-api logs ===" > ./debug-logs/api.log
-          kubectl logs -l app.kubernetes.io/name=isola-api -n isola-system --tail=500 >> ./debug-logs/api.log 2>&1 || true
+          echo "=== api-gateway logs ===" > ./debug-logs/api.log
+          kubectl logs -l app.kubernetes.io/name=api-gateway -n isola-system --tail=500 >> ./debug-logs/api.log 2>&1 || true
 
           echo "=== Sandboxes ===" > ./debug-logs/sandboxes.txt
           kubectl get sandboxes -A -o wide >> ./debug-logs/sandboxes.txt 2>&1 || true
