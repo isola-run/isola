@@ -43,7 +43,7 @@ The api-gateway uses code-first documentation with swaggo/swag. Swagger annotati
 
 After modifying handler annotations in `internal/api-gateway/handlers/`:
 ```bash
-make swagger  # Regenerates docs/swagger.json, docs/swagger.yaml, docs/docs.go
+make swagger  # Regenerates api/openapi/swagger.json, swagger.yaml, docs.go
 ```
 
 The generated docs are committed to the repo. CI runs `make check-swagger` to verify they're in sync.
@@ -58,7 +58,7 @@ Swagger UI is served at `/docs/index.html` when the api-gateway is running.
 
 **Project structure:**
 - `api/v1alpha1/` - CRD type definitions (Sandbox, SandboxTemplate, RootfsSnapshot)
-- `docs/` - Generated Swagger docs for api-gateway (swagger.json, swagger.yaml)
+- `api/openapi/` - Generated Swagger docs for api-gateway (swagger.json, swagger.yaml)
 - `cmd/operator/` - Kubebuilder operator entry point
 - `cmd/api-gateway/` - API gateway for external clients
 - `cmd/sandbox-sidecar/` - Sidecar injected into sandbox pods by operator
@@ -119,7 +119,7 @@ Swagger UI is served at `/docs/index.html` when the api-gateway is running.
 make test                            # Run all tests
 make test-verbose                    # All tests with verbose output
 make test-operator                   # Operator tests only
-make test-gateway                        # api-gateway tests only
+make test-gateway                    # api-gateway tests only
 make test-operator FOCUS="Reconcile" # Focused by Ginkgo pattern
 make test GO_TEST_FLAGS="-race"      # With race detector
 ```

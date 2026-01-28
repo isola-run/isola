@@ -13,14 +13,14 @@ help: ## Display this help
 
 .PHONY: swagger
 swagger: ## Generate api-gateway Swagger docs
-	go tool swag init -g cmd/api-gateway/main.go -o docs --parseDependency --parseInternal
+	go tool swag init -g cmd/api-gateway/main.go -o api/openapi --parseDependency --parseInternal
 
 .PHONY: check-swagger
 check-swagger: swagger ## Verify api-gateway Swagger docs are up-to-date
-	@if ! git diff --quiet -- docs/; then \
+	@if ! git diff --quiet -- api/openapi/; then \
 		echo "ERROR: Swagger docs are out of sync"; \
 		echo "Run 'make swagger' and commit the changes"; \
-		git diff --stat -- docs/; \
+		git diff --stat -- api/openapi/; \
 		exit 1; \
 	fi
 
