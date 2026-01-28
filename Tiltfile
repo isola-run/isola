@@ -97,24 +97,39 @@ docker_build(
 # isola (unified chart - operator + api)
 # ==============================================================================
 
-helm_resource(
+# Render helm chart - lets Tilt discover individual resources for granular visibility
+# Chart creates its own namespaces (isola-system, isola-sandboxes)
+watch_file('charts/isola')
+k8s_yaml(helm(
+    'charts/isola',
     name='isola',
-    chart='charts/isola',
     namespace='isola-system',
-    flags=[
-        '--create-namespace',
-        '-f', 'charts/isola/values-dev.yaml',
+    values=['charts/isola/values-dev.yaml'],
+    set=[
+        # Clear registry so Tilt's default_registry applies to built images
+        'operator.image.registry=',
+        'operator.image.repository=isola-operator',
+        'operator.sidecar.image.registry=',
+        'operator.sidecar.image.repository=isola-sidecar',
+        'operator.snapshot.uploader.image.registry=',
+        'operator.snapshot.uploader.image.repository=isola-uploader',
+        'api.image.registry=',
+        'api.image.repository=isola-api',
     ],
-    image_deps=['isola-operator', 'isola-sidecar', 'isola-uploader', 'isola-api'],
-    image_keys=[
-        ('operator.image.repository', 'operator.image.tag'),
-        ('operator.sidecar.image.repository', 'operator.sidecar.image.tag'),
-        ('operator.snapshot.uploader.image.repository', 'operator.snapshot.uploader.image.tag'),
-        ('api.image.repository', 'api.image.tag'),
-    ],
-    deps=['charts/isola'],
-    resource_deps=['localstack'],
+))
+
+# Configure individual resources for granular visibility and control
+k8s_resource(
+    'isola-operator',
     labels=['isola'],
+    resource_deps=['localstack'],
+)
+
+k8s_resource(
+    'isola-api',
+    port_forwards='8080:8080',
+    labels=['isola'],
+    resource_deps=['localstack'],
 )
 
 # ==============================================================================

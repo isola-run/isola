@@ -1,0 +1,10 @@
+{{/*
+System namespace for operator and API deployments.
+Created by the chart so users don't need --create-namespace.
+*/}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  labels:
+    {{- include "isola.labels" . | nindent 4 }}
