@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/isola-ai/isola-sb/internal/api/generated"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/generated"
 )
 
 type Handler struct {

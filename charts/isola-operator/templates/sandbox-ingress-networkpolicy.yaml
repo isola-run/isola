@@ -1,8 +1,8 @@
-# Allow ingress from isola-api to sandbox sidecars
+# Allow ingress from api-gateway to sandbox sidecars
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-isola-api-ingress
+  name: allow-api-gateway-ingress
   namespace: {{ .Values.sandboxNamespace }}
   labels:
     {{- include "isola-operator.labels" . | nindent 4 }}
@@ -21,7 +21,7 @@ spec:
               kubernetes.io/metadata.name: {{ .Release.Namespace }}
           podSelector:
             matchLabels:
-              app.kubernetes.io/name: isola-api
+              app.kubernetes.io/name: api-gateway
       ports:
         - protocol: TCP
           port: 10032

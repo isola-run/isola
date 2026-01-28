@@ -1,9 +1,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "isola-api.fullname" . }}
+  name: {{ include "api-gateway.fullname" . }}
   labels:
-    {{- include "isola-api.labels" . | nindent 4 }}
+    {{- include "api-gateway.labels" . | nindent 4 }}
 rules:
   # Sandbox and SandboxTemplate access
   - apiGroups: ["sandbox.isola.run"]

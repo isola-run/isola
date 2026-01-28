@@ -9,20 +9,20 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy required source
-COPY cmd/isola-sidecar/ cmd/isola-sidecar/
-COPY internal/sidecar/ internal/sidecar/
+COPY cmd/sandbox-sidecar/ cmd/sandbox-sidecar/
+COPY internal/sandbox-sidecar/ internal/sandbox-sidecar/
 COPY internal/logging/ internal/logging/
 
 # Build
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o isola-sidecar ./cmd/isola-sidecar/main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o sandbox-sidecar ./cmd/sandbox-sidecar/main.go
 
 # Use distroless as minimal base image
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /
-COPY --from=builder /workspace/isola-sidecar .
+COPY --from=builder /workspace/sandbox-sidecar .
 USER 65532:65532
 
 EXPOSE 10032
 
-ENTRYPOINT ["/isola-sidecar"]
+ENTRYPOINT ["/sandbox-sidecar"]

@@ -11,7 +11,7 @@ image:
 sidecar:
   image:
     registry: ""
-    repository: isola-sidecar
+    repository: sandbox-sidecar
     tag: "dev"
 
 # Use gVisor runtime (installed by setup.sh)
