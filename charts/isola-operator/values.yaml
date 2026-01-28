@@ -69,6 +69,13 @@ runtimeClassName: "gvisor"
 # If set, the chart creates a PriorityClass with this name. Leave empty to skip creation and use cluster default.
 priorityClassName: "isola-sandbox"
 
+# PodDisruptionBudget for sandbox pods
+# Controls how many sandbox pods can be voluntarily disrupted (e.g., during node drains).
+# Disabled by default - sandboxes use cluster default disruption behavior.
+sandboxPdb:
+  enabled: false
+  maxUnavailable: 0  # 0 = no voluntary disruptions allowed
+
 # ServiceAccount for the operator
 serviceAccount:
   create: true

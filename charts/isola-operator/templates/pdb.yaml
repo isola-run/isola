@@ -1,0 +1,18 @@
+{{- if .Values.sandboxPdb.enabled }}
+# PodDisruptionBudget for sandbox pods
+# Limits voluntary disruptions during node maintenance
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: isola-sandbox
+  namespace: {{ include "isola-operator.sandboxNamespace" . }}
+  labels:
+    {{- include "isola-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: isola-sandbox
+      app.kubernetes.io/managed-by: isola-operator
+  maxUnavailable: {{ .Values.sandboxPdb.maxUnavailable | default 0 }}
+{{- end }}

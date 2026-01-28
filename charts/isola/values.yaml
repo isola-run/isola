@@ -101,6 +101,11 @@ isola-operator:
   # PriorityClassName for sandbox pods
   priorityClassName: "isola-sandbox"
 
+  # PodDisruptionBudget for sandbox pods (disabled by default)
+  sandboxPdb:
+    enabled: false
+    maxUnavailable: 0  # 0 = no voluntary disruptions allowed
+
   # ServiceAccount for the operator
   serviceAccount:
     create: true
