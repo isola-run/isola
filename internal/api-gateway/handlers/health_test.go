@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/isola-ai/isola-sb/internal/api/generated"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/generated"
 )
 
 var _ = Describe("Health Endpoints", func() {

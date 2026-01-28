@@ -77,7 +77,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.Containers[0].Image).To(Equal("python:3.11"))
 		})
 
-		It("should inject isola-sidecar as init container", func() {
+		It("should inject sandbox-sidecar as init container", func() {
 			sandboxName := "sandbox-sidecar"
 			templateName := "template-sidecar"
 
@@ -96,8 +96,8 @@ var _ = Describe("Sandbox Controller", func() {
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
 			Expect(pod.Spec.InitContainers).To(HaveLen(1))
-			Expect(pod.Spec.InitContainers[0].Name).To(Equal(sidecarContainerName))
-			Expect(pod.Spec.InitContainers[0].Image).To(Equal("isola-sidecar:test"))
+			Expect(pod.Spec.InitContainers[0].Name).To(Equal(sandboxSidecarContainerName))
+			Expect(pod.Spec.InitContainers[0].Image).To(Equal("sandbox-sidecar:test"))
 		})
 
 		It("should set owner reference for garbage collection", func() {
@@ -239,7 +239,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.InitContainers).To(HaveLen(3))
 			Expect(pod.Spec.InitContainers[0].Name).To(Equal("init-setup"))
 			Expect(pod.Spec.InitContainers[1].Name).To(Equal("init-config"))
-			Expect(pod.Spec.InitContainers[2].Name).To(Equal(sidecarContainerName))
+			Expect(pod.Spec.InitContainers[2].Name).To(Equal(sandboxSidecarContainerName))
 		})
 	})
 

@@ -64,7 +64,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
-	var sidecarImage string
+	var sandboxSidecarImage string
 	var runtimeClassName string
 	var priorityClassName string
 	var isolaAPINamespace string
@@ -91,11 +91,11 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&sidecarImage, "sidecar-image", "isola-sidecar:latest", "Container image for the isola-sidecar")
+	flag.StringVar(&sandboxSidecarImage, "sidecar-image", "sandbox-sidecar:latest", "Container image for the sandbox-sidecar")
 	flag.StringVar(&runtimeClassName, "runtime-class", "", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
 	flag.StringVar(&priorityClassName, "priority-class", "", "PriorityClassName to use for sandbox pods. Empty means use cluster default.")
-	flag.StringVar(&isolaAPINamespace, "api-namespace", "isola-system", "Namespace where isola-api runs (for NetworkPolicy ingress rules)")
-	flag.StringVar(&isolaAPILabelName, "api-label-name", "isola-api", "Value of app.kubernetes.io/name label for isola-api pods")
+	flag.StringVar(&isolaAPINamespace, "api-namespace", "isola-system", "Namespace where api-gateway runs (for NetworkPolicy ingress rules)")
+	flag.StringVar(&isolaAPILabelName, "api-label-name", "api-gateway", "Value of app.kubernetes.io/name label for api-gateway pods")
 	flag.StringVar(&snapshotBucketURL, "snapshot-bucket-url", os.Getenv("ISOLA_SNAPSHOT_BUCKET_URL"), "Bucket URL for snapshot storage (e.g., s3://bucket?region=us-east-1)")
 	flag.StringVar(&snapshotCredentialSecret, "snapshot-credential-secret", os.Getenv("ISOLA_SNAPSHOT_CREDENTIAL_SECRET"), "Secret name for bucket credentials (optional, uses pod identity if not set)")
 	flag.StringVar(&snapshotUploaderImage, "snapshot-uploader-image", os.Getenv("ISOLA_UPLOADER_IMAGE"), "Container image for the snapshot uploader")
@@ -200,13 +200,13 @@ func main() {
 
 	// SandboxReconciler manages Sandbox resources.
 	if err := (&controller.SandboxReconciler{
-		Client:            mgr.GetClient(),
-		Scheme:            mgr.GetScheme(),
-		SidecarImage:      sidecarImage,
-		RuntimeClassName:  runtimeClassName,
-		PriorityClassName: priorityClassName,
-		ImagePullSecrets:  imagePullSecrets,
-		Clock:             controller.RealClock{},
+		Client:              mgr.GetClient(),
+		Scheme:              mgr.GetScheme(),
+		SandboxSidecarImage: sandboxSidecarImage,
+		RuntimeClassName:    runtimeClassName,
+		PriorityClassName:   priorityClassName,
+		ImagePullSecrets:    imagePullSecrets,
+		Clock:               controller.RealClock{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
 		os.Exit(1)

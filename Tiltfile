@@ -13,9 +13,9 @@ allow_k8s_contexts('kind-isola-dev')
 default_registry('localhost:5001')
 
 # Suppress warning for images that are built but deployed indirectly
-# - isola-sidecar: injected by operator into sandbox pods
+# - sandbox-sidecar: injected by operator into sandbox pods
 # - isola-uploader: used by triggered snapshot jobs
-update_settings(suppress_unused_image_warnings=["isola-sidecar", "isola-uploader"])
+update_settings(suppress_unused_image_warnings=["sandbox-sidecar", "isola-uploader"])
 
 # ==============================================================================
 # LocalStack (S3 storage backend)
@@ -64,7 +64,7 @@ helm_resource(
     # image_deps and image_keys instruct Tilt on how to patch the Helm values with newly built images.
     # Tilt sets repository to the full registry+repo path (e.g., localhost:5001/isola-operator)
     # and tag to the Tilt-generated tag. The helper templates handle empty registry gracefully.
-    image_deps=['isola-operator', 'isola-sidecar', 'isola-uploader'],
+    image_deps=['isola-operator', 'sandbox-sidecar', 'isola-uploader'],
     image_keys=[
         ('image.repository', 'image.tag'),
         ('sidecar.image.repository', 'sidecar.image.tag'),
@@ -76,17 +76,17 @@ helm_resource(
 )
 
 # ==============================================================================
-# isola-api
+# api-gateway
 # ==============================================================================
 
 docker_build(
-    'isola-api',
+    'api-gateway',
     context='.',
-    dockerfile='cmd/isola-api/Dockerfile',
+    dockerfile='cmd/api-gateway/Dockerfile',
     only=[
         'api/',
-        'cmd/isola-api/',
-        'internal/api/',
+        'cmd/api-gateway/',
+        'internal/api-gateway/',
         'internal/logging/',
         'go.mod',
         'go.sum',
@@ -94,16 +94,16 @@ docker_build(
 )
 
 helm_resource(
-    name='isola-api',
-    chart='charts/isola-api',
+    name='api-gateway',
+    chart='charts/api-gateway',
     namespace='isola-system',
     flags=[
         '--create-namespace',
-        '-f', 'charts/isola-api/values-dev.yaml',
+        '-f', 'charts/api-gateway/values-dev.yaml',
     ],
-    image_deps=['isola-api'],
+    image_deps=['api-gateway'],
     image_keys=[('image.repository', 'image.tag')],
-    deps=['charts/isola-api'],
+    deps=['charts/api-gateway'],
     resource_deps=['isola-operator'],
     labels=['isola'],
 )
@@ -126,16 +126,16 @@ docker_build(
 )
 
 # ==============================================================================
-# isola-sidecar (injected by operator into sandbox pods)
+# sandbox-sidecar (injected by operator into sandbox pods)
 # ==============================================================================
 
 docker_build(
-    'isola-sidecar',
+    'sandbox-sidecar',
     context='.',
-    dockerfile='cmd/isola-sidecar/Dockerfile',
+    dockerfile='cmd/sandbox-sidecar/Dockerfile',
     only=[
-        'cmd/isola-sidecar/',
-        'internal/sidecar/',
+        'cmd/sandbox-sidecar/',
+        'internal/sandbox-sidecar/',
         'internal/logging/',
         'go.mod',
         'go.sum',

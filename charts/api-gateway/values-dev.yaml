@@ -2,9 +2,9 @@
 # Tilt overrides image references via --set flags, so these are defaults
 
 image:
-  # Tilt will override with localhost:5001/isola-api
+  # Tilt will override with localhost:5001/api-gateway
   registry: ""
-  repository: isola-api
+  repository: api-gateway
   tag: "dev"
   pullPolicy: IfNotPresent
 

@@ -10,7 +10,7 @@ make fix-all            # Auto-fix formatting and lint issues
 # Testing
 make test               # Unit tests with coverage
 make test-operator FOCUS="TestName"  # Run focused operator test
-make test-api           # Run isola-api tests
+make test-api           # Run api-gateway tests
 make generate           # Regenerate DeepCopy methods after CRD changes
 make manifests          # Regenerate CRD YAML after CRD changes
 
@@ -41,7 +41,7 @@ with proper Helm templating for name/labels.
 
 After modifying `api/openapi.yaml`:
 ```bash
-make generate-api  # Regenerates internal/api/generated/openapi.gen.go
+make generate-api  # Regenerates internal/api-gateway/generated/openapi.gen.go
 ```
 
 The generated code is committed to the repo. CI runs `make check-api-codegen` to verify it's in sync.
@@ -54,14 +54,14 @@ The generated code is committed to the repo. CI runs `make check-api-codegen` to
 
 **Project structure:**
 - `api/v1alpha1/` - CRD type definitions (Sandbox, SandboxTemplate, RootfsSnapshot)
-- `api/openapi.yaml` - OpenAPI spec for isola-api (source of truth for REST API)
+- `api/openapi.yaml` - OpenAPI spec for api-gateway (source of truth for REST API)
 - `cmd/operator/` - Kubebuilder operator entry point
-- `cmd/isola-api/` - API gateway for external clients
-- `cmd/isola-sidecar/` - Sidecar injected into sandbox pods by operator
+- `cmd/api-gateway/` - API gateway for external clients
+- `cmd/sandbox-sidecar/` - Sidecar injected into sandbox pods by operator
 - `cmd/uploader/` - Snapshot uploader job (uploads tarballs to S3/GCS/Azure)
 - `internal/operator/controller/` - Reconciler implementations
-- `internal/api/` - isola-api handlers, middleware, and generated OpenAPI code
-- `internal/sidecar/` - Sidecar handlers
+- `internal/api-gateway/` - api-gateway handlers, middleware, and generated OpenAPI code
+- `internal/sandbox-sidecar/` - Sidecar handlers
 - `internal/snapshot/` - Shared snapshot types (used by operator and uploader)
 - `charts/` - Helm charts (source of truth for deployment)
 - `charts/isola-operator/generated/` - Auto-generated RBAC from kubebuilder annotations (do not edit)
@@ -115,7 +115,7 @@ The generated code is committed to the repo. CI runs `make check-api-codegen` to
 make test                            # Run all tests
 make test-verbose                    # All tests with verbose output
 make test-operator                   # Operator tests only
-make test-api                        # isola-api tests only
+make test-api                        # api-gateway tests only
 make test-operator FOCUS="Reconcile" # Focused by Ginkgo pattern
 make test GO_TEST_FLAGS="-race"      # With race detector
 ```

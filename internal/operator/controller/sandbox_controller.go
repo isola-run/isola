@@ -93,17 +93,17 @@ const (
 
 type SandboxReconciler struct {
 	client.Client
-	Scheme            *runtime.Scheme
-	Recorder          record.EventRecorder
-	SidecarImage      string
-	RuntimeClassName  string                        // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
-	PriorityClassName string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
-	ImagePullSecrets  []corev1.LocalObjectReference // ImagePullSecrets for pulling sidecar images from private registries.
-	Clock             Clock                         // Clock interface for time operations, allows mocking in tests
+	Scheme              *runtime.Scheme
+	Recorder            record.EventRecorder
+	SandboxSidecarImage string
+	RuntimeClassName    string                        // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
+	PriorityClassName   string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
+	ImagePullSecrets    []corev1.LocalObjectReference // ImagePullSecrets for pulling sandbox-sidecar images from private registries.
+	Clock               Clock                         // Clock interface for time operations, allows mocking in tests
 }
 
 const (
-	sidecarContainerName = "isola-sidecar"
+	sandboxSidecarContainerName = "sandbox-sidecar"
 
 	// Field index for efficient lookup of sandboxes by templates references
 	sandboxTemplateRefField = ".spec.templateRef.name"
@@ -134,11 +134,11 @@ func buildNetworkLabels(network *sandboxv1alpha1.NetworkSpec) map[string]string 
 	return labels
 }
 
-func (r *SandboxReconciler) buildSidecarContainer() corev1.Container {
+func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 	rp := corev1.ContainerRestartPolicyAlways
 	return corev1.Container{
-		Name:          sidecarContainerName,
-		Image:         r.SidecarImage,
+		Name:          sandboxSidecarContainerName,
+		Image:         r.SandboxSidecarImage,
 		RestartPolicy: &rp,
 		// RunAsUser 0 (root) is needed to read /proc/<pid>/environ of other users' processes
 		// and to access /proc/<pid>/root when using shared PID namespace.
@@ -148,7 +148,7 @@ func (r *SandboxReconciler) buildSidecarContainer() corev1.Container {
 	}
 }
 
-func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
+func (r *SandboxReconciler) injectSandboxSidecar(sandboxPod *corev1.Pod) error {
 	if len(sandboxPod.Spec.Containers) != 1 {
 		// todo: remove this assumption
 		return fmt.Errorf("sandbox pod must have exactly one container")
@@ -162,7 +162,7 @@ func (r *SandboxReconciler) injectSidecar(sandboxPod *corev1.Pod) error {
 		Value: "true",
 	})
 
-	sidecarContainer := r.buildSidecarContainer()
+	sidecarContainer := r.buildSandboxSidecarContainer()
 	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, sidecarContainer)
 	return nil
 }
@@ -253,7 +253,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		sandboxPod.Spec.ImagePullSecrets = append(sandboxPod.Spec.ImagePullSecrets, r.ImagePullSecrets...)
 	}
 
-	if err := r.injectSidecar(sandboxPod); err != nil {
+	if err := r.injectSandboxSidecar(sandboxPod); err != nil {
 		log.Error(err, "Failed to inject sidecar")
 		return err
 	}

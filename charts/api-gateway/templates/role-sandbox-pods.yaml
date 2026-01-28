@@ -1,10 +1,10 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ include "isola-api.fullname" . }}-pods
+  name: {{ include "api-gateway.fullname" . }}-pods
   namespace: {{ .Values.sandboxNamespace }}
   labels:
-    {{- include "isola-api.labels" . | nindent 4 }}
+    {{- include "api-gateway.labels" . | nindent 4 }}
 rules:
   # Pod access scoped to sandbox namespace
   - apiGroups: [""]

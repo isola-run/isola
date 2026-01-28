@@ -1,14 +1,14 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "isola-api.name" -}}
+{{- define "api-gateway.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create a default fully qualified app name.
 */}}
-{{- define "isola-api.fullname" -}}
+{{- define "api-gateway.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -24,16 +24,16 @@ Create a default fully qualified app name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "isola-api.chart" -}}
+{{- define "api-gateway.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "isola-api.labels" -}}
-helm.sh/chart: {{ include "isola-api.chart" . }}
-{{ include "isola-api.selectorLabels" . }}
+{{- define "api-gateway.labels" -}}
+helm.sh/chart: {{ include "api-gateway.chart" . }}
+{{ include "api-gateway.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -43,8 +43,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "isola-api.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "isola-api.name" . }}
+{{- define "api-gateway.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "api-gateway.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: api
 {{- end }}
@@ -52,9 +52,9 @@ app.kubernetes.io/component: api
 {{/*
 Create the name of the service account to use
 */}}
-{{- define "isola-api.serviceAccountName" -}}
+{{- define "api-gateway.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "isola-api.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "api-gateway.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
@@ -64,19 +64,19 @@ Create the name of the service account to use
 Determine the credential secret name
 Returns empty string if no credentials are configured (pod identity mode)
 */}}
-{{- define "isola-api.credentialSecretName" -}}
+{{- define "api-gateway.credentialSecretName" -}}
 {{- if .Values.storage.credentials.existingSecret }}
 {{- .Values.storage.credentials.existingSecret }}
 {{- else if and .Values.storage.credentials.accessKeyId .Values.storage.credentials.secretAccessKey }}
-{{- printf "%s-storage-credentials" (include "isola-api.fullname" .) }}
+{{- printf "%s-storage-credentials" (include "api-gateway.fullname" .) }}
 {{- end }}
 {{- end }}
 
 {{/*
 Build a full image reference from registry, repository, and tag
-Usage: {{ include "isola-api.image" (dict "imageConfig" .Values.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
+Usage: {{ include "api-gateway.image" (dict "imageConfig" .Values.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
 */}}
-{{- define "isola-api.image" -}}
+{{- define "api-gateway.image" -}}
 {{- $registry := .imageConfig.registry -}}
 {{- if .global.imageRegistry -}}
 {{- $registry = .global.imageRegistry -}}
@@ -92,14 +92,14 @@ Usage: {{ include "isola-api.image" (dict "imageConfig" .Values.image "global" .
 {{/*
 Build the API image reference
 */}}
-{{- define "isola-api.apiImage" -}}
-{{- include "isola-api.image" (dict "imageConfig" .Values.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- define "api-gateway.apiImage" -}}
+{{- include "api-gateway.image" (dict "imageConfig" .Values.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
 
 {{/*
 Return imagePullSecrets (global takes precedence)
 */}}
-{{- define "isola-api.imagePullSecrets" -}}
+{{- define "api-gateway.imagePullSecrets" -}}
 {{- $secrets := .Values.global.imagePullSecrets -}}
 {{- if $secrets -}}
 imagePullSecrets:
