@@ -1,36 +1,37 @@
+{{- if .Values.apiGateway.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "api-gateway.fullname" . }}
+  name: {{ include "isola.apiGateway.fullname" . }}
   labels:
-    {{- include "api-gateway.labels" . | nindent 4 }}
+    {{- include "isola.apiGateway.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.apiGateway.replicaCount }}
   selector:
     matchLabels:
-      {{- include "api-gateway.selectorLabels" . | nindent 6 }}
+      {{- include "isola.apiGateway.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "api-gateway.selectorLabels" . | nindent 8 }}
-      {{- with .Values.podAnnotations }}
+        {{- include "isola.apiGateway.selectorLabels" . | nindent 8 }}
+      {{- with .Values.apiGateway.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
-      serviceAccountName: {{ include "api-gateway.serviceAccountName" . }}
-      {{- include "api-gateway.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "isola.apiGateway.serviceAccountName" . }}
+      {{- include "isola.imagePullSecrets" . | nindent 6 }}
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: {{ .Chart.Name }}
-          image: {{ include "api-gateway.apiImage" . }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ include "isola.apiGateway.image" . }}
+          imagePullPolicy: {{ .Values.apiGateway.image.pullPolicy }}
           args:
-            - -log-level={{ .Values.logging.level }}
-            {{- if .Values.logging.devMode }}
+            - -log-level={{ .Values.apiGateway.logging.level }}
+            {{- if .Values.apiGateway.logging.devMode }}
             - --dev
             {{- end }}
           ports:
@@ -50,7 +51,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml .Values.apiGateway.resources | nindent 12 }}
           securityContext:
             capabilities:
               drop:
@@ -59,16 +60,17 @@ spec:
             allowPrivilegeEscalation: false
           env:
             - name: ISOLA_SANDBOX_NAMESPACE
-              value: {{ include "api-gateway.sandboxNamespace" . | quote }}
-      {{- with .Values.nodeSelector }}
+              value: {{ include "isola.sandboxNamespace" . | quote }}
+      {{- with .Values.apiGateway.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.tolerations }}
+      {{- with .Values.apiGateway.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- with .Values.apiGateway.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+{{- end }}

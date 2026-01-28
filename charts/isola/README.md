@@ -1,19 +1,13 @@
-# isola
+# Isola Helm Chart
 
-Umbrella Helm chart for deploying the complete Isola sandbox orchestration stack.
+Helm chart for deploying Isola, a secure sandbox orchestration platform for Kubernetes.
 
 ## Overview
 
-This chart installs all Isola components in a single Helm release:
+This chart installs the complete Isola stack:
 
-- **isola-operator**: Kubernetes operator for sandbox lifecycle management, including CRDs
-- **api-gateway**: REST API for programmatic sandbox orchestration
-
-Using the umbrella chart provides:
-- Single `helm install` command for the complete stack
-- Unified configuration with shared values (storage, namespace, registry)
-- Coordinated upgrades ensuring version compatibility
-- GitOps-friendly (works with ArgoCD, Flux)
+- **Operator**: Kubernetes operator for sandbox lifecycle management, CRDs, and network policies
+- **API Gateway** (optional): REST API for programmatic sandbox orchestration
 
 ## Quick Start
 
@@ -27,15 +21,12 @@ helm install isola oci://ghcr.io/isola-ai/charts/isola \
 helm install isola oci://ghcr.io/isola-ai/charts/isola \
   --namespace isola-system \
   --create-namespace \
-  --set global.storage.bucketUrl="s3://my-bucket?region=us-east-1"
+  --set operator.snapshot.storage.bucketUrl="s3://my-bucket?region=us-east-1"
 ```
 
 ### Installing from Source
 
-When installing from a local clone of the repository, build dependencies first:
-
 ```bash
-helm dependency build charts/isola
 helm install isola charts/isola \
   --namespace isola-system \
   --create-namespace
@@ -68,45 +59,48 @@ EOF
 To run without gVisor (development only):
 ```bash
 helm install isola ./charts/isola \
-  --set isola-operator.runtimeClassName=""
+  --set operator.runtimeClassName=""
 ```
 
 ## Configuration
 
 ### Global Settings
 
-These values are shared across all subcharts:
-
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `global.imageRegistry` | Override registry for all images | `""` |
 | `global.imagePullSecrets` | Pull secrets for all pods | `[]` |
-| `global.sandboxNamespace` | Namespace for sandbox pods | `isola-sandboxes` |
-| `global.storage.bucketUrl` | Storage bucket URL for snapshots | `""` |
-| `global.storage.credentials.existingSecret` | Existing secret with credentials | `""` |
-| `global.storage.credentials.accessKeyId` | AWS access key (dev only) | `""` |
-| `global.storage.credentials.secretAccessKey` | AWS secret key (dev only) | `""` |
-| `global.storage.credentials.region` | AWS region | `""` |
+| `sandboxNamespace` | Namespace where sandbox pods are created | `isola-sandboxes` |
 
-### Subchart Configuration
+### Operator Settings
 
-Each subchart can be configured under its namespaced key:
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `operator.image.registry` | Operator image registry | `ghcr.io/isola-ai` |
+| `operator.image.repository` | Operator image repository | `isola-operator` |
+| `operator.image.tag` | Operator image tag | `""` (uses Chart.appVersion) |
+| `operator.replicaCount` | Number of operator replicas | `1` |
+| `operator.runtimeClassName` | RuntimeClass for sandbox pods | `gvisor` |
+| `operator.priorityClassName` | PriorityClass for sandbox pods | `isola-sandbox` |
+| `operator.sidecar.image.*` | Sidecar image injected into sandboxes | See values.yaml |
+| `operator.snapshot.storage.bucketUrl` | Bucket URL for snapshots | `""` |
+| `operator.snapshot.storage.credentials.*` | Storage credentials | See values.yaml |
+| `operator.sandboxPdb.enabled` | Enable PodDisruptionBudget for sandboxes | `false` |
+| `operator.sandboxPdb.maxUnavailable` | Max unavailable sandboxes during disruption | `0` |
 
-```yaml
-# isola-operator specific settings
-isola-operator:
-  enabled: true
-  replicaCount: 1
-  runtimeClassName: "gvisor"
-  # ... see charts/isola-operator/values.yaml
+### API Gateway Settings
 
-# api-gateway specific settings
-api-gateway:
-  enabled: true
-  service:
-    type: ClusterIP
-  # ... see charts/api-gateway/values.yaml
-```
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `apiGateway.enabled` | Enable the API gateway | `true` |
+| `apiGateway.image.registry` | API gateway image registry | `ghcr.io/isola-ai` |
+| `apiGateway.image.repository` | API gateway image repository | `api-gateway` |
+| `apiGateway.image.tag` | API gateway image tag | `""` (uses Chart.appVersion) |
+| `apiGateway.replicaCount` | Number of API gateway replicas | `1` |
+| `apiGateway.service.type` | Service type | `ClusterIP` |
+| `apiGateway.service.nodePort` | NodePort (when type is NodePort) | `null` |
+| `apiGateway.logging.level` | Log level | `info` |
+| `apiGateway.logging.devMode` | Enable development mode logging | `false` |
 
 ### Common Scenarios
 
@@ -114,24 +108,23 @@ api-gateway:
 
 ```yaml
 # values-production.yaml
-global:
-  sandboxNamespace: isola-sandboxes
-  storage:
-    bucketUrl: "s3://my-bucket?region=us-east-1"
+sandboxNamespace: isola-sandboxes
 
-isola-operator:
+operator:
   runtimeClassName: "gvisor"
   snapshot:
+    storage:
+      bucketUrl: "s3://my-bucket?region=us-east-1"
     serviceAccount:
       annotations:
         eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/isola-snapshot"
 
-api-gateway:
+apiGateway:
+  service:
+    type: LoadBalancer
   serviceAccount:
     annotations:
       eks.amazonaws.com/role-arn: "arn:aws:iam::123456789:role/isola-api"
-  service:
-    type: LoadBalancer
 ```
 
 ```bash
@@ -145,18 +138,17 @@ helm install isola oci://ghcr.io/isola-ai/charts/isola \
 
 ```yaml
 # values-dev.yaml
-global:
-  storage:
-    bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true"
-    credentials:
-      accessKeyId: "test"
-      secretAccessKey: "test"
-      region: "us-east-1"
-
-isola-operator:
+operator:
   runtimeClassName: ""  # No gVisor in dev
+  snapshot:
+    storage:
+      bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true"
+      credentials:
+        accessKeyId: "test"
+        secretAccessKey: "test"
+        region: "us-east-1"
 
-api-gateway:
+apiGateway:
   service:
     type: NodePort
     nodePort: 30080
@@ -169,7 +161,7 @@ api-gateway:
 
 ```bash
 # Step 1: Mirror images to your registry
-VERSION=<version>  # Use the version you want to deploy
+VERSION=<version>
 REGISTRY=my-registry.example.com/isola
 
 for img in isola-operator sandbox-sidecar isola-uploader api-gateway; do
@@ -203,7 +195,7 @@ helm install isola ./charts/isola \
 helm install isola ./charts/isola \
   --namespace isola-system \
   --create-namespace \
-  --set api-gateway.enabled=false
+  --set apiGateway.enabled=false
 ```
 
 ## Upgrading
@@ -233,33 +225,18 @@ kubectl delete crd sandboxtemplates.sandbox.isola.run
 kubectl delete crd rootfssnapshots.sandbox.isola.run
 ```
 
-## Standalone Charts
-
-For advanced use cases, individual charts can be installed separately:
-
-```bash
-# Install operator only
-helm install isola-operator oci://ghcr.io/isola-ai/charts/isola-operator \
-  --namespace isola-system \
-  --create-namespace
-
-# Install API gateway separately (requires operator)
-helm install api-gateway oci://ghcr.io/isola-ai/charts/api-gateway \
-  --namespace isola-system
-```
-
 ## Architecture
 
 ```
                     ┌─────────────────────────────────────────┐
-                    │           isola (umbrella)              │
+                    │              isola-system               │
                     │                                         │
                     │  ┌──────────────┐  ┌────────────────┐  │
-                    │  │isola-operator│  │  api-gateway   │  │
-                    │  │              │  │                │  │
-                    │  │ - CRDs       │  │ - REST API     │  │
-                    │  │ - Controller │  │ - Auth         │  │
-                    │  │ - NetworkPol │  │ - Presigned URL│  │
+                    │  │   Operator   │  │  API Gateway   │  │
+                    │  │              │  │   (optional)   │  │
+                    │  │ - CRDs       │  │                │  │
+                    │  │ - Controller │  │ - REST API     │  │
+                    │  │ - NetworkPol │  │ - Health check │  │
                     │  └──────────────┘  └────────────────┘  │
                     └─────────────────────────────────────────┘
                                       │
@@ -284,16 +261,14 @@ kubectl get sandboxtemplates -A
 
 ### View operator logs
 ```bash
-kubectl logs -n isola-system -l app.kubernetes.io/name=isola-operator -f
+kubectl logs -n isola-system -l app.kubernetes.io/component=operator -f
 ```
 
 ### View API gateway logs
 ```bash
-kubectl logs -n isola-system -l app.kubernetes.io/name=api-gateway -f
+kubectl logs -n isola-system -l app.kubernetes.io/component=api-gateway -f
 ```
 
 ## Links
 
 - [GitHub Repository](https://github.com/isola-ai/isola-sb)
-- [Operator Chart](../isola-operator/README.md)
-- [API Gateway Chart](../api-gateway/README.md)

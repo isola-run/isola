@@ -1,0 +1,45 @@
+# Development values - used by Tilt for local development
+
+operator:
+  image:
+    registry: ""
+    repository: isola-operator
+    tag: "dev"
+    pullPolicy: IfNotPresent
+
+  sidecar:
+    image:
+      registry: ""
+      repository: sandbox-sidecar
+      tag: "dev"
+
+  runtimeClassName: ""  # No gVisor in dev
+
+  snapshot:
+    uploader:
+      image:
+        registry: ""
+        repository: isola-uploader
+        tag: "dev"
+
+    storage:
+      bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
+      credentials:
+        accessKeyId: "test"
+        secretAccessKey: "test"
+        region: "us-east-1"
+
+apiGateway:
+  image:
+    registry: ""
+    repository: api-gateway
+    tag: "dev"
+    pullPolicy: IfNotPresent
+
+  logging:
+    level: debug
+    devMode: true
+
+  service:
+    type: NodePort
+    nodePort: 30080
