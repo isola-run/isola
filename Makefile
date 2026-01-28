@@ -12,15 +12,15 @@ help: ## Display this help
 ##@ Development
 
 .PHONY: generate-api
-generate-api: ## Generate api-gateway OpenAPI code
-	go generate ./cmd/api-gateway/...
+generate-api: ## Generate api-gateway Swagger docs
+	go tool swag init -g cmd/api-gateway/main.go -o docs --parseDependency --parseInternal
 
 .PHONY: check-api-codegen
-check-api-codegen: generate-api ## Verify api-gateway OpenAPI code is up-to-date
-	@if ! git diff --quiet -- api/openapi.yaml internal/api-gateway/generated/; then \
-		echo "ERROR: API generated code is out of sync with spec"; \
+check-api-codegen: generate-api ## Verify api-gateway Swagger docs are up-to-date
+	@if ! git diff --quiet -- docs/; then \
+		echo "ERROR: API swagger docs are out of sync"; \
 		echo "Run 'make generate-api' and commit the changes"; \
-		git diff --stat -- api/openapi.yaml internal/api-gateway/generated/; \
+		git diff --stat -- docs/; \
 		exit 1; \
 	fi
 
