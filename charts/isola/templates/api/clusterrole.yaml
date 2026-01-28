@@ -1,0 +1,23 @@
+{{- if .Values.api.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "isola.fullname" . }}-api
+  labels:
+    {{- include "isola.api.labels" . | nindent 4 }}
+rules:
+  # Sandbox and SandboxTemplate access
+  - apiGroups: ["sandbox.isola.run"]
+    resources: ["sandboxes", "sandboxtemplates"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["sandbox.isola.run"]
+    resources: ["sandboxes/status"]
+    verbs: ["get"]
+  # RootfsSnapshot management (TTL handles deletion)
+  - apiGroups: ["sandbox.isola.run"]
+    resources: ["rootfssnapshots"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: ["sandbox.isola.run"]
+    resources: ["rootfssnapshots/status"]
+    verbs: ["get"]
+{{- end }}

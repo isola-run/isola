@@ -1,0 +1,14 @@
+{{- if .Values.operator.enabled }}
+{{- $generated := .Files.Get "generated/role.yaml" | fromYaml }}
+{{- if not $generated }}
+{{- fail "generated/role.yaml is missing. Run 'make manifests' first." }}
+{{- end }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "isola.fullname" . }}-operator
+  labels:
+    {{- include "isola.operator.labels" . | nindent 4 }}
+rules:
+  {{- toYaml $generated.rules | nindent 2 }}
+{{- end }}

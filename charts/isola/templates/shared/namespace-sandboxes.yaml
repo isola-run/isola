@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.sandboxNamespace }}
+  labels:
+    {{- include "isola.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox

@@ -1,0 +1,15 @@
+# PodDisruptionBudget to prevent voluntary disruptions from evicting sandbox pods
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: isola-sandbox-pdb
+  namespace: {{ .Values.sandboxNamespace }}
+  labels:
+    {{- include "isola.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: isola-sandbox
+      app.kubernetes.io/managed-by: isola-operator

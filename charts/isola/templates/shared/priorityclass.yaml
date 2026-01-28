@@ -1,0 +1,13 @@
+{{- if .Values.priorityClassName }}
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ .Values.priorityClassName }}
+  labels:
+    {{- include "isola.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+value: 900000000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: "High priority for sandbox pods to prevent preemption"
+{{- end }}

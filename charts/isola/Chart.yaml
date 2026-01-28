@@ -1,0 +1,17 @@
+apiVersion: v2
+name: isola
+description: Isola - Secure sandbox orchestration for Kubernetes
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.25.0"
+keywords:
+  - isola
+  - sandbox
+  - kubernetes
+  - security
+  - isolation
+  - gvisor
+home: https://github.com/isola-ai/isola-sb
+sources:
+  - https://github.com/isola-ai/isola-sb

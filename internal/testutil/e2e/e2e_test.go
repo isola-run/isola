@@ -86,16 +86,16 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
-		By("deploying the controller-manager")
+		By("deploying isola")
 		cmd = exec.Command(
-			"helm", "upgrade", "--install", "isola-operator", "charts/isola-operator",
+			"helm", "upgrade", "--install", "isola", "charts/isola",
 			"--namespace", namespace,
 			"--create-namespace",
-			"--set", fmt.Sprintf("image.repository=%s", imageRepo),
-			"--set", fmt.Sprintf("image.tag=%s", imageTag),
+			"--set", fmt.Sprintf("operator.image.repository=%s", imageRepo),
+			"--set", fmt.Sprintf("operator.image.tag=%s", imageTag),
 		)
 		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+		Expect(err).NotTo(HaveOccurred(), "Failed to deploy isola")
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
@@ -105,8 +105,8 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
 		_, _ = utils.Run(cmd)
 
-		By("undeploying the controller-manager")
-		cmd = exec.Command("helm", "uninstall", "isola-operator", "--namespace", namespace)
+		By("undeploying isola")
+		cmd = exec.Command("helm", "uninstall", "isola", "--namespace", namespace)
 		_, _ = utils.Run(cmd)
 
 		By("uninstalling CRDs")

@@ -94,11 +94,8 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}  # Strip 'v' prefix
 
-          # Update isola-operator Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" charts/isola-operator/Chart.yaml
-
-          # Update isola-api Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" charts/isola-api/Chart.yaml
+          # Update isola Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" charts/isola/Chart.yaml
 
       - name: Commit and push
         run: |

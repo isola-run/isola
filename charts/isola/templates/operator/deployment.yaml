@@ -1,0 +1,103 @@
+{{- if .Values.operator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "isola.fullname" . }}-operator
+  labels:
+    {{- include "isola.operator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.operator.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "isola.operator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+        {{- with .Values.operator.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "isola.operator.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "isola.operator.serviceAccountName" . }}
+      {{- include "isola.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: manager
+        image: {{ include "isola.operator.image" . }}
+        imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+        command:
+        - /operator
+        args:
+        - --leader-elect
+        - --health-probe-bind-address=:8081
+        - --sidecar-image={{ include "isola.sidecar.image" . }}
+        {{- if .Values.runtimeClassName }}
+        - --runtime-class={{ .Values.runtimeClassName }}
+        {{- end }}
+        {{- if .Values.priorityClassName }}
+        - --priority-class={{ .Values.priorityClassName }}
+        {{- end }}
+        ports:
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.operator.resources | nindent 10 }}
+        securityContext:
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+        env:
+        {{- if .Values.storage.bucketUrl }}
+        - name: ISOLA_SNAPSHOT_BUCKET_URL
+          value: {{ .Values.storage.bucketUrl | quote }}
+        {{- $credentialSecretName := include "isola.storageCredentialSecretName" . }}
+        {{- if $credentialSecretName }}
+        - name: ISOLA_SNAPSHOT_CREDENTIAL_SECRET
+          value: {{ $credentialSecretName | quote }}
+        {{- end }}
+        {{- end }}
+        - name: ISOLA_UPLOADER_IMAGE
+          value: {{ include "isola.uploader.image" . | quote }}
+        {{- if .Values.operator.snapshot.serviceAccount.name }}
+        - name: ISOLA_SNAPSHOT_SERVICE_ACCOUNT
+          value: {{ .Values.operator.snapshot.serviceAccount.name | quote }}
+        {{- end }}
+        {{- $imagePullSecretNames := include "isola.imagePullSecretNames" . }}
+        {{- if $imagePullSecretNames }}
+        - name: ISOLA_IMAGE_PULL_SECRETS
+          value: {{ $imagePullSecretNames | quote }}
+        {{- end }}
+      {{- with .Values.operator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

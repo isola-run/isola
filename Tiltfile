@@ -36,7 +36,7 @@ helm_resource(
 )
 
 # ==============================================================================
-# isola-operator
+# Build images
 # ==============================================================================
 
 docker_build(
@@ -53,32 +53,6 @@ docker_build(
     ]
 )
 
-helm_resource(
-    name='isola-operator',
-    chart='charts/isola-operator',
-    namespace='isola-system',
-    flags=[
-        '--create-namespace',
-        '-f', 'charts/isola-operator/values-dev.yaml',
-    ],
-    # image_deps and image_keys instruct Tilt on how to patch the Helm values with newly built images.
-    # Tilt sets repository to the full registry+repo path (e.g., localhost:5001/isola-operator)
-    # and tag to the Tilt-generated tag. The helper templates handle empty registry gracefully.
-    image_deps=['isola-operator', 'isola-sidecar', 'isola-uploader'],
-    image_keys=[
-        ('image.repository', 'image.tag'),
-        ('sidecar.image.repository', 'sidecar.image.tag'),
-        ('snapshot.uploader.image.repository', 'snapshot.uploader.image.tag'),
-    ],
-    deps=['charts/isola-operator'],
-    resource_deps=['localstack'],
-    labels=['isola'],
-)
-
-# ==============================================================================
-# isola-api
-# ==============================================================================
-
 docker_build(
     'isola-api',
     context='.',
@@ -93,25 +67,6 @@ docker_build(
     ]
 )
 
-helm_resource(
-    name='isola-api',
-    chart='charts/isola-api',
-    namespace='isola-system',
-    flags=[
-        '--create-namespace',
-        '-f', 'charts/isola-api/values-dev.yaml',
-    ],
-    image_deps=['isola-api'],
-    image_keys=[('image.repository', 'image.tag')],
-    deps=['charts/isola-api'],
-    resource_deps=['isola-operator'],
-    labels=['isola'],
-)
-
-# ==============================================================================
-# isola-uploader (snapshot uploader - built but deployed by operator via Jobs)
-# ==============================================================================
-
 docker_build(
     'isola-uploader',
     context='.',
@@ -125,10 +80,6 @@ docker_build(
     ]
 )
 
-# ==============================================================================
-# isola-sidecar (injected by operator into sandbox pods)
-# ==============================================================================
-
 docker_build(
     'isola-sidecar',
     context='.',
@@ -140,6 +91,33 @@ docker_build(
         'go.mod',
         'go.sum',
     ]
+)
+
+# ==============================================================================
+# isola (unified chart - operator + api)
+# ==============================================================================
+
+helm_resource(
+    name='isola',
+    chart='charts/isola',
+    namespace='isola-system',
+    flags=[
+        '--create-namespace',
+        '-f', 'charts/isola/values-dev.yaml',
+    ],
+    # image_deps and image_keys instruct Tilt on how to patch the Helm values with newly built images.
+    # Tilt sets repository to the full registry+repo path (e.g., localhost:5001/isola-operator)
+    # and tag to the Tilt-generated tag. The helper templates handle empty registry gracefully.
+    image_deps=['isola-operator', 'isola-sidecar', 'isola-uploader', 'isola-api'],
+    image_keys=[
+        ('operator.image.repository', 'operator.image.tag'),
+        ('operator.sidecar.image.repository', 'operator.sidecar.image.tag'),
+        ('operator.snapshot.uploader.image.repository', 'operator.snapshot.uploader.image.tag'),
+        ('api.image.repository', 'api.image.tag'),
+    ],
+    deps=['charts/isola'],
+    resource_deps=['localstack'],
+    labels=['isola'],
 )
 
 # ==============================================================================

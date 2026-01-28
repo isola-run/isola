@@ -134,30 +134,23 @@ jobs:
             -f charts/localstack-values.yaml \
             --wait --timeout 3m
 
-      - name: Deploy isola-operator
+      - name: Deploy isola
         run: |
-          helm install isola-operator charts/isola-operator \
+          helm install isola charts/isola \
             --namespace isola-system \
             --create-namespace \
-            -f charts/isola-operator/values-dev.yaml \
-            --set image.repository=${{ env.OPERATOR_IMAGE }} \
-            --set image.tag=ci \
-            --set image.pullPolicy=Never \
-            --set sidecar.image.repository=${{ env.SIDECAR_IMAGE }} \
-            --set sidecar.image.tag=ci \
-            --set snapshot.uploader.image.repository=${{ env.UPLOADER_IMAGE }} \
-            --set snapshot.uploader.image.tag=ci \
+            -f charts/isola/values-dev.yaml \
+            --set operator.image.repository=${{ env.OPERATOR_IMAGE }} \
+            --set operator.image.tag=ci \
+            --set operator.image.pullPolicy=Never \
+            --set operator.sidecar.image.repository=${{ env.SIDECAR_IMAGE }} \
+            --set operator.sidecar.image.tag=ci \
+            --set operator.snapshot.uploader.image.repository=${{ env.UPLOADER_IMAGE }} \
+            --set operator.snapshot.uploader.image.tag=ci \
+            --set api.image.repository=${{ env.API_IMAGE }} \
+            --set api.image.tag=ci \
+            --set api.image.pullPolicy=Never \
             --wait --timeout 3m
-
-      - name: Deploy isola-api
-        run: |
-          helm install isola-api charts/isola-api \
-            --namespace isola-system \
-            -f charts/isola-api/values-dev.yaml \
-            --set image.repository=${{ env.API_IMAGE }} \
-            --set image.tag=ci \
-            --set image.pullPolicy=Never \
-            --wait --timeout 2m
 
       - name: Wait for services to be ready
         run: |

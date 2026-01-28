@@ -1,0 +1,157 @@
+# Override the chart name
+nameOverride: ""
+# Override the full release name
+fullnameOverride: ""
+
+# Global settings applied to all images (operator, sidecar, uploader, api)
+# For air-gapped environments, set imageRegistry to your internal registry
+global:
+  # Override registry for all images (e.g., "my-registry.example.com/isola")
+  imageRegistry: ""
+  # Image pull secrets applied to all pods (operator, api, snapshot jobs, sandbox sidecars)
+  # Example: [{ name: "my-registry-secret" }]
+  imagePullSecrets: []
+
+# Namespace where sandbox pods are created
+sandboxNamespace: isola-sandboxes
+
+# RuntimeClassName for sandbox pods.
+# Options:
+#   "gvisor" - Use gVisor (runsc) for stronger isolation. Requires gVisor installed on nodes
+#              and a RuntimeClass named "gvisor" pointing to the "runsc" handler.
+#   ""       - Use cluster default runtime (typically runc). Easier to get started,
+#              but provides weaker isolation between sandboxes and the host.
+# For production, use gvisor.
+runtimeClassName: "gvisor"
+
+# PriorityClassName for sandbox pods.
+# Used to prevent sandbox pods from being preempted by other workloads.
+# If set, the chart creates a PriorityClass with this name. Leave empty to skip.
+priorityClassName: "isola-sandbox"
+
+# Storage configuration for snapshots and presigned URLs
+# Shared by operator (for snapshot jobs) and API (for presigned URLs)
+storage:
+  # Bucket URL for snapshot storage
+  # Examples:
+  #   s3://bucket-name?region=us-east-1 (AWS S3)
+  #   s3://bucket-name?endpoint=http://localstack:4566&use_path_style=true (LocalStack/MinIO)
+  #   gs://bucket-name (Google Cloud Storage)
+  #   azblob://container-name (Azure Blob Storage)
+  bucketUrl: ""
+
+  # Storage credentials
+  # Three modes of operation:
+  #   1. Pod/Workload Identity: Leave all fields empty (recommended for production)
+  #   2. Existing Secret: Set existingSecret to reference a pre-created secret
+  #   3. Chart-managed Secret: Provide accessKeyId/secretAccessKey (dev/CI only)
+  credentials:
+    # Name of existing secret containing storage credentials
+    existingSecret: ""
+    # AWS/S3-compatible credentials (only used when existingSecret is empty)
+    accessKeyId: ""
+    secretAccessKey: ""
+    region: ""
+
+# ------------------------------------------------------------------------------
+# Operator Configuration
+# ------------------------------------------------------------------------------
+operator:
+  # Enable the operator component
+  enabled: true
+
+  image:
+    registry: ghcr.io/isola-ai
+    repository: isola-operator
+    # Tag defaults to Chart.appVersion if empty
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    # limits:
+    #   memory: 256Mi
+
+  # Pod annotations (e.g., for Prometheus scraping)
+  podAnnotations: {}
+
+  # Pod scheduling
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
+  # Sidecar image injected into sandbox pods
+  sidecar:
+    image:
+      registry: ghcr.io/isola-ai
+      repository: isola-sidecar
+      # Tag defaults to Chart.appVersion if empty
+      tag: ""
+
+  # Snapshot uploader configuration
+  snapshot:
+    uploader:
+      image:
+        registry: ghcr.io/isola-ai
+        repository: isola-uploader
+        # Tag defaults to Chart.appVersion if empty
+        tag: ""
+    serviceAccount:
+      create: true
+      name: "isola-snapshot-job"
+      # Annotations for pod identity (IRSA, Workload Identity, etc.)
+      annotations: {}
+
+# ------------------------------------------------------------------------------
+# API Configuration
+# ------------------------------------------------------------------------------
+api:
+  # Enable the API component
+  enabled: true
+
+  image:
+    registry: ghcr.io/isola-ai
+    repository: isola-api
+    # Tag defaults to Chart.appVersion if empty
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    # limits:
+    #   memory: 128Mi
+
+  # Pod annotations
+  podAnnotations: {}
+
+  # Pod scheduling
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
+  service:
+    type: ClusterIP
+    port: 80
+    # nodePort: 30080  # Set if using NodePort
+
+  logging:
+    level: info
+    devMode: false

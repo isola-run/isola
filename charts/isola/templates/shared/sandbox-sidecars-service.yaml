@@ -1,0 +1,19 @@
+# Headless service for DNS-based addressing of sandbox sidecars
+# Pods addressed as: <pod-name>.sandbox-sidecars.<namespace>.svc.cluster.local
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-sidecars
+  namespace: {{ .Values.sandboxNamespace }}
+  labels:
+    {{- include "isola.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: isola-sandbox
+    app.kubernetes.io/managed-by: isola-operator
+  ports:
+    - name: sidecar
+      port: 10032
+      targetPort: 10032

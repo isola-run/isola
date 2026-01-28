@@ -30,11 +30,11 @@ generate: generate-api ## Generate all code (CRD DeepCopy + OpenAPI)
 
 .PHONY: manifests
 manifests: ## Generate CRD and RBAC manifests directly to Helm chart
-	@mkdir -p charts/isola-operator/generated
+	@mkdir -p charts/isola/generated
 	controller-gen rbac:roleName=isola-operator crd webhook \
 		paths="./api/..." paths="./internal/operator/controller/..." \
-		output:crd:artifacts:config=charts/isola-operator/crds \
-		output:rbac:artifacts:config=charts/isola-operator/generated
+		output:crd:artifacts:config=charts/isola/crds \
+		output:rbac:artifacts:config=charts/isola/generated
 
 .PHONY: fmt
 fmt: ## Run golangci-lint fmt
@@ -62,10 +62,10 @@ tidy: ## Run go mod tidy
 
 .PHONY: check-manifests
 check-manifests: manifests ## Verify generated manifests are up-to-date
-	@if ! git diff --quiet -- charts/isola-operator/crds/ charts/isola-operator/generated/; then \
+	@if ! git diff --quiet -- charts/isola/crds/ charts/isola/generated/; then \
 		echo "ERROR: Generated manifests are out of sync"; \
 		echo "Run 'make manifests' and commit the changes"; \
-		git diff --stat -- charts/isola-operator/crds/ charts/isola-operator/generated/; \
+		git diff --stat -- charts/isola/crds/ charts/isola/generated/; \
 		exit 1; \
 	fi
 

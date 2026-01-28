@@ -1,0 +1,72 @@
+Isola has been installed successfully.
+
+Components deployed:
+{{- if .Values.operator.enabled }}
+  - Operator: {{ include "isola.fullname" . }}-operator
+{{- end }}
+{{- if .Values.api.enabled }}
+  - API: {{ include "isola.fullname" . }}-api
+{{- end }}
+
+Verify the installation:
+
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Wait for pods to be ready:
+
+  kubectl wait --for=condition=ready pod \
+    -l app.kubernetes.io/instance={{ .Release.Name }} \
+    -n {{ .Release.Namespace }} \
+    --timeout=60s
+
+Quick start - create a sandbox:
+
+  1. Create a SandboxTemplate:
+
+     cat <<EOF | kubectl apply -f -
+     apiVersion: sandbox.isola.run/v1alpha1
+     kind: SandboxTemplate
+     metadata:
+       name: python
+       namespace: {{ .Values.sandboxNamespace }}
+     spec:
+       timeoutSeconds: 300
+       podTemplate:
+         spec:
+           containers:
+           - name: main
+             image: python:3.11-slim
+             command: ["sleep", "infinity"]
+     EOF
+
+  2. Create a Sandbox:
+
+     cat <<EOF | kubectl apply -f -
+     apiVersion: sandbox.isola.run/v1alpha1
+     kind: Sandbox
+     metadata:
+       name: my-sandbox
+       namespace: {{ .Values.sandboxNamespace }}
+     spec:
+       templateRef:
+         name: python
+     EOF
+
+  3. Check sandbox status:
+
+     kubectl get sandbox -n {{ .Values.sandboxNamespace }}
+
+{{- if .Values.api.enabled }}
+
+API endpoint:
+{{- if eq .Values.api.service.type "NodePort" }}
+  export NODE_PORT=$(kubectl get svc {{ include "isola.fullname" . }}-api -n {{ .Release.Namespace }} -o jsonpath='{.spec.ports[0].nodePort}')
+  export NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
+  echo "API available at: http://$NODE_IP:$NODE_PORT"
+{{- else }}
+  kubectl port-forward svc/{{ include "isola.fullname" . }}-api 8080:{{ .Values.api.service.port }} -n {{ .Release.Namespace }}
+  echo "API available at: http://localhost:8080"
+{{- end }}
+{{- end }}
+
+Documentation: https://github.com/isola-ai/isola-sb

@@ -1,0 +1,39 @@
+# Development values for local testing with Tilt/Kind
+# Usage: helm install isola ./charts/isola -f ./charts/isola/values-dev.yaml
+
+global:
+  # Tilt overrides this to localhost:5001
+  imageRegistry: ""
+
+# Use gvisor in dev too for consistency
+runtimeClassName: "gvisor"
+
+# Storage configuration for LocalStack
+storage:
+  bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
+  credentials:
+    accessKeyId: "test"
+    secretAccessKey: "test"
+    region: "us-east-1"
+
+operator:
+  image:
+    # Tilt overrides this
+    tag: "dev"
+  sidecar:
+    image:
+      tag: "dev"
+  snapshot:
+    uploader:
+      image:
+        tag: "dev"
+
+api:
+  image:
+    tag: "dev"
+  logging:
+    level: debug
+    devMode: true
+  service:
+    type: NodePort
+    nodePort: 30080
