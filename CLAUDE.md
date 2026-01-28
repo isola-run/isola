@@ -10,7 +10,7 @@ make fix-all            # Auto-fix formatting and lint issues
 # Testing
 make test               # Unit tests with coverage
 make test-operator FOCUS="TestName"  # Run focused operator test
-make test-api           # Run api-gateway tests
+make test-gateway           # Run api-gateway tests
 make generate           # Regenerate DeepCopy methods after CRD changes
 make manifests          # Regenerate CRD YAML after CRD changes
 
@@ -43,10 +43,10 @@ The api-gateway uses code-first documentation with swaggo/swag. Swagger annotati
 
 After modifying handler annotations in `internal/api-gateway/handlers/`:
 ```bash
-make generate-api  # Regenerates docs/swagger.json, docs/swagger.yaml, docs/docs.go
+make swagger  # Regenerates docs/swagger.json, docs/swagger.yaml, docs/docs.go
 ```
 
-The generated docs are committed to the repo. CI runs `make check-api-codegen` to verify they're in sync.
+The generated docs are committed to the repo. CI runs `make check-swagger` to verify they're in sync.
 
 Swagger UI is served at `/docs/index.html` when the api-gateway is running.
 
@@ -119,7 +119,7 @@ Swagger UI is served at `/docs/index.html` when the api-gateway is running.
 make test                            # Run all tests
 make test-verbose                    # All tests with verbose output
 make test-operator                   # Operator tests only
-make test-api                        # api-gateway tests only
+make test-gateway                        # api-gateway tests only
 make test-operator FOCUS="Reconcile" # Focused by Ginkgo pattern
 make test GO_TEST_FLAGS="-race"      # With race detector
 ```

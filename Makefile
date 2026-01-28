@@ -11,21 +11,21 @@ help: ## Display this help
 
 ##@ Development
 
-.PHONY: generate-api
-generate-api: ## Generate api-gateway Swagger docs
+.PHONY: swagger
+swagger: ## Generate api-gateway Swagger docs
 	go tool swag init -g cmd/api-gateway/main.go -o docs --parseDependency --parseInternal
 
-.PHONY: check-api-codegen
-check-api-codegen: generate-api ## Verify api-gateway Swagger docs are up-to-date
+.PHONY: check-swagger
+check-swagger: swagger ## Verify api-gateway Swagger docs are up-to-date
 	@if ! git diff --quiet -- docs/; then \
-		echo "ERROR: API swagger docs are out of sync"; \
-		echo "Run 'make generate-api' and commit the changes"; \
+		echo "ERROR: Swagger docs are out of sync"; \
+		echo "Run 'make swagger' and commit the changes"; \
 		git diff --stat -- docs/; \
 		exit 1; \
 	fi
 
 .PHONY: generate
-generate: generate-api ## Generate all code (CRD DeepCopy + OpenAPI)
+generate: ## Generate CRD DeepCopy methods
 	controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 
 .PHONY: manifests
@@ -70,7 +70,7 @@ check-manifests: manifests ## Verify generated manifests are up-to-date
 	fi
 
 .PHONY: check-all
-check-all: vet lint vulncheck check-api-codegen check-manifests ## Run all checks (read-only, CI-safe)
+check-all: vet lint vulncheck check-swagger check-manifests ## Run all checks (read-only, CI-safe)
 
 .PHONY: fix-all
 fix-all: fmt lint-fix ## Fix all auto-fixable issues
@@ -103,8 +103,8 @@ test-operator: ## Run operator tests (supports FOCUS=pattern)
 		go test $(if $(FOCUS),./internal/operator/controller,./internal/operator/...) -v \
 		$(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
 
-.PHONY: test-api
-test-api: ## Run api-gateway tests (supports FOCUS=pattern)
+.PHONY: test-gateway
+test-gateway: ## Run api-gateway tests (supports FOCUS=pattern)
 	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
 		go test ./internal/api-gateway/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
 
