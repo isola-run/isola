@@ -21,7 +21,8 @@ spec:
               kubernetes.io/metadata.name: {{ .Release.Namespace }}
           podSelector:
             matchLabels:
-              app.kubernetes.io/name: api-gateway
+              app.kubernetes.io/name: {{ include "isola.name" . }}-api-gateway
+              app.kubernetes.io/instance: {{ .Release.Name }}
       ports:
         - protocol: TCP
           port: 10032
