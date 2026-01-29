@@ -57,15 +57,13 @@ type SandboxTemplateSpec struct {
 	// PodTemplate describes the pod that will be created to run the sandbox.
 	// The Sandbox controller will override specific security settings (runtimeClassName, etc.)
 	// but allows users to define containers, volumes, and env vars.
-	// TODO benl: allow defining volumes? everything?
+	//
+	// Note: PreserveUnknownFields+Schemaless allows arbitrary PodTemplateSpec fields without
+	// requiring explicit schema definition. This trades validation for flexibility.
 	//
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
-	// + required
-	// todo benl: I am extremely unsure about the kubebuilder attributes above
-	// todo benl: agent-sandbox use PodTemplate instead of PodTemplateSpec but from my research the PodTemplateSpec is far more popular and suitable
-	// todo benl: enforce PreemptionPolicy never in validating webhook?
-	// todo benl: verify total resources make sense, etc
+	// +required
 	PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
 
 	// TimeoutSeconds defines how long the sandbox runs before being terminated
@@ -73,13 +71,9 @@ type SandboxTemplateSpec struct {
 	// +optional
 	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
 
-	// todo benl: utilize TerminationGracePeriodSeconds like RabbitMQ operator to allow shutdown hooks to execute
-	// todo benl: think on how to implement shutdown policy to allow multiple toggles
-	// ShutdownPolicy defines what to do when the sandbox ends
+	// ShutdownPolicy defines what to do when the sandbox ends.
 	// +optional
 	ShutdownPolicy *ShutdownPolicy `json:"shutdownPolicy,omitempty"`
-
-	// todo benl: add runtime class here? (runc / runsc)
 }
 
 // SandboxTemplateStatus defines the observed state of SandboxTemplate.

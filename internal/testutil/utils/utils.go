@@ -27,7 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2" // nolint:revive,staticcheck
 )
 
-// todo benl: what is this? delete?
+// CertManager utilities for e2e tests (from kubebuilder scaffold).
 const (
 	certmanagerVersion = "v1.19.1"
 	certmanagerURLTmpl = "https://github.com/cert-manager/cert-manager/releases/download/%s/cert-manager.yaml"

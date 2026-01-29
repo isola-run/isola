@@ -208,10 +208,25 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "No containers found to snapshot")
 	}
 
-	// Get or create the snapshot job (single job for the first container for now)
-	// TODO: support multiple containers by iterating
+	// Snapshot the first container (multi-container support not yet implemented)
 	containerName := containersToSnapshot[0]
 	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName)
+}
+
+// snapshotJobName generates a job name for a snapshot, ensuring it doesn't exceed
+// the Kubernetes 63-character limit for resource names.
+func snapshotJobName(snapshotName, containerName string) string {
+	name := fmt.Sprintf("%s-%s", snapshotName, containerName)
+	if len(name) <= 63 {
+		return name
+	}
+	// Truncate snapshot name to fit, keeping full container name for clarity
+	maxSnapshotLen := 63 - len(containerName) - 1 // -1 for the hyphen
+	if maxSnapshotLen < 10 {
+		// If container name is too long, just truncate the whole thing
+		return name[:63]
+	}
+	return fmt.Sprintf("%s-%s", snapshotName[:maxSnapshotLen], containerName)
 }
 
 func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
@@ -222,8 +237,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithValues("container", containerName)
 
-	// TODO: must bound to 63 chars max
-	jobName := fmt.Sprintf("%s-%s", snap.Name, containerName)
+	jobName := snapshotJobName(snap.Name, containerName)
 	job := &batchv1.Job{}
 	err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: snap.Namespace}, job)
 
@@ -354,7 +368,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 ) error {
 	log := logf.FromContext(ctx)
 
-	jobName := fmt.Sprintf("%s-%s", snap.Name, containerName)
+	jobName := snapshotJobName(snap.Name, containerName)
 	localSnapshotPath := "/snapshot/rootfs.tar"
 
 	activeDeadlineSeconds := defaultActiveDeadlineSecondsSnapshot

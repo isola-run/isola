@@ -150,11 +150,9 @@ func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 
 func (r *SandboxReconciler) injectSandboxSidecar(sandboxPod *corev1.Pod) error {
 	if len(sandboxPod.Spec.Containers) != 1 {
-		// todo: remove this assumption
-		return fmt.Errorf("sandbox pod must have exactly one container")
+		return fmt.Errorf("sandbox pod must have exactly one container (multi-container pods not yet supported)")
 	}
 
-	// todo benl: Mark with sandboxPod.Spec.Containers[i].Name
 	// Mark the first container as the main container so the sidecar can discover it via /proc/<pid>/environ.
 	// Note: a single main container is supported. The sidecar's findMarkedProcess() returns the first PID it finds with the ISOLA_MAIN_CONTAINER marker.
 	sandboxPod.Spec.Containers[0].Env = append(sandboxPod.Spec.Containers[0].Env, corev1.EnvVar{
@@ -185,8 +183,6 @@ func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandbo
 
 func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate) error {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
-	// todo benl reduce verbose logging
-	log.Info("Creating Pod")
 
 	// Apply template labels first, then override with standard Kubernetes labels.
 	// This prevents templates from overriding app.kubernetes.io/*, isola.run/*, etc.
@@ -207,7 +203,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	maps.Copy(labels, buildNetworkLabels(sandbox.Spec.Network))
 
-	// todo benl: why this exists? ("sandbox-id")
+	// Propagate sandbox-id label if present (used for external tracking/correlation)
 	if sandbox.Labels != nil {
 		if sandboxID, exists := sandbox.Labels["sandbox-id"]; exists {
 			labels["sandbox-id"] = sandboxID
@@ -220,7 +216,6 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			Namespace: sandbox.Namespace,
 			Labels:    labels,
 		},
-		// todo benl: copy annotations as well?
 		Spec: template.Spec.PodTemplate.Spec,
 	}
 
@@ -289,8 +284,6 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	}
 
 	log.Info("Pod created")
-
-	// todo benl: this doesn't print anything - rbac issues?
 	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "PodCreated", "Sandbox Pod created")
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -325,7 +318,6 @@ func configureDNS(sandboxPod *corev1.Pod, network *sandboxv1alpha1.NetworkSpec) 
 			if sandboxPod.Spec.DNSConfig == nil {
 				sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{}
 			}
-			// todo benl: log warn if pod spec has nameservers already?
 			sandboxPod.Spec.DNSConfig.Nameservers = network.Nameservers
 		}
 	} else {
@@ -427,7 +419,7 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 			}
 
 			log.Error(err, "Sandbox template not found")
-			// todo benl: we'll stop reconciling (steady failed state) - add watch on SandboxTemplate to reconcile the sandbox when template is created
+			// SandboxTemplate watch in SetupWithManager will trigger reconciliation when template is created
 			return nil, ctrl.Result{}, nil
 		}
 		log.Error(err, "Failed to get Sandbox template")
@@ -520,7 +512,6 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 
 func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
-	// todo benl: update sandbox condition(s) here?
 	if template == nil || template.Spec.TimeoutSeconds == nil {
 		return nil
 	}
@@ -582,7 +573,6 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	networkCondition := r.determineNetworkCondition(sandbox)
 	conditions = append(conditions, networkCondition)
 
-	// todo benl: currently, only shutdown snapsbot condition is reflected
 	shutdownSnapshot, err := r.getShutdownSnapshot(ctx, sandbox)
 	if err != nil {
 		return err
@@ -749,11 +739,7 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 
 func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// todo benl: pass params by value sometimes, to avoid dereferencing nils by accident
-	// todo benl: add r.RecordEvent for events (observability)
 	log := logf.FromContext(ctx).WithValues("sandbox", req.Name, "namespace", req.Namespace)
-
-	log.Info("Reconciling Sandbox")
 
 	sandbox := &sandboxv1alpha1.Sandbox{}
 	if err := r.Get(ctx, req.NamespacedName, sandbox); err != nil {

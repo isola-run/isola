@@ -106,7 +106,6 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	// todo benl: go over the configuration below
 	r.Use(httplog.RequestLogger(httplog.NewLogger("api-gateway", httplog.Options{
 		LogLevel: slog.LevelInfo,
 		JSON:     !cfg.devMode,

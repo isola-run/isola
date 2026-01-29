@@ -32,8 +32,7 @@ const (
 	SandboxPodReady SandboxConditionType = "PodReady"
 	// Network is configured
 	SandboxNetworkConfigured SandboxConditionType = "NetworkConfigured"
-	// set when sandbox is past its timeout
-	// todo benl: necessary? helpful?
+	// TimedOut is set when the sandbox exceeds its configured timeout.
 	SandboxTimedOut SandboxConditionType = "TimedOut"
 	// Filesystem snapshotting is in progress
 	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
@@ -158,7 +157,6 @@ func (s *Sandbox) GetCustomNetworkPolicyName() string {
 	return s.Name + "-custom-netpol"
 }
 
-// todo benl: for now, not storing sandbox pod or snapshotter pod info anywhere in the sandbox CRD
 // SandboxStatus defines the observed state of Sandbox.
 type SandboxStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
