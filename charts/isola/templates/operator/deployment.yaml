@@ -79,10 +79,8 @@ spec:
         {{- end }}
         - name: ISOLA_UPLOADER_IMAGE
           value: {{ include "isola.operator.uploaderImage" . | quote }}
-        {{- if .Values.operator.snapshot.serviceAccount.name }}
         - name: ISOLA_SNAPSHOT_SERVICE_ACCOUNT
-          value: {{ .Values.operator.snapshot.serviceAccount.name | quote }}
-        {{- end }}
+          value: {{ include "isola.operator.snapshotServiceAccountName" . | quote }}
         {{- $imagePullSecretNames := include "isola.imagePullSecretNames" . }}
         {{- if $imagePullSecretNames }}
         - name: ISOLA_IMAGE_PULL_SECRETS
@@ -98,5 +96,9 @@ spec:
       {{- end }}
       {{- with .Values.operator.affinity }}
       affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.topologySpreadConstraints }}
+      topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}

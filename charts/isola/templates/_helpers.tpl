@@ -175,6 +175,17 @@ Storage credential secret name
 {{- end -}}
 {{- end }}
 
+{{/*
+Snapshot service account name
+*/}}
+{{- define "isola.operator.snapshotServiceAccountName" -}}
+{{- if .Values.operator.snapshot.serviceAccount.create }}
+{{- default (printf "%s-snapshot" (include "isola.operator.fullname" .)) .Values.operator.snapshot.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.operator.snapshot.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
 {{/* ==========================================================================
    API Gateway Helpers
    ========================================================================== */}}

@@ -59,6 +59,7 @@ operator:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  topologySpreadConstraints: []
   podAnnotations: {}
 
   # Sidecar image injected into sandbox pods
@@ -162,4 +163,5 @@ apiGateway:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  topologySpreadConstraints: []
   podAnnotations: {}
