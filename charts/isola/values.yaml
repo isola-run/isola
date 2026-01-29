@@ -26,6 +26,9 @@ global:
 # Namespace where sandbox pods are created
 sandboxNamespace: isola-sandboxes
 
+# Whether to create the sandbox namespace (set to false if it already exists)
+createSandboxNamespace: true
+
 # =============================================================================
 # Operator
 # =============================================================================
@@ -36,6 +39,7 @@ operator:
     registry: ghcr.io/isola-ai
     repository: isola-operator
     tag: ""  # Defaults to Chart.appVersion
+    digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
     pullPolicy: IfNotPresent
 
   replicaCount: 1
@@ -63,6 +67,7 @@ operator:
       registry: ghcr.io/isola-ai
       repository: sandbox-sidecar
       tag: ""  # Defaults to Chart.appVersion
+      digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
 
   # RuntimeClassName for sandbox pods
   # Use "gvisor" for production (stronger isolation)
@@ -86,6 +91,7 @@ operator:
         registry: ghcr.io/isola-ai
         repository: isola-uploader
         tag: ""  # Defaults to Chart.appVersion
+        digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
 
     # Storage configuration for snapshot uploads
     storage:
@@ -126,6 +132,7 @@ apiGateway:
     registry: ghcr.io/isola-ai
     repository: api-gateway
     tag: ""  # Defaults to Chart.appVersion
+    digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
     pullPolicy: IfNotPresent
 
   replicaCount: 1

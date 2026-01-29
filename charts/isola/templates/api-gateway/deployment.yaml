@@ -26,7 +26,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: {{ .Chart.Name }}
+        - name: api-gateway
           image: {{ include "isola.apiGateway.image" . }}
           imagePullPolicy: {{ .Values.apiGateway.image.pullPolicy }}
           args:

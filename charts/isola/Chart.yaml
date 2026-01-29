@@ -1,5 +1,6 @@
 apiVersion: v2
 name: isola
+kubeVersion: ">=1.25.0-0"
 description: |
   Isola - Secure sandbox orchestration for Kubernetes.
   Deploys the operator for sandbox lifecycle management and optional API gateway.

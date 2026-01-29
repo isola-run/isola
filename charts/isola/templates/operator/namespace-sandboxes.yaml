@@ -1,3 +1,4 @@
+{{- if .Values.createSandboxNamespace }}
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -5,3 +6,4 @@ metadata:
   labels:
     {{- include "isola.operator.labels" . | nindent 4 }}
     app.kubernetes.io/component: sandbox
+{{- end }}

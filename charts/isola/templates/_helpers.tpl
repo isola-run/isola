@@ -47,18 +47,26 @@ Sandbox namespace
 {{- end }}
 
 {{/*
-Build a full image reference from registry, repository, and tag
+Build a full image reference from registry, repository, and tag/digest
 */}}
 {{- define "isola.image" -}}
 {{- $registry := .imageConfig.registry -}}
 {{- if .global.imageRegistry -}}
 {{- $registry = .global.imageRegistry -}}
 {{- end -}}
+{{- if .imageConfig.digest -}}
+{{- if $registry -}}
+{{- printf "%s/%s@%s" $registry .imageConfig.repository .imageConfig.digest -}}
+{{- else -}}
+{{- printf "%s@%s" .imageConfig.repository .imageConfig.digest -}}
+{{- end -}}
+{{- else -}}
 {{- $tag := .imageConfig.tag | default .appVersion -}}
 {{- if $registry -}}
 {{- printf "%s/%s:%s" $registry .imageConfig.repository $tag -}}
 {{- else -}}
 {{- printf "%s:%s" .imageConfig.repository $tag -}}
+{{- end -}}
 {{- end -}}
 {{- end }}
 
