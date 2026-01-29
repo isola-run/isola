@@ -54,6 +54,38 @@ const (
 	SandboxRootfsSnapshotCondition = "RootfsSnapshot"
 )
 
+// Event reasons for Sandbox controller.
+// Following K8s conventions: PascalCase, past tense for completed actions.
+const (
+	// Lifecycle events
+	EventReasonSandboxCreated  = "SandboxCreated"
+	EventReasonSandboxDeleting = "SandboxDeleting"
+	EventReasonSandboxTimedOut = "SandboxTimedOut"
+
+	// Pod events
+	EventReasonPodCreated        = "PodCreated"
+	EventReasonPodCreationFailed = "PodCreationFailed"
+	EventReasonPodNotReady       = "PodNotReady"
+
+	// Template events
+	EventReasonTemplateResolved = "TemplateResolved"
+	EventReasonTemplateNotFound = "TemplateNotFound"
+
+	// Finalizer events
+	EventReasonFinalizerAdded   = "FinalizerAdded"
+	EventReasonFinalizerRemoved = "FinalizerRemoved"
+
+	// Network events
+	EventReasonNetworkPolicyCreated = "NetworkPolicyCreated"
+	EventReasonNetworkPolicyFailed  = "NetworkPolicyFailed"
+
+	// Snapshot events (on Sandbox resource)
+	EventReasonRootfsSnapshotCreated = "RootfsSnapshotCreated"
+	EventReasonSnapshotSucceeded     = "SnapshotSucceeded"
+	EventReasonSnapshotFailed        = "SnapshotFailed"
+	EventReasonRuntimeNotSupported   = "RuntimeNotSupported"
+)
+
 const (
 	CondReasonTemplateNotFound = "TemplateNotFound"
 	CondReasonTemplateResolved = "TemplateResolved"
@@ -265,6 +297,8 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	if err := r.Create(ctx, sandboxPod); err != nil {
 		log.Error(err, "Failed creating Pod")
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, EventReasonPodCreationFailed,
+			fmt.Sprintf("Failed to create pod: %v", err))
 
 		// Best effort status patch - log but don't override the original create error
 		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -289,9 +323,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	}
 
 	log.Info("Pod created")
-
-	// todo benl: this doesn't print anything - rbac issues?
-	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "PodCreated", "Sandbox Pod created")
+	r.Recorder.Event(sandbox, corev1.EventTypeNormal, EventReasonPodCreated, "Sandbox pod created")
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
@@ -400,6 +432,8 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 
 	if err := r.Get(ctx, types.NamespacedName{Name: sandbox.Spec.TemplateRef.Name, Namespace: sandbox.Namespace}, template); err != nil {
 		if apierrors.IsNotFound(err) {
+			r.Recorder.Event(sandbox, corev1.EventTypeWarning, EventReasonTemplateNotFound,
+				fmt.Sprintf("Template %q not found", sandbox.Spec.TemplateRef.Name))
 
 			if err := r.patchStatus(
 				ctx,
@@ -432,6 +466,13 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 		}
 		log.Error(err, "Failed to get Sandbox template")
 		return nil, ctrl.Result{}, err
+	}
+
+	// Only emit event on first resolution (when condition doesn't exist or was false)
+	existingCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxTemplateReadyCondition)
+	if existingCond == nil || existingCond.Status != metav1.ConditionTrue {
+		r.Recorder.Event(sandbox, corev1.EventTypeNormal, EventReasonTemplateResolved,
+			fmt.Sprintf("Template %q resolved", template.Name))
 	}
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -511,10 +552,14 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 			return nil
 		}
 		log.Error(err, "Failed to create custom NetworkPolicy")
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, EventReasonNetworkPolicyFailed,
+			fmt.Sprintf("Failed to create NetworkPolicy %q: %v", policyName, err))
 		return err
 	}
 
 	log.Info("Custom NetworkPolicy created")
+	r.Recorder.Event(sandbox, corev1.EventTypeNormal, EventReasonNetworkPolicyCreated,
+		fmt.Sprintf("NetworkPolicy %q created", policyName))
 	return nil
 }
 
@@ -789,6 +834,8 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			log.Error(err, "Failed to add finalizer")
 			return ctrl.Result{}, err
 		}
+		r.Recorder.Event(sandbox, corev1.EventTypeNormal, EventReasonFinalizerAdded, "Finalizer added to sandbox")
+		r.Recorder.Event(sandbox, corev1.EventTypeNormal, EventReasonSandboxCreated, "Sandbox created and initialized")
 		// Update baseSandbox to reflect the finalizer change for subsequent patches
 		baseSandbox = sandbox.DeepCopy()
 	}
@@ -799,6 +846,8 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if sandboxDeleted && !noFinalizer {
+		r.Recorder.Event(sandbox, corev1.EventTypeNormal, EventReasonSandboxDeleting, "Sandbox deletion initiated")
+
 		if template == nil {
 			// Template not found during deletion - can't determine shutdown policy
 			// Remove finalizer and allow deletion to proceed
@@ -807,6 +856,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			if err := r.Update(ctx, sandbox); err != nil {
 				return ctrl.Result{}, err
 			}
+			r.Recorder.Event(sandbox, corev1.EventTypeNormal, EventReasonFinalizerRemoved, "Finalizer removed; sandbox will be deleted")
 			return ctrl.Result{}, nil
 		}
 
@@ -836,6 +886,8 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	if optionalTimeoutAt != nil && r.clock().Now().After(optionalTimeoutAt.Time) {
 		log.Info("Sandbox timed out")
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, EventReasonSandboxTimedOut,
+			fmt.Sprintf("Sandbox timed out after %s", optionalTimeoutAt.Time.Sub(sandbox.CreationTimestamp.Time).Round(time.Second)))
 
 		res, cleanupDone, err := r.finalizeSandbox(ctx, sandbox, baseSandbox, template)
 		if err != nil {
@@ -917,6 +969,7 @@ func (r *SandboxReconciler) finalizeSandbox(
 		log.Error(err, "Failed to remove finalizer")
 		return ctrl.Result{}, false, err
 	}
+	r.Recorder.Event(sandbox, corev1.EventTypeNormal, EventReasonFinalizerRemoved, "Finalizer removed; sandbox will be deleted")
 
 	return ctrl.Result{}, true, nil
 }
@@ -1039,7 +1092,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 
 	if !podutil.IsPodReady(sandboxPod) {
 		log.Info("Unable to perform rootfs snapshot: pod not ready")
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "PodNotReady", "Unable to perform rootfs snapshot: pod not ready")
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, EventReasonPodNotReady, "Unable to perform rootfs snapshot: pod not ready")
 
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
@@ -1063,7 +1116,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 
 	if !supported {
 		log.Info("Unable to perform rootfs snapshot: runtime not supported")
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "RuntimeNotSupported", "Unable to perform rootfs snapshot")
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, EventReasonRuntimeNotSupported, "Unable to perform rootfs snapshot: runtime not supported")
 
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
@@ -1115,7 +1168,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 	if readyCond != nil && readyCond.Status == metav1.ConditionTrue {
 		log.Info("Snapshot completed successfully", "snapshot", snapshotName)
-		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", fmt.Sprintf("Snapshot %q completed", snapshotName))
+		r.Recorder.Event(sandbox, corev1.EventTypeNormal, EventReasonSnapshotSucceeded, fmt.Sprintf("Snapshot %q completed", snapshotName))
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxRootfsSnapshotCondition,
@@ -1136,7 +1189,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		message = readyCond.Message
 	}
 	log.Info("Snapshot failed, proceeding with deletion", "snapshot", snapshotName)
-	r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", message)
+	r.Recorder.Event(sandbox, corev1.EventTypeWarning, EventReasonSnapshotFailed, fmt.Sprintf("Snapshot %q failed: %s", snapshotName, message))
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               SandboxRootfsSnapshotCondition,
@@ -1191,7 +1244,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 	}
 
 	log.Info("Created shutdown RootfsSnapshot", "name", rootfsSnapshot.Name)
-	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "RootfsSnapshotCreated", fmt.Sprintf("Created RootfsSnapshot %q", rootfsSnapshot.Name))
+	r.Recorder.Event(sandbox, corev1.EventTypeNormal, EventReasonRootfsSnapshotCreated, fmt.Sprintf("Created RootfsSnapshot %q", rootfsSnapshot.Name))
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{

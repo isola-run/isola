@@ -53,6 +53,18 @@ const (
 	LabelSandboxName = "sandbox.isola.run/sandbox-name"
 )
 
+// Event reasons for RootfsSnapshot controller.
+// Following K8s conventions: PascalCase, past tense for completed actions.
+const (
+	EventReasonSnapshotRequested       = "SnapshotRequested"
+	EventReasonSnapshotJobCreated      = "JobCreated"
+	EventReasonSnapshotComplete        = "SnapshotComplete"
+	EventReasonSnapshotJobFailed       = "SnapshotFailed"
+	EventReasonTerminationLogFailed    = "TerminationLogReadFailed"
+	EventReasonSnapshotTTLExpired      = "TTLExpired"
+	EventReasonSnapshotStorageNotReady = "StorageNotConfigured"
+)
+
 // defaultSnapshotSizeLimit is used when the container has no ephemeral storage limit.
 var defaultSnapshotSizeLimit = resource.MustParse("1Gi")
 
@@ -166,6 +178,9 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if isComplete {
 		ttlLeft := r.ttlLeft(snap)
 		if ttlLeft <= 0 {
+			log.Info("Deleting RootfsSnapshot after TTL expired", "ttl", getTTLSeconds(snap))
+			r.Recorder.Event(snap, corev1.EventTypeNormal, EventReasonSnapshotTTLExpired,
+				fmt.Sprintf("Snapshot TTL expired after %s; deleting", getTTLSeconds(snap)))
 			if err := r.Delete(ctx, snap); err != nil && !apierrors.IsNotFound(err) {
 				log.Error(err, "Failed to delete RootfsSnapshot after TTL")
 				return ctrl.Result{}, err
@@ -178,7 +193,15 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if r.BucketURL == "" {
 		log.Info("Snapshot storage not configured: ISOLA_SNAPSHOT_BUCKET_URL is required")
+		r.Recorder.Event(snap, corev1.EventTypeWarning, EventReasonSnapshotStorageNotReady,
+			"Snapshot storage not configured: ISOLA_SNAPSHOT_BUCKET_URL is required")
 		return r.setFailed(ctx, baseSnap, snap, "Snapshot storage not configured: ISOLA_SNAPSHOT_BUCKET_URL is required")
+	}
+
+	// Emit SnapshotRequested event on first reconcile (when StartedAt is not set)
+	if snap.Status.StartedAt == nil {
+		r.Recorder.Event(snap, corev1.EventTypeNormal, EventReasonSnapshotRequested,
+			fmt.Sprintf("Snapshot requested for sandbox %q", snap.Spec.SandboxName))
 	}
 
 	sandboxPodName := podutil.GetSandboxPodName(snap.Spec.SandboxName)
@@ -240,7 +263,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		}
 
 		log.Info("Created snapshot job", "job", jobName)
-		r.Recorder.Event(snap, corev1.EventTypeNormal, "JobCreated", fmt.Sprintf("Created snapshot job for container %s", containerName))
+		r.Recorder.Event(snap, corev1.EventTypeNormal, EventReasonSnapshotJobCreated, fmt.Sprintf("Created snapshot job for container %s", containerName))
 
 		return r.setInProgress(ctx, baseSnap, snap, containerName, containerID)
 	}
@@ -256,12 +279,12 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		result, err := r.getUploadResult(ctx, job)
 		if err != nil {
 			log.Error(err, "Failed to read upload result from termination message")
-			r.Recorder.Event(snap, corev1.EventTypeWarning, "TerminationLogReadFailed", err.Error())
+			r.Recorder.Event(snap, corev1.EventTypeWarning, EventReasonTerminationLogFailed, err.Error())
 			r.deleteJob(ctx, job)
 			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Failed to read upload result: %v", err))
 		}
 
-		r.Recorder.Event(snap, corev1.EventTypeNormal, "SnapshotComplete", "Snapshot completed successfully")
+		r.Recorder.Event(snap, corev1.EventTypeNormal, EventReasonSnapshotComplete, "Snapshot completed successfully")
 
 		// Delete the job now that we've read the results
 		r.deleteJob(ctx, job)
@@ -275,7 +298,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 			message = fmt.Sprintf("Snapshot job failed: %s", condMsg)
 		}
 		log.Info(message, "job", jobName)
-		r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
+		r.Recorder.Event(snap, corev1.EventTypeWarning, EventReasonSnapshotJobFailed, message)
 
 		// Delete the job - no point keeping failed jobs until we hit to snapshotter TTL
 		r.deleteJob(ctx, job)
@@ -588,7 +611,7 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletedAt = &now
 
-	r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
+	r.Recorder.Event(snap, corev1.EventTypeWarning, EventReasonSnapshotJobFailed, message)
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
 		{
 			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),

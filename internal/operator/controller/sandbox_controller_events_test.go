@@ -46,7 +46,7 @@ var _ = Describe("Sandbox Controller", func() {
 			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
 		})
 
-		It("should record PodCreated event when pod is created", func() {
+		It("should record SandboxCreated, FinalizerAdded, TemplateResolved, and PodCreated events when sandbox is created", func() {
 			sandboxName := "sandbox-event-pod-created"
 			templateName := "template-event-pod-created"
 
@@ -62,8 +62,69 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Check for PodCreated event
-			Eventually(recorder.Events).Should(Receive(Equal("Normal PodCreated Sandbox Pod created")))
+			// Check for lifecycle events in order
+			Eventually(recorder.Events).Should(Receive(Equal("Normal FinalizerAdded Finalizer added to sandbox")))
+			Eventually(recorder.Events).Should(Receive(Equal("Normal SandboxCreated Sandbox created and initialized")))
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("Normal TemplateResolved Template")))
+			Eventually(recorder.Events).Should(Receive(Equal("Normal PodCreated Sandbox pod created")))
+		})
+
+		It("should record TemplateNotFound event when template is missing", func() {
+			sandboxName := "sandbox-event-template-missing"
+			templateName := "nonexistent-template"
+
+			createSandbox(ctx, sandboxName, templateName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Drain initial events
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("FinalizerAdded")))
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("SandboxCreated")))
+			// Check for TemplateNotFound event
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("Warning TemplateNotFound")))
+		})
+
+		It("should record SandboxTimedOut event when sandbox times out", func() {
+			sandboxName := "sandbox-event-timeout"
+			templateName := "template-event-timeout"
+
+			timeout := int64(1)
+			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
+				t.Spec.TimeoutSeconds = &timeout
+			})
+			defer deleteTemplate(ctx, templateName)
+
+			createSandbox(ctx, sandboxName, templateName)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			// First reconcile to create pod
+			_, _ = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+
+			// Drain initial events
+		drainInitialEvents:
+			for {
+				select {
+				case <-recorder.Events:
+				default:
+					break drainInitialEvents
+				}
+			}
+
+			// Advance clock past timeout
+			fakeClock.Advance(2 * time.Second)
+			_, _ = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+
+			// Check for SandboxTimedOut event
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("Warning SandboxTimedOut")))
 		})
 
 		It("should record RootfsSnapshotCreated event", func() {
