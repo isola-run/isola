@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gin-contrib/requestid"
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -23,6 +23,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/generated"
 )
 
 const testNamespace = "test-sandbox"
@@ -89,20 +90,17 @@ var _ = BeforeSuite(func() {
 	}
 	Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 
-	// Set up HTTP test server with Gin
-	gin.SetMode(gin.TestMode)
-
+	// Set up HTTP test server
 	logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
 
-	r := gin.New()
-	r.Use(requestid.New())
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
 
 	handler := NewHandler(logger, k8sClient)
-	v1 := r.Group("/api/v1")
-	{
-		v1.GET("/health", handler.GetHealth)
-		v1.GET("/ready", handler.GetReady)
-	}
+	_ = generated.HandlerWithOptions(handler, generated.ChiServerOptions{
+		BaseURL:    "/api/v1",
+		BaseRouter: r,
+	})
 
 	testServer = httptest.NewServer(r)
 	DeferCleanup(testServer.Close)
