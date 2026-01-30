@@ -76,11 +76,6 @@ check-all: vet lint vulncheck check-swagger check-manifests ## Run all checks (r
 fix-all: fmt lint-fix ## Fix all auto-fixable issues
 
 ##@ Testing
-#
-# Variables for test filtering (following Cluster API / Kubernetes patterns):
-#   FOCUS        - Ginkgo focus pattern (e.g., FOCUS="Reconcile")
-#   SKIP         - Ginkgo skip pattern
-#   GO_TEST_FLAGS - Additional go test flags (e.g., GO_TEST_FLAGS="-race")
 
 ENVTEST_K8S_VERSION ?= 1.34
 FOCUS ?=
