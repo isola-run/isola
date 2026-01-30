@@ -218,4 +218,4 @@ bin/
 *.out
 cover.out
 go.work
-go.work.sum
+go.work.sumapi-gateway
