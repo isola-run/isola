@@ -1,4 +1,3 @@
-basePath: /api/v1
 definitions:
   internal_api-gateway_handlers.ErrorResponse:
     properties:

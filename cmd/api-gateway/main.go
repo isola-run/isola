@@ -114,11 +114,11 @@ func initGinServer(logger *slog.Logger, cfg config, mgr ctrl.Manager) (*http.Ser
 
 	handler := handlers.NewHandler(logger, mgr.GetClient())
 
-	v1 := r.Group("/api/v1")
-	{
-		v1.GET("/health", handler.GetHealth)
-		v1.GET("/ready", handler.GetReady)
-	}
+	// Health endpoints at root (infrastructure, not versioned API)
+	r.GET("/health", handler.GetHealth)
+	r.GET("/healthz", handler.GetHealth)
+	r.GET("/ready", handler.GetReady)
+	r.GET("/readyz", handler.GetReady)
 
 	// Swagger docs
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
@@ -134,8 +134,6 @@ func initGinServer(logger *slog.Logger, cfg config, mgr ctrl.Manager) (*http.Ser
 // @title Isola Sandbox API
 // @version 1.0
 // @description API for managing sandboxes
-
-// @BasePath /api/v1
 func main() {
 	cfg := config{}
 

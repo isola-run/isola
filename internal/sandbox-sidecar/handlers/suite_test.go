@@ -30,7 +30,7 @@ var _ = BeforeSuite(func() {
 	r.Use(gin.Recovery())
 
 	handler := NewHandler(logger)
-	handler.RegisterRoutes(r)
+	r.GET("/health", handler.GetHealth)
 
 	testServer = httptest.NewServer(r)
 	DeferCleanup(testServer.Close)

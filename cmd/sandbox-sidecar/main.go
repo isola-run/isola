@@ -47,7 +47,8 @@ func initGinServer(logger *slog.Logger, cfg config) (*http.Server, error) {
 	r.Use(gin.Recovery())
 
 	handler := handlers.NewHandler(logger)
-	handler.RegisterRoutes(r)
+	r.GET("/health", handler.GetHealth)
+	r.GET("/healthz", handler.GetHealth)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),

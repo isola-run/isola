@@ -97,11 +97,8 @@ var _ = BeforeSuite(func() {
 
 	handler := NewHandler(logger, k8sClient)
 
-	v1 := r.Group("/api/v1")
-	{
-		v1.GET("/health", handler.GetHealth)
-		v1.GET("/ready", handler.GetReady)
-	}
+	r.GET("/health", handler.GetHealth)
+	r.GET("/ready", handler.GetReady)
 
 	testServer = httptest.NewServer(r)
 	DeferCleanup(testServer.Close)
