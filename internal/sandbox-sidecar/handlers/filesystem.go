@@ -13,19 +13,19 @@ import (
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 )
 
-// PostUpload godoc
-// @Summary Upload a file
-// @Description Uploads a file to the specified path in the sandbox container
-// @Tags files
+// PostFilesystem godoc
+// @Summary Write a file to the sandbox filesystem
+// @Description Writes a file to the specified path in the sandbox container
+// @Tags filesystem
 // @Accept application/octet-stream
 // @Produce json
 // @Param path query string true "Destination path (absolute or relative to container cwd)"
 // @Param container query string false "Container name (defaults to main container)"
-// @Success 200 {object} UploadResponse
+// @Success 200 {object} FilesystemWriteResponse
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /files/upload [post]
-func (h *Handler) PostUpload(c *gin.Context) {
+// @Router /filesystem [post]
+func (h *Handler) PostFilesystem(c *gin.Context) {
 	path := c.Query("path")
 	container := c.Query("container")
 
@@ -99,7 +99,7 @@ func (h *Handler) PostUpload(c *gin.Context) {
 		// Don't fail the request, file was written successfully
 	}
 
-	c.JSON(http.StatusOK, UploadResponse{
+	c.JSON(http.StatusOK, FilesystemWriteResponse{
 		Path:         resolvedPath,
 		BytesWritten: written,
 		Container:    container,

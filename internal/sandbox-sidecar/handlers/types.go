@@ -10,8 +10,8 @@ type ErrorResponse struct {
 	Message string `json:"message" example:"path is required"`
 }
 
-// UploadResponse is returned after a successful file upload.
-type UploadResponse struct {
+// FilesystemWriteResponse is returned after a successful file write.
+type FilesystemWriteResponse struct {
 	Path         string `json:"path" example:"/workspace/file.txt"`
 	BytesWritten int64  `json:"bytes_written" example:"1024"`
 	Container    string `json:"container,omitempty" example:"main"`

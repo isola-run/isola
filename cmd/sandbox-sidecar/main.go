@@ -50,7 +50,7 @@ func initGinServer(logger *slog.Logger, cfg config) (*http.Server, error) {
 	handler := handlers.NewHandler(logger, &proc.RealProcFS{})
 	r.GET("/health", handler.GetHealth)
 	r.GET("/healthz", handler.GetHealth)
-	r.POST("/files/upload", handler.PostUpload)
+	r.POST("/filesystem", handler.PostFilesystem)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),

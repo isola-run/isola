@@ -70,7 +70,7 @@ var _ = BeforeSuite(func() {
 
 	handler := NewHandler(logger, mockProcFS)
 	r.GET("/health", handler.GetHealth)
-	r.POST("/files/upload", handler.PostUpload)
+	r.POST("/filesystem", handler.PostFilesystem)
 
 	testServer = httptest.NewServer(r)
 	DeferCleanup(testServer.Close)
