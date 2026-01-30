@@ -15,6 +15,7 @@ import (
 	"github.com/isola-ai/isola-sb/internal/env"
 	"github.com/isola-ai/isola-sb/internal/logging"
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/handlers"
+	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 )
 
 const port = 10032
@@ -46,9 +47,10 @@ func initGinServer(logger *slog.Logger, cfg config) (*http.Server, error) {
 	r.Use(requestid.New())
 	r.Use(gin.Recovery())
 
-	handler := handlers.NewHandler(logger)
+	handler := handlers.NewHandler(logger, &proc.RealProcFS{})
 	r.GET("/health", handler.GetHealth)
 	r.GET("/healthz", handler.GetHealth)
+	r.POST("/files/upload", handler.PostUpload)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
