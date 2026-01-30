@@ -26,16 +26,27 @@ import (
 type SandboxConditionType string
 
 const (
-	// The aggregate condition.
+	// SandboxReady is the aggregate condition indicating overall readiness.
+	// True when sandbox is ready for use, False otherwise.
 	SandboxReady SandboxConditionType = "Ready"
-	// Sandbox pod is up and running.
+
+	// SandboxReconciling indicates the controller is actively reconciling.
+	// kstatus standard: True = InProgress status.
+	// Uses "abnormal-true" pattern - absence means reconciliation is complete.
+	SandboxReconciling SandboxConditionType = "Reconciling"
+
+	// SandboxStalled indicates an unrecoverable error during reconciliation.
+	// kstatus standard: True = Failed status.
+	// Uses "abnormal-true" pattern - absence means no error.
+	SandboxStalled SandboxConditionType = "Stalled"
+
+	// SandboxPodReady indicates the sandbox pod is up and running.
 	SandboxPodReady SandboxConditionType = "PodReady"
-	// Network is configured
+
+	// SandboxNetworkConfigured indicates network isolation is configured.
 	SandboxNetworkConfigured SandboxConditionType = "NetworkConfigured"
-	// set when sandbox is past its timeout
-	// todo benl: necessary? helpful?
-	SandboxTimedOut SandboxConditionType = "TimedOut"
-	// Filesystem snapshotting is in progress
+
+	// SandboxSnapshottingFilesystem indicates filesystem snapshotting is in progress.
 	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
 )
 
@@ -158,10 +169,15 @@ func (s *Sandbox) GetCustomNetworkPolicyName() string {
 	return s.Name + "-custom-netpol"
 }
 
-// todo benl: for now, not storing sandbox pod or snapshotter pod info anywhere in the sandbox CRD
 // SandboxStatus defines the observed state of Sandbox.
 type SandboxStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// ObservedGeneration is the most recent generation observed by the controller.
+	// This is used by kstatus to determine if the controller has processed the latest spec.
+	// When observedGeneration < metadata.generation, kstatus reports InProgress.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// +listType=map
 	// +listMapKey=type

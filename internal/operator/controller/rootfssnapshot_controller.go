@@ -51,6 +51,10 @@ const (
 	// This enables the Sandbox controller to find all snapshots for a given sandbox,
 	// regardless of whether they were created by the controller or manually by a user.
 	LabelSandboxName = "sandbox.isola.run/sandbox-name"
+
+	// kstatus standard conditions (abnormal-true pattern)
+	RootfsSnapshotReconcilingCondition = "Reconciling"
+	RootfsSnapshotStalledCondition     = "Stalled"
 )
 
 // defaultSnapshotSizeLimit is used when the container has no ephemeral storage limit.
@@ -537,6 +541,7 @@ func (r *RootfsSnapshotReconciler) patchStatus(ctx context.Context, base, snap *
 func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, containerName, containerID string) (ctrl.Result, error) {
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.StartedAt = &now
+	snap.Status.ObservedGeneration = snap.Generation
 	snap.Status.ContainerSnapshots = []sandboxv1alpha1.ContainerSnapshotStatus{
 		{
 			ContainerName: containerName,
@@ -551,6 +556,14 @@ func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap
 			Message:            "Snapshot job running",
 			ObservedGeneration: snap.Generation,
 		},
+		// kstatus: Reconciling=True signals InProgress
+		{
+			Type:               RootfsSnapshotReconcilingCondition,
+			Status:             metav1.ConditionTrue,
+			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotInProgress,
+			Message:            "Snapshot job is running",
+			ObservedGeneration: snap.Generation,
+		},
 	}); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -561,6 +574,7 @@ func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap
 func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, result *snapshotpkg.UploadResult) (ctrl.Result, error) {
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletedAt = &now
+	snap.Status.ObservedGeneration = snap.Generation
 
 	if result != nil {
 		snap.Status.Revision = result.Revision
@@ -577,6 +591,14 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap 
 			Message:            "Snapshot completed successfully",
 			ObservedGeneration: snap.Generation,
 		},
+		// kstatus: Clear Reconciling to signal Current status
+		{
+			Type:               RootfsSnapshotReconcilingCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotSucceeded,
+			Message:            "Snapshot completed",
+			ObservedGeneration: snap.Generation,
+		},
 	}); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -587,6 +609,7 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap 
 func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, message string) (ctrl.Result, error) {
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletedAt = &now
+	snap.Status.ObservedGeneration = snap.Generation
 
 	r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
@@ -595,6 +618,22 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 			Status:             metav1.ConditionFalse,
 			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
 			Message:            message,
+			ObservedGeneration: snap.Generation,
+		},
+		// kstatus: Stalled=True signals Failed status
+		{
+			Type:               RootfsSnapshotStalledCondition,
+			Status:             metav1.ConditionTrue,
+			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
+			Message:            message,
+			ObservedGeneration: snap.Generation,
+		},
+		// kstatus: Clear Reconciling since we're done (failed)
+		{
+			Type:               RootfsSnapshotReconcilingCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
+			Message:            "Snapshot failed",
 			ObservedGeneration: snap.Generation,
 		},
 	}); err != nil {

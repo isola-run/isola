@@ -28,6 +28,16 @@ const (
 	// True when all container snapshots succeeded.
 	// False when any snapshot failed or is still in progress.
 	RootfsSnapshotComplete RootfsSnapshotConditionType = "Complete"
+
+	// RootfsSnapshotReconciling indicates the controller is actively reconciling.
+	// kstatus standard: True = InProgress status.
+	// Uses "abnormal-true" pattern - absence means reconciliation is complete.
+	RootfsSnapshotReconciling RootfsSnapshotConditionType = "Reconciling"
+
+	// RootfsSnapshotStalled indicates an unrecoverable error during reconciliation.
+	// kstatus standard: True = Failed status.
+	// Uses "abnormal-true" pattern - absence means no error.
+	RootfsSnapshotStalled RootfsSnapshotConditionType = "Stalled"
 )
 
 // ContainerSnapshotConditionType defines condition types for per-container status
@@ -115,7 +125,17 @@ type ContainerSnapshotStatus struct {
 
 // RootfsSnapshotStatus defines the observed state of RootfsSnapshot
 type RootfsSnapshotStatus struct {
-	// Conditions represent the overall RootfsSnapshot state
+	// ObservedGeneration is the most recent generation observed by the controller.
+	// This is used by kstatus to determine if the controller has processed the latest spec.
+	// When observedGeneration < metadata.generation, kstatus reports InProgress.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Conditions represent the overall RootfsSnapshot state.
+	// kstatus standard conditions:
+	// - "Reconciling": True when controller is actively working (abnormal-true pattern)
+	// - "Stalled": True when an unrecoverable error occurred (abnormal-true pattern)
+	// - "Complete": True when snapshot succeeded, False when failed or in progress
 	// +listType=map
 	// +listMapKey=type
 	// +optional

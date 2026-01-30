@@ -48,6 +48,10 @@ const (
 	// Summary condition
 	SandboxReadyCondition = "Ready"
 
+	// kstatus standard conditions (abnormal-true pattern)
+	SandboxReconcilingCondition = "Reconciling"
+	SandboxStalledCondition     = "Stalled"
+
 	SandboxTemplateReadyCondition  = "TemplateReady"
 	SandboxPodReadyCondition       = "PodReady"
 	SandboxNetworkReadyCondition   = "NetworkConfigured"
@@ -181,6 +185,59 @@ func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandbo
 	}
 
 	return nil
+}
+
+// setReconciling sets the kstatus Reconciling condition to True with the given reason/message.
+// Per kstatus "abnormal-true" pattern, Reconciling=True signals InProgress status.
+func (r *SandboxReconciler) setReconciling(ctx context.Context, baseSandbox, sandbox *sandboxv1alpha1.Sandbox, reason, message string) error {
+	return r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+		{
+			Type:               SandboxReconcilingCondition,
+			Status:             metav1.ConditionTrue,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: sandbox.Generation,
+		},
+	})
+}
+
+// clearReconciling removes the Reconciling condition to signal reconciliation is complete.
+// Per kstatus "abnormal-true" pattern, absence of Reconciling means Current status.
+func (r *SandboxReconciler) clearReconciling(ctx context.Context, baseSandbox, sandbox *sandboxv1alpha1.Sandbox) error {
+	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
+	sandbox.Status.ObservedGeneration = sandbox.Generation
+	return r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox))
+}
+
+// setStalled sets the kstatus Stalled condition to True with the given reason/message.
+// Per kstatus "abnormal-true" pattern, Stalled=True signals Failed status.
+func (r *SandboxReconciler) setStalled(ctx context.Context, baseSandbox, sandbox *sandboxv1alpha1.Sandbox, reason, message string) error {
+	// When stalled, we're no longer reconciling
+	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
+	sandbox.Status.ObservedGeneration = sandbox.Generation
+	meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
+		Type:               SandboxStalledCondition,
+		Status:             metav1.ConditionTrue,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: sandbox.Generation,
+	})
+	return r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox))
+}
+
+// clearStalled removes the Stalled condition.
+func (r *SandboxReconciler) clearStalled(ctx context.Context, baseSandbox, sandbox *sandboxv1alpha1.Sandbox) error {
+	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxStalledCondition)
+	return r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox))
+}
+
+// finalizeStatus updates observedGeneration and clears Reconciling to signal completion.
+// Call this at the end of a successful reconciliation loop.
+func (r *SandboxReconciler) finalizeStatus(ctx context.Context, baseSandbox, sandbox *sandboxv1alpha1.Sandbox) error {
+	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
+	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxStalledCondition)
+	sandbox.Status.ObservedGeneration = sandbox.Generation
+	return r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox))
 }
 
 func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate) error {
@@ -400,7 +457,8 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 
 	if err := r.Get(ctx, types.NamespacedName{Name: sandbox.Spec.TemplateRef.Name, Namespace: sandbox.Namespace}, template); err != nil {
 		if apierrors.IsNotFound(err) {
-
+			// Template not found is a stalled state - kstatus will report Failed
+			sandbox.Status.ObservedGeneration = sandbox.Generation
 			if err := r.patchStatus(
 				ctx,
 				baseSandbox,
@@ -420,6 +478,20 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 						Message:            "Sandbox template not found",
 						ObservedGeneration: sandbox.Generation,
 					},
+					{
+						Type:               SandboxStalledCondition,
+						Status:             metav1.ConditionTrue,
+						Reason:             CondReasonTemplateNotFound,
+						Message:            fmt.Sprintf("SandboxTemplate %q not found", sandbox.Spec.TemplateRef.Name),
+						ObservedGeneration: sandbox.Generation,
+					},
+					{
+						Type:               SandboxReconcilingCondition,
+						Status:             metav1.ConditionFalse,
+						Reason:             CondReasonTemplateNotFound,
+						Message:            "Cannot reconcile without template",
+						ObservedGeneration: sandbox.Generation,
+					},
 				},
 			); err != nil {
 				log.Error(err, "Failed to update Sandbox status")
@@ -427,19 +499,27 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 			}
 
 			log.Error(err, "Sandbox template not found")
-			// todo benl: we'll stop reconciling (steady failed state) - add watch on SandboxTemplate to reconcile the sandbox when template is created
+			// SandboxTemplate watch will trigger reconciliation when template is created
 			return nil, ctrl.Result{}, nil
 		}
 		log.Error(err, "Failed to get Sandbox template")
 		return nil, ctrl.Result{}, err
 	}
 
+	// Template found - clear any previous Stalled condition
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               SandboxTemplateReadyCondition,
 			Status:             metav1.ConditionTrue,
 			Reason:             CondReasonTemplateResolved,
 			Message:            "Template resolved",
+			ObservedGeneration: sandbox.Generation,
+		},
+		{
+			Type:               SandboxStalledCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             CondReasonTemplateResolved,
+			Message:            "Template is available",
 			ObservedGeneration: sandbox.Generation,
 		},
 	}); err != nil {
@@ -582,7 +662,6 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	networkCondition := r.determineNetworkCondition(sandbox)
 	conditions = append(conditions, networkCondition)
 
-	// todo benl: currently, only shutdown snapsbot condition is reflected
 	shutdownSnapshot, err := r.getShutdownSnapshot(ctx, sandbox)
 	if err != nil {
 		return err
@@ -593,7 +672,65 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod)
 	conditions = append(conditions, readyCondition)
 
+	// kstatus: Set Reconciling/Stalled based on pod state
+	kstatusConditions := r.determineKstatusConditions(sandbox, sandboxPod)
+	conditions = append(conditions, kstatusConditions...)
+
+	// Always update observedGeneration to indicate we've processed this spec version
+	sandbox.Status.ObservedGeneration = sandbox.Generation
+
 	return r.patchStatus(ctx, baseSandbox, sandbox, conditions)
+}
+
+// determineKstatusConditions returns kstatus standard conditions based on sandbox state.
+// Uses "abnormal-true" pattern: conditions are present only for abnormal states.
+func (r *SandboxReconciler) determineKstatusConditions(sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) []metav1.Condition {
+	var conditions []metav1.Condition
+
+	// If pod is ready, we're fully reconciled - no Reconciling condition needed
+	if podutil.IsPodReady(sandboxPod) {
+		// Explicitly set Reconciling=False to clear any previous True state
+		conditions = append(conditions, metav1.Condition{
+			Type:               SandboxReconcilingCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             "ReconcileComplete",
+			Message:            "Sandbox is fully reconciled",
+			ObservedGeneration: sandbox.Generation,
+		})
+		return conditions
+	}
+
+	// If pod terminated (failed/succeeded), set Stalled for failed pods
+	if podutil.IsPodTerminated(sandboxPod) {
+		if sandboxPod.Status.Phase == corev1.PodFailed {
+			conditions = append(conditions, metav1.Condition{
+				Type:               SandboxStalledCondition,
+				Status:             metav1.ConditionTrue,
+				Reason:             CondReasonPodFailed,
+				Message:            "Sandbox pod has failed",
+				ObservedGeneration: sandbox.Generation,
+			})
+		}
+		conditions = append(conditions, metav1.Condition{
+			Type:               SandboxReconcilingCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             "PodTerminated",
+			Message:            "Pod has terminated",
+			ObservedGeneration: sandbox.Generation,
+		})
+		return conditions
+	}
+
+	// Pod is pending or not yet created - still reconciling
+	conditions = append(conditions, metav1.Condition{
+		Type:               SandboxReconcilingCondition,
+		Status:             metav1.ConditionTrue,
+		Reason:             CondReasonReconciling,
+		Message:            "Waiting for sandbox pod to become ready",
+		ObservedGeneration: sandbox.Generation,
+	})
+
+	return conditions
 }
 
 // determinePodCondition returns the PodReady condition based on the sandbox pod state.
