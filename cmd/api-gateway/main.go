@@ -114,7 +114,6 @@ func initGinServer(logger *slog.Logger, cfg config, mgr ctrl.Manager) (*http.Ser
 
 	handler := handlers.NewHandler(logger, mgr.GetClient())
 
-	// Health endpoints at root (infrastructure, not versioned API)
 	r.GET("/health", handler.GetHealth)
 	r.GET("/healthz", handler.GetHealth)
 	r.GET("/ready", handler.GetReady)
@@ -123,6 +122,7 @@ func initGinServer(logger *slog.Logger, cfg config, mgr ctrl.Manager) (*http.Ser
 	// Swagger docs
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
+	// todo benl: add timeouts configuration
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.httpPort),
 		Handler: r,
