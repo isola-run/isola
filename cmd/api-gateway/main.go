@@ -5,10 +5,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -28,6 +28,7 @@ import (
 	_ "github.com/isola-ai/isola-sb/api/openapi" // swagger docs
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 	"github.com/isola-ai/isola-sb/internal/api-gateway/handlers"
+	"github.com/isola-ai/isola-sb/internal/env"
 	"github.com/isola-ai/isola-sb/internal/logging"
 )
 
@@ -47,29 +48,11 @@ type config struct {
 	sandboxNamespace string
 }
 
-// @title Isola Sandbox API
-// @version 1.0
-// @description API for managing sandboxes
-
-// @BasePath /api/v1
-func main() {
-	cfg := config{}
-
-	flag.IntVar(&cfg.httpPort, "http-port", getEnvOrDefaultInt("ISOLA_HTTP_PORT", 8080), "HTTP server port")
-	flag.StringVar(&cfg.logLevel, "log-level", getEnvOrDefault("ISOLA_LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
-	flag.BoolVar(&cfg.devMode, "dev", getEnvOrDefault("ISOLA_DEV_MODE", "") != "", "Enable development mode (text logging)")
-	flag.StringVar(&cfg.sandboxNamespace, "sandbox-namespace", os.Getenv("ISOLA_SANDBOX_NAMESPACE"), "Namespace where sandboxes are created (required)")
-	flag.Parse()
-
+func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config) (ctrl.Manager, error) {
 	if cfg.sandboxNamespace == "" {
-		fmt.Fprintln(os.Stderr, "ISOLA_SANDBOX_NAMESPACE is required")
-		os.Exit(1)
+		logger.Error("sandbox namespace is required")
+		return nil, errors.New("sandbox namespace is required")
 	}
-
-	logger := logging.New(logging.Config{
-		Level:   cfg.logLevel,
-		DevMode: cfg.devMode,
-	})
 
 	// Create controller-runtime Manager with namespace-scoped cache
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -88,12 +71,8 @@ func main() {
 	})
 	if err != nil {
 		logger.Error("unable to create manager", "error", err)
-		os.Exit(1)
+		return nil, err
 	}
-
-	// Graceful shutdown
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		logger.Info("starting controller-runtime manager")
@@ -104,10 +83,14 @@ func main() {
 
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
 		logger.Error("cache sync failed")
-		os.Exit(1)
+		return nil, errors.New("cache sync failed")
 	}
 	logger.Info("cache synced")
 
+	return mgr, nil
+}
+
+func initGinServer(logger *slog.Logger, cfg config, mgr ctrl.Manager) (*http.Server, error) {
 	if !cfg.devMode {
 		// default is debug mode
 		// in tests we might want to pass env GIN_MODE=test
@@ -118,7 +101,10 @@ func main() {
 	r := gin.New()
 	// no use of c.ClientIP() and thus no need to configure trusted proxies
 	// misconfiguring trusted proxies is a no-no: https://gin-gonic.com/en/docs/deployment/
-	_ = r.SetTrustedProxies(nil)
+	if err := r.SetTrustedProxies(nil); err != nil {
+		logger.Error("unable to set trusted proxies", "error", err)
+		return nil, fmt.Errorf("set trusted proxies: %w", err)
+	}
 	// first middleware is sloggin to ensure logging is available for all other middlewares
 	r.Use(sloggin.NewWithConfig(logger, sloggin.Config{
 		WithRequestID: true,
@@ -142,6 +128,44 @@ func main() {
 		Handler: r,
 	}
 
+	return srv, nil
+}
+
+// @title Isola Sandbox API
+// @version 1.0
+// @description API for managing sandboxes
+
+// @BasePath /api/v1
+func main() {
+	cfg := config{}
+
+	flag.IntVar(&cfg.httpPort, "http-port", env.GetOrDefaultInt("ISOLA_HTTP_PORT", 8080), "HTTP server port")
+	flag.StringVar(&cfg.logLevel, "log-level", env.GetOrDefault("ISOLA_LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
+	flag.BoolVar(&cfg.devMode, "dev", env.GetOrDefault("ISOLA_DEV_MODE", "") != "", "Enable development mode (text logging)")
+	flag.StringVar(&cfg.sandboxNamespace, "sandbox-namespace", os.Getenv("ISOLA_SANDBOX_NAMESPACE"), "Namespace where sandboxes are created (required)")
+	flag.Parse()
+
+	logger := logging.New(logging.Config{
+		Level:   cfg.logLevel,
+		DevMode: cfg.devMode,
+	})
+
+	// Graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	mgr, err := initControllerRuntime(ctx, logger, cfg)
+	if err != nil {
+		logger.Error("unable to create controller-runtime manager", "error", err)
+		os.Exit(1)
+	}
+
+	srv, err := initGinServer(logger, cfg, mgr)
+	if err != nil {
+		logger.Error("unable to create gin server", "error", err)
+		os.Exit(1)
+	}
+
 	go func() {
 		logger.Info("starting api-gateway server", "port", cfg.httpPort)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -161,20 +185,4 @@ func main() {
 	}
 
 	logger.Info("server stopped")
-}
-
-func getEnvOrDefault(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultValue
-}
-
-func getEnvOrDefaultInt(key string, defaultValue int) int {
-	if v := os.Getenv(key); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			return i
-		}
-	}
-	return defaultValue
 }

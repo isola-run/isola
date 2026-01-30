@@ -7,8 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -24,10 +23,11 @@ func TestHandlers(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	gin.SetMode(gin.TestMode)
 	logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
 
-	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
+	r := gin.New()
+	r.Use(gin.Recovery())
 
 	handler := NewHandler(logger)
 	handler.RegisterRoutes(r)

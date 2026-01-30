@@ -22,12 +22,10 @@ func NewHandler(logger *slog.Logger, k8sClient client.Client) *Handler {
 	}
 }
 
-// HealthResponse represents a health check response.
 type HealthResponse struct {
 	Status string `json:"status" example:"ok"`
 }
 
-// ErrorResponse represents an error response.
 type ErrorResponse struct {
 	Message string `json:"message" example:"service not ready"`
 }

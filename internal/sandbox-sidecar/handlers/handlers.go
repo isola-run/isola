@@ -1,11 +1,10 @@
 package handlers
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
@@ -16,12 +15,14 @@ func NewHandler(logger *slog.Logger) *Handler {
 	return &Handler{logger: logger}
 }
 
-func (h *Handler) RegisterRoutes(r chi.Router) {
-	r.Get("/health", h.Health)
+func (h *Handler) RegisterRoutes(r *gin.Engine) {
+	r.GET("/health", h.Health)
 }
 
-func (h *Handler) Health(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+type HealthResponse struct {
+	Status string `json:"status" example:"ok"`
+}
+
+func (h *Handler) Health(c *gin.Context) {
+	c.JSON(http.StatusOK, HealthResponse{Status: "ok"})
 }
