@@ -1,14 +1,15 @@
 package handlers
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
+	"github.com/gin-contrib/requestid"
+	"github.com/gin-gonic/gin"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
-	"github.com/isola-ai/isola-sb/internal/api-gateway/generated"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/models"
 )
 
 type Handler struct {
@@ -23,26 +24,34 @@ func NewHandler(logger *slog.Logger, k8sClient client.Client) *Handler {
 	}
 }
 
-func (h *Handler) GetHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(generated.HealthResponse{
-		Status: "ok",
-	})
+// GetHealth godoc
+// @Summary      Health check
+// @Description  Returns the health status of the service
+// @Tags         health
+// @Produce      json
+// @Success      200  {object}  models.HealthResponse
+// @Router       /health [get]
+func (h *Handler) GetHealth(c *gin.Context) {
+	c.JSON(http.StatusOK, models.HealthResponse{Status: "ok"})
 }
 
-func (h *Handler) GetReady(w http.ResponseWriter, r *http.Request) {
+// GetReady godoc
+// @Summary      Readiness check
+// @Description  Returns whether the service is ready to accept requests
+// @Tags         health
+// @Produce      json
+// @Success      200  {object}  models.HealthResponse
+// @Failure      503  {object}  models.ErrorResponse
+// @Router       /ready [get]
+func (h *Handler) GetReady(c *gin.Context) {
 	sandboxList := &sandboxv1alpha1.SandboxList{}
-	if err := h.k8sClient.List(r.Context(), sandboxList, client.Limit(1)); err != nil {
+	if err := h.k8sClient.List(c.Request.Context(), sandboxList, client.Limit(1)); err != nil {
 		h.logger.Error("readiness check failed", "error", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(generated.HealthResponse{Status: "not ready"})
+		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
+			Error:     "not ready",
+			RequestID: requestid.Get(c),
+		})
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(generated.HealthResponse{Status: "ok"})
+	c.JSON(http.StatusOK, models.HealthResponse{Status: "ok"})
 }
-
-// Ensure Handler implements ServerInterface at compile time.
-var _ generated.ServerInterface = (*Handler)(nil)

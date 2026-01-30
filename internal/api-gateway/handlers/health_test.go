@@ -6,7 +6,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/isola-ai/isola-sb/internal/api-gateway/generated"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/models"
 )
 
 var _ = Describe("Health Endpoints", func() {
@@ -16,9 +16,9 @@ var _ = Describe("Health Endpoints", func() {
 			DeferCleanup(resp.Body.Close)
 
 			Expect(resp).To(HaveHTTPStatus(200))
-			Expect(resp).To(HaveHTTPHeaderWithValue("Content-Type", "application/json"))
+			Expect(resp).To(HaveHTTPHeaderWithValue("Content-Type", "application/json; charset=utf-8"))
 
-			var health generated.HealthResponse
+			var health models.HealthResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&health)).To(Succeed())
 			Expect(health.Status).To(Equal("ok"))
 		},

@@ -1,6 +1,12 @@
 package main
 
-//go:generate go tool oapi-codegen -config oapi-codegen.yaml ../../api/openapi.yaml
+//go:generate go tool swag init -g main.go -o ../../docs --parseDependency --parseInternal
+
+// @title           Isola API
+// @version         0.1.0
+// @description     API for managing sandboxed execution environments
+// @host            localhost:8080
+// @BasePath        /api/v1
 
 import (
 	"context"
@@ -15,9 +21,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/httplog/v2"
+	"github.com/gin-contrib/requestid"
+	sloggin "github.com/gin-contrib/slog"
+	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -27,7 +35,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
-	"github.com/isola-ai/isola-sb/internal/api-gateway/generated"
+	_ "github.com/isola-ai/isola-sb/api/openapi"
 	"github.com/isola-ai/isola-sb/internal/api-gateway/handlers"
 	"github.com/isola-ai/isola-sb/internal/logging"
 )
@@ -104,23 +112,30 @@ func main() {
 	}
 	logger.Info("cache synced")
 
-	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	// todo benl: go over the configuration below
-	r.Use(httplog.RequestLogger(httplog.NewLogger("api-gateway", httplog.Options{
-		LogLevel: slog.LevelInfo,
-		JSON:     !cfg.devMode,
+	if !cfg.devMode {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(requestid.New())
+	r.Use(sloggin.SetLogger(sloggin.WithLogger(func(_ *gin.Context, l *slog.Logger) *slog.Logger {
+		return logger
 	})))
 
 	handler := handlers.NewHandler(logger, mgr.GetClient())
-	router := generated.HandlerWithOptions(handler, generated.ChiServerOptions{
-		BaseURL:    "/api/v1",
-		BaseRouter: r,
-	})
+
+	v1 := r.Group("/api/v1")
+	{
+		v1.GET("/health", handler.GetHealth)
+		v1.GET("/ready", handler.GetReady)
+	}
+
+	r.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.httpPort),
-		Handler: router,
+		Handler: r,
 	}
 
 	go func() {

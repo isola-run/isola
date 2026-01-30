@@ -1,0 +1,55 @@
+basePath: /api/v1
+definitions:
+  github_com_isola-ai_isola-sb_internal_api-gateway_models.ErrorResponse:
+    properties:
+      error:
+        example: service not ready
+        type: string
+      request_id:
+        example: abc123
+        type: string
+    type: object
+  github_com_isola-ai_isola-sb_internal_api-gateway_models.HealthResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: API for managing sandboxed execution environments
+  title: Isola API
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      description: Returns the health status of the service
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_isola-ai_isola-sb_internal_api-gateway_models.HealthResponse'
+      summary: Health check
+      tags:
+      - health
+  /ready:
+    get:
+      description: Returns whether the service is ready to accept requests
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_isola-ai_isola-sb_internal_api-gateway_models.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_isola-ai_isola-sb_internal_api-gateway_models.ErrorResponse'
+      summary: Readiness check
+      tags:
+      - health
+swagger: "2.0"
