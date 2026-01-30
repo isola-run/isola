@@ -11,7 +11,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httplog/v2"
-
 	"github.com/isola-ai/isola-sb/internal/logging"
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/handlers"
 )

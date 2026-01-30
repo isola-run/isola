@@ -1,13 +1,10 @@
 package main
 
-//go:generate go tool oapi-codegen -config oapi-codegen.yaml ../../api/openapi.yaml
-
 import (
 	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,9 +12,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/httplog/v2"
+	"github.com/gin-contrib/requestid"
+	"github.com/gin-gonic/gin"
+	sloggin "github.com/samber/slog-gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -26,8 +25,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	_ "github.com/isola-ai/isola-sb/api/openapi" // swagger docs
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
-	"github.com/isola-ai/isola-sb/internal/api-gateway/generated"
 	"github.com/isola-ai/isola-sb/internal/api-gateway/handlers"
 	"github.com/isola-ai/isola-sb/internal/logging"
 )
@@ -48,6 +47,11 @@ type config struct {
 	sandboxNamespace string
 }
 
+// @title Isola Sandbox API
+// @version 1.0
+// @description API for managing sandboxes
+
+// @BasePath /api/v1
 func main() {
 	cfg := config{}
 
@@ -104,23 +108,38 @@ func main() {
 	}
 	logger.Info("cache synced")
 
-	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	// todo benl: go over the configuration below
-	r.Use(httplog.RequestLogger(httplog.NewLogger("api-gateway", httplog.Options{
-		LogLevel: slog.LevelInfo,
-		JSON:     !cfg.devMode,
-	})))
+	if !cfg.devMode {
+		// default is debug mode
+		// in tests we might want to pass env GIN_MODE=test
+		// hence we only explicitly set it if devMode is false (otherwise use GIN_MODE or default to debug)
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	r := gin.New()
+	// no use of c.ClientIP() and thus no need to configure trusted proxies
+	// misconfiguring trusted proxies is a no-no: https://gin-gonic.com/en/docs/deployment/
+	_ = r.SetTrustedProxies(nil)
+	// first middleware is sloggin to ensure logging is available for all other middlewares
+	r.Use(sloggin.NewWithConfig(logger, sloggin.Config{
+		WithRequestID: true,
+	}))
+	r.Use(requestid.New())
+	r.Use(gin.Recovery())
 
 	handler := handlers.NewHandler(logger, mgr.GetClient())
-	router := generated.HandlerWithOptions(handler, generated.ChiServerOptions{
-		BaseURL:    "/api/v1",
-		BaseRouter: r,
-	})
+
+	v1 := r.Group("/api/v1")
+	{
+		v1.GET("/health", handler.GetHealth)
+		v1.GET("/ready", handler.GetReady)
+	}
+
+	// Swagger docs
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.httpPort),
-		Handler: router,
+		Handler: r,
 	}
 
 	go func() {
