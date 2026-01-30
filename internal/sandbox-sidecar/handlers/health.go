@@ -1,26 +1,17 @@
 package handlers
 
 import (
-	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 )
 
-// Handler handles HTTP requests for the sandbox sidecar.
-type Handler struct {
-	logger *slog.Logger
-	procFS proc.ProcFS
-}
+// HealthHandler handles health check requests.
+type HealthHandler struct{}
 
-// NewHandler creates a new Handler with the given logger and proc filesystem.
-func NewHandler(logger *slog.Logger, procFS proc.ProcFS) *Handler {
-	return &Handler{
-		logger: logger,
-		procFS: procFS,
-	}
+// NewHealthHandler creates a new HealthHandler.
+func NewHealthHandler() *HealthHandler {
+	return &HealthHandler{}
 }
 
 // GetHealth godoc
@@ -30,6 +21,6 @@ func NewHandler(logger *slog.Logger, procFS proc.ProcFS) *Handler {
 // @Produce json
 // @Success 200 {object} HealthResponse
 // @Router /health [get]
-func (h *Handler) GetHealth(c *gin.Context) {
+func (h *HealthHandler) GetHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, HealthResponse{Status: "ok"})
 }

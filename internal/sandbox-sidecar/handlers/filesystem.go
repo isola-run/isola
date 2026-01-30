@@ -3,17 +3,63 @@ package handlers
 import (
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 )
 
-// todo benl: in GET directory, it might make sense to create a tar out of the dir (with gzip: false (no compression)?)
+// FilesystemHandler handles filesystem operations for sandbox containers.
+type FilesystemHandler struct {
+	logger *slog.Logger
+	procFS proc.ProcFS
+
+	// PID cache to avoid repeated /proc scans (containerName -> pid)
+	pidMu      sync.RWMutex
+	cachedPIDs map[string]int
+}
+
+// NewFilesystemHandler creates a new FilesystemHandler.
+func NewFilesystemHandler(logger *slog.Logger, procFS proc.ProcFS) *FilesystemHandler {
+	return &FilesystemHandler{
+		logger:     logger,
+		procFS:     procFS,
+		cachedPIDs: make(map[string]int),
+	}
+}
+
+// findContainerPID returns the PID for the given container, using a cache to avoid repeated /proc scans.
+// Validates cached PID still has the expected ISOLA_CONTAINER_NAME marker before returning.
+func (h *FilesystemHandler) findContainerPID(containerName string) (int, error) {
+	h.pidMu.RLock()
+	pid, ok := h.cachedPIDs[containerName]
+	h.pidMu.RUnlock()
+
+	// Validate cached PID still has the expected marker
+	if ok {
+		if name, found := proc.GetContainerName(pid); found && (containerName == "" || name == containerName) {
+			return pid, nil
+		}
+	}
+
+	// Cache miss or stale - rescan
+	newPID, err := h.procFS.FindMarkedPID(containerName)
+	if err != nil {
+		return 0, err
+	}
+
+	h.pidMu.Lock()
+	h.cachedPIDs[containerName] = newPID
+	h.pidMu.Unlock()
+
+	return newPID, nil
+}
 
 // PostFilesystem godoc
 // @Summary Write a file to the sandbox filesystem
@@ -27,7 +73,7 @@ import (
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /filesystem [post]
-func (h *Handler) PostFilesystem(c *gin.Context) {
+func (h *FilesystemHandler) PostFilesystem(c *gin.Context) {
 	path := c.Query("path")
 	container := c.Query("container")
 
@@ -42,7 +88,7 @@ func (h *Handler) PostFilesystem(c *gin.Context) {
 		return
 	}
 
-	pid, err := h.procFS.FindMarkedPID()
+	pid, err := h.findContainerPID(container)
 	if err != nil {
 		if errors.Is(err, proc.ErrContainerNotFound) {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Message: "container not found"})

@@ -13,12 +13,17 @@ import (
 )
 
 // ErrContainerNotFound is returned when the marked container PID cannot be found.
-var ErrContainerNotFound = errors.New("container not found: no process with ISOLA_MAIN_CONTAINER=true")
+var ErrContainerNotFound = errors.New("container not found: no process with ISOLA_CONTAINER_NAME")
+
+// ErrMultipleContainers is returned when containerName is empty but multiple containers exist.
+var ErrMultipleContainers = errors.New("multiple containers found: specify container name")
 
 // ProcFS abstracts /proc filesystem operations for finding container processes.
 type ProcFS interface {
-	// FindMarkedPID scans /proc/*/environ for a process with ISOLA_MAIN_CONTAINER=true.
-	FindMarkedPID() (int, error)
+	// FindMarkedPID scans /proc/*/environ for a process with ISOLA_CONTAINER_NAME=<containerName>.
+	// If containerName is empty and there is only one container, it will return the PID of that container.
+	// Otherwise, return an error.
+	FindMarkedPID(containerName string) (int, error)
 	// GetCwd reads the /proc/<pid>/cwd symlink to get the process working directory.
 	GetCwd(pid int) (string, error)
 	// GetRoot returns the path to /proc/<pid>/root for the given PID.
@@ -30,12 +35,17 @@ type ProcFS interface {
 // RealProcFS implements ProcFS using the actual /proc filesystem.
 type RealProcFS struct{}
 
-// FindMarkedPID scans /proc for a process with ISOLA_MAIN_CONTAINER=true in its environment.
-func (r *RealProcFS) FindMarkedPID() (int, error) {
+// FindMarkedPID scans /proc for a process with ISOLA_CONTAINER_NAME in its environment.
+// If containerName is specified, it finds the process with that exact container name.
+// If containerName is empty and there is exactly one container, it returns that container's PID.
+func (r *RealProcFS) FindMarkedPID(containerName string) (int, error) {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return 0, fmt.Errorf("read /proc: %w", err)
 	}
+
+	var foundPID int
+	var foundCount int
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -47,20 +57,41 @@ func (r *RealProcFS) FindMarkedPID() (int, error) {
 			continue // not a PID directory
 		}
 
-		if hasMarker(pid) {
-			return pid, nil
+		name, ok := GetContainerName(pid)
+		if !ok {
+			continue
+		}
+
+		if containerName != "" {
+			if name == containerName {
+				return pid, nil
+			}
+		} else {
+			foundPID = pid
+			foundCount++
 		}
 	}
 
-	return 0, ErrContainerNotFound
+	if containerName != "" {
+		return 0, ErrContainerNotFound
+	}
+
+	if foundCount == 0 {
+		return 0, ErrContainerNotFound
+	}
+	if foundCount > 1 {
+		return 0, ErrMultipleContainers
+	}
+
+	return foundPID, nil
 }
 
-// hasMarker checks if a process has ISOLA_MAIN_CONTAINER=true in its environment.
-func hasMarker(pid int) bool {
+// GetContainerName returns the ISOLA_CONTAINER_NAME value if present in the process environment.
+func GetContainerName(pid int) (string, bool) {
 	environPath := fmt.Sprintf("/proc/%d/environ", pid)
 	f, err := os.Open(environPath) //nolint:gosec // path is constructed from trusted PID
 	if err != nil {
-		return false
+		return "", false
 	}
 	defer func() { _ = f.Close() }()
 
@@ -68,13 +99,15 @@ func hasMarker(pid int) bool {
 	scanner := bufio.NewScanner(f)
 	scanner.Split(splitNullBytes)
 
+	const prefix = "ISOLA_CONTAINER_NAME="
 	for scanner.Scan() {
-		if scanner.Text() == "ISOLA_MAIN_CONTAINER=true" {
-			return true
+		text := scanner.Text()
+		if strings.HasPrefix(text, prefix) {
+			return text[len(prefix):], true
 		}
 	}
 
-	return false
+	return "", false
 }
 
 // splitNullBytes is a bufio.SplitFunc that splits on null bytes.

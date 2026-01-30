@@ -30,7 +30,7 @@ type MockProcFS struct {
 	gid     int
 }
 
-func (m *MockProcFS) FindMarkedPID() (int, error) {
+func (m *MockProcFS) FindMarkedPID(containerName string) (int, error) {
 	return 1, nil
 }
 
@@ -76,9 +76,11 @@ var _ = BeforeSuite(func() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	handler := NewHandler(logger, mockProcFS)
-	r.GET("/health", handler.GetHealth)
-	r.POST("/filesystem", handler.PostFilesystem)
+	healthHandler := NewHealthHandler()
+	filesystemHandler := NewFilesystemHandler(logger, mockProcFS)
+
+	r.GET("/health", healthHandler.GetHealth)
+	r.POST("/filesystem", filesystemHandler.PostFilesystem)
 
 	testServer = httptest.NewServer(r)
 	DeferCleanup(testServer.Close)

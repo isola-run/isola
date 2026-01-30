@@ -47,10 +47,12 @@ func initGinServer(logger *slog.Logger, cfg config) (*http.Server, error) {
 	r.Use(requestid.New())
 	r.Use(gin.Recovery())
 
-	handler := handlers.NewHandler(logger, &proc.RealProcFS{})
-	r.GET("/health", handler.GetHealth)
-	r.GET("/healthz", handler.GetHealth)
-	r.POST("/filesystem", handler.PostFilesystem)
+	healthHandler := handlers.NewHealthHandler()
+	filesystemHandler := handlers.NewFilesystemHandler(logger, &proc.RealProcFS{})
+
+	r.GET("/health", healthHandler.GetHealth)
+	r.GET("/healthz", healthHandler.GetHealth)
+	r.POST("/filesystem", filesystemHandler.PostFilesystem)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
