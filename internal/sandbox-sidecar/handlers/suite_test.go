@@ -26,6 +26,8 @@ var (
 type MockProcFS struct {
 	rootDir string
 	cwd     string
+	uid     int
+	gid     int
 }
 
 func (m *MockProcFS) FindMarkedPID() (int, error) {
@@ -38,6 +40,10 @@ func (m *MockProcFS) GetCwd(pid int) (string, error) {
 
 func (m *MockProcFS) GetRoot(pid int) string {
 	return m.rootDir
+}
+
+func (m *MockProcFS) GetUIDGID(pid int) (int, int, error) {
+	return m.uid, m.gid, nil
 }
 
 func TestHandlers(t *testing.T) {
@@ -63,6 +69,8 @@ var _ = BeforeSuite(func() {
 	mockProcFS := &MockProcFS{
 		rootDir: testRootDir,
 		cwd:     testCwd,
+		uid:     os.Getuid(),
+		gid:     os.Getgid(),
 	}
 
 	r := gin.New()

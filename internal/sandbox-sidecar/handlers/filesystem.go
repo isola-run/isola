@@ -13,6 +13,8 @@ import (
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 )
 
+// todo benl: in GET directory, it might make sense to create a tar out of the dir (with gzip: false (no compression)?)
+
 // PostFilesystem godoc
 // @Summary Write a file to the sandbox filesystem
 // @Description Writes a file to the specified path in the sandbox container
@@ -48,6 +50,13 @@ func (h *Handler) PostFilesystem(c *gin.Context) {
 		}
 		h.logger.Error("failed to find container PID", "error", err)
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: "failed to find container"})
+		return
+	}
+
+	uid, gid, err := h.procFS.GetUIDGID(pid)
+	if err != nil {
+		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: "failed to get container uid/gid"})
 		return
 	}
 
@@ -93,10 +102,12 @@ func (h *Handler) PostFilesystem(c *gin.Context) {
 		return
 	}
 
-	// Set file permissions
+	// Set file permissions and ownership to match container process
 	if err := os.Chmod(hostPath, 0600); err != nil {
 		h.logger.Error("failed to set file permissions", "error", err, "path", hostPath)
-		// Don't fail the request, file was written successfully
+	}
+	if err := os.Chown(hostPath, uid, gid); err != nil {
+		h.logger.Error("failed to set file ownership", "error", err, "path", hostPath, "uid", uid, "gid", gid)
 	}
 
 	c.JSON(http.StatusOK, FilesystemWriteResponse{

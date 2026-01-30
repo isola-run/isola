@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 // ErrContainerNotFound is returned when the marked container PID cannot be found.
@@ -21,6 +23,8 @@ type ProcFS interface {
 	GetCwd(pid int) (string, error)
 	// GetRoot returns the path to /proc/<pid>/root for the given PID.
 	GetRoot(pid int) string
+	// GetUIDGID reads the real UID and GID from /proc/<pid>/status.
+	GetUIDGID(pid int) (uid, gid int, err error)
 }
 
 // RealProcFS implements ProcFS using the actual /proc filesystem.
@@ -103,4 +107,15 @@ func (r *RealProcFS) GetCwd(pid int) (string, error) {
 // GetRoot returns the path to /proc/<pid>/root.
 func (r *RealProcFS) GetRoot(pid int) string {
 	return filepath.Join("/proc", strconv.Itoa(pid), "root")
+}
+
+// GetUIDGID returns the UID and GID of the process by stat'ing /proc/<pid>.
+// The /proc/<pid> directory is owned by the user running the process.
+func (r *RealProcFS) GetUIDGID(pid int) (uid, gid int, err error) {
+	procPath := fmt.Sprintf("/proc/%d", pid)
+	var stat unix.Stat_t
+	if err := unix.Stat(procPath, &stat); err != nil {
+		return 0, 0, fmt.Errorf("stat %s: %w", procPath, err)
+	}
+	return int(stat.Uid), int(stat.Gid), nil
 }
