@@ -97,7 +97,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			Eventually(recorder.Events).Should(Receive(ContainSubstring("RuntimeNotSupported")))
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("SnapshotSkipped")))
 
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(err).To(Satisfy(errors.IsNotFound))
@@ -157,7 +157,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			Eventually(recorder.Events).Should(Receive(ContainSubstring("RuntimeNotSupported")))
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("SnapshotSkipped")))
 
 			// Sandbox deleted after snapshot skipped
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
@@ -594,6 +594,86 @@ var _ = Describe("Sandbox Controller", func() {
 			rootfsSnapshot = getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.UID).To(Equal(originalUID), "RootfsSnapshot should not be recreated on third reconcile")
+		})
+
+		It("should proceed with deletion when RootfsSnapshot has DeadlineExceeded", func() {
+			sandboxName := "sandbox-snapshot-deadline-exceeded"
+			templateName := "template-snapshot-deadline-exceeded"
+			runtimeClassName := "gvisor-deadline-exceeded"
+
+			recorder := record.NewFakeRecorder(10)
+			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			timeout := int64(1)
+			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
+				t.Spec.TimeoutSeconds = &timeout
+				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
+				}
+				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
+			})
+			defer deleteTemplate(ctx, templateName)
+
+			createSandbox(ctx, sandboxName, templateName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+			defer deleteShutdownSnapshot(ctx, sandboxName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Recreate pod with NodeName
+			pod := getPod(ctx, podName)
+			labels := pod.Labels
+			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
+
+			newPod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace, Labels: labels},
+				Spec: corev1.PodSpec{
+					RuntimeClassName: &runtimeClassName,
+					NodeName:         "test-node",
+					Containers:       []corev1.Container{{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
+			newPod.Status.Phase = corev1.PodRunning
+			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, newPod)).To(Succeed())
+
+			fakeClock.Advance(2 * time.Second)
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify RootfsSnapshot was created
+			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
+			Expect(rootfsSnapshot).NotTo(BeNil())
+
+			// Set RootfsSnapshot to DeadlineExceeded (simulating the RootfsSnapshot controller handling deadline)
+			setShutdownSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotDeadlineExceeded, "Snapshot did not complete before deadline")
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Should receive SnapshotFailed event
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("SnapshotFailed")))
+
+			// Sandbox should be deleted after deadline exceeded
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
+			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 	})
 })

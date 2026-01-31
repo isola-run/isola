@@ -214,6 +214,13 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName)
 }
 
+func (r *RootfsSnapshotReconciler) getActiveDeadlineSeconds(snap *sandboxv1alpha1.RootfsSnapshot) int64 {
+	if snap.Spec.ActiveDeadlineSeconds != nil {
+		return *snap.Spec.ActiveDeadlineSeconds
+	}
+	return defaultActiveDeadlineSecondsSnapshot
+}
+
 func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 	ctx context.Context,
 	baseSnap, snap *sandboxv1alpha1.RootfsSnapshot,
@@ -283,7 +290,24 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		return r.setFailed(ctx, baseSnap, snap, message)
 	}
 
-	// Still running - job watch will trigger reconciliation when status changes
+	// Job is still running - check if deadline has been exceeded
+	if snap.Status.StartedAt != nil {
+		activeDeadlineSeconds := r.getActiveDeadlineSeconds(snap)
+		deadline := snap.Status.StartedAt.Add(time.Duration(activeDeadlineSeconds) * time.Second)
+		now := r.clock().Now()
+
+		if now.After(deadline) {
+			log.Info("Snapshot deadline exceeded", "job", jobName, "deadline", deadline)
+			r.deleteJob(ctx, job)
+			return r.setDeadlineExceeded(ctx, baseSnap, snap)
+		}
+
+		timeUntilDeadline := deadline.Sub(now)
+
+		return ctrl.Result{RequeueAfter: timeUntilDeadline}, nil
+	}
+
+	// Job running but no StartedAt set (should not happen) - job watch will trigger reconciliation
 	return ctrl.Result{}, nil
 }
 
@@ -599,6 +623,29 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
 			Status:             metav1.ConditionFalse,
 			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
+			Message:            message,
+			ObservedGeneration: snap.Generation,
+		},
+	}); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{RequeueAfter: getTTLSeconds(snap)}, nil
+}
+
+func (r *RootfsSnapshotReconciler) setDeadlineExceeded(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot) (ctrl.Result, error) {
+	now := metav1.NewTime(r.clock().Now())
+	snap.Status.CompletedAt = &now
+	snap.Status.ObservedGeneration = snap.Generation
+
+	message := "Snapshot did not complete before deadline"
+	r.Recorder.Event(snap, corev1.EventTypeWarning, "DeadlineExceeded", message)
+
+	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
+		{
+			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
+			Status:             metav1.ConditionFalse,
+			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotDeadlineExceeded,
 			Message:            message,
 			ObservedGeneration: snap.Generation,
 		},

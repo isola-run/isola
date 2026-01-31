@@ -48,10 +48,11 @@ const (
 // Condition reasons for RootfsSnapshot
 const (
 	// Ready condition reasons
-	ReasonRootfsSnapshotPending    = "Pending"
-	ReasonRootfsSnapshotInProgress = "InProgress"
-	ReasonRootfsSnapshotSucceeded  = "Succeeded"
-	ReasonRootfsSnapshotFailed     = "Failed"
+	ReasonRootfsSnapshotPending          = "Pending"
+	ReasonRootfsSnapshotInProgress       = "InProgress"
+	ReasonRootfsSnapshotSucceeded        = "Succeeded"
+	ReasonRootfsSnapshotFailed           = "Failed"
+	ReasonRootfsSnapshotDeadlineExceeded = "DeadlineExceeded"
 
 	// RuntimeSupported condition reasons
 	ReasonRuntimeSupported    = "Supported"

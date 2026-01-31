@@ -277,9 +277,43 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the most recent generation observed by the controller.
+                  This is used by kstatus to determine if the controller has processed the latest spec.
+                  When observedGeneration < metadata.generation, kstatus reports InProgress.
+                format: int64
+                type: integer
               podIP:
                 description: PodIP is the IP address of the sandbox pod.
                 type: string
+              resolvedShutdownPolicy:
+                description: |-
+                  ResolvedShutdownPolicy is the shutdown policy resolved from the template at creation time.
+                  This is cached so finalization doesn't depend on template existence.
+                properties:
+                  activeDeadlineSeconds:
+                    default: 300
+                    description: |-
+                      ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
+                      that the snapshot job may be active before the system tries to terminate it.
+                      Only used when Policy is SnapshotRootfs.
+                    format: int64
+                    minimum: 1
+                    type: integer
+                  policy:
+                    allOf:
+                    - enum:
+                      - Delete
+                      - SnapshotRootfs
+                    - enum:
+                      - Delete
+                      - SnapshotRootfs
+                    default: Delete
+                    description: Policy determines the action taken when the sandbox
+                      shuts down
+                    type: string
+                type: object
               timeoutAt:
                 description: |-
                   TimeoutAt is the absolute time at which the sandbox should be considered timed out.

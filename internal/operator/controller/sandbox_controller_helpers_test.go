@@ -181,7 +181,13 @@ func setRootfsSnapshotReady(ctx context.Context, name string, ready bool, reason
 		Message:            message,
 		ObservedGeneration: snap.Generation,
 	})
-	if ready || reason == sandboxv1alpha1.ReasonRootfsSnapshotFailed {
+	// Set CompletedAt for terminal states. This mirrors the actual controller behavior:
+	// - setSucceeded, setFailed, setDeadlineExceeded all set CompletedAt
+	// - setInProgress does NOT set CompletedAt
+	// Check for non-terminal reasons rather than listing terminal ones to be more future-proof.
+	isNonTerminal := reason == sandboxv1alpha1.ReasonRootfsSnapshotPending ||
+		reason == sandboxv1alpha1.ReasonRootfsSnapshotInProgress
+	if !isNonTerminal {
 		now := metav1.Now()
 		snap.Status.CompletedAt = &now
 	}

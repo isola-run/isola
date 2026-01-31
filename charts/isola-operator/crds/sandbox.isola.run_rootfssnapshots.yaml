@@ -106,7 +106,10 @@ spec:
                 format: date-time
                 type: string
               conditions:
-                description: Conditions represent the overall RootfsSnapshot state
+                description: |-
+                  Conditions represent the overall RootfsSnapshot state.
+                  Uses the Kubernetes Job/Tekton pattern (single Complete condition):
+                  - "Complete": True when succeeded, False when in-progress or failed (check Reason)
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -249,6 +252,13 @@ spec:
                   - containerName
                   type: object
                 type: array
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the most recent generation observed by the controller.
+                  This is used by kstatus to determine if the controller has processed the latest spec.
+                  When observedGeneration < metadata.generation, kstatus reports InProgress.
+                format: int64
+                type: integer
               revision:
                 description: Revision is the snapshot revision number for this sandbox
                 format: int32

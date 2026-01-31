@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -313,6 +314,197 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(job).NotTo(BeNil())
 			Expect(job.Spec.ActiveDeadlineSeconds).NotTo(BeNil())
 			Expect(*job.Spec.ActiveDeadlineSeconds).To(Equal(defaultActiveDeadlineSecondsSnapshot))
+		})
+
+		It("should set DeadlineExceeded when snapshot exceeds activeDeadlineSeconds", func() {
+			snapName := "snap-deadline-exceeded"
+			sandboxName := "sandbox-deadline-exceeded"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-deadline-exceeded"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://exceeded123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			// Use a short deadline
+			shortDeadline := int64(10)
+			snap := &sandboxv1alpha1.RootfsSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      snapName,
+					Namespace: testNamespace,
+					Labels:    map[string]string{LabelSandboxName: sandboxName},
+				},
+				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
+					SandboxName:           sandboxName,
+					ContainerNames:        []string{"main"},
+					ActiveDeadlineSeconds: &shortDeadline,
+				},
+			}
+			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			// First reconcile - creates job and sets InProgress
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify job was created and snapshot is in progress
+			job := getSnapshotJob(ctx, jobName)
+			Expect(job).NotTo(BeNil())
+
+			snap = getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+			Expect(snap.Status.StartedAt).NotTo(BeNil())
+
+			// Advance clock past the deadline
+			fakeClock.Advance(15 * time.Second)
+
+			// Reconcile again - should detect deadline exceeded
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify snapshot has DeadlineExceeded status
+			snap = getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+			Expect(snap.Status.CompletedAt).NotTo(BeNil())
+
+			cond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotDeadlineExceeded))
+		})
+
+		It("should not set DeadlineExceeded while still within deadline", func() {
+			snapName := "snap-deadline-ok"
+			sandboxName := "sandbox-deadline-ok"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-deadline-ok"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://ok123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			// Use a longer deadline
+			deadline := int64(60)
+			snap := &sandboxv1alpha1.RootfsSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      snapName,
+					Namespace: testNamespace,
+					Labels:    map[string]string{LabelSandboxName: sandboxName},
+				},
+				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
+					SandboxName:           sandboxName,
+					ContainerNames:        []string{"main"},
+					ActiveDeadlineSeconds: &deadline,
+				},
+			}
+			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			// First reconcile - creates job
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Advance clock but not past deadline
+			fakeClock.Advance(30 * time.Second)
+
+			// Reconcile again - should NOT set DeadlineExceeded
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0), "Should requeue to check deadline later")
+
+			// Verify snapshot is still in progress
+			snap = getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+			Expect(snap.Status.CompletedAt).To(BeNil(), "Should not be completed yet")
+
+			cond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(cond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotInProgress))
+		})
+
+		It("should delete the job when deadline exceeded", func() {
+			snapName := "snap-deadline-delete-job"
+			sandboxName := "sandbox-deadline-delete-job"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-deadline-delete-job"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://deljob123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			shortDeadline := int64(5)
+			snap := &sandboxv1alpha1.RootfsSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      snapName,
+					Namespace: testNamespace,
+					Labels:    map[string]string{LabelSandboxName: sandboxName},
+				},
+				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
+					SandboxName:           sandboxName,
+					ContainerNames:        []string{"main"},
+					ActiveDeadlineSeconds: &shortDeadline,
+				},
+			}
+			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-main"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			// First reconcile - creates job
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify job exists
+			job := getSnapshotJob(ctx, jobName)
+			Expect(job).NotTo(BeNil())
+
+			// Advance past deadline
+			fakeClock.Advance(10 * time.Second)
+
+			// Reconcile - should delete job
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify job was deleted
+			Eventually(func() bool {
+				job := getSnapshotJob(ctx, jobName)
+				return job == nil || !job.DeletionTimestamp.IsZero()
+			}, testTimeout, testInterval).Should(BeTrue(), "Job should be deleted after deadline exceeded")
 		})
 	})
 })

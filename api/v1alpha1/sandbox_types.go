@@ -232,6 +232,11 @@ type SandboxStatus struct {
 	// PodIP is the IP address of the sandbox pod.
 	// +optional
 	PodIP string `json:"podIP,omitempty"`
+
+	// ResolvedShutdownPolicy is the shutdown policy resolved from the template at creation time.
+	// This is cached so finalization doesn't depend on template existence.
+	// +optional
+	ResolvedShutdownPolicy *ShutdownPolicy `json:"resolvedShutdownPolicy,omitempty"`
 }
 
 // +kubebuilder:object:root=true
