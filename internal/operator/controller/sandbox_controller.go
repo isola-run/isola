@@ -259,6 +259,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		// Sidecar injection failures are permanent (template misconfiguration)
 		// Set Stalled=True so kstatus reports Failed, and remove Reconciling
 		meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
+		sandbox.Status.ObservedGeneration = sandbox.Generation
 
 		// Best effort status patch - log but don't override the original error
 		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -301,6 +302,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		// Pod creation failures are typically permanent (bad spec, quota, RBAC)
 		// Set Stalled=True so kstatus reports Failed, and remove Reconciling
 		meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
+		sandbox.Status.ObservedGeneration = sandbox.Generation
 
 		// Best effort status patch - log but don't override the original create error
 		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -526,6 +528,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 		// Network policy build failures are permanent (invalid CIDR, bad spec)
 		// Set Stalled=True so kstatus reports Failed, and remove Reconciling
 		meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
+		sandbox.Status.ObservedGeneration = sandbox.Generation
 
 		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
