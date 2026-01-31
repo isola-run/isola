@@ -45,9 +45,6 @@ const (
 
 	// SandboxNetworkConfigured indicates network isolation is configured.
 	SandboxNetworkConfigured SandboxConditionType = "NetworkConfigured"
-
-	// SandboxSnapshottingFilesystem indicates filesystem snapshotting is in progress.
-	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
 )
 
 // SandboxTemplateReference identifies a SandboxTemplate in the same namespace.

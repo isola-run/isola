@@ -83,17 +83,10 @@ type SandboxTemplateSpec struct {
 }
 
 // SandboxTemplateStatus defines the observed state of SandboxTemplate.
-// Note: SandboxTemplate is a passive configuration resource with no active controller,
-// so kstatus conditions (Reconciling/Stalled) are not applicable here.
+// Note: SandboxTemplate is a passive configuration resource with no active controller.
+// The status subresource exists for future extensibility but is currently unused.
 type SandboxTemplateStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
-
-	// Conditions represent the current state of the SandboxTemplate resource.
-	// Currently unused since SandboxTemplate has no active reconciliation loop.
-	// +listType=map
-	// +listMapKey=type
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
