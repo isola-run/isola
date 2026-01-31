@@ -24,20 +24,15 @@ import (
 type RootfsSnapshotConditionType string
 
 const (
-	// RootfsSnapshotComplete indicates all containers have been snapshotted.
-	// True when all container snapshots succeeded.
-	// False when any snapshot failed or is still in progress.
+	// RootfsSnapshotComplete indicates the snapshot operation status.
+	// This follows the Kubernetes Job/Tekton pattern for terminal resources:
+	//   - True + Reason=Succeeded: snapshot completed successfully
+	//   - False + Reason=InProgress: snapshot is running
+	//   - False + Reason=Failed: snapshot failed (terminal state)
+	//
+	// Note: Unlike long-running resources (Deployments, Sandboxes), Job-like resources
+	// don't use kstatus Reconciling/Stalled conditions. See Velero Backup, Tekton TaskRun.
 	RootfsSnapshotComplete RootfsSnapshotConditionType = "Complete"
-
-	// RootfsSnapshotReconciling indicates the controller is actively reconciling.
-	// kstatus standard: True = InProgress status.
-	// Uses "abnormal-true" pattern - absence means reconciliation is complete.
-	RootfsSnapshotReconciling RootfsSnapshotConditionType = "Reconciling"
-
-	// RootfsSnapshotStalled indicates an unrecoverable error during reconciliation.
-	// kstatus standard: True = Failed status.
-	// Uses "abnormal-true" pattern - absence means no error.
-	RootfsSnapshotStalled RootfsSnapshotConditionType = "Stalled"
 )
 
 // ContainerSnapshotConditionType defines condition types for per-container status
@@ -132,10 +127,8 @@ type RootfsSnapshotStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// Conditions represent the overall RootfsSnapshot state.
-	// kstatus standard conditions:
-	// - "Reconciling": True when controller is actively working (abnormal-true pattern)
-	// - "Stalled": True when an unrecoverable error occurred (abnormal-true pattern)
-	// - "Complete": True when snapshot succeeded, False when failed or in progress
+	// Uses the Kubernetes Job/Tekton pattern (single Complete condition):
+	// - "Complete": True when succeeded, False when in-progress or failed (check Reason)
 	// +listType=map
 	// +listMapKey=type
 	// +optional

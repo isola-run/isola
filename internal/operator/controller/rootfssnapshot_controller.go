@@ -51,10 +51,6 @@ const (
 	// This enables the Sandbox controller to find all snapshots for a given sandbox,
 	// regardless of whether they were created by the controller or manually by a user.
 	LabelSandboxName = "sandbox.isola.run/sandbox-name"
-
-	// kstatus standard conditions (abnormal-true pattern)
-	RootfsSnapshotReconcilingCondition = "Reconciling"
-	RootfsSnapshotStalledCondition     = "Stalled"
 )
 
 // defaultSnapshotSizeLimit is used when the container has no ephemeral storage limit.
@@ -548,20 +544,13 @@ func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap
 			ContainerID:   containerID,
 		},
 	}
+	// Job-like resources use a single Complete condition (like K8s Jobs, Tekton TaskRun)
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
 		{
 			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
 			Status:             metav1.ConditionFalse,
 			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotInProgress,
 			Message:            "Snapshot job running",
-			ObservedGeneration: snap.Generation,
-		},
-		// kstatus: Reconciling=True signals InProgress
-		{
-			Type:               RootfsSnapshotReconcilingCondition,
-			Status:             metav1.ConditionTrue,
-			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotInProgress,
-			Message:            "Snapshot job is running",
 			ObservedGeneration: snap.Generation,
 		},
 	}); err != nil {
@@ -583,10 +572,6 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap 
 		}
 	}
 
-	// kstatus: Per abnormal-true pattern, remove Reconciling/Stalled on success
-	meta.RemoveStatusCondition(&snap.Status.Conditions, RootfsSnapshotReconcilingCondition)
-	meta.RemoveStatusCondition(&snap.Status.Conditions, RootfsSnapshotStalledCondition)
-
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
 		{
 			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
@@ -607,22 +592,12 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 	snap.Status.CompletedAt = &now
 	snap.Status.ObservedGeneration = snap.Generation
 
-	// kstatus: Per abnormal-true pattern, remove Reconciling on failure (Stalled will be set)
-	meta.RemoveStatusCondition(&snap.Status.Conditions, RootfsSnapshotReconcilingCondition)
-
 	r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
+	// Job-like resources indicate failure via Complete=False with Reason=Failed
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
 		{
 			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
 			Status:             metav1.ConditionFalse,
-			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
-			Message:            message,
-			ObservedGeneration: snap.Generation,
-		},
-		// kstatus: Stalled=True signals Failed status
-		{
-			Type:               RootfsSnapshotStalledCondition,
-			Status:             metav1.ConditionTrue,
 			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
 			Message:            message,
 			ObservedGeneration: snap.Generation,
