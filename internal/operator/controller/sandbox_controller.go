@@ -52,10 +52,9 @@ const (
 	SandboxReconcilingCondition = "Reconciling"
 	SandboxStalledCondition     = "Stalled"
 
-	SandboxTemplateReadyCondition  = "TemplateReady"
-	SandboxPodReadyCondition       = "PodReady"
-	SandboxNetworkReadyCondition   = "NetworkConfigured"
-	SandboxRootfsSnapshotCondition = "RootfsSnapshot"
+	SandboxTemplateReadyCondition = "TemplateReady"
+	SandboxPodReadyCondition      = "PodReady"
+	SandboxNetworkReadyCondition  = "NetworkConfigured"
 )
 
 const (
@@ -598,13 +597,6 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	networkCondition := r.determineNetworkCondition(sandbox)
 	conditions = append(conditions, networkCondition)
 
-	shutdownSnapshot, err := r.getShutdownSnapshot(ctx, sandbox)
-	if err != nil {
-		return err
-	}
-	snapshotCondition := r.determineSnapshotCondition(sandbox, shutdownSnapshot)
-	conditions = append(conditions, snapshotCondition)
-
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod)
 	conditions = append(conditions, readyCondition)
 
@@ -689,61 +681,6 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 		Status:             metav1.ConditionFalse,
 		Reason:             CondReasonPodPending,
 		Message:            "Pod is not ready yet",
-		ObservedGeneration: sandbox.Generation,
-	}
-}
-
-func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snap *sandboxv1alpha1.RootfsSnapshot) metav1.Condition {
-	if snap == nil {
-		return metav1.Condition{
-			Type:               SandboxRootfsSnapshotCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             "NoSnapshot",
-			Message:            "No shutdown snapshot exists",
-			ObservedGeneration: sandbox.Generation,
-		}
-	}
-
-	if snap.Status.CompletedAt == nil {
-		return metav1.Condition{
-			Type:               SandboxRootfsSnapshotCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshottingInProgress,
-			Message:            fmt.Sprintf("Snapshot %q is in progress", snap.Name),
-			ObservedGeneration: sandbox.Generation,
-		}
-	}
-
-	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
-	if readyCond == nil {
-		return metav1.Condition{
-			Type:               SandboxRootfsSnapshotCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshottingInProgress,
-			Message:            fmt.Sprintf("Snapshot %q status unknown", snap.Name),
-			ObservedGeneration: sandbox.Generation,
-		}
-	}
-
-	if readyCond.Status == metav1.ConditionTrue {
-		message := fmt.Sprintf("Snapshot %q completed", snap.Name)
-		if snap.Status.Revision > 0 {
-			message = fmt.Sprintf("Snapshot %q completed (revision %d)", snap.Name, snap.Status.Revision)
-		}
-		return metav1.Condition{
-			Type:               SandboxRootfsSnapshotCondition,
-			Status:             metav1.ConditionTrue,
-			Reason:             CondReasonSnapshotComplete,
-			Message:            message,
-			ObservedGeneration: sandbox.Generation,
-		}
-	}
-
-	return metav1.Condition{
-		Type:               SandboxRootfsSnapshotCondition,
-		Status:             metav1.ConditionFalse,
-		Reason:             CondReasonSnapshotFailed,
-		Message:            fmt.Sprintf("Snapshot %q failed: %s", snap.Name, readyCond.Message),
 		ObservedGeneration: sandbox.Generation,
 	}
 }
