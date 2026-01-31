@@ -23,27 +23,70 @@ import (
 
 // No phases. The pattern of using phase is deprecated. Newer API types should use conditions instead.
 
+// =============================================================================
+// kstatus Compliance Documentation
+// =============================================================================
+//
+// This CRD follows the kstatus standard from kubernetes-sigs/cli-utils for
+// compatibility with tools like ArgoCD, Flux, and kubectl wait.
+//
+// kstatus Status Values and How They Map:
+//
+//	Current     = Ready=True, no Reconciling, no Stalled (healthy steady state)
+//	InProgress  = Reconciling=True OR observedGeneration < generation
+//	Failed      = Stalled=True (permanent error requiring intervention)
+//	Terminating = deletionTimestamp is set (detected by kstatus, not a condition)
+//
+// Condition Patterns:
+//
+//	"Abnormal-true" pattern: Reconciling and Stalled conditions are REMOVED
+//	when the resource is healthy. Absence of condition = normal state.
+//	This differs from conditions like Ready which are always present.
+//
+// Lifecycle State Transitions:
+//
+//	Created → Reconciling=True (pod pending) → Ready=True (pod ready)
+//	                                         → Stalled=True (pod failed/creation error)
+//
+//	Timeout/Delete → Ready=False → Reconciling=True (snapshot in progress)
+//	                             → Reconciling removed → Finalizer removed → Deleted
+//
+// Key Fields:
+//
+//	status.observedGeneration: Must equal metadata.generation when spec is processed
+//	status.conditions[Reconciling]: Present only during active reconciliation
+//	status.conditions[Stalled]: Present only on permanent failures
+//	metadata.deletionTimestamp: Triggers Terminating status in kstatus
+//
+// =============================================================================
+
 type SandboxConditionType string
 
 const (
 	// SandboxReady is the aggregate condition indicating overall readiness.
 	// True when sandbox is ready for use, False otherwise.
+	// This condition is always present once the sandbox has been reconciled.
 	SandboxReady SandboxConditionType = "Ready"
 
 	// SandboxReconciling indicates the controller is actively reconciling.
-	// kstatus standard: True = InProgress status.
-	// Uses "abnormal-true" pattern - absence means reconciliation is complete.
+	// kstatus mapping: Reconciling=True → InProgress status
+	// Uses "abnormal-true" pattern: condition is REMOVED when reconciliation
+	// is complete, not set to False. Absence means ready/current state.
 	SandboxReconciling SandboxConditionType = "Reconciling"
 
 	// SandboxStalled indicates an unrecoverable error during reconciliation.
-	// kstatus standard: True = Failed status.
-	// Uses "abnormal-true" pattern - absence means no error.
+	// kstatus mapping: Stalled=True → Failed status
+	// Uses "abnormal-true" pattern: condition is REMOVED when error is resolved,
+	// not set to False. Absence means no permanent errors.
+	// Set for: template not found, pod creation failure, pod failure.
 	SandboxStalled SandboxConditionType = "Stalled"
 
 	// SandboxPodReady indicates the sandbox pod is up and running.
+	// This is a sub-condition used to track pod lifecycle separately.
 	SandboxPodReady SandboxConditionType = "PodReady"
 
 	// SandboxNetworkConfigured indicates network isolation is configured.
+	// This is a sub-condition used to track network policy state.
 	SandboxNetworkConfigured SandboxConditionType = "NetworkConfigured"
 )
 

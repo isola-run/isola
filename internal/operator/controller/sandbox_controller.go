@@ -265,6 +265,10 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	if err := r.Create(ctx, sandboxPod); err != nil {
 		log.Error(err, "Failed creating Pod")
 
+		// Pod creation failures are typically permanent (bad spec, quota, RBAC)
+		// Set Stalled=True so kstatus reports Failed, and remove Reconciling
+		meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
+
 		// Best effort status patch - log but don't override the original create error
 		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
@@ -279,6 +283,14 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 				Status:             metav1.ConditionFalse,
 				Reason:             CondReasonPodCreationFailed,
 				Message:            err.Error(),
+				ObservedGeneration: sandbox.Generation,
+			},
+			{
+				// kstatus: Stalled=True indicates a permanent failure requiring user intervention
+				Type:               SandboxStalledCondition,
+				Status:             metav1.ConditionTrue,
+				Reason:             CondReasonPodCreationFailed,
+				Message:            fmt.Sprintf("Pod creation failed: %s", err.Error()),
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); patchErr != nil {
