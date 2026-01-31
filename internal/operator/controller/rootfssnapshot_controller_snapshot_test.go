@@ -115,6 +115,13 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(snap.Status.ContainerSnapshots[0].SnapshotKey).To(BeEmpty())
 			// Revision is 0 until job completes and reports actual revision
 			Expect(snap.Status.Revision).To(Equal(int32(0)))
+
+			// Verify Complete=False with Reason=InProgress (Job-like pattern)
+			completeCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+			Expect(completeCond).NotTo(BeNil(), "Complete condition should be set when job is created")
+			Expect(completeCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(completeCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotInProgress),
+				"Reason should be InProgress while job is running")
 		})
 
 		It("should mark complete when job succeeds", func() {
