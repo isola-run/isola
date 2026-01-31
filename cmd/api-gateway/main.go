@@ -87,32 +87,6 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 	return mgr, nil
 }
 
-func initChiServer(logger *slog.Logger, cfg config, mgr ctrl.Manager) *http.Server {
-	r := chi.NewRouter()
-
-	r.Use(httplog.RequestLogger(httplog.NewLogger("api-gateway", httplog.Options{
-		LogLevel: slog.LevelInfo,
-		JSON:     !cfg.devMode,
-		Concise:  true,
-	})))
-
-	handler := handlers.NewHandler(logger, mgr.GetClient())
-
-	r.Get("/health", handler.GetHealth)
-	r.Get("/healthz", handler.GetHealth)
-	r.Get("/ready", handler.GetReady)
-	r.Get("/readyz", handler.GetReady)
-
-	r.Get("/swagger/*", httpSwagger.Handler(
-		httpSwagger.URL("/swagger/doc.json"),
-	))
-
-	return &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.httpPort),
-		Handler: r,
-	}
-}
-
 // @title Isola Sandbox API
 // @version 1.0
 // @description API for managing sandboxes
@@ -139,7 +113,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := initChiServer(logger, cfg, mgr)
+	r := chi.NewRouter()
+	// httplog.RequestLogger automatically includes chi's RequestID and Recoverer middleware
+	r.Use(httplog.RequestLogger(&httplog.Logger{
+		Logger: logger,
+		Options: httplog.Options{
+			LogLevel: slog.LevelInfo,
+			JSON:     !cfg.devMode,
+			Concise:  true,
+		},
+	}))
+
+	handler := handlers.NewHandler(logger, mgr.GetClient())
+
+	r.Get("/health", handler.GetHealth)
+	r.Get("/healthz", handler.GetHealth)
+	r.Get("/ready", handler.GetReady)
+	r.Get("/readyz", handler.GetReady)
+
+	r.Get("/swagger/*", httpSwagger.Handler(
+		httpSwagger.URL("/swagger/doc.json"),
+	))
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.httpPort),
+		Handler: r,
+	}
 
 	go func() {
 		logger.Info("starting api-gateway server", "port", cfg.httpPort)

@@ -24,28 +24,6 @@ type config struct {
 	devMode  bool
 }
 
-func initChiServer(logger *slog.Logger, cfg config) *http.Server {
-	r := chi.NewRouter()
-
-	r.Use(httplog.RequestLogger(httplog.NewLogger("sandbox-sidecar", httplog.Options{
-		LogLevel: slog.LevelInfo,
-		JSON:     !cfg.devMode,
-		Concise:  true,
-	})))
-
-	healthHandler := handlers.NewHealthHandler()
-	filesystemHandler := handlers.NewFilesystemHandler(logger, &proc.RealProcFS{})
-
-	r.Get("/health", healthHandler.GetHealth)
-	r.Get("/healthz", healthHandler.GetHealth)
-	r.Post("/filesystem", filesystemHandler.PostFilesystem)
-
-	return &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: r,
-	}
-}
-
 func main() {
 	cfg := config{}
 
@@ -58,7 +36,28 @@ func main() {
 		DevMode: cfg.devMode,
 	})
 
-	srv := initChiServer(logger, cfg)
+	r := chi.NewRouter()
+	// httplog.RequestLogger automatically includes chi's RequestID and Recoverer middleware
+	r.Use(httplog.RequestLogger(&httplog.Logger{
+		Logger: logger,
+		Options: httplog.Options{
+			LogLevel: slog.LevelInfo,
+			JSON:     !cfg.devMode,
+			Concise:  true,
+		},
+	}))
+
+	healthHandler := handlers.NewHealthHandler()
+	filesystemHandler := handlers.NewFilesystemHandler(logger, &proc.RealProcFS{})
+
+	r.Get("/health", healthHandler.GetHealth)
+	r.Get("/healthz", healthHandler.GetHealth)
+	r.Post("/filesystem", filesystemHandler.PostFilesystem)
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: r,
+	}
 
 	// currently no graceful shutdown, but it might make sense to have a short grace period
 	// to allow completing retrieval of sandbox app stdout for example (if in progress)
