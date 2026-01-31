@@ -73,10 +73,6 @@ const (
 
 	// Snapshot-related reasons
 	CondReasonSnapshottingInProgress = "SnapshottingInProgress"
-	CondReasonSnapshotComplete       = "SnapshotComplete"
-	CondReasonSnapshotFailed         = "SnapshotFailed"
-	CondReasonSnapshotTimeout        = "SnapshotTimeout"
-	CondReasonInvalidRuntime         = "InvalidRuntime"
 
 	// NetworkPolicy-related reasons
 	CondReasonNetworkPolicyApplied = "NetworkPolicyApplied"
@@ -1002,53 +998,24 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	now := r.clock().Now()
 	if now.After(snapshotDeadline) {
 		log.Info("Rootfs snapshot timed out", "deadline", snapshotDeadline)
-		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-			{
-				Type:               SandboxRootfsSnapshotCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshotTimeout,
-				Message:            "Rootfs snapshot did not complete before deadline",
-				ObservedGeneration: sandbox.Generation,
-			},
-		}); err != nil {
-			return ctrl.Result{}, false, err
-		}
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotTimeout", "Rootfs snapshot did not complete before deadline")
+		// Ready=False already set by executeShutdownPolicy; proceed with deletion
 		// return true for cleanupDone so the sandbox gets deleted and as a result
-		// the rootfssnapshot due to it being owned by the sandboxed
+		// the rootfssnapshot due to it being owned by the sandbox
 		return ctrl.Result{}, true, nil
 	}
 
 	if sandboxPod == nil {
 		log.Info("Skipping rootfs snapshot because sandbox pod is missing")
-		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-			{
-				Type:               SandboxRootfsSnapshotCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshotFailed,
-				Message:            "Sandbox pod no longer exists; snapshot skipped",
-				ObservedGeneration: sandbox.Generation,
-			},
-		}); err != nil {
-			return ctrl.Result{}, false, err
-		}
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotSkipped", "Sandbox pod no longer exists; snapshot skipped")
+		// Ready=False already set by executeShutdownPolicy; proceed with deletion
 		return ctrl.Result{}, true, nil
 	}
 
 	if !podutil.IsPodReady(sandboxPod) {
 		log.Info("Unable to perform rootfs snapshot: pod not ready")
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "PodNotReady", "Unable to perform rootfs snapshot: pod not ready")
-
-		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-			{
-				Type:               SandboxRootfsSnapshotCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshotFailed,
-				Message:            "Sandbox pod is not ready",
-				ObservedGeneration: sandbox.Generation,
-			},
-		}); err != nil {
-			return ctrl.Result{}, false, err
-		}
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotSkipped", "Unable to perform rootfs snapshot: pod not ready")
+		// Ready=False already set by executeShutdownPolicy; proceed with deletion
 		return ctrl.Result{}, true, nil
 	}
 
@@ -1060,19 +1027,8 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 
 	if !supported {
 		log.Info("Unable to perform rootfs snapshot: runtime not supported")
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "RuntimeNotSupported", "Unable to perform rootfs snapshot")
-
-		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-			{
-				Type:               SandboxRootfsSnapshotCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonInvalidRuntime,
-				Message:            "Runtime does not support rootfs snapshotting",
-				ObservedGeneration: sandbox.Generation,
-			},
-		}); err != nil {
-			return ctrl.Result{}, false, err
-		}
+		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotSkipped", "Runtime does not support rootfs snapshotting")
+		// Ready=False already set by executeShutdownPolicy; proceed with deletion
 		return ctrl.Result{}, true, nil
 	}
 
@@ -1088,15 +1044,16 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	snapshotName := snap.Name
 	if snap.Status.CompletedAt == nil {
 		log.Info("Snapshot in progress, waiting", "snapshot", snapshotName)
-		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-			{
-				Type:               SandboxRootfsSnapshotCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshottingInProgress,
-				Message:            fmt.Sprintf("Snapshot %q is running", snapshotName),
-				ObservedGeneration: sandbox.Generation,
-			},
-		}); err != nil {
+		// kstatus: Set Reconciling=True while actively waiting for snapshot completion
+		meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
+			Type:               SandboxReconcilingCondition,
+			Status:             metav1.ConditionTrue,
+			Reason:             CondReasonSnapshottingInProgress,
+			Message:            fmt.Sprintf("Waiting for shutdown snapshot %q to complete", snapshotName),
+			ObservedGeneration: sandbox.Generation,
+		})
+		sandbox.Status.ObservedGeneration = sandbox.Generation
+		if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
 			return ctrl.Result{}, false, err
 		}
 
@@ -1113,15 +1070,10 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	if readyCond != nil && readyCond.Status == metav1.ConditionTrue {
 		log.Info("Snapshot completed successfully", "snapshot", snapshotName)
 		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", fmt.Sprintf("Snapshot %q completed", snapshotName))
-		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-			{
-				Type:               SandboxRootfsSnapshotCondition,
-				Status:             metav1.ConditionTrue,
-				Reason:             CondReasonSnapshotComplete,
-				Message:            fmt.Sprintf("Snapshot %q completed", snapshotName),
-				ObservedGeneration: sandbox.Generation,
-			},
-		}); err != nil {
+		// kstatus: Remove Reconciling now that cleanup is complete
+		meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
+		sandbox.Status.ObservedGeneration = sandbox.Generation
+		if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
 			return ctrl.Result{}, false, err
 		}
 		return ctrl.Result{}, true, nil
@@ -1134,15 +1086,10 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	}
 	log.Info("Snapshot failed, proceeding with deletion", "snapshot", snapshotName)
 	r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", message)
-	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-		{
-			Type:               SandboxRootfsSnapshotCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshotFailed,
-			Message:            message,
-			ObservedGeneration: sandbox.Generation,
-		},
-	}); err != nil {
+	// kstatus: Remove Reconciling now that cleanup is complete (even though snapshot failed)
+	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
+	sandbox.Status.ObservedGeneration = sandbox.Generation
+	if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
 		return ctrl.Result{}, false, err
 	}
 	return ctrl.Result{}, true, nil
@@ -1190,15 +1137,16 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 	log.Info("Created shutdown RootfsSnapshot", "name", rootfsSnapshot.Name)
 	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "RootfsSnapshotCreated", fmt.Sprintf("Created RootfsSnapshot %q", rootfsSnapshot.Name))
 
-	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-		{
-			Type:               SandboxRootfsSnapshotCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshottingInProgress,
-			Message:            fmt.Sprintf("RootfsSnapshot %q created, waiting for completion", rootfsSnapshot.Name),
-			ObservedGeneration: sandbox.Generation,
-		},
-	}); err != nil {
+	// kstatus: Set Reconciling=True while actively waiting for snapshot completion
+	meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
+		Type:               SandboxReconcilingCondition,
+		Status:             metav1.ConditionTrue,
+		Reason:             CondReasonSnapshottingInProgress,
+		Message:            fmt.Sprintf("Waiting for shutdown snapshot %q to complete", rootfsSnapshot.Name),
+		ObservedGeneration: sandbox.Generation,
+	})
+	sandbox.Status.ObservedGeneration = sandbox.Generation
+	if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
 		return ctrl.Result{}, false, err
 	}
 
