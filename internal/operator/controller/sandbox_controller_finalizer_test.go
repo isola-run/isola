@@ -233,7 +233,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(rootfsSnapshot.Spec.SandboxName).To(Equal(sandboxName))
 
 			// Mark RootfsSnapshot as complete
-			setShutdownSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
+			setShutdownSnapshotComplete(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
 			// Reconcile - should complete deletion
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{

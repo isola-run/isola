@@ -345,7 +345,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(rootfsSnapshot).NotTo(BeNil())
 
 			// Set RootfsSnapshot Ready=True to simulate successful snapshot
-			setShutdownSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
+			setShutdownSnapshotComplete(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -412,7 +412,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(rootfsSnapshot).NotTo(BeNil())
 
 			// Set RootfsSnapshot Ready=False with failed reason to simulate failed snapshot
-			setShutdownSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
+			setShutdownSnapshotComplete(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 			Expect(err).NotTo(HaveOccurred())
@@ -661,7 +661,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(rootfsSnapshot).NotTo(BeNil())
 
 			// Set RootfsSnapshot to DeadlineExceeded (simulating the RootfsSnapshot controller handling deadline)
-			setShutdownSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotDeadlineExceeded, "Snapshot did not complete before deadline")
+			setShutdownSnapshotComplete(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotDeadlineExceeded, "Snapshot did not complete before deadline")
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},

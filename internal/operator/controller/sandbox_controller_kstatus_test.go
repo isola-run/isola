@@ -422,7 +422,7 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Mark snapshot as complete
-			setShutdownSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "Snapshot completed")
+			setShutdownSnapshotComplete(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "Snapshot completed")
 
 			// Reconcile after snapshot completes
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
@@ -476,7 +476,7 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Mark snapshot as failed
-			setShutdownSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Upload failed")
+			setShutdownSnapshotComplete(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Upload failed")
 
 			// Reconcile after snapshot fails
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{

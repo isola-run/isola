@@ -165,13 +165,13 @@ func deleteShutdownSnapshot(ctx context.Context, sandboxName string) {
 	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, snap))).NotTo(HaveOccurred())
 }
 
-func setRootfsSnapshotReady(ctx context.Context, name string, ready bool, reason, message string) {
+func setRootfsSnapshotComplete(ctx context.Context, name string, succeeded bool, reason, message string) {
 	snap := getRootfsSnapshot(ctx, name)
 	if snap == nil {
 		return
 	}
 	status := metav1.ConditionTrue
-	if !ready {
+	if !succeeded {
 		status = metav1.ConditionFalse
 	}
 	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
@@ -194,8 +194,8 @@ func setRootfsSnapshotReady(ctx context.Context, name string, ready bool, reason
 	ExpectWithOffset(1, k8sClient.Status().Update(ctx, snap)).To(Succeed())
 }
 
-func setShutdownSnapshotReady(ctx context.Context, sandboxName string, ready bool, reason, message string) {
-	setRootfsSnapshotReady(ctx, sandboxName+"-shutdown", ready, reason, message)
+func setShutdownSnapshotComplete(ctx context.Context, sandboxName string, succeeded bool, reason, message string) {
+	setRootfsSnapshotComplete(ctx, sandboxName+"-shutdown", succeeded, reason, message)
 }
 
 func createSandboxWithNetwork(ctx context.Context, name, templateRef string, network *sandboxv1alpha1.NetworkSpec) {

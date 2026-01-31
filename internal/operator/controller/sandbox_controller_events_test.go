@@ -149,7 +149,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Mark RootfsSnapshot succeeded
 			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
-			setShutdownSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
+			setShutdownSnapshotComplete(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
 		drainEvents2:
 			for {
@@ -199,7 +199,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Mark RootfsSnapshot failed
 			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
-			setShutdownSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
+			setShutdownSnapshotComplete(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
 
 			// Drain previous events
 		drainEvents3:
