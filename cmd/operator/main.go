@@ -28,6 +28,7 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -112,7 +113,9 @@ func main() {
 		Level:   logLevel,
 		DevMode: devMode,
 	})
-	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
+	logrLogger := logr.FromSlogHandler(logger.Handler())
+	ctrl.SetLogger(logrLogger)
+	klog.SetLogger(logrLogger)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
