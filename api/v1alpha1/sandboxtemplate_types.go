@@ -83,18 +83,13 @@ type SandboxTemplateSpec struct {
 }
 
 // SandboxTemplateStatus defines the observed state of SandboxTemplate.
+// Note: SandboxTemplate is a passive configuration resource with no active controller,
+// so kstatus conditions (Reconciling/Stalled) are not applicable here.
 type SandboxTemplateStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// ObservedGeneration is the most recent generation observed by the controller.
-	// This is used by kstatus to determine if the controller has processed the latest spec.
-	// +optional
-	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-
 	// Conditions represent the current state of the SandboxTemplate resource.
-	// kstatus standard conditions:
-	// - "Reconciling": True when controller is actively working (abnormal-true pattern)
-	// - "Stalled": True when an unrecoverable error occurred (abnormal-true pattern)
+	// Currently unused since SandboxTemplate has no active reconciliation loop.
 	// +listType=map
 	// +listMapKey=type
 	// +optional
