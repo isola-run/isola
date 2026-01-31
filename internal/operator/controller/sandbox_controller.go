@@ -68,9 +68,9 @@ const (
 	CondReasonPodCreating          = "PodCreating"
 	CondReasonPodCreationFailed    = "PodCreationFailed"
 	CondReasonSidecarInjectionFail = "SidecarInjectionFailed"
-	CondReasonSandboxTimedOut   = "TimedOut"
-	CondReasonDeleting          = "Deleting"
-	CondReasonReconciling       = "Reconciling"
+	CondReasonSandboxTimedOut      = "TimedOut"
+	CondReasonDeleting             = "Deleting"
+	CondReasonReconciling          = "Reconciling"
 
 	// Snapshot-related reasons
 	CondReasonSnapshottingInProgress = "SnapshottingInProgress"
@@ -695,8 +695,15 @@ func (r *SandboxReconciler) updateKstatusConditions(sandbox *sandboxv1alpha1.San
 				ObservedGeneration: sandbox.Generation,
 			})
 		} else {
-			// Pod succeeded - clear stalled if it was set
-			meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxStalledCondition)
+			// Pod succeeded - for sandboxes, unexpected termination is always a failure.
+			// A sandbox should run until explicitly deleted or timed out.
+			meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
+				Type:               SandboxStalledCondition,
+				Status:             metav1.ConditionTrue,
+				Reason:             CondReasonPodSucceeded,
+				Message:            "Sandbox pod terminated unexpectedly",
+				ObservedGeneration: sandbox.Generation,
+			})
 		}
 		return
 	}

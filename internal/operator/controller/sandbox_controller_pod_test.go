@@ -405,6 +405,8 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionFalse, CondReasonPodSucceeded)).To(BeTrue())
 			Expect(hasConditionWithReason(sandbox, SandboxReadyCondition, metav1.ConditionFalse, CondReasonPodSucceeded)).To(BeTrue())
+			// For sandboxes, unexpected termination (even success) is a failure - Stalled must be set
+			Expect(hasConditionWithReason(sandbox, SandboxStalledCondition, metav1.ConditionTrue, CondReasonPodSucceeded)).To(BeTrue())
 		})
 
 		It("should maintain stable conditions across multiple reconciles", func() {
