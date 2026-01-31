@@ -89,7 +89,9 @@ var _ = Describe("Sandbox Controller", func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
 
-			fakeClock.Advance(2 * time.Second)
+			// Advance well past timeout to avoid flakiness from API server latency
+			// between fake clock init and sandbox creation
+			fakeClock.Advance(5 * time.Second)
 
 			// Reconcile - snapshot skipped due to no runtimeclass, sandbox deleted
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{

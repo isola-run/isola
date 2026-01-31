@@ -90,7 +90,11 @@ func createRuntimeClass(ctx context.Context, name, handler string) {
 
 func getSandbox(ctx context.Context, name string) *sandboxv1alpha1.Sandbox {
 	sandbox := &sandboxv1alpha1.Sandbox{}
-	ExpectWithOffset(1, k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, sandbox)).To(Succeed())
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, sandbox)
+	if errors.IsNotFound(err) {
+		return nil
+	}
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	return sandbox
 }
 

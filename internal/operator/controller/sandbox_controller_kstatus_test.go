@@ -339,6 +339,11 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 		It("should set Reconciling=True while waiting for shutdown snapshot", func() {
 			sandboxName := "kstatus-snapshot-reconciling"
 			templateName := "template-snapshot-reconciling"
+			runtimeClassName := "gvisor-kstatus-reconciling"
+
+			// RuntimeClass with runsc handler is required for snapshotting
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			// Create template with snapshot shutdown policy and timeout
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
@@ -346,6 +351,7 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
+				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteTemplate(ctx, templateName)
 
@@ -360,10 +366,21 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Make pod ready (required for snapshot)
+			// Recreate pod with NodeName (required for snapshot) and RuntimeClassName
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
-			makePodReady(ctx, pod, "containerd://abc123")
+			labels := pod.Labels
+			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
+			newPod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace, Labels: labels},
+				Spec: corev1.PodSpec{
+					RuntimeClassName: &runtimeClassName,
+					NodeName:         "test-node",
+					Containers:       []corev1.Container{{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
+			makePodReady(ctx, newPod, "containerd://abc123")
 
 			// Advance time past timeout
 			fakeClock.Advance(61 * time.Second)
@@ -383,9 +400,14 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 			Expect(reconcilingCond.Reason).To(Equal(CondReasonSnapshottingInProgress))
 		})
 
-		It("should remove Reconciling when shutdown snapshot completes successfully", func() {
+		It("should complete finalization when shutdown snapshot succeeds (Reconciling removed with sandbox)", func() {
 			sandboxName := "kstatus-snapshot-complete"
 			templateName := "template-snapshot-complete"
+			runtimeClassName := "gvisor-kstatus-complete"
+
+			// RuntimeClass with runsc handler is required for snapshotting
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			// Create template with snapshot shutdown policy and timeout
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
@@ -393,6 +415,7 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
+				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteTemplate(ctx, templateName)
 
@@ -407,39 +430,59 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Make pod ready
+			// Recreate pod with NodeName (required for snapshot) and RuntimeClassName
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
-			makePodReady(ctx, pod, "containerd://abc123")
+			labels := pod.Labels
+			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
+			newPod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace, Labels: labels},
+				Spec: corev1.PodSpec{
+					RuntimeClassName: &runtimeClassName,
+					NodeName:         "test-node",
+					Containers:       []corev1.Container{{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
+			makePodReady(ctx, newPod, "containerd://abc123")
 
 			// Advance time past timeout
 			fakeClock.Advance(61 * time.Second)
 
-			// Reconcile to trigger snapshot
+			// Reconcile to trigger snapshot - should set Reconciling=True
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
+
+			// Verify Reconciling is True while waiting
+			sandbox := getSandbox(ctx, sandboxName)
+			reconcilingCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReconcilingCondition)
+			Expect(reconcilingCond).NotTo(BeNil(), "Reconciling should be present while waiting for snapshot")
+			Expect(reconcilingCond.Status).To(Equal(metav1.ConditionTrue))
 
 			// Mark snapshot as complete
 			setShutdownSnapshotComplete(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "Snapshot completed")
 
-			// Reconcile after snapshot completes
+			// Reconcile after snapshot completes - finalization should complete and delete sandbox
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			sandbox := getSandbox(ctx, sandboxName)
-
-			// Reconciling should be ABSENT after snapshot completes
-			reconcilingCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReconcilingCondition)
-			Expect(reconcilingCond).To(BeNil(), "Reconciling should be REMOVED after snapshot completes")
+			// Sandbox should be deleted (Reconciling removed along with sandbox)
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(sandbox).To(BeNil(), "Sandbox should be deleted after successful snapshot finalization")
 		})
 
-		It("should remove Reconciling when shutdown snapshot fails", func() {
+		It("should complete finalization when shutdown snapshot fails (Reconciling removed with sandbox)", func() {
 			sandboxName := "kstatus-snapshot-failed"
 			templateName := "template-snapshot-failed"
+			runtimeClassName := "gvisor-kstatus-failed"
+
+			// RuntimeClass with runsc handler is required for snapshotting
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			// Create template with snapshot shutdown policy and timeout
 			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
@@ -447,6 +490,7 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
+				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteTemplate(ctx, templateName)
 
@@ -461,34 +505,50 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Make pod ready
+			// Recreate pod with NodeName (required for snapshot) and RuntimeClassName
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
-			makePodReady(ctx, pod, "containerd://abc123")
+			labels := pod.Labels
+			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
+			newPod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace, Labels: labels},
+				Spec: corev1.PodSpec{
+					RuntimeClassName: &runtimeClassName,
+					NodeName:         "test-node",
+					Containers:       []corev1.Container{{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
+			makePodReady(ctx, newPod, "containerd://abc123")
 
 			// Advance time past timeout
 			fakeClock.Advance(61 * time.Second)
 
-			// Reconcile to trigger snapshot
+			// Reconcile to trigger snapshot - should set Reconciling=True
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
+
+			// Verify Reconciling is True while waiting
+			sandbox := getSandbox(ctx, sandboxName)
+			reconcilingCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReconcilingCondition)
+			Expect(reconcilingCond).NotTo(BeNil(), "Reconciling should be present while waiting for snapshot")
+			Expect(reconcilingCond.Status).To(Equal(metav1.ConditionTrue))
 
 			// Mark snapshot as failed
 			setShutdownSnapshotComplete(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Upload failed")
 
-			// Reconcile after snapshot fails
+			// Reconcile after snapshot fails - finalization should proceed and delete sandbox
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			sandbox := getSandbox(ctx, sandboxName)
-
-			// Reconciling should be ABSENT even after snapshot fails (cleanup complete)
-			reconcilingCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReconcilingCondition)
-			Expect(reconcilingCond).To(BeNil(), "Reconciling should be REMOVED after snapshot fails (cleanup proceeds)")
+			// Sandbox should be deleted (Reconciling removed along with sandbox)
+			// Even when snapshot fails, finalization proceeds to clean up the sandbox
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(sandbox).To(BeNil(), "Sandbox should be deleted after failed snapshot finalization")
 		})
 	})
 
@@ -798,13 +858,10 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 			// Delete the sandbox (sets deletionTimestamp)
 			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
 
-			// Reconcile after deletion requested
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			// Get the sandbox again (still exists due to finalizer)
+			// Get the sandbox again - deletionTimestamp is set by the API server
+			// Note: We intentionally do NOT reconcile here because that would trigger
+			// finalization and delete the sandbox before we can assert on derived status.
+			// The API status derivation only needs deletionTimestamp, not controller processing.
 			sandbox = getSandbox(ctx, sandboxName)
 			Expect(sandbox.DeletionTimestamp).NotTo(BeNil(),
 				"DeletionTimestamp should be set after delete request")
@@ -855,11 +912,7 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 			// Phase 3: Stopping
 			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
 
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
+			// Re-fetch to see deletionTimestamp (no reconcile - that would finalize and delete)
 			sandbox = getSandbox(ctx, sandboxName)
 			Expect(deriveAPIStatus(sandbox)).To(Equal("stopping"),
 				"Lifecycle phase 3: should be 'stopping' when deletion requested")
@@ -894,12 +947,7 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 			// Now delete it
 			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
 
-			// Reconcile after deletion
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
+			// Re-fetch to see deletionTimestamp (no reconcile - that would finalize and delete)
 			sandbox = getSandbox(ctx, sandboxName)
 
 			// Should still have Stalled condition
