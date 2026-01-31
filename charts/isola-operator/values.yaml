@@ -22,6 +22,12 @@ image:
 
 replicaCount: 1
 
+log:
+  # Log level: debug, info, warn, error
+  level: info
+  # Enable development mode (text output instead of JSON)
+  devMode: false
+
 # Pod annotations (e.g., for Prometheus scraping)
 podAnnotations: {}
 
