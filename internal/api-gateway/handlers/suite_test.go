@@ -8,7 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -88,17 +89,15 @@ var _ = BeforeSuite(func() {
 	}
 	Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 
-	// Set up HTTP test server with gin
-	gin.SetMode(gin.TestMode)
 	logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
 
-	r := gin.New()
-	r.Use(gin.Recovery())
+	r := chi.NewRouter()
+	r.Use(middleware.Recoverer)
 
 	handler := NewHandler(logger, k8sClient)
 
-	r.GET("/health", handler.GetHealth)
-	r.GET("/ready", handler.GetReady)
+	r.Get("/health", handler.GetHealth)
+	r.Get("/ready", handler.GetReady)
 
 	testServer = httptest.NewServer(r)
 	DeferCleanup(testServer.Close)

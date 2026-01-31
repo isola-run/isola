@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/render"
 )
 
 type HealthHandler struct{}
@@ -19,6 +19,6 @@ func NewHealthHandler() *HealthHandler {
 // @Produce json
 // @Success 200 {object} HealthResponse
 // @Router /health [get]
-func (h *HealthHandler) GetHealth(c *gin.Context) {
-	c.JSON(http.StatusOK, HealthResponse{Status: "ok"})
+func (h *HealthHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
+	render.JSON(w, r, HealthResponse{Status: "ok"})
 }

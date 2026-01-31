@@ -8,9 +8,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/gin-contrib/requestid"
-	"github.com/gin-gonic/gin"
-	sloggin "github.com/samber/slog-gin"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httplog/v2"
 
 	"github.com/isola-ai/isola-sb/internal/env"
 	"github.com/isola-ai/isola-sb/internal/logging"
@@ -25,41 +24,26 @@ type config struct {
 	devMode  bool
 }
 
-func initGinServer(logger *slog.Logger, cfg config) (*http.Server, error) {
-	if !cfg.devMode {
-		// default is debug mode
-		// in tests we might want to pass env GIN_MODE=test
-		// hence we only explicitly set it if devMode is false (otherwise use GIN_MODE or default to debug)
-		gin.SetMode(gin.ReleaseMode)
-	}
+func initChiServer(logger *slog.Logger, cfg config) *http.Server {
+	r := chi.NewRouter()
 
-	r := gin.New()
-	// no use of c.ClientIP() and thus no need to configure trusted proxies
-	// misconfiguring trusted proxies is a no-no: https://gin-gonic.com/en/docs/deployment/
-	if err := r.SetTrustedProxies(nil); err != nil {
-		logger.Error("unable to set trusted proxies", "error", err)
-		return nil, fmt.Errorf("set trusted proxies: %w", err)
-	}
-	// first middleware is sloggin to ensure logging is available for all other middlewares
-	r.Use(sloggin.NewWithConfig(logger, sloggin.Config{
-		WithRequestID: true,
-	}))
-	r.Use(requestid.New())
-	r.Use(gin.Recovery())
+	r.Use(httplog.RequestLogger(httplog.NewLogger("sandbox-sidecar", httplog.Options{
+		LogLevel: slog.LevelInfo,
+		JSON:     !cfg.devMode,
+		Concise:  true,
+	})))
 
 	healthHandler := handlers.NewHealthHandler()
 	filesystemHandler := handlers.NewFilesystemHandler(logger, &proc.RealProcFS{})
 
-	r.GET("/health", healthHandler.GetHealth)
-	r.GET("/healthz", healthHandler.GetHealth)
-	r.POST("/filesystem", filesystemHandler.PostFilesystem)
+	r.Get("/health", healthHandler.GetHealth)
+	r.Get("/healthz", healthHandler.GetHealth)
+	r.Post("/filesystem", filesystemHandler.PostFilesystem)
 
-	srv := &http.Server{
+	return &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: r,
 	}
-
-	return srv, nil
 }
 
 func main() {
@@ -74,11 +58,7 @@ func main() {
 		DevMode: cfg.devMode,
 	})
 
-	srv, err := initGinServer(logger, cfg)
-	if err != nil {
-		logger.Error("unable to create gin server", "error", err)
-		os.Exit(1)
-	}
+	srv := initChiServer(logger, cfg)
 
 	// currently no graceful shutdown, but it might make sense to have a short grace period
 	// to allow completing retrieval of sandbox app stdout for example (if in progress)

@@ -14,7 +14,7 @@ var _ = Describe("Health Endpoints", func() {
 			DeferCleanup(resp.Body.Close)
 
 			Expect(resp).To(HaveHTTPStatus(200))
-			Expect(resp).To(HaveHTTPHeaderWithValue("Content-Type", "application/json; charset=utf-8"))
+			Expect(resp).To(HaveHTTPHeaderWithValue("Content-Type", "application/json"))
 
 			var health HealthResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&health)).To(Succeed())

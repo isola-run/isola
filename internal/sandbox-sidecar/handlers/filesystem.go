@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/render"
 
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 )
@@ -82,38 +82,43 @@ func resolveAbsolutePath(path string, pid int, procFS proc.ProcFS) (string, erro
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /filesystem [post]
-func (h *FilesystemHandler) PostFilesystem(c *gin.Context) {
-	path := c.Query("path")
-	container := c.Query("container")
+func (h *FilesystemHandler) PostFilesystem(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	container := r.URL.Query().Get("container")
 
 	if path == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "path query parameter is required"})
+		render.Status(r, http.StatusBadRequest)
+		render.JSON(w, r, ErrorResponse{Message: "path query parameter is required"})
 		return
 	}
 
 	// Reject null bytes in path
 	if strings.ContainsRune(path, 0) {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "path contains invalid characters"})
+		render.Status(r, http.StatusBadRequest)
+		render.JSON(w, r, ErrorResponse{Message: "path contains invalid characters"})
 		return
 	}
 
 	pid, err := h.findCachedContainerPID(container)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Message: "container not found"})
+		render.Status(r, http.StatusBadRequest)
+		render.JSON(w, r, ErrorResponse{Message: "container not found"})
 		return
 	}
 
 	uid, gid, err := h.procFS.GetUIDGID(pid)
 	if err != nil {
 		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: "failed to get container uid/gid"})
+		render.Status(r, http.StatusInternalServerError)
+		render.JSON(w, r, ErrorResponse{Message: "failed to get container uid/gid"})
 		return
 	}
 
 	resolvedPath, err := resolveAbsolutePath(path, pid, h.procFS)
 	if err != nil {
 		h.logger.Error("failed to resolve path", "error", err, "pid", pid)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: "failed to resolve path"})
+		render.Status(r, http.StatusInternalServerError)
+		render.JSON(w, r, ErrorResponse{Message: "failed to resolve path"})
 		return
 	}
 
@@ -123,23 +128,26 @@ func (h *FilesystemHandler) PostFilesystem(c *gin.Context) {
 	parentDir := filepath.Dir(targetPath)
 	if err := os.MkdirAll(parentDir, 0755); err != nil { //nolint:gosec // intentional permissions for container access
 		h.logger.Error("failed to create parent directories", "error", err, "path", parentDir)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: "failed to create parent directories"})
+		render.Status(r, http.StatusInternalServerError)
+		render.JSON(w, r, ErrorResponse{Message: "failed to create parent directories"})
 		return
 	}
 
 	dst, err := os.Create(targetPath) //nolint:gosec
 	if err != nil {
 		h.logger.Error("failed to create file", "error", err, "path", targetPath)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: "failed to create file"})
+		render.Status(r, http.StatusInternalServerError)
+		render.JSON(w, r, ErrorResponse{Message: "failed to create file"})
 		return
 	}
 	defer func() { _ = dst.Close() }()
 
 	// Stream the body to the file
-	written, err := io.Copy(dst, c.Request.Body)
+	written, err := io.Copy(dst, r.Body)
 	if err != nil {
 		h.logger.Error("failed to write file", "error", err, "path", targetPath)
-		c.JSON(http.StatusInternalServerError, ErrorResponse{Message: "failed to write file"})
+		render.Status(r, http.StatusInternalServerError)
+		render.JSON(w, r, ErrorResponse{Message: "failed to write file"})
 		return
 	}
 
@@ -150,7 +158,7 @@ func (h *FilesystemHandler) PostFilesystem(c *gin.Context) {
 		h.logger.Error("failed to set file ownership", "error", err, "path", targetPath, "uid", uid, "gid", gid)
 	}
 
-	c.JSON(http.StatusOK, FilesystemWriteResponse{
+	render.JSON(w, r, FilesystemWriteResponse{
 		AbsolutePath: resolvedPath,
 		BytesWritten: written,
 		Container:    container,

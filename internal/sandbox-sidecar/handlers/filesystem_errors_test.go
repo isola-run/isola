@@ -8,7 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -54,17 +55,16 @@ var _ = Describe("Filesystem error cases", func() {
 
 	Describe("container not found", func() {
 		BeforeEach(func() {
-			gin.SetMode(gin.TestMode)
 			logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
 
 			mockProcFS := &errorMockProcFS{
 				findPIDError: proc.ErrContainerNotFound,
 			}
 
-			r := gin.New()
-			r.Use(gin.Recovery())
+			r := chi.NewRouter()
+			r.Use(middleware.Recoverer)
 			handler := NewFilesystemHandler(logger, mockProcFS)
-			r.POST("/filesystem", handler.PostFilesystem)
+			r.Post("/filesystem", handler.PostFilesystem)
 
 			server = httptest.NewServer(r)
 			client = server.Client()

@@ -15,9 +15,59 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/filesystem": {
+            "post": {
+                "description": "Writes a file to the specified path in the sandbox container",
+                "consumes": [
+                    "application/octet-stream"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filesystem"
+                ],
+                "summary": "Write a file to the sandbox filesystem",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Destination path (absolute or relative to container cwd)",
+                        "name": "path",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Container name (defaults to main container)",
+                        "name": "container",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.FilesystemWriteResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_sandbox-sidecar_handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_sandbox-sidecar_handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/health": {
             "get": {
-                "description": "Returns the health status of the API",
+                "description": "Returns the health status of the sidecar",
                 "produces": [
                     "application/json"
                 ],
@@ -29,7 +79,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_api-gateway_handlers.HealthResponse"
+                            "$ref": "#/definitions/internal_sandbox-sidecar_handlers.HealthResponse"
                         }
                     }
                 }
@@ -63,6 +113,23 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "handlers.FilesystemWriteResponse": {
+            "type": "object",
+            "properties": {
+                "absolute_path": {
+                    "type": "string",
+                    "example": "/workspace/file.txt"
+                },
+                "bytes_written": {
+                    "type": "integer",
+                    "example": 1024
+                },
+                "container": {
+                    "type": "string",
+                    "example": "main"
+                }
+            }
+        },
         "internal_api-gateway_handlers.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -73,6 +140,24 @@ const docTemplate = `{
             }
         },
         "internal_api-gateway_handlers.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "ok"
+                }
+            }
+        },
+        "internal_sandbox-sidecar_handlers.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "example": "path is required"
+                }
+            }
+        },
+        "internal_sandbox-sidecar_handlers.HealthResponse": {
             "type": "object",
             "properties": {
                 "status": {

@@ -14,7 +14,7 @@ var _ = Describe("Health", func() {
 		defer func() { _ = resp.Body.Close() }()
 
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
-		Expect(resp.Header.Get("Content-Type")).To(Equal("application/json; charset=utf-8"))
+		Expect(resp.Header.Get("Content-Type")).To(Equal("application/json"))
 
 		var body map[string]string
 		err := json.NewDecoder(resp.Body).Decode(&body)

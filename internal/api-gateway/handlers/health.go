@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/render"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
@@ -37,8 +37,8 @@ type ErrorResponse struct {
 // @Produce json
 // @Success 200 {object} HealthResponse
 // @Router /health [get]
-func (h *Handler) GetHealth(c *gin.Context) {
-	c.JSON(http.StatusOK, HealthResponse{Status: "ok"})
+func (h *Handler) GetHealth(w http.ResponseWriter, r *http.Request) {
+	render.JSON(w, r, HealthResponse{Status: "ok"})
 }
 
 // GetReady godoc
@@ -49,13 +49,14 @@ func (h *Handler) GetHealth(c *gin.Context) {
 // @Success 200 {object} HealthResponse
 // @Failure 503 {object} ErrorResponse
 // @Router /ready [get]
-func (h *Handler) GetReady(c *gin.Context) {
+func (h *Handler) GetReady(w http.ResponseWriter, r *http.Request) {
 	sandboxList := &sandboxv1alpha1.SandboxList{}
-	if err := h.k8sClient.List(c.Request.Context(), sandboxList, client.Limit(1)); err != nil {
+	if err := h.k8sClient.List(r.Context(), sandboxList, client.Limit(1)); err != nil {
 		h.logger.Error("readiness check failed", "error", err)
-		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Message: "not ready"})
+		render.Status(r, http.StatusServiceUnavailable)
+		render.JSON(w, r, ErrorResponse{Message: "not ready"})
 		return
 	}
 
-	c.JSON(http.StatusOK, HealthResponse{Status: "ok"})
+	render.JSON(w, r, HealthResponse{Status: "ok"})
 }

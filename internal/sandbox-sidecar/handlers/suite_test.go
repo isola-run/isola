@@ -10,7 +10,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -52,7 +53,6 @@ func TestHandlers(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	gin.SetMode(gin.TestMode)
 	logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
 
 	// Create temp directories for testing
@@ -73,14 +73,14 @@ var _ = BeforeSuite(func() {
 		gid:     os.Getgid(),
 	}
 
-	r := gin.New()
-	r.Use(gin.Recovery())
+	r := chi.NewRouter()
+	r.Use(middleware.Recoverer)
 
 	healthHandler := NewHealthHandler()
 	filesystemHandler := NewFilesystemHandler(logger, mockProcFS)
 
-	r.GET("/health", healthHandler.GetHealth)
-	r.POST("/filesystem", filesystemHandler.PostFilesystem)
+	r.Get("/health", healthHandler.GetHealth)
+	r.Post("/filesystem", filesystemHandler.PostFilesystem)
 
 	testServer = httptest.NewServer(r)
 	DeferCleanup(testServer.Close)
