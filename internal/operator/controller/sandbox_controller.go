@@ -187,59 +187,6 @@ func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandbo
 	return nil
 }
 
-// setReconciling sets the kstatus Reconciling condition to True with the given reason/message.
-// Per kstatus "abnormal-true" pattern, Reconciling=True signals InProgress status.
-func (r *SandboxReconciler) setReconciling(ctx context.Context, baseSandbox, sandbox *sandboxv1alpha1.Sandbox, reason, message string) error {
-	return r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-		{
-			Type:               SandboxReconcilingCondition,
-			Status:             metav1.ConditionTrue,
-			Reason:             reason,
-			Message:            message,
-			ObservedGeneration: sandbox.Generation,
-		},
-	})
-}
-
-// clearReconciling removes the Reconciling condition to signal reconciliation is complete.
-// Per kstatus "abnormal-true" pattern, absence of Reconciling means Current status.
-func (r *SandboxReconciler) clearReconciling(ctx context.Context, baseSandbox, sandbox *sandboxv1alpha1.Sandbox) error {
-	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
-	sandbox.Status.ObservedGeneration = sandbox.Generation
-	return r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox))
-}
-
-// setStalled sets the kstatus Stalled condition to True with the given reason/message.
-// Per kstatus "abnormal-true" pattern, Stalled=True signals Failed status.
-func (r *SandboxReconciler) setStalled(ctx context.Context, baseSandbox, sandbox *sandboxv1alpha1.Sandbox, reason, message string) error {
-	// When stalled, we're no longer reconciling
-	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
-	sandbox.Status.ObservedGeneration = sandbox.Generation
-	meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
-		Type:               SandboxStalledCondition,
-		Status:             metav1.ConditionTrue,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: sandbox.Generation,
-	})
-	return r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox))
-}
-
-// clearStalled removes the Stalled condition.
-func (r *SandboxReconciler) clearStalled(ctx context.Context, baseSandbox, sandbox *sandboxv1alpha1.Sandbox) error {
-	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxStalledCondition)
-	return r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox))
-}
-
-// finalizeStatus updates observedGeneration and clears Reconciling to signal completion.
-// Call this at the end of a successful reconciliation loop.
-func (r *SandboxReconciler) finalizeStatus(ctx context.Context, baseSandbox, sandbox *sandboxv1alpha1.Sandbox) error {
-	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
-	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxStalledCondition)
-	sandbox.Status.ObservedGeneration = sandbox.Generation
-	return r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox))
-}
-
 func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate) error {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 	// todo benl reduce verbose logging
@@ -459,6 +406,8 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 		if apierrors.IsNotFound(err) {
 			// Template not found is a stalled state - kstatus will report Failed
 			sandbox.Status.ObservedGeneration = sandbox.Generation
+			// Per kstatus abnormal-true pattern: remove Reconciling (we're stalled, not reconciling)
+			meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
 			if err := r.patchStatus(
 				ctx,
 				baseSandbox,
@@ -485,13 +434,6 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 						Message:            fmt.Sprintf("SandboxTemplate %q not found", sandbox.Spec.TemplateRef.Name),
 						ObservedGeneration: sandbox.Generation,
 					},
-					{
-						Type:               SandboxReconcilingCondition,
-						Status:             metav1.ConditionFalse,
-						Reason:             CondReasonTemplateNotFound,
-						Message:            "Cannot reconcile without template",
-						ObservedGeneration: sandbox.Generation,
-					},
 				},
 			); err != nil {
 				log.Error(err, "Failed to update Sandbox status")
@@ -506,20 +448,14 @@ func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandbox
 		return nil, ctrl.Result{}, err
 	}
 
-	// Template found - clear any previous Stalled condition
+	// Template found - per kstatus abnormal-true pattern, remove Stalled condition
+	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxStalledCondition)
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               SandboxTemplateReadyCondition,
 			Status:             metav1.ConditionTrue,
 			Reason:             CondReasonTemplateResolved,
 			Message:            "Template resolved",
-			ObservedGeneration: sandbox.Generation,
-		},
-		{
-			Type:               SandboxStalledCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonTemplateResolved,
-			Message:            "Template is available",
 			ObservedGeneration: sandbox.Generation,
 		},
 	}); err != nil {
