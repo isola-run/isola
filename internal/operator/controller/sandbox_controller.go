@@ -672,9 +672,8 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod)
 	conditions = append(conditions, readyCondition)
 
-	// kstatus: Set Reconciling/Stalled based on pod state
-	kstatusConditions := r.determineKstatusConditions(sandbox, sandboxPod)
-	conditions = append(conditions, kstatusConditions...)
+	// kstatus: Per "abnormal-true" pattern, remove conditions when not in abnormal state
+	r.updateKstatusConditions(sandbox, sandboxPod)
 
 	// Always update observedGeneration to indicate we've processed this spec version
 	sandbox.Status.ObservedGeneration = sandbox.Generation
@@ -682,55 +681,43 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	return r.patchStatus(ctx, baseSandbox, sandbox, conditions)
 }
 
-// determineKstatusConditions returns kstatus standard conditions based on sandbox state.
-// Uses "abnormal-true" pattern: conditions are present only for abnormal states.
-func (r *SandboxReconciler) determineKstatusConditions(sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) []metav1.Condition {
-	var conditions []metav1.Condition
-
-	// If pod is ready, we're fully reconciled - no Reconciling condition needed
+// updateKstatusConditions manages Reconciling/Stalled conditions per kstatus abnormal-true pattern.
+// Conditions are removed when not in abnormal state, added when abnormal.
+func (r *SandboxReconciler) updateKstatusConditions(sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) {
+	// If pod is ready, remove all abnormal conditions
 	if podutil.IsPodReady(sandboxPod) {
-		// Explicitly set Reconciling=False to clear any previous True state
-		conditions = append(conditions, metav1.Condition{
-			Type:               SandboxReconcilingCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             "ReconcileComplete",
-			Message:            "Sandbox is fully reconciled",
-			ObservedGeneration: sandbox.Generation,
-		})
-		return conditions
+		meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
+		meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxStalledCondition)
+		return
 	}
 
-	// If pod terminated (failed/succeeded), set Stalled for failed pods
+	// If pod terminated
 	if podutil.IsPodTerminated(sandboxPod) {
+		meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
 		if sandboxPod.Status.Phase == corev1.PodFailed {
-			conditions = append(conditions, metav1.Condition{
+			meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
 				Type:               SandboxStalledCondition,
 				Status:             metav1.ConditionTrue,
 				Reason:             CondReasonPodFailed,
 				Message:            "Sandbox pod has failed",
 				ObservedGeneration: sandbox.Generation,
 			})
+		} else {
+			// Pod succeeded - clear stalled if it was set
+			meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxStalledCondition)
 		}
-		conditions = append(conditions, metav1.Condition{
-			Type:               SandboxReconcilingCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             "PodTerminated",
-			Message:            "Pod has terminated",
-			ObservedGeneration: sandbox.Generation,
-		})
-		return conditions
+		return
 	}
 
-	// Pod is pending or not yet created - still reconciling
-	conditions = append(conditions, metav1.Condition{
+	// Pod is pending or not yet created - set Reconciling, clear Stalled
+	meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxStalledCondition)
+	meta.SetStatusCondition(&sandbox.Status.Conditions, metav1.Condition{
 		Type:               SandboxReconcilingCondition,
 		Status:             metav1.ConditionTrue,
 		Reason:             CondReasonReconciling,
 		Message:            "Waiting for sandbox pod to become ready",
 		ObservedGeneration: sandbox.Generation,
 	})
-
-	return conditions
 }
 
 // determinePodCondition returns the PodReady condition based on the sandbox pod state.
