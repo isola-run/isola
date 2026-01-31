@@ -62,6 +62,7 @@ var _ = Describe("Filesystem error cases", func() {
 			}
 
 			r := chi.NewRouter()
+			// Tests use middleware.Recoverer directly (not httplog.RequestLogger) to avoid log noise
 			r.Use(middleware.Recoverer)
 			handler := NewFilesystemHandler(logger, mockProcFS)
 			r.Post("/filesystem", handler.PostFilesystem)

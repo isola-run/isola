@@ -92,6 +92,7 @@ var _ = BeforeSuite(func() {
 	logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
 
 	r := chi.NewRouter()
+	// Tests use middleware.Recoverer directly (not httplog.RequestLogger) to avoid log noise
 	r.Use(middleware.Recoverer)
 
 	handler := NewHandler(logger, k8sClient)

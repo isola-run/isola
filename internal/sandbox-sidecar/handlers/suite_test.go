@@ -74,6 +74,7 @@ var _ = BeforeSuite(func() {
 	}
 
 	r := chi.NewRouter()
+	// Tests use middleware.Recoverer directly (not httplog.RequestLogger) to avoid log noise
 	r.Use(middleware.Recoverer)
 
 	healthHandler := NewHealthHandler()
