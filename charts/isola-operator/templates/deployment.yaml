@@ -35,6 +35,10 @@ spec:
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081
+        - --log-level={{ .Values.log.level }}
+        {{- if .Values.log.devMode }}
+        - --dev-mode
+        {{- end }}
         - --sidecar-image={{ include "isola-operator.sidecarImage" . }}
         {{- if .Values.runtimeClassName }}
         - --runtime-class={{ .Values.runtimeClassName }}

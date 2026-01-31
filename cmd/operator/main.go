@@ -106,7 +106,7 @@ func main() {
 	flag.StringVar(&snapshotServiceAccount, "snapshot-service-account", os.Getenv("ISOLA_SNAPSHOT_SERVICE_ACCOUNT"), "ServiceAccount for snapshot jobs")
 	flag.StringVar(&imagePullSecretsStr, "image-pull-secrets", os.Getenv("ISOLA_IMAGE_PULL_SECRETS"), "Comma-separated list of imagePullSecret names for sandbox pods and snapshot jobs")
 	flag.StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
-	flag.BoolVar(&devMode, "dev", false, "Enable development mode (text logging)")
+	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode (text logging)")
 	flag.Parse()
 
 	logger := logging.New(logging.Config{
