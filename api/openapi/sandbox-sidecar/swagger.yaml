@@ -1,5 +1,11 @@
 definitions:
-  handlers.FilesystemWriteResponse:
+  internal_sandbox-sidecar_handlers.ErrorResponse:
+    properties:
+      message:
+        example: path is required
+        type: string
+    type: object
+  internal_sandbox-sidecar_handlers.FilesystemWriteResponse:
     properties:
       absolute_path:
         example: /workspace/file.txt
@@ -11,24 +17,6 @@ definitions:
         example: main
         type: string
     type: object
-  internal_api-gateway_handlers.ErrorResponse:
-    properties:
-      message:
-        example: service not ready
-        type: string
-    type: object
-  internal_api-gateway_handlers.HealthResponse:
-    properties:
-      status:
-        example: ok
-        type: string
-    type: object
-  internal_sandbox-sidecar_handlers.ErrorResponse:
-    properties:
-      message:
-        example: path is required
-        type: string
-    type: object
   internal_sandbox-sidecar_handlers.HealthResponse:
     properties:
       status:
@@ -37,8 +25,8 @@ definitions:
     type: object
 info:
   contact: {}
-  description: API for managing sandboxes
-  title: Isola Sandbox API
+  description: Internal API for sandbox filesystem operations
+  title: Isola Sandbox Sidecar API
   version: "1.0"
 paths:
   /filesystem:
@@ -62,7 +50,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handlers.FilesystemWriteResponse'
+            $ref: '#/definitions/internal_sandbox-sidecar_handlers.FilesystemWriteResponse'
         "400":
           description: Bad Request
           schema:
@@ -85,23 +73,6 @@ paths:
           schema:
             $ref: '#/definitions/internal_sandbox-sidecar_handlers.HealthResponse'
       summary: Health check
-      tags:
-      - health
-  /ready:
-    get:
-      description: Returns the readiness status of the API
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/internal_api-gateway_handlers.HealthResponse'
-        "503":
-          description: Service Unavailable
-          schema:
-            $ref: '#/definitions/internal_api-gateway_handlers.ErrorResponse'
-      summary: Readiness check
       tags:
       - health
 swagger: "2.0"

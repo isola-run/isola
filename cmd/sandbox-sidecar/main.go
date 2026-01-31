@@ -24,6 +24,9 @@ type config struct {
 	devMode  bool
 }
 
+// @title Isola Sandbox Sidecar API
+// @version 1.0
+// @description Internal API for sandbox filesystem operations
 func main() {
 	cfg := config{}
 
