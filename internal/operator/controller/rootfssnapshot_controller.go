@@ -583,20 +583,16 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap 
 		}
 	}
 
+	// kstatus: Per abnormal-true pattern, remove Reconciling/Stalled on success
+	meta.RemoveStatusCondition(&snap.Status.Conditions, RootfsSnapshotReconcilingCondition)
+	meta.RemoveStatusCondition(&snap.Status.Conditions, RootfsSnapshotStalledCondition)
+
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
 		{
 			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
 			Status:             metav1.ConditionTrue,
 			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotSucceeded,
 			Message:            "Snapshot completed successfully",
-			ObservedGeneration: snap.Generation,
-		},
-		// kstatus: Clear Reconciling to signal Current status
-		{
-			Type:               RootfsSnapshotReconcilingCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotSucceeded,
-			Message:            "Snapshot completed",
 			ObservedGeneration: snap.Generation,
 		},
 	}); err != nil {
@@ -610,6 +606,9 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletedAt = &now
 	snap.Status.ObservedGeneration = snap.Generation
+
+	// kstatus: Per abnormal-true pattern, remove Reconciling on failure (Stalled will be set)
+	meta.RemoveStatusCondition(&snap.Status.Conditions, RootfsSnapshotReconcilingCondition)
 
 	r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
@@ -626,14 +625,6 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 			Status:             metav1.ConditionTrue,
 			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
 			Message:            message,
-			ObservedGeneration: snap.Generation,
-		},
-		// kstatus: Clear Reconciling since we're done (failed)
-		{
-			Type:               RootfsSnapshotReconcilingCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
-			Message:            "Snapshot failed",
 			ObservedGeneration: snap.Generation,
 		},
 	}); err != nil {
