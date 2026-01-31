@@ -61,12 +61,13 @@ const (
 	CondReasonTemplateNotFound = "TemplateNotFound"
 	CondReasonTemplateResolved = "TemplateResolved"
 
-	CondReasonPodPending        = "PodPending"
-	CondReasonPodRunning        = "PodRunning"
-	CondReasonPodFailed         = "PodFailed"
-	CondReasonPodSucceeded      = "PodSucceeded"
-	CondReasonPodCreating       = "PodCreating"
-	CondReasonPodCreationFailed = "PodCreationFailed"
+	CondReasonPodPending           = "PodPending"
+	CondReasonPodRunning           = "PodRunning"
+	CondReasonPodFailed            = "PodFailed"
+	CondReasonPodSucceeded         = "PodSucceeded"
+	CondReasonPodCreating          = "PodCreating"
+	CondReasonPodCreationFailed    = "PodCreationFailed"
+	CondReasonSidecarInjectionFail = "SidecarInjectionFailed"
 	CondReasonSandboxTimedOut   = "TimedOut"
 	CondReasonDeleting          = "Deleting"
 	CondReasonReconciling       = "Reconciling"
@@ -254,6 +255,38 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	if err := r.injectSandboxSidecar(sandboxPod); err != nil {
 		log.Error(err, "Failed to inject sidecar")
+
+		// Sidecar injection failures are permanent (template misconfiguration)
+		// Set Stalled=True so kstatus reports Failed, and remove Reconciling
+		meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
+
+		// Best effort status patch - log but don't override the original error
+		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxPodReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSidecarInjectionFail,
+				Message:            err.Error(),
+				ObservedGeneration: sandbox.Generation,
+			},
+			{
+				Type:               SandboxReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonSidecarInjectionFail,
+				Message:            err.Error(),
+				ObservedGeneration: sandbox.Generation,
+			},
+			{
+				// kstatus: Stalled=True indicates a permanent failure requiring user intervention
+				Type:               SandboxStalledCondition,
+				Status:             metav1.ConditionTrue,
+				Reason:             CondReasonSidecarInjectionFail,
+				Message:            fmt.Sprintf("Sidecar injection failed: %s", err.Error()),
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); patchErr != nil {
+			log.Error(patchErr, "Failed to patch status after sidecar injection failure")
+		}
 		return err
 	}
 	// Set Pod's object owner reference to the Sandbox object
@@ -489,12 +522,32 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	desiredNP, err := netbuilder.BuildCustomNetworkPolicy(sandbox.Name, sandbox.Namespace, sandbox.Spec.Network)
 	if err != nil {
 		log.Error(err, "Failed to build custom NetworkPolicy")
+
+		// Network policy build failures are permanent (invalid CIDR, bad spec)
+		// Set Stalled=True so kstatus reports Failed, and remove Reconciling
+		meta.RemoveStatusCondition(&sandbox.Status.Conditions, SandboxReconcilingCondition)
+
 		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxNetworkReadyCondition,
 				Status:             metav1.ConditionFalse,
 				Reason:             CondReasonNetworkPolicyFailed,
 				Message:            err.Error(),
+				ObservedGeneration: sandbox.Generation,
+			},
+			{
+				Type:               SandboxReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonNetworkPolicyFailed,
+				Message:            err.Error(),
+				ObservedGeneration: sandbox.Generation,
+			},
+			{
+				// kstatus: Stalled=True indicates a permanent failure requiring user intervention
+				Type:               SandboxStalledCondition,
+				Status:             metav1.ConditionTrue,
+				Reason:             CondReasonNetworkPolicyFailed,
+				Message:            fmt.Sprintf("NetworkPolicy build failed: %s", err.Error()),
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); patchErr != nil {
