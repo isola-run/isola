@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	"github.com/isola-ai/isola-sb/internal/constants"
 	netbuilder "github.com/isola-ai/isola-sb/internal/operator/controller/network"
 	"github.com/isola-ai/isola-sb/internal/operator/controller/podutil"
 	"github.com/isola-ai/isola-sb/internal/operator/controller/snapshot"
@@ -152,7 +153,7 @@ func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 func markContainers(sandboxPod *corev1.Pod) {
 	for i := range sandboxPod.Spec.Containers {
 		sandboxPod.Spec.Containers[i].Env = append(sandboxPod.Spec.Containers[i].Env, corev1.EnvVar{
-			Name:  "ISOLA_CONTAINER_NAME",
+			Name:  constants.IsolaContainerNameEnv,
 			Value: sandboxPod.Spec.Containers[i].Name,
 		})
 	}

@@ -12,7 +12,7 @@ type ErrorResponse struct {
 
 // FilesystemWriteResponse is returned after a successful file write.
 type FilesystemWriteResponse struct {
-	Path         string `json:"path" example:"/workspace/file.txt"`
+	AbsolutePath string `json:"absolute_path" example:"/workspace/file.txt"`
 	BytesWritten int64  `json:"bytes_written" example:"1024"`
 	Container    string `json:"container,omitempty" example:"main"`
 }

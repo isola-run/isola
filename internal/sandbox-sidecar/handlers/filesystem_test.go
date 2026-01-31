@@ -22,7 +22,7 @@ var _ = Describe("Filesystem", func() {
 			var body FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(body.Path).To(Equal("/tmp/test.txt"))
+			Expect(body.AbsolutePath).To(Equal("/tmp/test.txt"))
 			Expect(body.BytesWritten).To(Equal(int64(len(content))))
 
 			// Verify file was written
@@ -42,7 +42,7 @@ var _ = Describe("Filesystem", func() {
 			var body FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(body.Path).To(Equal("/workspace/myfile.txt"))
+			Expect(body.AbsolutePath).To(Equal("/workspace/myfile.txt"))
 			Expect(body.BytesWritten).To(Equal(int64(len(content))))
 
 			// Verify file was written
@@ -62,7 +62,7 @@ var _ = Describe("Filesystem", func() {
 			var body FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(body.Path).To(Equal("/deep/nested/dir/file.txt"))
+			Expect(body.AbsolutePath).To(Equal("/deep/nested/dir/file.txt"))
 
 			// Verify file was written
 			hostPath := filepath.Join(testRootDir, "/deep/nested/dir/file.txt")
@@ -124,7 +124,33 @@ var _ = Describe("Filesystem", func() {
 			var body FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(body.Path).To(Equal("/tmp/normalized.txt"))
+			Expect(body.AbsolutePath).To(Equal("/tmp/normalized.txt"))
+		})
+
+		It("succeeds with empty container name", func() {
+			content := []byte("no container specified")
+			resp := doPost("/filesystem?path=/tmp/no-container.txt", content)
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			var body FilesystemWriteResponse
+			err := json.NewDecoder(resp.Body).Decode(&body)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(body.Container).To(BeEmpty())
+		})
+
+		It("rejects path with null bytes", func() {
+			content := []byte("malicious content")
+			resp := doPost("/filesystem?path=/tmp/evil%00file.txt", content)
+			defer func() { _ = resp.Body.Close() }()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+
+			var body ErrorResponse
+			err := json.NewDecoder(resp.Body).Decode(&body)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(body.Message).To(Equal("path contains invalid characters"))
 		})
 	})
 })

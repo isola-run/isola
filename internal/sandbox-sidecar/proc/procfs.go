@@ -10,13 +10,12 @@ import (
 	"strings"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/isola-ai/isola-sb/internal/constants"
 )
 
 // ErrContainerNotFound is returned when the marked container PID cannot be found.
 var ErrContainerNotFound = errors.New("container not found: no process with ISOLA_CONTAINER_NAME")
-
-// ErrMultipleContainers is returned when containerName is empty but multiple containers exist.
-var ErrMultipleContainers = errors.New("multiple containers found: specify container name")
 
 // ProcFS abstracts /proc filesystem operations for finding container processes.
 type ProcFS interface {
@@ -80,9 +79,10 @@ func (r *RealProcFS) FindMarkedPID(containerName string) (int, error) {
 		return 0, ErrContainerNotFound
 	}
 	if foundCount > 1 {
-		return 0, ErrMultipleContainers
+		return 0, ErrContainerNotFound
 	}
 
+	// if no container name is specified and only one container is found, return that container's PID
 	return foundPID, nil
 }
 
@@ -97,9 +97,9 @@ func GetContainerName(pid int) (string, bool) {
 
 	// environ is null-byte separated
 	scanner := bufio.NewScanner(f)
-	scanner.Split(splitNullBytes)
+	scanner.Split(splitOnNullBytes)
 
-	const prefix = "ISOLA_CONTAINER_NAME="
+	prefix := constants.IsolaContainerNameEnv + "="
 	for scanner.Scan() {
 		text := scanner.Text()
 		if strings.HasPrefix(text, prefix) {
@@ -110,8 +110,7 @@ func GetContainerName(pid int) (string, bool) {
 	return "", false
 }
 
-// splitNullBytes is a bufio.SplitFunc that splits on null bytes.
-func splitNullBytes(data []byte, atEOF bool) (advance int, token []byte, err error) {
+func splitOnNullBytes(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	if atEOF && len(data) == 0 {
 		return 0, nil, nil
 	}
