@@ -184,7 +184,7 @@ func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandbo
 }
 
 func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate) error {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 	// todo benl reduce verbose logging
 	log.Info("Creating Pod")
 
@@ -395,7 +395,7 @@ func (r *SandboxReconciler) getShutdownSnapshot(ctx context.Context, sandbox *sa
 }
 
 func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.SandboxTemplate, ctrl.Result, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 	template := &sandboxv1alpha1.SandboxTemplate{}
 
 	if err := r.Get(ctx, types.NamespacedName{Name: sandbox.Spec.TemplateRef.Name, Namespace: sandbox.Namespace}, template); err != nil {
@@ -457,7 +457,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
 ) error {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 
 	if !sandbox.NeedsCustomNetworkPolicy() {
 		return nil
@@ -519,7 +519,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 }
 
 func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 	// todo benl: update sandbox condition(s) here?
 	if template == nil || template.Spec.TimeoutSeconds == nil {
 		return nil
@@ -543,7 +543,7 @@ func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandb
 }
 
 func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time, err error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 	optionalTimeoutAt = r.calculateTimeout(ctx, sandbox, template, sandboxPod)
 	if optionalTimeoutAt == nil {
 		// no timeout is configured
@@ -751,7 +751,7 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// todo benl: pass params by value sometimes, to avoid dereferencing nils by accident
 	// todo benl: add r.RecordEvent for events (observability)
-	log := logf.FromContext(ctx).WithValues("sandbox", req.Name, "namespace", req.Namespace)
+	log := logf.FromContext(ctx)
 
 	log.Info("Reconciling Sandbox")
 
@@ -891,7 +891,7 @@ func (r *SandboxReconciler) finalizeSandbox(
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	template *sandboxv1alpha1.SandboxTemplate,
 ) (ctrl.Result, bool, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 
 	log.Info("Executing shutdown policy for deletion")
 
@@ -933,7 +933,7 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 	snapshotDeadline time.Time,
 	trigger CleanupTrigger,
 ) (ctrl.Result, bool, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace, "trigger", trigger)
+	log := logf.FromContext(ctx)
 
 	// Determine reason and message based on trigger
 	var reason, message string
@@ -1000,7 +1000,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	snapshotDeadline time.Time,
 	activeDeadlineSeconds int64,
 ) (ctrl.Result, bool, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 
 	now := r.clock().Now()
 	if now.After(snapshotDeadline) {
@@ -1157,7 +1157,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	activeDeadlineSeconds int64,
 ) (ctrl.Result, bool, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 
 	snapshotName := getShutdownSnapshotName(sandbox)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
