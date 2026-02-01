@@ -374,9 +374,7 @@ func (r *SandboxReconciler) ensureTemplate(ctx context.Context, sandbox *sandbox
 
 	state.TemplateResolved = true
 
-	if sandbox.Status.ResolvedShutdownPolicy == nil {
-		sandbox.Status.ResolvedShutdownPolicy = template.Spec.ShutdownPolicy.DeepCopy()
-	}
+	sandbox.Status.ResolvedShutdownPolicy = template.Spec.ShutdownPolicy.DeepCopy()
 
 	return template, nil
 }
