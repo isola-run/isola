@@ -35,9 +35,7 @@ import (
 // kstatus Compliance Tests
 // =============================================================================
 //
-// These tests verify the Sandbox controller correctly implements the kstatus
-// standard from kubernetes-sigs/cli-utils for compatibility with tools like
-// ArgoCD, Flux, and kubectl wait.
+// These tests verify the Sandbox controller correctly implements the kstatus standard.
 //
 // Key kstatus rules verified:
 // 1. Reconciling condition uses "abnormal-true" pattern (absent when healthy)

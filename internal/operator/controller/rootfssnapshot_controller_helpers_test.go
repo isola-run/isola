@@ -125,18 +125,20 @@ func deleteRootfsSnapshotCR(ctx context.Context, name string) {
 func getRootfsSnapshotCR(ctx context.Context, name string) *sandboxv1alpha1.RootfsSnapshot {
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, snap)
-	if err != nil {
+	if errors.IsNotFound(err) {
 		return nil
 	}
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	return snap
 }
 
 func getSnapshotJob(ctx context.Context, name string) *batchv1.Job {
 	job := &batchv1.Job{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, job)
-	if err != nil {
+	if errors.IsNotFound(err) {
 		return nil
 	}
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	return job
 }
 
@@ -147,15 +149,12 @@ func deleteSnapshotJob(ctx context.Context, name string) {
 		return // Already deleted
 	}
 	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	propagationPolicy := metav1.DeletePropagationBackground
-	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, job, &client.DeleteOptions{PropagationPolicy: &propagationPolicy}))).NotTo(HaveOccurred())
+	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, job))).NotTo(HaveOccurred())
 }
 
 func setSnapshotJobComplete(ctx context.Context, name string) {
 	job := getSnapshotJob(ctx, name)
-	if job == nil {
-		return
-	}
+	ExpectWithOffset(1, job).NotTo(BeNil(), "job %s must exist to set complete", name)
 	now := metav1.Now()
 	job.Status.StartTime = &now
 	job.Status.CompletionTime = &now
@@ -169,9 +168,7 @@ func setSnapshotJobComplete(ctx context.Context, name string) {
 
 func setSnapshotJobFailed(ctx context.Context, name, message string) {
 	job := getSnapshotJob(ctx, name)
-	if job == nil {
-		return
-	}
+	ExpectWithOffset(1, job).NotTo(BeNil(), "job %s must exist to set failed", name)
 	now := metav1.Now()
 	job.Status.StartTime = &now
 	job.Status.Failed = 1
@@ -184,9 +181,7 @@ func setSnapshotJobFailed(ctx context.Context, name, message string) {
 
 func setSnapshotJobDeadlineExceeded(ctx context.Context, name string) {
 	job := getSnapshotJob(ctx, name)
-	if job == nil {
-		return
-	}
+	ExpectWithOffset(1, job).NotTo(BeNil(), "job %s must exist to set deadline exceeded", name)
 	now := metav1.Now()
 	job.Status.StartTime = &now
 	job.Status.Failed = 1

@@ -151,9 +151,10 @@ func deletePod(ctx context.Context, name string) {
 func getRootfsSnapshot(ctx context.Context, name string) *sandboxv1alpha1.RootfsSnapshot {
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, snap)
-	if err != nil {
+	if errors.IsNotFound(err) {
 		return nil
 	}
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	return snap
 }
 
