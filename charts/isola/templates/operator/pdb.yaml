@@ -1,6 +1,6 @@
 {{- if .Values.operator.sandboxPdb.enabled }}
-# PodDisruptionBudget for sandbox pods
-# Limits voluntary disruptions during node maintenance
+# Since sandbox pods are effectively singletons, disrupting them (maxUnavailable > 0)
+# could mean lost progress (no high availability "by design")
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
