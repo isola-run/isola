@@ -13,7 +13,7 @@ operator:
       repository: sandbox-sidecar
       tag: "dev"
 
-  runtimeClassName: ""  # No gVisor in dev
+  sandboxRuntimeClassName: ""  # No gVisor in dev
 
   snapshot:
     uploader:

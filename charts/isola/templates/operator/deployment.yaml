@@ -36,11 +36,11 @@ spec:
         - --leader-elect
         - --health-probe-bind-address=:8081
         - --sidecar-image={{ include "isola.operator.sidecarImage" . }}
-        {{- if .Values.operator.runtimeClassName }}
-        - --runtime-class={{ .Values.operator.runtimeClassName }}
+        {{- if .Values.operator.sandboxRuntimeClassName }}
+        - --runtime-class={{ .Values.operator.sandboxRuntimeClassName }}
         {{- end }}
-        {{- if .Values.operator.priorityClassName }}
-        - --priority-class={{ .Values.operator.priorityClassName }}
+        {{- if .Values.operator.sandboxPriorityClassName }}
+        - --priority-class={{ .Values.operator.sandboxPriorityClassName }}
         {{- end }}
         ports:
         - name: health

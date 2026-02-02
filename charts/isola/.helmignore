@@ -6,8 +6,6 @@
 *.bak
 *.tmp
 *.orig
-**/*.md
-!README.md
 .idea/
 *.iml
 .vscode/

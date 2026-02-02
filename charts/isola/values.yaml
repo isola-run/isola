@@ -1,17 +1,8 @@
-# Isola Helm Chart
-#
-# Deploys the complete Isola sandbox orchestration stack:
-#   - Operator: Manages sandbox lifecycle, CRDs, network policies
-#   - API Gateway: REST API for programmatic sandbox control
-
-# Override the chart name
+# Optionally override the chart name
 nameOverride: ""
-# Override the full release name
+# Optionally override the full release name
 fullnameOverride: ""
 
-# =============================================================================
-# Global Settings
-# =============================================================================
 
 global:
   # Override registry for all images (operator, sidecar, uploader, api-gateway)
@@ -23,18 +14,18 @@ global:
   # Example: [{ name: "my-registry-secret" }]
   imagePullSecrets: []
 
+
 # Namespace where sandbox pods are created
 sandboxNamespace: isola-sandboxes
 
-# Whether to create the sandbox namespace (set to false if it already exists)
+# Whether to create the sandbox namespace (set to false if it already exists).
+# The sandbox namespace is different from the namespace this helm charts installs
+# the isola system components to (operator, api-gateway), and is used to orchestrate
+# the sandboxes and related resource in.
 createSandboxNamespace: true
 
-# =============================================================================
-# Operator
-# =============================================================================
 
 operator:
-  # Operator image configuration
   image:
     registry: ghcr.io/isola-ai
     repository: isola-operator
@@ -49,20 +40,19 @@ operator:
       cpu: 50m
       memory: 128Mi
 
-  # ServiceAccount for the operator
   serviceAccount:
     create: true
     name: ""
     annotations: {}
 
-  # Pod scheduling
   nodeSelector: {}
   tolerations: []
   affinity: {}
   topologySpreadConstraints: []
   podAnnotations: {}
 
-  # Sidecar image injected into sandbox pods
+  # Sidecar image injected into sandbox pods to facilitate control
+  # from api-gateway to the sandbox (e.g. exec commands, copy files)
   sidecar:
     image:
       registry: ghcr.io/isola-ai
@@ -70,16 +60,17 @@ operator:
       tag: ""  # Defaults to Chart.appVersion
       digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
 
-  # RuntimeClassName for sandbox pods
-  # Use "gvisor" for production (stronger isolation)
-  # Use "" for development without gVisor installed
-  runtimeClassName: "gvisor"
+  # RuntimeClassName for sandbox pods (not operator, leave empty for cluste default)
+  # - "gvisor": Requires RuntimeClass to exist (stronger isolation, production)
+  #   Provides strong isolation and advanced features like rootfs snapshotting.
+  #   Isola tests against and develops features for this runtime (or any runsc-based runtime).
+  # - "": Uses cluster default runtime (no gVisor required, development)
+  sandboxRuntimeClassName: "gvisor"
 
-  # PriorityClassName for sandbox pods
-  # Creates a PriorityClass with this name. Leave empty to use cluster default.
-  priorityClassName: "isola-sandbox"
+  # PriorityClassName for sandbox pods (not operator, leave empty for cluster default)
+  sandboxPriorityClassName: ""
 
-  # Snapshot configuration
+# TODO BENL: rename snapshot, consolidate single snapshotter image
   snapshot:
     uploader:
       image:
@@ -114,15 +105,13 @@ operator:
       name: "isola-snapshot-job"
       annotations: {}  # For IRSA/Workload Identity
 
-# =============================================================================
-# API Gateway
-# =============================================================================
 
 apiGateway:
-  # Enable/disable the API gateway
+  # The apiGateway installation could be skipped,
+  # though it is not recommended as it provides control
+  # functionality over the sandboxes (proxies file copies, exec commands, etc)
   enabled: true
 
-  # API gateway image configuration
   image:
     registry: ghcr.io/isola-ai
     repository: api-gateway
@@ -137,23 +126,19 @@ apiGateway:
       cpu: 10m
       memory: 64Mi
 
-  # Service configuration
   service:
     type: ClusterIP
     nodePort: null
 
-  # Logging configuration
   logging:
     level: info
     devMode: false
 
-  # ServiceAccount for the API gateway
   serviceAccount:
     create: true
     name: ""
     annotations: {}
 
-  # Pod scheduling
   nodeSelector: {}
   tolerations: []
   affinity: {}
