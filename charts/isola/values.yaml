@@ -79,12 +79,6 @@ operator:
   # Creates a PriorityClass with this name. Leave empty to use cluster default.
   priorityClassName: "isola-sandbox"
 
-  # PodDisruptionBudget for sandbox pods
-  # Disabled by default - sandboxes use cluster default disruption behavior.
-  sandboxPdb:
-    enabled: false
-    maxUnavailable: 0  # 0 = no voluntary disruptions allowed
-
   # Snapshot configuration
   snapshot:
     uploader:

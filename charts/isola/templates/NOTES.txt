@@ -33,9 +33,8 @@ VERIFY INSTALLATION:
 
 {{- if not .Values.operator.snapshot.storage.bucketUrl }}
 
-NOTE: Snapshot storage is not configured. To enable snapshots:
-  helm upgrade {{ .Release.Name }} isola/isola \
-    --set operator.snapshot.storage.bucketUrl="s3://your-bucket?region=us-east-1"
+NOTE: Snapshot storage is not configured. To enable snapshots, upgrade with:
+  --set operator.snapshot.storage.bucketUrl="s3://your-bucket?region=us-east-1"
 {{- end }}
 
 DOCUMENTATION: https://github.com/isola-ai/isola-sb
