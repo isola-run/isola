@@ -169,7 +169,9 @@ func deleteShutdownSnapshot(ctx context.Context, sandboxName string) {
 	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, snap))).NotTo(HaveOccurred())
 }
 
-func setRootfsSnapshotComplete(ctx context.Context, name string, succeeded bool, reason, message string) {
+// setRootfsSnapshotTerminal sets a RootfsSnapshot to a terminal state (Succeeded, Failed, DeadlineExceeded).
+// Terminal states always have CompletedAt set.
+func setRootfsSnapshotTerminal(ctx context.Context, name string, succeeded bool, reason, message string) {
 	snap := getRootfsSnapshot(ctx, name)
 	if snap == nil {
 		return
@@ -185,21 +187,13 @@ func setRootfsSnapshotComplete(ctx context.Context, name string, succeeded bool,
 		Message:            message,
 		ObservedGeneration: snap.Generation,
 	})
-	// Set CompletedAt for terminal states. This mirrors the actual controller behavior:
-	// - setSucceeded, setFailed, setDeadlineExceeded all set CompletedAt
-	// - setInProgress does NOT set CompletedAt
-	// Check for non-terminal reasons rather than listing terminal ones to be more future-proof.
-	isNonTerminal := reason == sandboxv1alpha1.ReasonRootfsSnapshotPending ||
-		reason == sandboxv1alpha1.ReasonRootfsSnapshotInProgress
-	if !isNonTerminal {
-		now := metav1.Now()
-		snap.Status.CompletedAt = &now
-	}
+	now := metav1.Now()
+	snap.Status.CompletedAt = &now
 	ExpectWithOffset(1, k8sClient.Status().Update(ctx, snap)).To(Succeed())
 }
 
-func setShutdownSnapshotComplete(ctx context.Context, sandboxName string, succeeded bool, reason, message string) {
-	setRootfsSnapshotComplete(ctx, sandboxName+"-shutdown", succeeded, reason, message)
+func setShutdownSnapshotTerminal(ctx context.Context, sandboxName string, succeeded bool, reason, message string) {
+	setRootfsSnapshotTerminal(ctx, sandboxName+"-shutdown", succeeded, reason, message)
 }
 
 func createSandboxWithNetwork(ctx context.Context, name, templateRef string, network *sandboxv1alpha1.NetworkSpec) {

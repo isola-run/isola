@@ -462,7 +462,7 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 			Expect(reconcilingCond.Status).To(Equal(metav1.ConditionTrue))
 
 			// Mark snapshot as complete
-			setShutdownSnapshotComplete(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "Snapshot completed")
+			setShutdownSnapshotTerminal(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "Snapshot completed")
 
 			// Reconcile after snapshot completes - finalization should complete and delete sandbox
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
@@ -537,7 +537,7 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 			Expect(reconcilingCond.Status).To(Equal(metav1.ConditionTrue))
 
 			// Mark snapshot as failed
-			setShutdownSnapshotComplete(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Upload failed")
+			setShutdownSnapshotTerminal(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Upload failed")
 
 			// Reconcile after snapshot fails - finalization should proceed and delete sandbox
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
