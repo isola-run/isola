@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"errors"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -25,6 +26,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 )
@@ -410,10 +412,14 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			// Reconcile returns error for blocked CIDR, but status is updated first
+			// Reconcile returns terminal error for blocked CIDR (permanent config error)
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("blocked range"))
+
+			// Verify it's a terminal error (no retry)
+			Expect(errors.Is(err, reconcile.TerminalError(nil))).To(BeTrue(),
+				"Error should be TerminalError for permanent config errors")
 
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(sandbox).NotTo(BeNil())

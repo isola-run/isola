@@ -267,7 +267,7 @@ func (r *SandboxReconciler) createSandboxPod(ctx context.Context, sandbox *sandb
 		log.Error(err, "Failed creating Pod")
 		state.FatalError = err.Error()
 		state.FatalReason = CondReasonPodCreationFailed
-		return err
+		return reconcile.TerminalError(err)
 	}
 
 	log.Info("Pod created")
@@ -574,7 +574,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			log.Error(patchErr, "Failed to patch status")
 			return ctrl.Result{}, patchErr
 		}
-		return ctrl.Result{}, fmt.Errorf("network policy error: %s", state.NetworkError)
+		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("network policy error: %s", state.NetworkError))
 	}
 
 	sandboxPod, err := r.getSandboxPod(ctx, sandbox)
