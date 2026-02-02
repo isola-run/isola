@@ -35,6 +35,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -216,6 +218,26 @@ func newTestReconcilerWithCache(clock Clock) *SandboxReconciler {
 	rec := record.NewFakeRecorder(100)
 	return &SandboxReconciler{
 		Client:              k8sCache,
+		Scheme:              scheme.Scheme,
+		Recorder:            rec,
+		SandboxSidecarImage: "sandbox-sidecar:test",
+		Clock:               clock,
+	}
+}
+
+// newTestReconcilerWithInterceptors creates a SandboxReconciler with a fake client
+// that uses interceptor functions to inject errors for specific operations.
+// This enables testing error handling paths that are difficult to trigger with envtest.
+func newTestReconcilerWithInterceptors(clock Clock, funcs interceptor.Funcs, initObjs ...client.Object) *SandboxReconciler {
+	rec := record.NewFakeRecorder(100)
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme.Scheme).
+		WithObjects(initObjs...).
+		WithStatusSubresource(&sandboxv1alpha1.Sandbox{}).
+		WithInterceptorFuncs(funcs).
+		Build()
+	return &SandboxReconciler{
+		Client:              fakeClient,
 		Scheme:              scheme.Scheme,
 		Recorder:            rec,
 		SandboxSidecarImage: "sandbox-sidecar:test",

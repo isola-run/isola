@@ -17,6 +17,8 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+	"errors"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -26,6 +28,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
@@ -555,12 +559,49 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 	// ============================================
 	Context("Pod Creation Failure", func() {
 		It("should set Stalled=True when pod creation fails (kstatus: Failed)", func() {
-			// This test verifies that permanent errors like invalid spec set Stalled=True
-			// Note: In envtest, we can't easily trigger pod creation failures,
-			// so this test documents the expected behavior based on code review.
-			// The actual implementation is in CreateSandboxPod() which sets Stalled=True
-			// when r.Create(ctx, sandboxPod) fails.
-			Skip("Pod creation failures are difficult to simulate in envtest; verified via code review")
+			sandboxName := "kstatus-pod-create-fail"
+			templateName := "template-pod-create-fail"
+
+			// Create template in the real client (so it exists for the reconciler to fetch)
+			template := createTemplate(ctx, templateName)
+			defer deleteTemplate(ctx, templateName)
+
+			// Create sandbox in the real client
+			sandbox := createSandbox(ctx, sandboxName, templateName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			// Create a reconciler with an interceptor that fails Pod creation
+			fakeClock := NewFakeClock(time.Now())
+			reconciler := newTestReconcilerWithInterceptors(
+				fakeClock,
+				interceptor.Funcs{
+					Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+						if _, ok := obj.(*corev1.Pod); ok {
+							return errors.New("simulated pod creation failure")
+						}
+						return c.Create(ctx, obj, opts...)
+					},
+				},
+				sandbox, template, // Pass existing objects to the fake client
+			)
+
+			// Reconcile - should fail to create pod and set Stalled
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			// TerminalError is returned but reconcile still succeeds (status updated)
+			Expect(err).To(HaveOccurred())
+
+			// Fetch sandbox from fake client to check status
+			updatedSandbox := &sandboxv1alpha1.Sandbox{}
+			Expect(reconciler.Client.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, updatedSandbox)).To(Succeed())
+
+			// Verify Stalled condition is set (kstatus: Failed)
+			stalledCond := meta.FindStatusCondition(updatedSandbox.Status.Conditions, SandboxStalledCondition)
+			Expect(stalledCond).NotTo(BeNil(), "Stalled condition should be set on pod creation failure")
+			Expect(stalledCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(stalledCond.Reason).To(Equal(CondReasonPodCreationFailed))
+			Expect(stalledCond.Message).To(ContainSubstring("simulated pod creation failure"))
 		})
 	})
 
