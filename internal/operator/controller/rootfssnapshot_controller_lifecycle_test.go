@@ -316,7 +316,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(*job.Spec.ActiveDeadlineSeconds).To(Equal(defaultActiveDeadlineSecondsSnapshot))
 		})
 
-		It("should set DeadlineExceeded when snapshot exceeds activeDeadlineSeconds", func() {
+		It("should set DeadlineExceeded when job exceeds activeDeadlineSeconds", func() {
 			snapName := "snap-deadline-exceeded"
 			sandboxName := "sandbox-deadline-exceeded"
 			podName := sandboxName + "-pod"
@@ -331,8 +331,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			// Use a short deadline
-			shortDeadline := int64(10)
 			snap := &sandboxv1alpha1.RootfsSnapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      snapName,
@@ -340,9 +338,8 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 					Labels:    map[string]string{LabelSandboxName: sandboxName},
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
-					SandboxName:           sandboxName,
-					ContainerNames:        []string{"main"},
-					ActiveDeadlineSeconds: &shortDeadline,
+					SandboxName:    sandboxName,
+					ContainerNames: []string{"main"},
 				},
 			}
 			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
@@ -357,18 +354,14 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Verify job was created and snapshot is in progress
+			// Verify job was created
 			job := getSnapshotJob(ctx, jobName)
 			Expect(job).NotTo(BeNil())
 
-			snap = getRootfsSnapshotCR(ctx, snapName)
-			Expect(snap).NotTo(BeNil())
-			Expect(snap.Status.StartedAt).NotTo(BeNil())
+			// Simulate K8s marking job as failed due to deadline exceeded
+			setSnapshotJobDeadlineExceeded(ctx, jobName)
 
-			// Advance clock past the deadline
-			fakeClock.Advance(15 * time.Second)
-
-			// Reconcile again - should detect deadline exceeded
+			// Reconcile again - should detect deadline exceeded from job status
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
 			})
@@ -385,7 +378,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(cond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotDeadlineExceeded))
 		})
 
-		It("should not set DeadlineExceeded while still within deadline", func() {
+		It("should stay InProgress while job is still running", func() {
 			snapName := "snap-deadline-ok"
 			sandboxName := "sandbox-deadline-ok"
 			podName := sandboxName + "-pod"
@@ -400,8 +393,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			// Use a longer deadline
-			deadline := int64(60)
 			snap := &sandboxv1alpha1.RootfsSnapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      snapName,
@@ -409,9 +400,8 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 					Labels:    map[string]string{LabelSandboxName: sandboxName},
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
-					SandboxName:           sandboxName,
-					ContainerNames:        []string{"main"},
-					ActiveDeadlineSeconds: &deadline,
+					SandboxName:    sandboxName,
+					ContainerNames: []string{"main"},
 				},
 			}
 			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
@@ -426,15 +416,12 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Advance clock but not past deadline
-			fakeClock.Advance(30 * time.Second)
-
-			// Reconcile again - should NOT set DeadlineExceeded
+			// Reconcile again while job is still running (no status change)
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeNumerically(">", 0), "Should requeue to check deadline later")
+			Expect(result.RequeueAfter).To(Equal(time.Duration(0)), "Should not requeue - relies on job watch")
 
 			// Verify snapshot is still in progress
 			snap = getRootfsSnapshotCR(ctx, snapName)
@@ -462,7 +449,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			shortDeadline := int64(5)
 			snap := &sandboxv1alpha1.RootfsSnapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      snapName,
@@ -470,9 +456,8 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 					Labels:    map[string]string{LabelSandboxName: sandboxName},
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
-					SandboxName:           sandboxName,
-					ContainerNames:        []string{"main"},
-					ActiveDeadlineSeconds: &shortDeadline,
+					SandboxName:    sandboxName,
+					ContainerNames: []string{"main"},
 				},
 			}
 			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
@@ -491,10 +476,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			job := getSnapshotJob(ctx, jobName)
 			Expect(job).NotTo(BeNil())
 
-			// Advance past deadline
-			fakeClock.Advance(10 * time.Second)
+			// Simulate K8s marking job as failed due to deadline exceeded
+			setSnapshotJobDeadlineExceeded(ctx, jobName)
 
-			// Reconcile - should delete job
+			// Reconcile - should detect deadline exceeded and delete job
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
 			})

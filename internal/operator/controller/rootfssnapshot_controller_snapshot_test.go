@@ -55,7 +55,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 	})
 
 	Context("Single Container Snapshot", func() {
-		It("should create job for single container with two-container pattern", func() {
+		It("should create job with snapshotter init container and uploader main container", func() {
 			snapName := "snap-single"
 			sandboxName := "sandbox-single"
 			podName := sandboxName + "-pod"

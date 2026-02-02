@@ -114,3 +114,15 @@ func GetJobConditionMessage(job *batchv1.Job, conditionType batchv1.JobCondition
 	}
 	return ""
 }
+
+func GetJobConditionReason(job *batchv1.Job, conditionType batchv1.JobConditionType) string {
+	if job == nil {
+		return ""
+	}
+	for _, cond := range job.Status.Conditions {
+		if cond.Type == conditionType && cond.Status == corev1.ConditionTrue {
+			return cond.Reason
+		}
+	}
+	return ""
+}

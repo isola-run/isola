@@ -99,13 +99,9 @@ spec:
             required:
             - podTemplate
             type: object
-          status:
-            description: status defines the observed state of SandboxTemplate
-            type: object
         required:
         - spec
         type: object
     served: true
     storage: true
-    subresources:
-      status: {}
+    subresources: {}

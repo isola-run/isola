@@ -182,6 +182,21 @@ func setSnapshotJobFailed(ctx context.Context, name, message string) {
 	ExpectWithOffset(1, k8sClient.Status().Update(ctx, job)).To(Succeed())
 }
 
+func setSnapshotJobDeadlineExceeded(ctx context.Context, name string) {
+	job := getSnapshotJob(ctx, name)
+	if job == nil {
+		return
+	}
+	now := metav1.Now()
+	job.Status.StartTime = &now
+	job.Status.Failed = 1
+	job.Status.Conditions = []batchv1.JobCondition{
+		{Type: batchv1.JobFailureTarget, Status: corev1.ConditionTrue},
+		{Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: batchv1.JobReasonDeadlineExceeded, Message: "Job was active longer than specified deadline"},
+	}
+	ExpectWithOffset(1, k8sClient.Status().Update(ctx, job)).To(Succeed())
+}
+
 // createSnapshotJobPodWithTerminationMessage creates a pod for the job with a termination message
 // containing the upload result (simulating what the uploader writes)
 func createSnapshotJobPodWithTerminationMessage(ctx context.Context, jobName string, result *snapshotpkg.UploadResult) {

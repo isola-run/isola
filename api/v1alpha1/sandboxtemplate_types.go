@@ -82,15 +82,7 @@ type SandboxTemplateSpec struct {
 	// todo benl: add runtime class here? (runc / runsc)
 }
 
-// SandboxTemplateStatus defines the observed state of SandboxTemplate.
-// Note: SandboxTemplate is a passive configuration resource with no active controller.
-// The status subresource exists for future extensibility but is currently unused.
-type SandboxTemplateStatus struct {
-	// Important: Run "make" to regenerate code after modifying this file
-}
-
 // +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Timeout",type="integer",JSONPath=".spec.timeoutSeconds",description="Timeout in seconds"
 // +kubebuilder:printcolumn:name="Shutdown",type="string",JSONPath=".spec.shutdownPolicy.policy",description="Shutdown policy"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
@@ -106,10 +98,6 @@ type SandboxTemplate struct {
 	// spec defines the desired state of SandboxTemplate
 	// +required
 	Spec SandboxTemplateSpec `json:"spec"`
-
-	// status defines the observed state of SandboxTemplate
-	// +optional
-	Status SandboxTemplateStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

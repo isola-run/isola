@@ -214,13 +214,6 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName)
 }
 
-func (r *RootfsSnapshotReconciler) getActiveDeadlineSeconds(snap *sandboxv1alpha1.RootfsSnapshot) int64 {
-	if snap.Spec.ActiveDeadlineSeconds != nil {
-		return *snap.Spec.ActiveDeadlineSeconds
-	}
-	return defaultActiveDeadlineSecondsSnapshot
-}
-
 func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 	ctx context.Context,
 	baseSnap, snap *sandboxv1alpha1.RootfsSnapshot,
@@ -277,37 +270,24 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 	}
 
 	if podutil.IsJobFailed(job) {
+		if podutil.GetJobConditionReason(job, batchv1.JobFailed) == batchv1.JobReasonDeadlineExceeded {
+			log.Info("Snapshot deadline exceeded", "job", jobName)
+			r.deleteJob(ctx, job)
+			return r.setDeadlineExceeded(ctx, baseSnap, snap)
+		}
+
 		message := "Snapshot job failed"
 		if condMsg := podutil.GetJobConditionMessage(job, batchv1.JobFailed); condMsg != "" {
 			message = fmt.Sprintf("Snapshot job failed: %s", condMsg)
 		}
 		log.Info(message, "job", jobName)
 		r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
-
-		// Delete the job - no point keeping failed jobs until we hit to snapshotter TTL
 		r.deleteJob(ctx, job)
 
 		return r.setFailed(ctx, baseSnap, snap, message)
 	}
 
-	// Job is still running - check if deadline has been exceeded
-	if snap.Status.StartedAt != nil {
-		activeDeadlineSeconds := r.getActiveDeadlineSeconds(snap)
-		deadline := snap.Status.StartedAt.Add(time.Duration(activeDeadlineSeconds) * time.Second)
-		now := r.clock().Now()
-
-		if now.After(deadline) {
-			log.Info("Snapshot deadline exceeded", "job", jobName, "deadline", deadline)
-			r.deleteJob(ctx, job)
-			return r.setDeadlineExceeded(ctx, baseSnap, snap)
-		}
-
-		timeUntilDeadline := deadline.Sub(now)
-
-		return ctrl.Result{RequeueAfter: timeUntilDeadline}, nil
-	}
-
-	// Job running but no StartedAt set (should not happen) - job watch will trigger reconciliation
+	// Job still running - watch will trigger reconciliation when status changes
 	return ctrl.Result{}, nil
 }
 
@@ -540,11 +520,9 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 
 func (r *RootfsSnapshotReconciler) deleteJob(ctx context.Context, job *batchv1.Job) {
 	log := logf.FromContext(ctx)
-	if err := r.Delete(ctx, job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
-		if !apierrors.IsNotFound(err) {
-			// Non-fatal: owner reference ensures cleanup when RootfsSnapshot is deleted
-			log.Error(err, "Failed to delete job", "job", job.Name)
-		}
+	if err := r.Delete(ctx, job); err != nil && !apierrors.IsNotFound(err) {
+		// Non-fatal: owner reference ensures cleanup when RootfsSnapshot is deleted
+		log.Error(err, "Failed to delete job", "job", job.Name)
 	}
 }
 

@@ -173,7 +173,6 @@ func (r *SandboxReconciler) gatherState(ctx context.Context, sandbox *sandboxv1a
 	return state
 }
 
-// patchStatus patches the sandbox status with computed conditions from state.
 func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandboxv1alpha1.Sandbox, sandbox *sandboxv1alpha1.Sandbox, state *reconcileState) error {
 	sandbox.Status.Conditions = computeConditions(state, sandbox.Generation)
 	sandbox.Status.ObservedGeneration = sandbox.Generation
