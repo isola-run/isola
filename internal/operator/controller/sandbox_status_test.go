@@ -17,16 +17,74 @@ limitations under the License.
 package controller
 
 import (
+	"errors"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 )
+
+// newTestSandbox creates a sandbox for testing with the given conditions.
+func newTestSandbox(conditions []metav1.Condition, podIP string) *sandboxv1alpha1.Sandbox {
+	return &sandboxv1alpha1.Sandbox{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "test-sandbox",
+			Namespace:  "test-ns",
+			Generation: 1,
+		},
+		Status: sandboxv1alpha1.SandboxStatus{
+			Conditions: conditions,
+			PodIP:      podIP,
+		},
+	}
+}
+
+// newReadyPod creates a pod that appears ready.
+func newReadyPod() *corev1.Pod {
+	return &corev1.Pod{
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			Conditions: []corev1.PodCondition{
+				{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+			},
+		},
+	}
+}
+
+// newPendingPod creates a pod in pending state.
+func newPendingPod() *corev1.Pod {
+	return &corev1.Pod{
+		Status: corev1.PodStatus{
+			Phase: corev1.PodPending,
+		},
+	}
+}
+
+// newFailedPod creates a pod in failed state.
+func newFailedPod() *corev1.Pod {
+	return &corev1.Pod{
+		Status: corev1.PodStatus{
+			Phase: corev1.PodFailed,
+		},
+	}
+}
+
+// newSucceededPod creates a pod in succeeded state.
+func newSucceededPod() *corev1.Pod {
+	return &corev1.Pod{
+		Status: corev1.PodStatus{
+			Phase: corev1.PodSucceeded,
+		},
+	}
+}
 
 var _ = Describe("computeConditions", func() {
 	const gen int64 = 1
 
-	findCondition := func(conditions []metav1.Condition, condType string) *metav1.Condition {
+	findCond := func(conditions []metav1.Condition, condType string) *metav1.Condition {
 		for i := range conditions {
 			if conditions[i].Type == condType {
 				return &conditions[i]
@@ -41,13 +99,14 @@ var _ = Describe("computeConditions", func() {
 	Context("Template state", func() {
 		It("should set TemplateReady=True when template is resolved", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			templateCond := findCondition(conditions, SandboxTemplateReadyCondition)
+			templateCond := findCond(conditions, SandboxTemplateReadyCondition)
 			Expect(templateCond).NotTo(BeNil())
 			Expect(templateCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(templateCond.Reason).To(Equal(CondReasonTemplateResolved))
@@ -55,22 +114,23 @@ var _ = Describe("computeConditions", func() {
 
 		It("should set TemplateReady=False and Stalled=True when template is not found", func() {
 			state := &reconcileState{
-				TemplateError: "SandboxTemplate \"foo\" not found",
+				SandboxTemplateState: sandboxTemplateState{NotFound: true},
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			templateCond := findCondition(conditions, SandboxTemplateReadyCondition)
+			templateCond := findCond(conditions, SandboxTemplateReadyCondition)
 			Expect(templateCond).NotTo(BeNil())
 			Expect(templateCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(templateCond.Reason).To(Equal(CondReasonTemplateNotFound))
 
-			stalledCond := findCondition(conditions, SandboxStalledCondition)
+			stalledCond := findCond(conditions, SandboxStalledCondition)
 			Expect(stalledCond).NotTo(BeNil())
 			Expect(stalledCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(stalledCond.Reason).To(Equal(CondReasonTemplateNotFound))
 
-			readyCond := findCondition(conditions, SandboxReadyCondition)
+			readyCond := findCond(conditions, SandboxReadyCondition)
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCond.Reason).To(Equal(CondReasonTemplateNotFound))
@@ -78,10 +138,42 @@ var _ = Describe("computeConditions", func() {
 
 		It("should not emit TemplateReady condition when template not yet checked", func() {
 			state := &reconcileState{}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			templateCond := findCondition(conditions, SandboxTemplateReadyCondition)
+			templateCond := findCond(conditions, SandboxTemplateReadyCondition)
+			Expect(templateCond).To(BeNil())
+		})
+
+		It("should preserve existing TemplateReady condition on transient error", func() {
+			existingConditions := []metav1.Condition{{
+				Type:   SandboxTemplateReadyCondition,
+				Status: metav1.ConditionTrue,
+				Reason: CondReasonTemplateResolved,
+			}}
+			state := &reconcileState{
+				SandboxTemplateState: sandboxTemplateState{GetError: errors.New("connection timeout")},
+			}
+			sandbox := newTestSandbox(existingConditions, "")
+
+			conditions := computeConditions(state, sandbox)
+
+			templateCond := findCond(conditions, SandboxTemplateReadyCondition)
+			Expect(templateCond).NotTo(BeNil())
+			Expect(templateCond.Status).To(Equal(metav1.ConditionTrue)) // Preserved!
+			Expect(templateCond.Reason).To(Equal(CondReasonTemplateResolved))
+		})
+
+		It("should skip TemplateReady when transient error and no existing condition", func() {
+			state := &reconcileState{
+				SandboxTemplateState: sandboxTemplateState{GetError: errors.New("connection timeout")},
+			}
+			sandbox := newTestSandbox(nil, "")
+
+			conditions := computeConditions(state, sandbox)
+
+			templateCond := findCond(conditions, SandboxTemplateReadyCondition)
 			Expect(templateCond).To(BeNil())
 		})
 	})
@@ -92,13 +184,14 @@ var _ = Describe("computeConditions", func() {
 	Context("Network state", func() {
 		It("should set NetworkConfigured=True when network is applied", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			networkCond := findCondition(conditions, SandboxNetworkReadyCondition)
+			networkCond := findCond(conditions, SandboxNetworkReadyCondition)
 			Expect(networkCond).NotTo(BeNil())
 			Expect(networkCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(networkCond.Reason).To(Equal(CondReasonNetworkPolicyApplied))
@@ -106,18 +199,19 @@ var _ = Describe("computeConditions", func() {
 
 		It("should set NetworkConfigured=False and Stalled=True when network fails", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkError:     "invalid CIDR",
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkError:         "invalid CIDR",
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			networkCond := findCondition(conditions, SandboxNetworkReadyCondition)
+			networkCond := findCond(conditions, SandboxNetworkReadyCondition)
 			Expect(networkCond).NotTo(BeNil())
 			Expect(networkCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(networkCond.Reason).To(Equal(CondReasonNetworkPolicyFailed))
 
-			stalledCond := findCondition(conditions, SandboxStalledCondition)
+			stalledCond := findCond(conditions, SandboxStalledCondition)
 			Expect(stalledCond).NotTo(BeNil())
 			Expect(stalledCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(stalledCond.Reason).To(Equal(CondReasonNetworkPolicyFailed))
@@ -130,76 +224,73 @@ var _ = Describe("computeConditions", func() {
 	Context("Pod state", func() {
 		It("should set PodReady=True and Ready=True when pod is ready", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				PodExists:        true,
-				PodPhase:         corev1.PodRunning,
-				PodReady:         true,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{Pod: newReadyPod()},
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			podCond := findCondition(conditions, SandboxPodReadyCondition)
+			podCond := findCond(conditions, SandboxPodReadyCondition)
 			Expect(podCond).NotTo(BeNil())
 			Expect(podCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(podCond.Reason).To(Equal(CondReasonPodRunning))
 
-			readyCond := findCondition(conditions, SandboxReadyCondition)
+			readyCond := findCond(conditions, SandboxReadyCondition)
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(readyCond.Reason).To(Equal(CondReasonPodRunning))
 
 			// No Reconciling or Stalled when healthy
-			Expect(findCondition(conditions, SandboxReconcilingCondition)).To(BeNil())
-			Expect(findCondition(conditions, SandboxStalledCondition)).To(BeNil())
+			Expect(findCond(conditions, SandboxReconcilingCondition)).To(BeNil())
+			Expect(findCond(conditions, SandboxStalledCondition)).To(BeNil())
 		})
 
 		It("should set PodReady=False and Reconciling=True when pod is pending", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				PodExists:        true,
-				PodPhase:         corev1.PodPending,
-				PodReady:         false,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{Pod: newPendingPod()},
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			podCond := findCondition(conditions, SandboxPodReadyCondition)
+			podCond := findCond(conditions, SandboxPodReadyCondition)
 			Expect(podCond).NotTo(BeNil())
 			Expect(podCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(podCond.Reason).To(Equal(CondReasonPodPending))
 
-			reconcilingCond := findCondition(conditions, SandboxReconcilingCondition)
+			reconcilingCond := findCond(conditions, SandboxReconcilingCondition)
 			Expect(reconcilingCond).NotTo(BeNil())
 			Expect(reconcilingCond.Status).To(Equal(metav1.ConditionTrue))
 
 			// No Stalled when pending
-			Expect(findCondition(conditions, SandboxStalledCondition)).To(BeNil())
+			Expect(findCond(conditions, SandboxStalledCondition)).To(BeNil())
 		})
 
 		It("should set PodReady=False and Stalled=True when pod has failed", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				PodExists:        true,
-				PodPhase:         corev1.PodFailed,
-				PodReady:         false,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{Pod: newFailedPod()},
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			podCond := findCondition(conditions, SandboxPodReadyCondition)
+			podCond := findCond(conditions, SandboxPodReadyCondition)
 			Expect(podCond).NotTo(BeNil())
 			Expect(podCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(podCond.Reason).To(Equal(CondReasonPodFailed))
 
-			stalledCond := findCondition(conditions, SandboxStalledCondition)
+			stalledCond := findCond(conditions, SandboxStalledCondition)
 			Expect(stalledCond).NotTo(BeNil())
 			Expect(stalledCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(stalledCond.Reason).To(Equal(CondReasonPodFailed))
 
-			readyCond := findCondition(conditions, SandboxReadyCondition)
+			readyCond := findCond(conditions, SandboxReadyCondition)
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCond.Reason).To(Equal(CondReasonPodFailed))
@@ -207,26 +298,25 @@ var _ = Describe("computeConditions", func() {
 
 		It("should set PodReady=False and Stalled=True when pod has succeeded unexpectedly", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				PodExists:        true,
-				PodPhase:         corev1.PodSucceeded,
-				PodReady:         false,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{Pod: newSucceededPod()},
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			podCond := findCondition(conditions, SandboxPodReadyCondition)
+			podCond := findCond(conditions, SandboxPodReadyCondition)
 			Expect(podCond).NotTo(BeNil())
 			Expect(podCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(podCond.Reason).To(Equal(CondReasonPodSucceeded))
 
-			stalledCond := findCondition(conditions, SandboxStalledCondition)
+			stalledCond := findCond(conditions, SandboxStalledCondition)
 			Expect(stalledCond).NotTo(BeNil())
 			Expect(stalledCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(stalledCond.Reason).To(Equal(CondReasonPodSucceeded))
 
-			readyCond := findCondition(conditions, SandboxReadyCondition)
+			readyCond := findCond(conditions, SandboxReadyCondition)
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCond.Reason).To(Equal(CondReasonPodSucceeded))
@@ -234,20 +324,81 @@ var _ = Describe("computeConditions", func() {
 
 		It("should set Reconciling=True when pod does not exist but template is resolved", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				PodExists:        false,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{NotFound: true},
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			reconcilingCond := findCondition(conditions, SandboxReconcilingCondition)
+			reconcilingCond := findCond(conditions, SandboxReconcilingCondition)
 			Expect(reconcilingCond).NotTo(BeNil())
 			Expect(reconcilingCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(reconcilingCond.Reason).To(Equal(CondReasonPodCreating))
 
 			// No PodReady condition when pod doesn't exist
-			Expect(findCondition(conditions, SandboxPodReadyCondition)).To(BeNil())
+			Expect(findCond(conditions, SandboxPodReadyCondition)).To(BeNil())
+		})
+
+		It("should preserve PodReady condition on transient pod get error", func() {
+			existingConditions := []metav1.Condition{{
+				Type:   SandboxPodReadyCondition,
+				Status: metav1.ConditionTrue,
+				Reason: CondReasonPodRunning,
+			}}
+			state := &reconcileState{
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				PodState:             podState{GetError: errors.New("connection timeout")},
+			}
+			sandbox := newTestSandbox(existingConditions, "10.0.0.1")
+
+			conditions := computeConditions(state, sandbox)
+
+			podCond := findCond(conditions, SandboxPodReadyCondition)
+			Expect(podCond).NotTo(BeNil())
+			Expect(podCond.Status).To(Equal(metav1.ConditionTrue)) // Preserved!
+			Expect(podCond.Reason).To(Equal(CondReasonPodRunning))
+		})
+
+		It("should skip PodReady when transient error and no existing condition", func() {
+			state := &reconcileState{
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				PodState:             podState{GetError: errors.New("connection refused")},
+			}
+			sandbox := newTestSandbox(nil, "")
+
+			conditions := computeConditions(state, sandbox)
+
+			podCond := findCond(conditions, SandboxPodReadyCondition)
+			Expect(podCond).To(BeNil())
+		})
+
+		It("should detect pod deletion and report PodDeleted", func() {
+			state := &reconcileState{
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{NotFound: true},
+			}
+			// Sandbox HAD a pod (PodIP is set) - pod was deleted
+			sandbox := newTestSandbox(nil, "10.0.0.1")
+
+			conditions := computeConditions(state, sandbox)
+
+			podCond := findCond(conditions, SandboxPodReadyCondition)
+			Expect(podCond).NotTo(BeNil())
+			Expect(podCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(podCond.Reason).To(Equal(CondReasonPodDeleted)) // Detected deletion!
+
+			stalledCond := findCond(conditions, SandboxStalledCondition)
+			Expect(stalledCond).NotTo(BeNil())
+			Expect(stalledCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(stalledCond.Reason).To(Equal(CondReasonPodDeleted))
+
+			readyCond := findCond(conditions, SandboxReadyCondition)
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCond.Reason).To(Equal(CondReasonPodDeleted))
 		})
 	})
 
@@ -257,25 +408,26 @@ var _ = Describe("computeConditions", func() {
 	Context("Fatal errors", func() {
 		It("should set Stalled=True when sidecar injection fails", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				FatalError:       "sandbox pod must have exactly one container",
-				FatalReason:      CondReasonSidecarInjectionFail,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				FatalError:           "sandbox pod must have exactly one container",
+				FatalReason:          CondReasonSidecarInjectionFail,
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			podCond := findCondition(conditions, SandboxPodReadyCondition)
+			podCond := findCond(conditions, SandboxPodReadyCondition)
 			Expect(podCond).NotTo(BeNil())
 			Expect(podCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(podCond.Reason).To(Equal(CondReasonSidecarInjectionFail))
 
-			stalledCond := findCondition(conditions, SandboxStalledCondition)
+			stalledCond := findCond(conditions, SandboxStalledCondition)
 			Expect(stalledCond).NotTo(BeNil())
 			Expect(stalledCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(stalledCond.Reason).To(Equal(CondReasonSidecarInjectionFail))
 
-			readyCond := findCondition(conditions, SandboxReadyCondition)
+			readyCond := findCond(conditions, SandboxReadyCondition)
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCond.Reason).To(Equal(CondReasonSidecarInjectionFail))
@@ -283,20 +435,21 @@ var _ = Describe("computeConditions", func() {
 
 		It("should set Stalled=True when pod creation fails", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				FatalError:       "pods is forbidden",
-				FatalReason:      CondReasonPodCreationFailed,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				FatalError:           "pods is forbidden",
+				FatalReason:          CondReasonPodCreationFailed,
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			podCond := findCondition(conditions, SandboxPodReadyCondition)
+			podCond := findCond(conditions, SandboxPodReadyCondition)
 			Expect(podCond).NotTo(BeNil())
 			Expect(podCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(podCond.Reason).To(Equal(CondReasonPodCreationFailed))
 
-			stalledCond := findCondition(conditions, SandboxStalledCondition)
+			stalledCond := findCond(conditions, SandboxStalledCondition)
 			Expect(stalledCond).NotTo(BeNil())
 			Expect(stalledCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(stalledCond.Reason).To(Equal(CondReasonPodCreationFailed))
@@ -309,71 +462,68 @@ var _ = Describe("computeConditions", func() {
 	Context("Lifecycle state", func() {
 		It("should set Ready=False with Deleting reason when sandbox is being deleted", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				PodExists:        true,
-				PodPhase:         corev1.PodRunning,
-				PodReady:         true,
-				IsDeleting:       true,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{Pod: newReadyPod()},
+				IsDeleting:           true,
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			readyCond := findCondition(conditions, SandboxReadyCondition)
+			readyCond := findCond(conditions, SandboxReadyCondition)
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCond.Reason).To(Equal(CondReasonDeleting))
 
 			// Pod still shows as ready
-			podCond := findCondition(conditions, SandboxPodReadyCondition)
+			podCond := findCond(conditions, SandboxPodReadyCondition)
 			Expect(podCond).NotTo(BeNil())
 			Expect(podCond.Status).To(Equal(metav1.ConditionTrue))
 		})
 
 		It("should set Reconciling=True when snapshotting is in progress", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				PodExists:        true,
-				PodPhase:         corev1.PodRunning,
-				PodReady:         true,
-				IsDeleting:       true,
-				IsSnapshotting:   true,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{Pod: newReadyPod()},
+				IsDeleting:           true,
+				IsSnapshotting:       true,
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			reconcilingCond := findCondition(conditions, SandboxReconcilingCondition)
+			reconcilingCond := findCond(conditions, SandboxReconcilingCondition)
 			Expect(reconcilingCond).NotTo(BeNil())
 			Expect(reconcilingCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(reconcilingCond.Reason).To(Equal(CondReasonSnapshottingInProgress))
 
 			// No Stalled when snapshotting (even if there was an error before)
-			Expect(findCondition(conditions, SandboxStalledCondition)).To(BeNil())
+			Expect(findCond(conditions, SandboxStalledCondition)).To(BeNil())
 		})
 
 		It("should override Stalled with Reconciling when snapshotting", func() {
 			// Edge case: pod failed, but snapshot is happening
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				PodExists:        true,
-				PodPhase:         corev1.PodFailed,
-				PodReady:         false,
-				IsDeleting:       true,
-				IsSnapshotting:   true,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{Pod: newFailedPod()},
+				IsDeleting:           true,
+				IsSnapshotting:       true,
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
 			// Snapshotting overrides the stalled state
-			reconcilingCond := findCondition(conditions, SandboxReconcilingCondition)
+			reconcilingCond := findCond(conditions, SandboxReconcilingCondition)
 			Expect(reconcilingCond).NotTo(BeNil())
 			Expect(reconcilingCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(reconcilingCond.Reason).To(Equal(CondReasonSnapshottingInProgress))
 
 			// Stalled should NOT be present when snapshotting
-			Expect(findCondition(conditions, SandboxStalledCondition)).To(BeNil())
+			Expect(findCond(conditions, SandboxStalledCondition)).To(BeNil())
 		})
 	})
 
@@ -383,14 +533,13 @@ var _ = Describe("computeConditions", func() {
 	Context("ObservedGeneration", func() {
 		It("should set ObservedGeneration on all conditions", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				PodExists:        true,
-				PodPhase:         corev1.PodPending,
-				PodReady:         false,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{Pod: newPendingPod()},
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
 			for _, cond := range conditions {
 				Expect(cond.ObservedGeneration).To(Equal(gen),
@@ -405,115 +554,52 @@ var _ = Describe("computeConditions", func() {
 	Context("Abnormal-true pattern", func() {
 		It("should not include Reconciling or Stalled when pod is healthy", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				PodExists:        true,
-				PodPhase:         corev1.PodRunning,
-				PodReady:         true,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{Pod: newReadyPod()},
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			Expect(findCondition(conditions, SandboxReconcilingCondition)).To(BeNil(),
+			Expect(findCond(conditions, SandboxReconcilingCondition)).To(BeNil(),
 				"Reconciling should be absent when healthy")
-			Expect(findCondition(conditions, SandboxStalledCondition)).To(BeNil(),
+			Expect(findCond(conditions, SandboxStalledCondition)).To(BeNil(),
 				"Stalled should be absent when healthy")
 		})
 
 		It("should have Reconciling=True but no Stalled when pod is pending", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				PodExists:        true,
-				PodPhase:         corev1.PodPending,
-				PodReady:         false,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{Pod: newPendingPod()},
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			reconcilingCond := findCondition(conditions, SandboxReconcilingCondition)
+			reconcilingCond := findCond(conditions, SandboxReconcilingCondition)
 			Expect(reconcilingCond).NotTo(BeNil())
 			Expect(reconcilingCond.Status).To(Equal(metav1.ConditionTrue))
 
-			Expect(findCondition(conditions, SandboxStalledCondition)).To(BeNil())
+			Expect(findCond(conditions, SandboxStalledCondition)).To(BeNil())
 		})
 
 		It("should have Stalled=True but no Reconciling when pod has failed", func() {
 			state := &reconcileState{
-				TemplateResolved: true,
-				NetworkApplied:   true,
-				PodExists:        true,
-				PodPhase:         corev1.PodFailed,
-				PodReady:         false,
+				SandboxTemplateState: sandboxTemplateState{SandboxTemplate: &sandboxv1alpha1.SandboxTemplate{}},
+				NetworkApplied:       true,
+				PodState:             podState{Pod: newFailedPod()},
 			}
+			sandbox := newTestSandbox(nil, "")
 
-			conditions := computeConditions(state, gen)
+			conditions := computeConditions(state, sandbox)
 
-			stalledCond := findCondition(conditions, SandboxStalledCondition)
+			stalledCond := findCond(conditions, SandboxStalledCondition)
 			Expect(stalledCond).NotTo(BeNil())
 			Expect(stalledCond.Status).To(Equal(metav1.ConditionTrue))
 
-			Expect(findCondition(conditions, SandboxReconcilingCondition)).To(BeNil())
+			Expect(findCond(conditions, SandboxReconcilingCondition)).To(BeNil())
 		})
-	})
-})
-
-var _ = Describe("updateFromPod", func() {
-	It("should set pod state from a running ready pod", func() {
-		state := &reconcileState{}
-		pod := &corev1.Pod{
-			Status: corev1.PodStatus{
-				Phase: corev1.PodRunning,
-				Conditions: []corev1.PodCondition{
-					{Type: corev1.PodReady, Status: corev1.ConditionTrue},
-				},
-			},
-		}
-
-		state.updateFromPod(pod)
-
-		Expect(state.PodExists).To(BeTrue())
-		Expect(state.PodPhase).To(Equal(corev1.PodRunning))
-		Expect(state.PodReady).To(BeTrue())
-	})
-
-	It("should set pod state from a pending pod", func() {
-		state := &reconcileState{}
-		pod := &corev1.Pod{
-			Status: corev1.PodStatus{
-				Phase: corev1.PodPending,
-			},
-		}
-
-		state.updateFromPod(pod)
-
-		Expect(state.PodExists).To(BeTrue())
-		Expect(state.PodPhase).To(Equal(corev1.PodPending))
-		Expect(state.PodReady).To(BeFalse())
-	})
-
-	It("should handle nil pod gracefully", func() {
-		state := &reconcileState{}
-
-		state.updateFromPod(nil)
-
-		Expect(state.PodExists).To(BeFalse())
-		Expect(state.PodPhase).To(BeEmpty())
-		Expect(state.PodReady).To(BeFalse())
-	})
-
-	It("should set pod state from a failed pod", func() {
-		state := &reconcileState{}
-		pod := &corev1.Pod{
-			Status: corev1.PodStatus{
-				Phase: corev1.PodFailed,
-			},
-		}
-
-		state.updateFromPod(pod)
-
-		Expect(state.PodExists).To(BeTrue())
-		Expect(state.PodPhase).To(Equal(corev1.PodFailed))
-		Expect(state.PodReady).To(BeFalse())
 	})
 })

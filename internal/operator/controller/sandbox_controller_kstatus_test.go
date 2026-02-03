@@ -594,7 +594,7 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 
 			// Fetch sandbox from fake client to check status
 			updatedSandbox := &sandboxv1alpha1.Sandbox{}
-			Expect(reconciler.Client.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, updatedSandbox)).To(Succeed())
+			Expect(reconciler.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, updatedSandbox)).To(Succeed())
 
 			// Verify Stalled condition is set (kstatus: Failed)
 			stalledCond := meta.FindStatusCondition(updatedSandbox.Status.Conditions, SandboxStalledCondition)
@@ -996,6 +996,96 @@ var _ = Describe("Sandbox Controller kstatus Compliance", func() {
 			// But derived status should be "stopping" because deletion takes precedence
 			Expect(deriveAPIStatus(sandbox)).To(Equal("stopping"),
 				"Status should be 'stopping' even when Stalled, because deletionTimestamp takes precedence")
+		})
+	})
+
+	// ============================================
+	// Condition Preservation on Transient Errors
+	// ============================================
+	Context("Condition Preservation on Transient Errors", func() {
+		It("should preserve NetworkConfigured condition when pod get fails", func() {
+			sandboxName := "kstatus-preserve-network-cond"
+			templateName := "template-preserve-network-cond"
+
+			// Create the sandbox and template in the fake client
+			template := &sandboxv1alpha1.SandboxTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      templateName,
+					Namespace: testNamespace,
+				},
+				Spec: sandboxv1alpha1.SandboxTemplateSpec{
+					PodTemplate: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}},
+							},
+						},
+					},
+				},
+			}
+			sandbox := &sandboxv1alpha1.Sandbox{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      sandboxName,
+					Namespace: testNamespace,
+				},
+				Spec: sandboxv1alpha1.SandboxSpec{
+					TemplateRef: sandboxv1alpha1.SandboxTemplateReference{Name: templateName},
+				},
+			}
+
+			fakeClock := NewFakeClock(time.Now())
+			reconcileCount := 0
+			failPodGet := false
+
+			reconciler := newTestReconcilerWithInterceptors(
+				fakeClock,
+				interceptor.Funcs{
+					Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+						// Track sandbox gets to count reconciles
+						if _, ok := obj.(*sandboxv1alpha1.Sandbox); ok {
+							reconcileCount++
+							// Fail pod gets on second reconcile
+							if reconcileCount >= 2 {
+								failPodGet = true
+							}
+						}
+						// Fail pod get when flag is set
+						if _, ok := obj.(*corev1.Pod); ok && failPodGet {
+							return errors.New("simulated transient pod get failure")
+						}
+						return c.Get(ctx, key, obj, opts...)
+					},
+				},
+				sandbox, template,
+			)
+
+			// First reconcile - should succeed and set NetworkConfigured=True
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify NetworkConfigured is set
+			var updatedSandbox sandboxv1alpha1.Sandbox
+			err = reconciler.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &updatedSandbox)
+			Expect(err).NotTo(HaveOccurred())
+
+			networkCond := meta.FindStatusCondition(updatedSandbox.Status.Conditions, SandboxNetworkReadyCondition)
+			Expect(networkCond).NotTo(BeNil(), "NetworkConfigured should be set after first reconcile")
+			Expect(networkCond.Status).To(Equal(metav1.ConditionTrue))
+
+			// Second reconcile - pod get will fail
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			// Error is expected - we're simulating a transient pod get failure
+			Expect(err).To(HaveOccurred(), "Should return transient error")
+
+			// Re-fetch and check if NetworkConfigured is still present
+			err = reconciler.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &updatedSandbox)
+			Expect(err).NotTo(HaveOccurred())
+
+			// NetworkConfigured condition should be preserved on transient errors
+			networkCondAfter := meta.FindStatusCondition(updatedSandbox.Status.Conditions, SandboxNetworkReadyCondition)
+			Expect(networkCondAfter).NotTo(BeNil(),
+				"NetworkConfigured condition should be preserved on transient errors")
+			Expect(networkCondAfter.Status).To(Equal(metav1.ConditionTrue))
 		})
 	})
 })
