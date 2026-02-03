@@ -78,23 +78,23 @@ operator:
       # Rootfs snapshot capability for gVisor sandboxes
       # Allows creating point-in-time rootfs snapshots of sandbox container filesystems.
       #
-      # SECURITY NOTE: Snapshot jobs require privileged operations:
+      # SECURITY NOTE: RootfsSnapshot jobs require privileged operations:
       # - hostPath mount of runsc binary and state directory
       # - hostPID: true to verify sandbox is running
       # - Root user in snapshotter init container
       #
       # Set enabled: false if your security policy prohibits these operations.
       # Sandboxes will still run normally; only RootfsSnapshot CRs will fail.
-      snapshot:
+      rootfssnapshot:
         enabled: true
 
-        # gVisor/runsc paths for snapshot operations
+        # gVisor/runsc paths for rootfs snapshot operations
         # These paths must match your cluster's gVisor installation
         runsc:
           binaryPath: /usr/local/bin/runsc
           rootDir: /run/containerd/runsc/k8s.io
 
-        # Snapshot storage configuration (bucket for tarball uploads)
+        # RootfsSnapshot storage configuration (bucket for tarball uploads)
         storage:
           # Bucket URL (required for snapshotting to work)
           # Examples:
@@ -122,15 +122,15 @@ operator:
             tag: ""  # Defaults to Chart.appVersion
             digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
 
-        # ServiceAccount for snapshot jobs (needs cloud storage permissions)
+        # ServiceAccount for rootfs snapshot jobs (needs cloud storage permissions)
         serviceAccount:
           create: true
-          name: "isola-snapshot-job"
+          name: "isola-rootfssnapshot-job"
           annotations: {}  # For IRSA/Workload Identity
 
     # Cluster default runtime configuration
     # Uses cluster default RuntimeClass (no special configuration needed)
-    # Snapshot capability is not available with cluster default runtime
+    # RootfsSnapshot capability is not available with cluster default runtime
     clusterDefault: {}
 
   # PriorityClassName for sandbox pods (applies to both runtime types)

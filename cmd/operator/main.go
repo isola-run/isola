@@ -69,13 +69,13 @@ func main() {
 	var priorityClassName string
 	var isolaAPINamespace string
 	var isolaAPILabelName string
-	var snapshotBucketURL string
-	var snapshotCredentialSecret string
-	var snapshotUploaderImage string
-	var snapshotServiceAccount string
+	var rootfssnapshotBucketURL string
+	var rootfssnapshotCredentialSecret string
+	var rootfssnapshotUploaderImage string
+	var rootfssnapshotServiceAccount string
 	var imagePullSecretsStr string
 	var runtimeType string
-	var snapshotEnabled bool
+	var rootfssnapshotEnabled bool
 	var gvisorRunscPath string
 	var gvisorRunscRoot string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -100,13 +100,13 @@ func main() {
 	flag.StringVar(&priorityClassName, "priority-class", "", "PriorityClassName to use for sandbox pods. Empty means use cluster default.")
 	flag.StringVar(&isolaAPINamespace, "api-namespace", "isola-system", "Namespace where api-gateway runs (for NetworkPolicy ingress rules)")
 	flag.StringVar(&isolaAPILabelName, "api-label-name", "api-gateway", "Value of app.kubernetes.io/name label for api-gateway pods")
-	flag.StringVar(&snapshotBucketURL, "snapshot-bucket-url", os.Getenv("ISOLA_SNAPSHOT_BUCKET_URL"), "Bucket URL for snapshot storage (e.g., s3://bucket?region=us-east-1)")
-	flag.StringVar(&snapshotCredentialSecret, "snapshot-credential-secret", os.Getenv("ISOLA_SNAPSHOT_CREDENTIAL_SECRET"), "Secret name for bucket credentials (optional, uses pod identity if not set)")
-	flag.StringVar(&snapshotUploaderImage, "snapshot-uploader-image", os.Getenv("ISOLA_UPLOADER_IMAGE"), "Container image for the snapshot uploader")
-	flag.StringVar(&snapshotServiceAccount, "snapshot-service-account", os.Getenv("ISOLA_SNAPSHOT_SERVICE_ACCOUNT"), "ServiceAccount for snapshot jobs")
-	flag.StringVar(&imagePullSecretsStr, "image-pull-secrets", os.Getenv("ISOLA_IMAGE_PULL_SECRETS"), "Comma-separated list of imagePullSecret names for sandbox pods and snapshot jobs")
+	flag.StringVar(&rootfssnapshotBucketURL, "rootfssnapshot-bucket-url", os.Getenv("ISOLA_ROOTFSSNAPSHOT_BUCKET_URL"), "Bucket URL for rootfs snapshot storage (e.g., s3://bucket?region=us-east-1)")
+	flag.StringVar(&rootfssnapshotCredentialSecret, "rootfssnapshot-credential-secret", os.Getenv("ISOLA_ROOTFSSNAPSHOT_CREDENTIAL_SECRET"), "Secret name for bucket credentials (optional, uses pod identity if not set)")
+	flag.StringVar(&rootfssnapshotUploaderImage, "rootfssnapshot-uploader-image", os.Getenv("ISOLA_UPLOADER_IMAGE"), "Container image for the rootfs snapshot uploader")
+	flag.StringVar(&rootfssnapshotServiceAccount, "rootfssnapshot-service-account", os.Getenv("ISOLA_ROOTFSSNAPSHOT_SERVICE_ACCOUNT"), "ServiceAccount for rootfs snapshot jobs")
+	flag.StringVar(&imagePullSecretsStr, "image-pull-secrets", os.Getenv("ISOLA_IMAGE_PULL_SECRETS"), "Comma-separated list of imagePullSecret names for sandbox pods and rootfs snapshot jobs")
 	flag.StringVar(&runtimeType, "runtime-type", os.Getenv("ISOLA_RUNTIME_TYPE"), "Runtime type: 'gvisor' or 'clusterDefault'")
-	flag.BoolVar(&snapshotEnabled, "snapshot-enabled", os.Getenv("ISOLA_SNAPSHOT_ENABLED") == "true", "Enable rootfs snapshot capability (requires gVisor runtime and privileged operations)")
+	flag.BoolVar(&rootfssnapshotEnabled, "rootfssnapshot-enabled", os.Getenv("ISOLA_ROOTFSSNAPSHOT_ENABLED") == "true", "Enable rootfs snapshot capability (requires gVisor runtime and privileged operations)")
 	flag.StringVar(&gvisorRunscPath, "gvisor-runsc-path", os.Getenv("ISOLA_GVISOR_RUNSC_PATH"), "Path to the runsc binary on cluster nodes (for gVisor snapshot support)")
 	flag.StringVar(&gvisorRunscRoot, "gvisor-runsc-root", os.Getenv("ISOLA_GVISOR_RUNSC_ROOT"), "Root directory where runsc stores runtime state (for gVisor snapshot support)")
 	opts := zap.Options{
@@ -231,12 +231,12 @@ func main() {
 		Client:                 mgr.GetClient(),
 		Scheme:                 mgr.GetScheme(),
 		Clock:                  controller.RealClock{},
-		BucketURL:              snapshotBucketURL,
-		CredentialSecretName:   snapshotCredentialSecret,
-		UploaderImage:          snapshotUploaderImage,
-		SnapshotServiceAccount: snapshotServiceAccount,
+		BucketURL:              rootfssnapshotBucketURL,
+		CredentialSecretName:   rootfssnapshotCredentialSecret,
+		UploaderImage:          rootfssnapshotUploaderImage,
+		SnapshotServiceAccount: rootfssnapshotServiceAccount,
 		ImagePullSecrets:       imagePullSecrets,
-		Enabled:                snapshotEnabled,
+		Enabled:                rootfssnapshotEnabled,
 		GvisorRunscPath:        gvisorRunscPath,
 		GvisorRunscRoot:        gvisorRunscRoot,
 	}).SetupWithManager(mgr); err != nil {

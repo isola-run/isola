@@ -19,7 +19,7 @@ operator:
     gvisor:
       runtimeClassName: gvisor
 
-      snapshot:
+      rootfssnapshot:
         enabled: true
         runsc:
           binaryPath: /usr/local/bin/runsc

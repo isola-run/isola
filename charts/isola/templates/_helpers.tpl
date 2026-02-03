@@ -169,10 +169,10 @@ RuntimeClassName for sandbox pods (conditional on runtime type)
 {{- end }}
 
 {{/*
-Snapshot enabled flag (only true for gvisor with snapshot.enabled)
+RootfsSnapshot enabled flag (only true for gvisor with rootfssnapshot.enabled)
 */}}
-{{- define "isola.operator.snapshotEnabled" -}}
-{{- if and (eq .Values.operator.sandboxRuntime.type "gvisor") (.Values.operator.sandboxRuntime.gvisor.snapshot.enabled) -}}
+{{- define "isola.operator.rootfssnapshotEnabled" -}}
+{{- if and (eq .Values.operator.sandboxRuntime.type "gvisor") (.Values.operator.sandboxRuntime.gvisor.rootfssnapshot.enabled) -}}
 {{- "true" -}}
 {{- else -}}
 {{- "false" -}}
@@ -180,63 +180,63 @@ Snapshot enabled flag (only true for gvisor with snapshot.enabled)
 {{- end }}
 
 {{/*
-gVisor runsc binary path (only used when snapshot enabled)
+gVisor runsc binary path (only used when rootfssnapshot enabled)
 */}}
 {{- define "isola.operator.gvisorRunscPath" -}}
 {{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- .Values.operator.sandboxRuntime.gvisor.snapshot.runsc.binaryPath -}}
+{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.runsc.binaryPath -}}
 {{- end -}}
 {{- end }}
 
 {{/*
-gVisor runsc root directory (only used when snapshot enabled)
+gVisor runsc root directory (only used when rootfssnapshot enabled)
 */}}
 {{- define "isola.operator.gvisorRunscRoot" -}}
 {{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- .Values.operator.sandboxRuntime.gvisor.snapshot.runsc.rootDir -}}
+{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.runsc.rootDir -}}
 {{- end -}}
 {{- end }}
 
 {{/*
-Snapshot bucket URL (from gvisor snapshot config)
+RootfsSnapshot bucket URL (from gvisor rootfssnapshot config)
 */}}
 {{- define "isola.operator.storageBucketUrl" -}}
 {{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- .Values.operator.sandboxRuntime.gvisor.snapshot.storage.bucketUrl -}}
+{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage.bucketUrl -}}
 {{- end -}}
 {{- end }}
 
 {{/*
-Uploader image (from gvisor snapshot config)
+Uploader image (from gvisor rootfssnapshot config)
 */}}
 {{- define "isola.operator.uploaderImage" -}}
 {{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.gvisor.snapshot.uploader.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end -}}
 {{- end }}
 
 {{/*
 Storage credential secret name
 */}}
-{{- define "isola.operator.snapshotCredentialSecretName" -}}
+{{- define "isola.operator.rootfssnapshotCredentialSecretName" -}}
 {{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- if .Values.operator.sandboxRuntime.gvisor.snapshot.storage.credentials.existingSecret -}}
-{{- .Values.operator.sandboxRuntime.gvisor.snapshot.storage.credentials.existingSecret -}}
-{{- else if and .Values.operator.sandboxRuntime.gvisor.snapshot.storage.credentials.accessKeyId .Values.operator.sandboxRuntime.gvisor.snapshot.storage.credentials.secretAccessKey -}}
-{{- printf "%s-snapshot-credentials" (include "isola.operator.fullname" .) -}}
+{{- if .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage.credentials.existingSecret -}}
+{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage.credentials.existingSecret -}}
+{{- else if and .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage.credentials.accessKeyId .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage.credentials.secretAccessKey -}}
+{{- printf "%s-rootfssnapshot-credentials" (include "isola.operator.fullname" .) -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
 
 {{/*
-Snapshot service account name (from gvisor snapshot config)
+RootfsSnapshot service account name (from gvisor rootfssnapshot config)
 */}}
-{{- define "isola.operator.snapshotServiceAccountName" -}}
+{{- define "isola.operator.rootfssnapshotServiceAccountName" -}}
 {{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- if .Values.operator.sandboxRuntime.gvisor.snapshot.serviceAccount.create -}}
-{{- .Values.operator.sandboxRuntime.gvisor.snapshot.serviceAccount.name | default (printf "%s-snapshot" (include "isola.operator.fullname" .)) -}}
+{{- if .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.serviceAccount.create -}}
+{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.serviceAccount.name | default (printf "%s-rootfssnapshot" (include "isola.operator.fullname" .)) -}}
 {{- else -}}
-{{- .Values.operator.sandboxRuntime.gvisor.snapshot.serviceAccount.name -}}
+{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
 {{- end }}

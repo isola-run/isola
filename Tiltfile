@@ -14,7 +14,7 @@ default_registry('localhost:5001')
 
 # Suppress warning for images that are built but deployed indirectly
 # - sandbox-sidecar: injected by operator into sandbox pods
-# - isola-uploader: used by triggered snapshot jobs
+# - isola-uploader: used by triggered rootfs snapshot jobs
 update_settings(suppress_unused_image_warnings=["sandbox-sidecar", "isola-uploader"])
 
 # ==============================================================================
@@ -105,7 +105,7 @@ helm_resource(
     image_keys=[
         ('operator.image.repository', 'operator.image.tag'),
         ('operator.sidecar.image.repository', 'operator.sidecar.image.tag'),
-        ('operator.snapshot.uploader.image.repository', 'operator.snapshot.uploader.image.tag'),
+        ('operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.repository', 'operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.tag'),
         ('apiGateway.image.repository', 'apiGateway.image.tag'),
     ],
     deps=['charts/isola'],

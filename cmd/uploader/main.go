@@ -15,21 +15,21 @@ limitations under the License.
 */
 
 // isola-uploader uploads a local file to cloud object storage.
-// Used as a sidecar container in snapshot jobs to upload tarballs to S3/GCS/Azure.
+// Used as a sidecar container in RootfsSnapshot jobs to upload tarballs to S3/GCS/Azure.
 //
-// The uploader determines the revision number by listing existing snapshots in the bucket.
+// The uploader determines the revision number by listing existing rootfs snapshots in the bucket.
 //
 // # Required Bucket Permissions
 //
 // The uploader requires the following permissions on the target bucket:
 //
 // AWS S3:
-//   - s3:ListBucket (to list existing snapshots and determine revision)
-//   - s3:PutObject (to upload the snapshot)
+//   - s3:ListBucket (to list existing rootfs snapshots and determine revision)
+//   - s3:PutObject (to upload the rootfs snapshot)
 //
 // Google Cloud Storage:
-//   - storage.objects.list (to list existing snapshots)
-//   - storage.objects.create (to upload the snapshot)
+//   - storage.objects.list (to list existing rootfs snapshots)
+//   - storage.objects.create (to upload the rootfs snapshot)
 //
 // Azure Blob Storage:
 //   - Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read (list)
@@ -137,7 +137,7 @@ func run(logger *slog.Logger) error {
 
 	snapshotKey := snapshotKeyPath(namespace, sandboxName, revision, containerName)
 
-	logger.Info("uploading snapshot",
+	logger.Info("uploading rootfs snapshot",
 		"file", snapshotFile,
 		"bucket", bucketURL,
 		"key", snapshotKey,
@@ -204,7 +204,7 @@ func padRevision(rev int32) string {
 	return strconv.FormatInt(int64(rev), 10)
 }
 
-// getNextRevision lists existing snapshots in the bucket and returns the next revision number.
+// getNextRevision lists existing rootfs snapshots in the bucket and returns the next revision number.
 // This ensures revision numbers are always increasing even if RootfsSnapshot resources
 // have been deleted from etcd.
 func getNextRevision(ctx context.Context, logger *slog.Logger, bucket *blob.Bucket, namespace, sandboxName string) (int32, error) {
@@ -215,7 +215,7 @@ func getNextRevision(ctx context.Context, logger *slog.Logger, bucket *blob.Buck
 
 	var maxRevision int32 = 0
 
-	logger.Debug("listing existing snapshots", "prefix", prefix)
+	logger.Debug("listing existing rootfs snapshots", "prefix", prefix)
 
 	iter := bucket.List(&blob.ListOptions{Prefix: prefix})
 	for {
