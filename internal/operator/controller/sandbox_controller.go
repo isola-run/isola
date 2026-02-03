@@ -161,46 +161,14 @@ func (r *SandboxReconciler) injectSandboxSidecar(sandboxPod *corev1.Pod) error {
 	return nil
 }
 
-// gatherState reads current cluster state into reconcileState.
-// Follows Cluster-API pattern: fetches all state upfront with error classification.
-func (r *SandboxReconciler) gatherState(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) *reconcileState {
-	state := &reconcileState{
+// initState creates the initial state for this reconciliation.
+func initState(sandbox *sandboxv1alpha1.Sandbox) *sandboxState {
+	return &sandboxState{
 		IsDeleting: !sandbox.DeletionTimestamp.IsZero(),
 	}
-
-	// Check for in-progress shutdown snapshot
-	if snap, _ := r.getShutdownSnapshot(ctx, sandbox); snap != nil && snap.Status.CompletedAt == nil {
-		state.IsSnapshotting = true
-	}
-
-	// Template observation with error classification
-	template := &sandboxv1alpha1.SandboxTemplate{}
-	if err := r.Get(ctx, types.NamespacedName{Name: sandbox.Spec.TemplateRef.Name, Namespace: sandbox.Namespace}, template); err != nil {
-		if apierrors.IsNotFound(err) {
-			state.SandboxTemplateState.NotFound = true
-		} else {
-			state.SandboxTemplateState.GetError = err
-		}
-	} else {
-		state.SandboxTemplateState.SandboxTemplate = template
-	}
-
-	// Pod observation with error classification
-	pod := &corev1.Pod{}
-	if err := r.Get(ctx, types.NamespacedName{Name: getSandboxPodName(sandbox), Namespace: sandbox.Namespace}, pod); err != nil {
-		if apierrors.IsNotFound(err) {
-			state.PodState.NotFound = true
-		} else {
-			state.PodState.GetError = err
-		}
-	} else {
-		state.PodState.Pod = pod
-	}
-
-	return state
 }
 
-func (r *SandboxReconciler) createSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, state *reconcileState) error {
+func (r *SandboxReconciler) createSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, state *sandboxState) error {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 	// todo benl reduce verbose logging
 	log.Info("Creating Pod")
@@ -376,21 +344,26 @@ func (r *SandboxReconciler) getShutdownSnapshot(ctx context.Context, sandbox *sa
 	return snap, nil
 }
 
-// resolveTemplate processes the template from gathered state.
-// Updates sandbox.Status.ResolvedShutdownPolicy if template was found.
-// Returns the template if found, nil if not found or error.
-func resolveTemplate(sandbox *sandboxv1alpha1.Sandbox, state *reconcileState) *sandboxv1alpha1.SandboxTemplate {
-	if state.SandboxTemplateState.SandboxTemplate == nil {
-		return nil
+// resolveTemplate fetches the template and updates sandbox status.
+// Returns the template if found, nil if not found (sets state.TemplateNotFound).
+func (r *SandboxReconciler) resolveTemplate(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, state *sandboxState) (*sandboxv1alpha1.SandboxTemplate, error) {
+	template := &sandboxv1alpha1.SandboxTemplate{}
+	if err := r.Get(ctx, types.NamespacedName{Name: sandbox.Spec.TemplateRef.Name, Namespace: sandbox.Namespace}, template); err != nil {
+		if apierrors.IsNotFound(err) {
+			state.TemplateNotFound = true
+			return nil, nil
+		}
+		return nil, err
 	}
-	sandbox.Status.ResolvedShutdownPolicy = state.SandboxTemplateState.SandboxTemplate.Spec.ShutdownPolicy.DeepCopy()
-	return state.SandboxTemplateState.SandboxTemplate
+	state.Template = template
+	sandbox.Status.ResolvedShutdownPolicy = template.Spec.ShutdownPolicy.DeepCopy()
+	return template, nil
 }
 
 // ensureCustomNetworkPolicy creates or updates a custom NetworkPolicy for sandboxes
 // that need more than the static Helm-installed policies (custom CIDRs, pod rules, or DNS).
 // Updates state on failure.
-func (r *SandboxReconciler) ensureCustomNetworkPolicy(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, state *reconcileState) error {
+func (r *SandboxReconciler) ensureCustomNetworkPolicy(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, state *sandboxState) error {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 
 	// Network is always considered applied (Helm policies exist)
@@ -496,9 +469,9 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 
 	log.Info("Sandbox found")
 
-	// DeepCopy to allow patching only the diff between the new sandbox and the old one
+	// DeepCopy for status patching
 	baseSandbox := sandbox.DeepCopy()
-	state := r.gatherState(ctx, sandbox)
+	state := initState(sandbox)
 
 	// Always patch status on exit (Cluster-API defer pattern)
 	defer func() {
@@ -522,18 +495,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 			log.Error(err, "Failed to add finalizer")
 			return ctrl.Result{}, err
 		}
-		// Update baseSandbox to reflect the finalizer change for subsequent patches
 		baseSandbox = sandbox.DeepCopy()
-	}
-
-	// Handle transient errors from observation - return early to retry
-	if state.SandboxTemplateState.GetError != nil {
-		log.Error(state.SandboxTemplateState.GetError, "Transient error getting template")
-		return ctrl.Result{}, state.SandboxTemplateState.GetError
-	}
-	if state.PodState.GetError != nil {
-		log.Error(state.PodState.GetError, "Transient error getting pod")
-		return ctrl.Result{}, state.PodState.GetError
 	}
 
 	// Handle deletion - proceed to finalization even if template is not found.
@@ -542,10 +504,12 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 		return r.finalizeSandbox(ctx, sandbox, state)
 	}
 
-	// Process template from gathered state
-	template := resolveTemplate(sandbox, state)
+	// Resolve template
+	template, err := r.resolveTemplate(ctx, sandbox, state)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	if template == nil {
-		// Template not found (404) - conditions computed from state
 		log.Info("Template not found, waiting", "template", sandbox.Spec.TemplateRef.Name)
 		return ctrl.Result{}, nil // SandboxTemplate watch will trigger reconciliation
 	}
@@ -554,18 +518,20 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 	if err := r.ensureCustomNetworkPolicy(ctx, sandbox, state); err != nil {
 		return ctrl.Result{}, err
 	}
-	// If NetworkError is set, it's a permanent failure - return the error
 	if state.NetworkError != "" {
 		return ctrl.Result{}, reconcile.TerminalError(fmt.Errorf("network policy error: %s", state.NetworkError))
 	}
 
-	// Use pod from gathered state
-	sandboxPod := state.PodState.Pod
+	// Get pod
+	sandboxPod, err := r.getSandboxPod(ctx, sandbox)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	state.Pod = sandboxPod
 
-	// Calculate and set timeout (defer will handle the patch)
+	// Calculate and set timeout
 	optionalTimeoutAt := r.calculateTimeout(ctx, sandbox, template, sandboxPod)
 	if optionalTimeoutAt != nil {
-		// Only update if timeout extended (e.g., pod started later than sandbox creation)
 		if sandbox.Status.TimeoutAt == nil || sandbox.Status.TimeoutAt.Time.Before(optionalTimeoutAt.Time) {
 			sandbox.Status.TimeoutAt = optionalTimeoutAt
 		}
@@ -585,7 +551,6 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 				return ctrl.Result{}, err
 			}
 		}
-		// if cleanUp is not done, return res that might ask for a requeue in the future
 		return res, nil
 	}
 
@@ -593,29 +558,22 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 	if optionalTimeoutAt != nil {
 		timeUntilTimeout = r.clock().Until(optionalTimeoutAt.Time)
 		if timeUntilTimeout <= 0 {
-			// in case of some very bad luck where the timeout shifted right after we checked for it
 			timeUntilTimeout = time.Millisecond
 		}
-	} else { // no timeout
-		timeUntilTimeout = 0 // ctrl.Result{0} is effectively ctrl.Result{} (no scheduled requeue)
 	}
 
 	if sandboxPod == nil {
 		if err := r.createSandboxPod(ctx, sandbox, template, state); err != nil {
 			return ctrl.Result{}, err
 		}
-		// Pod was just created - update state so conditions reflect creation
-		// Re-fetch the pod to get accurate state (gatherState saw it as not found)
-		createdPod, err := r.getSandboxPod(ctx, sandbox)
-		if err != nil {
-			return ctrl.Result{}, err
+		// Re-fetch the pod to update state for condition computation
+		if createdPod, err := r.getSandboxPod(ctx, sandbox); err == nil {
+			state.Pod = createdPod
 		}
-		state.PodState.Pod = createdPod
-		state.PodState.NotFound = false
 		return ctrl.Result{RequeueAfter: timeUntilTimeout}, nil
 	}
 
-	// Update PodIP in status (sandboxPod is guaranteed non-nil here)
+	// Update PodIP in status
 	sandbox.Status.PodIP = sandboxPod.Status.PodIP
 
 	return ctrl.Result{RequeueAfter: timeUntilTimeout}, nil
@@ -627,7 +585,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 func (r *SandboxReconciler) finalizeSandbox(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
-	state *reconcileState,
+	state *sandboxState,
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 
@@ -655,7 +613,7 @@ func (r *SandboxReconciler) finalizeSandbox(
 func (r *SandboxReconciler) finalizeSandboxTimeout(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
-	state *reconcileState,
+	state *sandboxState,
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 
@@ -681,7 +639,7 @@ func (r *SandboxReconciler) finalizeSandboxTimeout(
 func (r *SandboxReconciler) executeShutdownPolicy(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
-	state *reconcileState,
+	state *sandboxState,
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
 
@@ -709,7 +667,7 @@ func (r *SandboxReconciler) getActiveDeadlineSeconds(policy *sandboxv1alpha1.Shu
 func (r *SandboxReconciler) handleRootfsSnapshot(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
-	state *reconcileState,
+	state *sandboxState,
 	activeDeadlineSeconds int64,
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
@@ -792,7 +750,7 @@ func findCondition(conditions []metav1.Condition, conditionType string) *metav1.
 func (r *SandboxReconciler) createShutdownSnapshot(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
-	state *reconcileState,
+	state *sandboxState,
 	activeDeadlineSeconds int64,
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
