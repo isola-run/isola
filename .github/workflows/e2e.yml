@@ -145,8 +145,8 @@ jobs:
             --set operator.image.pullPolicy=Never \
             --set operator.sidecar.image.repository=${{ env.SIDECAR_IMAGE }} \
             --set operator.sidecar.image.tag=ci \
-            --set operator.snapshot.uploader.image.repository=${{ env.UPLOADER_IMAGE }} \
-            --set operator.snapshot.uploader.image.tag=ci \
+            --set operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.repository=${{ env.UPLOADER_IMAGE }} \
+            --set operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.tag=ci \
             --set apiGateway.image.repository=${{ env.API_IMAGE }} \
             --set apiGateway.image.tag=ci \
             --set apiGateway.image.pullPolicy=Never \
