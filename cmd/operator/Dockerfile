@@ -11,8 +11,7 @@ RUN go mod download
 # Copy required source
 COPY api/ api/
 COPY cmd/operator/ cmd/operator/
-COPY internal/operator/ internal/operator/
-COPY internal/snapshot/ internal/snapshot/
+COPY internal/ internal/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o operator ./cmd/operator/main.go
