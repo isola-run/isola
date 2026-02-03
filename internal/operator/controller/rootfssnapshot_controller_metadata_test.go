@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
@@ -36,12 +36,12 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 	var (
 		reconciler *RootfsSnapshotReconciler
 		fakeClock  *FakeClock
-		recorder   *record.FakeRecorder
+		recorder   *events.FakeRecorder
 	)
 
 	BeforeEach(func() {
 		fakeClock = NewFakeClock(time.Now())
-		recorder = record.NewFakeRecorder(10)
+		recorder = events.NewFakeRecorder(10)
 		reconciler = &RootfsSnapshotReconciler{
 			Client:                 k8sClient,
 			Scheme:                 k8sClient.Scheme(),
