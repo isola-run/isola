@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "isola.operator.fullname" . }}
+  labels:
+    {{- include "isola.operator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.operator.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "isola.operator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+        {{- with .Values.operator.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "isola.operator.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "isola.operator.serviceAccountName" . }}
+      {{- include "isola.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: manager
+        image: {{ include "isola.operator.image" . }}
+        imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+        command:
+        - /operator
+        args:
+        - --leader-elect
+        - --health-probe-bind-address=:8081
+        - --sidecar-image={{ include "isola.operator.sidecarImage" . }}
+        {{- if .Values.operator.sandboxPriorityClassName }}
+        - --priority-class={{ .Values.operator.sandboxPriorityClassName }}
+        {{- end }}
+        ports:
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.operator.resources | nindent 10 }}
+        securityContext:
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+        env:
+        - name: ISOLA_RUNTIME_TYPE
+          value: {{ include "isola.operator.runtimeType" . | quote }}
+        - name: ISOLA_ROOTFSSNAPSHOT_ENABLED
+          value: {{ include "isola.operator.rootfssnapshotEnabled" . | quote }}
+        {{- if eq .Values.operator.sandboxRuntime.type "gvisor" }}
+        {{- $bucketUrl := include "isola.operator.storageBucketUrl" . }}
+        {{- if $bucketUrl }}
+        - name: ISOLA_ROOTFSSNAPSHOT_BUCKET_URL
+          value: {{ $bucketUrl | quote }}
+        {{- $credentialSecretName := include "isola.operator.rootfssnapshotCredentialSecretName" . }}
+        {{- if $credentialSecretName }}
+        - name: ISOLA_ROOTFSSNAPSHOT_CREDENTIAL_SECRET
+          value: {{ $credentialSecretName | quote }}
+        {{- end }}
+        {{- end }}
+        - name: ISOLA_UPLOADER_IMAGE
+          value: {{ include "isola.operator.uploaderImage" . | quote }}
+        - name: ISOLA_ROOTFSSNAPSHOT_SERVICE_ACCOUNT
+          value: {{ include "isola.operator.rootfssnapshotServiceAccountName" . | quote }}
+        - name: ISOLA_GVISOR_RUNSC_PATH
+          value: {{ include "isola.operator.gvisorRunscPath" . | quote }}
+        - name: ISOLA_GVISOR_RUNSC_ROOT
+          value: {{ include "isola.operator.gvisorRunscRoot" . | quote }}
+        {{- end }}
+        {{- $imagePullSecretNames := include "isola.imagePullSecretNames" . }}
+        {{- if $imagePullSecretNames }}
+        - name: ISOLA_IMAGE_PULL_SECRETS
+          value: {{ $imagePullSecretNames | quote }}
+        {{- end }}
+      {{- with .Values.operator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.operator.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

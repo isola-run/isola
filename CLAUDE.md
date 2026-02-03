@@ -31,8 +31,8 @@ make generate manifests
 ```
 
 This generates CRDs and RBAC directly to the Helm chart:
-- CRDs → `charts/isola-operator/crds/`
-- RBAC → `charts/isola-operator/generated/role.yaml`
+- CRDs → `charts/isola/crds/`
+- RBAC → `charts/isola/generated/role.yaml`
 
 The Helm `clusterrole.yaml` template uses `.Files.Get` to include the generated RBAC rules
 with proper Helm templating for name/labels.
@@ -66,7 +66,7 @@ to verify generated docs are in sync.
 - `internal/sandbox-sidecar/` - Sidecar handlers
 - `internal/snapshot/` - Shared snapshot types (used by operator and uploader)
 - `charts/` - Helm charts (source of truth for deployment)
-- `charts/isola-operator/generated/` - Auto-generated RBAC from kubebuilder annotations (do not edit)
+- `charts/isola/generated/` - Auto-generated RBAC from kubebuilder annotations (do not edit)
 
 **Default namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
 

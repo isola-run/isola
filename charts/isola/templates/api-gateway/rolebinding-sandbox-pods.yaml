@@ -1,0 +1,17 @@
+{{- if .Values.apiGateway.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "isola.apiGateway.fullname" . }}-pods
+  namespace: {{ include "isola.sandboxNamespace" . }}
+  labels:
+    {{- include "isola.apiGateway.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "isola.apiGateway.fullname" . }}-pods
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "isola.apiGateway.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

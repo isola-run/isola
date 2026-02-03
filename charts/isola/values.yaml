@@ -1,0 +1,177 @@
+# Optionally override the chart name
+nameOverride: ""
+# Optionally override the full release name
+fullnameOverride: ""
+
+
+global:
+  # Override registry for all images (operator, sidecar, uploader, api-gateway)
+  # Useful for air-gapped environments or private registries.
+  # Example: "my-registry.example.com/isola"
+  imageRegistry: ""
+
+  # Image pull secrets applied to all pods
+  # Example: [{ name: "my-registry-secret" }]
+  imagePullSecrets: []
+
+
+# Namespace where sandbox pods are created
+sandboxNamespace: isola-sandboxes
+
+# Whether to create the sandbox namespace (set to false if it already exists).
+# The sandbox namespace is different from the namespace this helm charts installs
+# the isola system components to (operator, api-gateway), and is used to orchestrate
+# the sandboxes and related resource in.
+createSandboxNamespace: true
+
+
+operator:
+  image:
+    registry: ghcr.io/isola-ai
+    repository: isola-operator
+    tag: ""  # Defaults to Chart.appVersion
+    digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  podAnnotations: {}
+
+  # Sidecar image injected into sandbox pods to facilitate control
+  # from api-gateway to the sandbox (e.g. exec commands, copy files)
+  sidecar:
+    image:
+      registry: ghcr.io/isola-ai
+      repository: sandbox-sidecar
+      tag: ""  # Defaults to Chart.appVersion
+      digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+
+  # Sandbox runtime configuration
+  # Selects which runtime to use for sandbox pods and configures runtime-specific features.
+  sandboxRuntime:
+    # Runtime type selector (mutually exclusive)
+    # - "gvisor": Use gVisor runtime with optional snapshot capability
+    # - "clusterDefault": Use cluster default runtime (typically runc, no snapshot support)
+    type: gvisor
+
+    # gVisor runtime configuration
+    # Only used when type: gvisor
+    gvisor:
+      # Kubernetes RuntimeClassName for gVisor
+      # Must match a RuntimeClass resource in your cluster (e.g., created by hack/setup.sh)
+      runtimeClassName: gvisor
+
+      # Rootfs snapshot capability for gVisor sandboxes
+      # Allows creating point-in-time rootfs snapshots of sandbox container filesystems.
+      #
+      # SECURITY NOTE: RootfsSnapshot jobs require privileged operations:
+      # - hostPath mount of runsc binary and state directory
+      # - hostPID: true to verify sandbox is running
+      # - Root user in snapshotter init container
+      #
+      # Set enabled: false if your security policy prohibits these operations.
+      # Sandboxes will still run normally; only RootfsSnapshot CRs will fail.
+      rootfssnapshot:
+        enabled: true
+
+        # gVisor/runsc paths for rootfs snapshot operations
+        # These paths must match your cluster's gVisor installation
+        runsc:
+          binaryPath: /usr/local/bin/runsc
+          rootDir: /run/containerd/runsc/k8s.io
+
+        # RootfsSnapshot storage configuration (bucket for tarball uploads)
+        storage:
+          # Bucket URL (required for snapshotting to work)
+          # Examples:
+          #   s3://bucket-name?region=us-east-1 (AWS S3)
+          #   s3://bucket-name?endpoint=http://localstack:4566&use_path_style=true (LocalStack/MinIO)
+          #   gs://bucket-name (Google Cloud Storage)
+          #   azblob://container-name (Azure Blob Storage)
+          bucketUrl: ""
+
+          # Credentials - three modes:
+          #   1. Pod/Workload Identity: Leave all empty (recommended)
+          #   2. Existing Secret: Set existingSecret
+          #   3. Chart-managed: Provide accessKeyId/secretAccessKey (dev only)
+          credentials:
+            existingSecret: ""
+            accessKeyId: ""
+            secretAccessKey: ""
+            region: ""
+
+        # Uploader job configuration
+        uploader:
+          image:
+            registry: ghcr.io/isola-ai
+            repository: isola-uploader
+            tag: ""  # Defaults to Chart.appVersion
+            digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+
+        # ServiceAccount for rootfs snapshot jobs (needs cloud storage permissions)
+        serviceAccount:
+          create: true
+          name: "isola-rootfssnapshot-job"
+          annotations: {}  # For IRSA/Workload Identity
+
+    # Cluster default runtime configuration
+    # Uses cluster default RuntimeClass (no special configuration needed)
+    # RootfsSnapshot capability is not available with cluster default runtime
+    clusterDefault: {}
+
+  # PriorityClassName for sandbox pods (applies to both runtime types)
+  sandboxPriorityClassName: ""
+
+
+apiGateway:
+  # The apiGateway installation could be skipped,
+  # though it is not recommended as it provides control
+  # functionality over the sandboxes (proxies file copies, exec commands, etc)
+  enabled: true
+
+  image:
+    registry: ghcr.io/isola-ai
+    repository: api-gateway
+    tag: ""  # Defaults to Chart.appVersion
+    digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+
+  service:
+    type: ClusterIP
+    nodePort: null
+
+  logging:
+    level: info
+    devMode: false
+
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  podAnnotations: {}

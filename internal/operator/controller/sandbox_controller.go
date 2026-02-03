@@ -68,12 +68,12 @@ const (
 	CondReasonDeleting          = "Deleting"
 	CondReasonReconciling       = "Reconciling"
 
-	// Snapshot-related reasons
-	CondReasonSnapshottingInProgress = "SnapshottingInProgress"
-	CondReasonSnapshotComplete       = "SnapshotComplete"
-	CondReasonSnapshotFailed         = "SnapshotFailed"
-	CondReasonSnapshotTimeout        = "SnapshotTimeout"
-	CondReasonInvalidRuntime         = "InvalidRuntime"
+	// RootfsSnapshot-related reasons
+	CondReasonRootfsSnapshottingInProgress = "RootfsSnapshottingInProgress"
+	CondReasonRootfsSnapshotComplete       = "RootfsSnapshotComplete"
+	CondReasonRootfsSnapshotFailed         = "RootfsSnapshotFailed"
+	CondReasonRootfsSnapshotTimeout        = "RootfsSnapshotTimeout"
+	CondReasonInvalidRuntime               = "InvalidRuntime"
 
 	// NetworkPolicy-related reasons
 	CondReasonNetworkPolicyApplied = "NetworkPolicyApplied"
@@ -375,14 +375,14 @@ func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv
 	return sandboxPod, nil
 }
 
-func getShutdownSnapshotName(sandbox *sandboxv1alpha1.Sandbox) string {
+func getShutdownRootfssnapshotName(sandbox *sandboxv1alpha1.Sandbox) string {
 	return sandbox.Name + "-shutdown"
 }
 
-func (r *SandboxReconciler) getShutdownSnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
+func (r *SandboxReconciler) getShutdownRootfssnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      getShutdownSnapshotName(sandbox),
+		Name:      getShutdownRootfssnapshotName(sandbox),
 		Namespace: sandbox.Namespace,
 	}, snap)
 	if apierrors.IsNotFound(err) {
@@ -583,11 +583,11 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	conditions = append(conditions, networkCondition)
 
 	// todo benl: currently, only shutdown snapsbot condition is reflected
-	shutdownSnapshot, err := r.getShutdownSnapshot(ctx, sandbox)
+	shutdownSnapshot, err := r.getShutdownRootfssnapshot(ctx, sandbox)
 	if err != nil {
 		return err
 	}
-	snapshotCondition := r.determineSnapshotCondition(sandbox, shutdownSnapshot)
+	snapshotCondition := r.determineRootfssnapshotCondition(sandbox, shutdownSnapshot)
 	conditions = append(conditions, snapshotCondition)
 
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod)
@@ -633,13 +633,13 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 	}
 }
 
-func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snap *sandboxv1alpha1.RootfsSnapshot) metav1.Condition {
+func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snap *sandboxv1alpha1.RootfsSnapshot) metav1.Condition {
 	if snap == nil {
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             "NoSnapshot",
-			Message:            "No shutdown snapshot exists",
+			Reason:             "NoRootfsSnapshot",
+			Message:            "No shutdown rootfs snapshot exists",
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
@@ -648,8 +648,8 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshottingInProgress,
-			Message:            fmt.Sprintf("Snapshot %q is in progress", snap.Name),
+			Reason:             CondReasonRootfsSnapshottingInProgress,
+			Message:            fmt.Sprintf("RootfsSnapshot %q is in progress", snap.Name),
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
@@ -659,21 +659,21 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshottingInProgress,
-			Message:            fmt.Sprintf("Snapshot %q status unknown", snap.Name),
+			Reason:             CondReasonRootfsSnapshottingInProgress,
+			Message:            fmt.Sprintf("RootfsSnapshot %q status unknown", snap.Name),
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
 
 	if readyCond.Status == metav1.ConditionTrue {
-		message := fmt.Sprintf("Snapshot %q completed", snap.Name)
+		message := fmt.Sprintf("RootfsSnapshot %q completed", snap.Name)
 		if snap.Status.Revision > 0 {
-			message = fmt.Sprintf("Snapshot %q completed (revision %d)", snap.Name, snap.Status.Revision)
+			message = fmt.Sprintf("RootfsSnapshot %q completed (revision %d)", snap.Name, snap.Status.Revision)
 		}
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionTrue,
-			Reason:             CondReasonSnapshotComplete,
+			Reason:             CondReasonRootfsSnapshotComplete,
 			Message:            message,
 			ObservedGeneration: sandbox.Generation,
 		}
@@ -682,8 +682,8 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 	return metav1.Condition{
 		Type:               SandboxRootfsSnapshotCondition,
 		Status:             metav1.ConditionFalse,
-		Reason:             CondReasonSnapshotFailed,
-		Message:            fmt.Sprintf("Snapshot %q failed: %s", snap.Name, readyCond.Message),
+		Reason:             CondReasonRootfsSnapshotFailed,
+		Message:            fmt.Sprintf("RootfsSnapshot %q failed: %s", snap.Name, readyCond.Message),
 		ObservedGeneration: sandbox.Generation,
 	}
 }
@@ -900,7 +900,7 @@ func (r *SandboxReconciler) finalizeSandbox(
 		return ctrl.Result{}, false, err
 	}
 
-	snapshotDeadline := r.calculateSnapshotDeadline(template)
+	snapshotDeadline := r.calculateRootfssnapshotDeadline(template)
 
 	result, cleanupDone, err := r.executeShutdownPolicy(
 		ctx, sandbox, baseSandbox, template, sandboxPod, snapshotDeadline, CleanupTriggerDeletion,
@@ -964,7 +964,7 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 		{
 			Type:               SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshottingInProgress,
+			Reason:             CondReasonRootfsSnapshottingInProgress,
 			Message:            message + "; executing shutdown policy",
 			ObservedGeneration: sandbox.Generation,
 		},
@@ -988,7 +988,7 @@ func (r *SandboxReconciler) getActiveDeadlineSeconds(template *sandboxv1alpha1.S
 	return defaultActiveDeadlineSeconds
 }
 
-func (r *SandboxReconciler) calculateSnapshotDeadline(template *sandboxv1alpha1.SandboxTemplate) time.Time {
+func (r *SandboxReconciler) calculateRootfssnapshotDeadline(template *sandboxv1alpha1.SandboxTemplate) time.Time {
 	return r.clock().Now().Add(time.Duration(r.getActiveDeadlineSeconds(template)) * time.Second)
 }
 
@@ -1009,7 +1009,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshotTimeout,
+				Reason:             CondReasonRootfsSnapshotTimeout,
 				Message:            "Rootfs snapshot did not complete before deadline",
 				ObservedGeneration: sandbox.Generation,
 			},
@@ -1027,7 +1027,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshotFailed,
+				Reason:             CondReasonRootfsSnapshotFailed,
 				Message:            "Sandbox pod no longer exists; snapshot skipped",
 				ObservedGeneration: sandbox.Generation,
 			},
@@ -1045,7 +1045,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshotFailed,
+				Reason:             CondReasonRootfsSnapshotFailed,
 				Message:            "Sandbox pod is not ready",
 				ObservedGeneration: sandbox.Generation,
 			},
@@ -1079,7 +1079,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	snap, err := r.getShutdownSnapshot(ctx, sandbox)
+	snap, err := r.getShutdownRootfssnapshot(ctx, sandbox)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
@@ -1095,7 +1095,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshottingInProgress,
+				Reason:             CondReasonRootfsSnapshottingInProgress,
 				Message:            fmt.Sprintf("Snapshot %q is running", snapshotName),
 				ObservedGeneration: sandbox.Generation,
 			},
@@ -1120,7 +1120,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionTrue,
-				Reason:             CondReasonSnapshotComplete,
+				Reason:             CondReasonRootfsSnapshotComplete,
 				Message:            fmt.Sprintf("Snapshot %q completed", snapshotName),
 				ObservedGeneration: sandbox.Generation,
 			},
@@ -1141,7 +1141,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshotFailed,
+			Reason:             CondReasonRootfsSnapshotFailed,
 			Message:            message,
 			ObservedGeneration: sandbox.Generation,
 		},
@@ -1159,7 +1159,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	snapshotName := getShutdownSnapshotName(sandbox)
+	snapshotName := getShutdownRootfssnapshotName(sandbox)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      snapshotName,
@@ -1197,7 +1197,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 		{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshottingInProgress,
+			Reason:             CondReasonRootfsSnapshottingInProgress,
 			Message:            fmt.Sprintf("RootfsSnapshot %q created, waiting for completion", rootfsSnapshot.Name),
 			ObservedGeneration: sandbox.Generation,
 		},

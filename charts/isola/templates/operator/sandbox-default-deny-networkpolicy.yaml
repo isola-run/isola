@@ -1,0 +1,19 @@
+# Default deny policy for all sandbox pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-default-deny
+  namespace: {{ include "isola.sandboxNamespace" . }}
+  labels:
+    {{- include "isola.operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: isola-sandbox
+      app.kubernetes.io/managed-by: isola-operator
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress: []

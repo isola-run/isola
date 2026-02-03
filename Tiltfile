@@ -14,7 +14,7 @@ default_registry('localhost:5001')
 
 # Suppress warning for images that are built but deployed indirectly
 # - sandbox-sidecar: injected by operator into sandbox pods
-# - isola-uploader: used by triggered snapshot jobs
+# - isola-uploader: used by triggered rootfs snapshot jobs
 update_settings(suppress_unused_image_warnings=["sandbox-sidecar", "isola-uploader"])
 
 # ==============================================================================
@@ -36,7 +36,7 @@ helm_resource(
 )
 
 # ==============================================================================
-# isola-operator
+# Isola
 # ==============================================================================
 
 docker_build(
@@ -53,32 +53,6 @@ docker_build(
     ]
 )
 
-helm_resource(
-    name='isola-operator',
-    chart='charts/isola-operator',
-    namespace='isola-system',
-    flags=[
-        '--create-namespace',
-        '-f', 'charts/isola-operator/values-dev.yaml',
-    ],
-    # image_deps and image_keys instruct Tilt on how to patch the Helm values with newly built images.
-    # Tilt sets repository to the full registry+repo path (e.g., localhost:5001/isola-operator)
-    # and tag to the Tilt-generated tag. The helper templates handle empty registry gracefully.
-    image_deps=['isola-operator', 'sandbox-sidecar', 'isola-uploader'],
-    image_keys=[
-        ('image.repository', 'image.tag'),
-        ('sidecar.image.repository', 'sidecar.image.tag'),
-        ('snapshot.uploader.image.repository', 'snapshot.uploader.image.tag'),
-    ],
-    deps=['charts/isola-operator'],
-    resource_deps=['localstack'],
-    labels=['isola'],
-)
-
-# ==============================================================================
-# api-gateway
-# ==============================================================================
-
 docker_build(
     'api-gateway',
     context='.',
@@ -93,25 +67,6 @@ docker_build(
     ]
 )
 
-helm_resource(
-    name='api-gateway',
-    chart='charts/api-gateway',
-    namespace='isola-system',
-    flags=[
-        '--create-namespace',
-        '-f', 'charts/api-gateway/values-dev.yaml',
-    ],
-    image_deps=['api-gateway'],
-    image_keys=[('image.repository', 'image.tag')],
-    deps=['charts/api-gateway'],
-    resource_deps=['isola-operator'],
-    labels=['isola'],
-)
-
-# ==============================================================================
-# isola-uploader (snapshot uploader - built but deployed by operator via Jobs)
-# ==============================================================================
-
 docker_build(
     'isola-uploader',
     context='.',
@@ -125,10 +80,6 @@ docker_build(
     ]
 )
 
-# ==============================================================================
-# sandbox-sidecar (injected by operator into sandbox pods)
-# ==============================================================================
-
 docker_build(
     'sandbox-sidecar',
     context='.',
@@ -140,6 +91,26 @@ docker_build(
         'go.mod',
         'go.sum',
     ]
+)
+
+helm_resource(
+    name='isola',
+    chart='charts/isola',
+    namespace='isola-system',
+    flags=[
+        '--create-namespace',
+        '-f', 'charts/isola/values-dev.yaml',
+    ],
+    image_deps=['isola-operator', 'sandbox-sidecar', 'isola-uploader', 'api-gateway'],
+    image_keys=[
+        ('operator.image.repository', 'operator.image.tag'),
+        ('operator.sidecar.image.repository', 'operator.sidecar.image.tag'),
+        ('operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.repository', 'operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.tag'),
+        ('apiGateway.image.repository', 'apiGateway.image.tag'),
+    ],
+    deps=['charts/isola'],
+    resource_deps=['localstack'],
+    labels=['isola'],
 )
 
 # ==============================================================================

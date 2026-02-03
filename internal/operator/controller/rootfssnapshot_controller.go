@@ -53,8 +53,8 @@ const (
 	LabelSandboxName = "sandbox.isola.run/sandbox-name"
 )
 
-// defaultSnapshotSizeLimit is used when the container has no ephemeral storage limit.
-var defaultSnapshotSizeLimit = resource.MustParse("1Gi")
+// defaultRootfssnapshotSizeLimit is used when the container has no ephemeral storage limit.
+var defaultRootfssnapshotSizeLimit = resource.MustParse("1Gi")
 
 type RootfsSnapshotReconciler struct {
 	client.Client
@@ -62,16 +62,24 @@ type RootfsSnapshotReconciler struct {
 	Recorder record.EventRecorder
 	Clock    Clock
 
-	// BucketURL is the bucket URL for snapshot storage (e.g., s3://bucket?region=us-east-1)
+	// BucketURL is the bucket URL for rootfs snapshot storage (e.g., s3://bucket?region=us-east-1)
 	BucketURL string
 	// CredentialSecretName is the optional Secret name for bucket credentials
 	CredentialSecretName string
 	// UploaderImage is the container image for the uploader sidecar
 	UploaderImage string
-	// SnapshotServiceAccount is the ServiceAccount for snapshot jobs
+	// SnapshotServiceAccount is the ServiceAccount for rootfs snapshot jobs
 	SnapshotServiceAccount string
 	// ImagePullSecrets for pulling uploader images from private registries
 	ImagePullSecrets []corev1.LocalObjectReference
+
+	// Enabled controls whether rootfs snapshot capability is enabled
+	// When false, reconciliation fails fast with "rootfs snapshot not configured"
+	Enabled bool
+	// GvisorRunscPath is the path to the runsc binary on cluster nodes
+	GvisorRunscPath string
+	// GvisorRunscRoot is the root directory where runsc stores runtime state
+	GvisorRunscRoot string
 }
 
 func (r *RootfsSnapshotReconciler) clock() Clock {
@@ -176,9 +184,14 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
+	if !r.Enabled {
+		log.Info("RootfsSnapshot capability disabled - runtime type is clusterDefault or rootfssnapshot.enabled is false")
+		return r.setFailed(ctx, baseSnap, snap, "RootfsSnapshot capability is not enabled. Set operator.sandboxRuntime.type=gvisor and operator.sandboxRuntime.gvisor.rootfssnapshot.enabled=true in Helm values.")
+	}
+
 	if r.BucketURL == "" {
-		log.Info("Snapshot storage not configured: ISOLA_SNAPSHOT_BUCKET_URL is required")
-		return r.setFailed(ctx, baseSnap, snap, "Snapshot storage not configured: ISOLA_SNAPSHOT_BUCKET_URL is required")
+		log.Info("RootfsSnapshot storage not configured: ISOLA_ROOTFSSNAPSHOT_BUCKET_URL is required")
+		return r.setFailed(ctx, baseSnap, snap, "RootfsSnapshot storage not configured: ISOLA_ROOTFSSNAPSHOT_BUCKET_URL is required")
 	}
 
 	sandboxPodName := podutil.GetSandboxPodName(snap.Spec.SandboxName)
@@ -330,11 +343,11 @@ func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *bat
 	return nil, fmt.Errorf("uploader container not found or not terminated")
 }
 
-// getSnapshotSizeLimit returns the ephemeral storage limit for a container.
+// getRootfssnapshotSizeLimit returns the ephemeral storage limit for a container.
 // With gVisor's root:self overlay2, the rootfs upper layer is stored on disk
 // in the container's root filesystem, so Kubernetes ephemeral storage limits apply directly.
-// Falls back to defaultSnapshotSizeLimit if no limit is set.
-func (r *RootfsSnapshotReconciler) getSnapshotSizeLimit(pod *corev1.Pod, containerName string) *resource.Quantity {
+// Falls back to defaultRootfssnapshotSizeLimit if no limit is set.
+func (r *RootfsSnapshotReconciler) getRootfssnapshotSizeLimit(pod *corev1.Pod, containerName string) *resource.Quantity {
 	for _, c := range pod.Spec.Containers {
 		if c.Name == containerName {
 			if limit, ok := c.Resources.Limits[corev1.ResourceEphemeralStorage]; ok {
@@ -343,7 +356,7 @@ func (r *RootfsSnapshotReconciler) getSnapshotSizeLimit(pod *corev1.Pod, contain
 			break
 		}
 	}
-	return &defaultSnapshotSizeLimit
+	return &defaultRootfssnapshotSizeLimit
 }
 
 func (r *RootfsSnapshotReconciler) createSnapshotJob(
@@ -362,7 +375,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 		activeDeadlineSeconds = *snap.Spec.ActiveDeadlineSeconds
 	}
 
-	snapshotSizeLimit := r.getSnapshotSizeLimit(sandboxPod, containerName)
+	rootfssnapshotSizeLimit := r.getRootfssnapshotSizeLimit(sandboxPod, containerName)
 
 	hostPathDirectory := corev1.HostPathDirectory
 	hostPathFile := corev1.HostPathFile
@@ -418,8 +431,8 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 						{
 							Name:    "snapshotter",
 							Image:   "gcr.io/distroless/static:nonroot",
-							Command: []string{"/usr/local/bin/runsc"},
-							Args:    []string{"--root=/run/containerd/runsc/k8s.io", "tar", "rootfs-upper", "--file", localSnapshotPath, containerID},
+							Command: []string{r.GvisorRunscPath},
+							Args:    []string{fmt.Sprintf("--root=%s", r.GvisorRunscRoot), "tar", "rootfs-upper", "--file", localSnapshotPath, containerID},
 							SecurityContext: &corev1.SecurityContext{
 								RunAsUser:  ptr.To(int64(0)), // root needed to read runsc state files
 								RunAsGroup: ptr.To(int64(0)),
@@ -430,8 +443,8 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 								AllowPrivilegeEscalation: ptr.To(false),
 							},
 							VolumeMounts: []corev1.VolumeMount{
-								{Name: "runsc-bin", MountPath: "/usr/local/bin/runsc", ReadOnly: true},
-								{Name: "runsc-state", MountPath: "/run/containerd/runsc/k8s.io", ReadOnly: true},
+								{Name: "runsc-bin", MountPath: r.GvisorRunscPath, ReadOnly: true},
+								{Name: "runsc-state", MountPath: r.GvisorRunscRoot, ReadOnly: true},
 								{Name: "snapshot-data", MountPath: "/snapshot"},
 							},
 							Resources: corev1.ResourceRequirements{
@@ -476,20 +489,20 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 						{
 							Name: "runsc-bin",
 							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{Path: "/usr/local/bin/runsc", Type: &hostPathFile},
+								HostPath: &corev1.HostPathVolumeSource{Path: r.GvisorRunscPath, Type: &hostPathFile},
 							},
 						},
 						{
 							Name: "runsc-state",
 							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{Path: "/run/containerd/runsc/k8s.io", Type: &hostPathDirectory},
+								HostPath: &corev1.HostPathVolumeSource{Path: r.GvisorRunscRoot, Type: &hostPathDirectory},
 							},
 						},
 						{
 							Name: "snapshot-data",
 							VolumeSource: corev1.VolumeSource{
 								EmptyDir: &corev1.EmptyDirVolumeSource{
-									SizeLimit: snapshotSizeLimit,
+									SizeLimit: rootfssnapshotSizeLimit,
 								},
 							},
 						},

@@ -1,0 +1,39 @@
+# Allow internet egress for sandbox pods with isola.run/allow-internet=true label
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-allow-internet
+  namespace: {{ include "isola.sandboxNamespace" . }}
+  labels:
+    {{- include "isola.operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  podSelector:
+    matchLabels:
+      isola.run/allow-internet: "true"
+  policyTypes:
+    - Egress
+  egress:
+    # IPv4 internet with private ranges excepted
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8         # RFC 1918: Class A private
+              - 100.64.0.0/10      # RFC 6598: Carrier-grade NAT
+              - 169.254.0.0/16     # RFC 3927: Link-local (cloud metadata)
+              - 172.16.0.0/12      # RFC 1918: Class B private
+              - 192.168.0.0/16     # RFC 1918: Class C private
+              - 198.18.0.0/15      # RFC 2544: Benchmark testing
+              - 240.0.0.0/4        # RFC 1112: Class E reserved
+              - 34.118.224.0/20    # GKE-managed Service ClusterIP range
+              - 224.0.0.0/4        # Multicast
+    # IPv6 internet with private ranges excepted
+    - to:
+        - ipBlock:
+            cidr: ::/0
+            except:
+              - fc00::/7           # RFC 4193: Unique Local Address (ULA)
+              - fe80::/10          # RFC 4291: Link-local
+              - 2600:2d00:0:4::/64 # GKE-managed Service IPv6 range
+              - ff00::/8           # Multicast
