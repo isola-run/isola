@@ -11,8 +11,7 @@ RUN go mod download
 # Copy required source
 COPY api/ api/
 COPY cmd/api-gateway/ cmd/api-gateway/
-COPY internal/api-gateway/ internal/api-gateway/
-COPY internal/logging/ internal/logging/
+COPY internal/ internal/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o api-gateway ./cmd/api-gateway/main.go

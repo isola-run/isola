@@ -109,6 +109,8 @@ to verify generated docs are in sync.
 5. Writes result to termination log, operator reads and updates status
 6. TTL controller deletes snapshot after `ttlSecondsAfterCompletion`
 
+**Dockerfiles copy all of internal/:** Each binary's Dockerfile copies the entire `internal/` directory rather than individual packages. This avoids needing to update Dockerfiles and Tiltfile when adding new `internal/` packages.
+
 ## Testing
 
 **Go tests:** Ginkgo/Gomega with envtest (K8s API simulation)

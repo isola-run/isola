@@ -43,54 +43,28 @@ docker_build(
     'isola-operator',
     context='.',
     dockerfile='cmd/operator/Dockerfile',
-    only=[
-        'cmd/operator/',
-        'internal/operator/',
-        'internal/snapshot/',
-        'api/',
-        'go.mod',
-        'go.sum',
-    ]
+    only=['cmd/operator/', 'internal/', 'api/', 'go.mod', 'go.sum'],
 )
 
 docker_build(
     'api-gateway',
     context='.',
     dockerfile='cmd/api-gateway/Dockerfile',
-    only=[
-        'api/',
-        'cmd/api-gateway/',
-        'internal/api-gateway/',
-        'internal/logging/',
-        'go.mod',
-        'go.sum',
-    ]
+    only=['cmd/api-gateway/', 'internal/', 'api/', 'go.mod', 'go.sum'],
 )
 
 docker_build(
     'isola-uploader',
     context='.',
     dockerfile='cmd/uploader/Dockerfile',
-    only=[
-        'cmd/uploader/',
-        'internal/snapshot/',
-        'internal/logging/',
-        'go.mod',
-        'go.sum',
-    ]
+    only=['cmd/uploader/', 'internal/', 'go.mod', 'go.sum'],
 )
 
 docker_build(
     'sandbox-sidecar',
     context='.',
     dockerfile='cmd/sandbox-sidecar/Dockerfile',
-    only=[
-        'cmd/sandbox-sidecar/',
-        'internal/sandbox-sidecar/',
-        'internal/logging/',
-        'go.mod',
-        'go.sum',
-    ]
+    only=['cmd/sandbox-sidecar/', 'internal/', 'go.mod', 'go.sum'],
 )
 
 helm_resource(
