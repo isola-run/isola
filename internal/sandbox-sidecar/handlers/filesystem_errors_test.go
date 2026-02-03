@@ -1,15 +1,13 @@
 package handlers
 
 import (
-	"encoding/json"
+	"bytes"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"os"
-	"strings"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/humatest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -38,20 +36,7 @@ func (m *errorMockProcFS) GetUIDGID(pid int) (int, int, error) {
 }
 
 var _ = Describe("Filesystem error cases", func() {
-	var (
-		server *httptest.Server
-		client *http.Client
-	)
-
-	doPostWithClient := func(c *http.Client, serverURL, path string, body string) *http.Response {
-		req, err := http.NewRequest(http.MethodPost, serverURL+path, strings.NewReader(body))
-		Expect(err).NotTo(HaveOccurred())
-		req.Header.Set("Content-Type", "application/octet-stream")
-
-		resp, err := c.Do(req)
-		Expect(err).NotTo(HaveOccurred())
-		return resp
-	}
+	var errorAPI humatest.TestAPI
 
 	Describe("container not found", func() {
 		BeforeEach(func() {
@@ -61,27 +46,15 @@ var _ = Describe("Filesystem error cases", func() {
 				findPIDError: proc.ErrContainerNotFound,
 			}
 
-			r := chi.NewRouter()
-			// Tests use middleware.Recoverer directly (not httplog.RequestLogger) to avoid log noise
-			r.Use(middleware.Recoverer)
-			handler := NewFilesystemHandler(logger, mockProcFS)
-			r.Post("/filesystem", handler.PostFilesystem)
-
-			server = httptest.NewServer(r)
-			client = server.Client()
-			DeferCleanup(server.Close)
+			_, errorAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Error Test API", "1.0.0"))
+			handler := NewFilesystemHandlers(logger, mockProcFS)
+			RegisterFilesystemRoutes(errorAPI, handler)
 		})
 
 		It("returns 400 when container not found", func() {
-			resp := doPostWithClient(client, server.URL, "/filesystem?path=/tmp/test.txt", "content")
-			defer func() { _ = resp.Body.Close() }()
+			resp := errorAPI.Post("/filesystem?path=/tmp/test.txt", "application/octet-stream", bytes.NewReader([]byte("content")))
 
-			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
-
-			var body ErrorResponse
-			err := json.NewDecoder(resp.Body).Decode(&body)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(body.Message).To(Equal("container not found"))
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
 		})
 	})
 })

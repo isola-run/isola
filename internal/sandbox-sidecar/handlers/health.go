@@ -1,24 +1,15 @@
 package handlers
 
 import (
-	"net/http"
-
-	"github.com/go-chi/render"
+	"context"
 )
 
-type HealthHandler struct{}
+type HealthHandlers struct{}
 
-func NewHealthHandler() *HealthHandler {
-	return &HealthHandler{}
+func NewHealthHandlers() *HealthHandlers {
+	return &HealthHandlers{}
 }
 
-// GetHealth godoc
-// @Summary Health check
-// @Description Returns the health status of the sidecar
-// @Tags health
-// @Produce json
-// @Success 200 {object} HealthResponse
-// @Router /health [get]
-func (h *HealthHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, HealthResponse{Status: "ok"})
+func (h *HealthHandlers) GetHealth(ctx context.Context, input *struct{}) (*HealthOutput, error) {
+	return &HealthOutput{Body: HealthResponse{Status: "ok"}}, nil
 }

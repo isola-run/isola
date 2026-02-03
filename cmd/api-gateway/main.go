@@ -12,9 +12,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog/v2"
-	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -23,7 +24,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	_ "github.com/isola-ai/isola-sb/api/openapi/api-gateway" // swagger docs
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 	"github.com/isola-ai/isola-sb/internal/api-gateway/handlers"
 	"github.com/isola-ai/isola-sb/internal/env"
@@ -87,9 +87,6 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 	return mgr, nil
 }
 
-// @title Isola Sandbox API
-// @version 1.0
-// @description API for managing sandboxes
 func main() {
 	cfg := config{}
 
@@ -124,16 +121,12 @@ func main() {
 		},
 	}))
 
-	handler := handlers.NewHandler(logger, mgr.GetClient())
+	humaConfig := huma.DefaultConfig("Isola Sandbox API", "1.0.0")
+	humaConfig.Info.Description = "API for managing sandboxes"
+	api := humachi.New(r, humaConfig)
 
-	r.Get("/health", handler.GetHealth)
-	r.Get("/healthz", handler.GetHealth)
-	r.Get("/ready", handler.GetReady)
-	r.Get("/readyz", handler.GetReady)
-
-	r.Get("/swagger/*", httpSwagger.Handler(
-		httpSwagger.URL("/swagger/doc.json"),
-	))
+	healthHandlers := handlers.NewHealthHandlers(logger, mgr.GetClient())
+	handlers.RegisterHealthRoutes(api, healthHandlers)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.httpPort),

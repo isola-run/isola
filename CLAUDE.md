@@ -39,17 +39,21 @@ with proper Helm templating for name/labels.
 
 ## OpenAPI Workflow
 
-After modifying handler swaggo annotations:
+After modifying handler input/output types or route registrations:
 ```bash
-make swagger  # Regenerates api/openapi/ from code annotations (swaggo)
+make openapi  # Regenerates api/openapi/*.yaml from Huma type definitions
 ```
 
-OpenAPI specs are generated separately per service:
-- `api/openapi/api-gateway/` - End-user facing API (served at `/swagger/`)
-- `api/openapi/sandbox-sidecar/` - Internal API (api-gateway → sidecar)
+OpenAPI 3.1 specs are generated per service:
+- `api/openapi/api-gateway.yaml` - End-user facing API
+- `api/openapi/sandbox-sidecar.yaml` - Internal API (api-gateway → sidecar)
 
-Add swaggo annotations to handlers and run `make swagger`. CI runs `make check-swagger`
-to verify generated docs are in sync.
+At runtime, each service also serves:
+- `/docs` - Interactive Stoplight Elements UI
+- `/openapi.json` - OpenAPI 3.1 spec (JSON)
+- `/openapi.yaml` - OpenAPI 3.1 spec (YAML)
+
+CI runs `make check-openapi` to verify generated specs are in sync.
 
 ## Architecture Notes
 
@@ -59,14 +63,15 @@ to verify generated docs are in sync.
 
 **Project structure:**
 - `api/v1alpha1/` - CRD type definitions (Sandbox, SandboxTemplate, RootfsSnapshot)
-- `api/openapi/` - Generated OpenAPI specs per service (api-gateway/, sandbox-sidecar/)
+- `api/openapi/` - Generated OpenAPI specs (api-gateway.yaml, sandbox-sidecar.yaml)
 - `cmd/operator/` - Kubebuilder operator entry point
 - `cmd/api-gateway/` - API gateway for external clients
 - `cmd/sandbox-sidecar/` - Sidecar injected into sandbox pods by operator
 - `cmd/uploader/` - Snapshot uploader job (uploads tarballs to S3/GCS/Azure)
+- `cmd/openapi-gen/` - CLI tool to generate OpenAPI specs from Huma types
 - `internal/operator/controller/` - Reconciler implementations
-- `internal/api-gateway/` - api-gateway handlers, middleware, and generated OpenAPI code
-- `internal/sandbox-sidecar/` - Sidecar handlers
+- `internal/api-gateway/` - api-gateway handlers and route registrations
+- `internal/sandbox-sidecar/` - Sidecar handlers and route registrations
 - `internal/snapshot/` - Shared snapshot types (used by operator and uploader)
 - `charts/` - Helm charts (source of truth for deployment)
 - `charts/isola/generated/` - Auto-generated RBAC from kubebuilder annotations (do not edit)

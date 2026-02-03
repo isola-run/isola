@@ -10,11 +10,10 @@ import (
 var _ = Describe("Health Endpoints", func() {
 	DescribeTable("health check endpoints",
 		func(path string) {
-			resp := doGet(path)
-			DeferCleanup(resp.Body.Close)
+			resp := testAPI.Get(path)
 
-			Expect(resp).To(HaveHTTPStatus(200))
-			Expect(resp).To(HaveHTTPHeaderWithValue("Content-Type", "application/json"))
+			Expect(resp.Code).To(Equal(200))
+			Expect(resp.Header().Get("Content-Type")).To(ContainSubstring("application/json"))
 
 			var health HealthResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&health)).To(Succeed())
@@ -23,14 +22,12 @@ var _ = Describe("Health Endpoints", func() {
 		Entry("liveness probe (/health)", "/health"),
 		Entry("readiness probe (/ready)", "/ready"),
 	)
-
 })
 
 var _ = Describe("Unknown Endpoints", func() {
 	It("returns 404 for unregistered paths", func() {
-		resp := doGet("/nonexistent")
-		DeferCleanup(resp.Body.Close)
+		resp := testAPI.Get("/nonexistent")
 
-		Expect(resp).To(HaveHTTPStatus(404))
+		Expect(resp.Code).To(Equal(404))
 	})
 })

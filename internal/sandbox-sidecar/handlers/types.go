@@ -1,18 +1,42 @@
 package handlers
 
-// HealthResponse is the response for the health check endpoint.
+import (
+	"io"
+
+	"github.com/danielgtaylor/huma/v2"
+)
+
 type HealthResponse struct {
-	Status string `json:"status" example:"ok"`
+	Status string `json:"status" example:"ok" doc:"Health status"`
 }
 
-// ErrorResponse is returned when an error occurs.
-type ErrorResponse struct {
-	Message string `json:"message" example:"path is required"`
+type HealthOutput struct {
+	Body HealthResponse
 }
 
-// FilesystemWriteResponse is returned after a successful file write.
+// BodyStream provides streaming access to request body via Huma's Resolver pattern.
+// See https://github.com/danielgtaylor/huma/issues/749
+type BodyStream struct {
+	Stream io.Reader
+}
+
+func (b *BodyStream) Resolve(ctx huma.Context) []error {
+	b.Stream = ctx.BodyReader()
+	return nil
+}
+
+type FilesystemWriteInput struct {
+	Path      string `query:"path" required:"true" doc:"Destination path (absolute or relative to container cwd)"`
+	Container string `query:"container" doc:"Container name (defaults to main container)"`
+	BodyStream
+}
+
 type FilesystemWriteResponse struct {
-	AbsolutePath string `json:"absolute_path" example:"/workspace/file.txt"`
-	BytesWritten int64  `json:"bytes_written" example:"1024"`
-	Container    string `json:"container,omitempty" example:"main"`
+	AbsolutePath string `json:"absolute_path" example:"/workspace/file.txt" doc:"Absolute path where file was written"`
+	BytesWritten int64  `json:"bytes_written" example:"1024" doc:"Number of bytes written"`
+	Container    string `json:"container,omitempty" example:"main" doc:"Container name"`
+}
+
+type FilesystemWriteOutput struct {
+	Body FilesystemWriteResponse
 }

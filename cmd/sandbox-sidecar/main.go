@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog/v2"
 
@@ -24,9 +26,6 @@ type config struct {
 	devMode  bool
 }
 
-// @title Isola Sandbox Sidecar API
-// @version 1.0
-// @description Internal API for sandbox filesystem operations
 func main() {
 	cfg := config{}
 
@@ -50,12 +49,15 @@ func main() {
 		},
 	}))
 
-	healthHandler := handlers.NewHealthHandler()
-	filesystemHandler := handlers.NewFilesystemHandler(logger, &proc.RealProcFS{})
+	humaConfig := huma.DefaultConfig("Isola Sandbox Sidecar API", "1.0.0")
+	humaConfig.Info.Description = "Internal API for sandbox filesystem operations"
+	api := humachi.New(r, humaConfig)
 
-	r.Get("/health", healthHandler.GetHealth)
-	r.Get("/healthz", healthHandler.GetHealth)
-	r.Post("/filesystem", filesystemHandler.PostFilesystem)
+	healthHandlers := handlers.NewHealthHandlers()
+	filesystemHandlers := handlers.NewFilesystemHandlers(logger, &proc.RealProcFS{})
+
+	handlers.RegisterHealthRoutes(api, healthHandlers)
+	handlers.RegisterFilesystemRoutes(api, filesystemHandlers)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),

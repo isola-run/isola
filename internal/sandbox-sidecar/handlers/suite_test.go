@@ -2,23 +2,20 @@ package handlers
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"log/slog"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/humatest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var (
-	testServer  *httptest.Server
-	testClient  *http.Client
+	testAPI     humatest.TestAPI
 	testRootDir string
 	testCwd     string
 )
@@ -73,46 +70,19 @@ var _ = BeforeSuite(func() {
 		gid:     os.Getgid(),
 	}
 
-	r := chi.NewRouter()
-	// Tests use middleware.Recoverer directly (not httplog.RequestLogger) to avoid log noise
-	r.Use(middleware.Recoverer)
+	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
 
-	healthHandler := NewHealthHandler()
-	filesystemHandler := NewFilesystemHandler(logger, mockProcFS)
+	healthHandlers := NewHealthHandlers()
+	filesystemHandlers := NewFilesystemHandlers(logger, mockProcFS)
 
-	r.Get("/health", healthHandler.GetHealth)
-	r.Post("/filesystem", filesystemHandler.PostFilesystem)
-
-	testServer = httptest.NewServer(r)
-	DeferCleanup(testServer.Close)
-
-	testClient = testServer.Client()
+	RegisterHealthRoutes(testAPI, healthHandlers)
+	RegisterFilesystemRoutes(testAPI, filesystemHandlers)
 })
 
-// doGet performs a GET request and returns the response.
-// Caller is responsible for closing the response body.
-func doGet(path string) *http.Response {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, testServer.URL+path, nil)
-	Expect(err).NotTo(HaveOccurred())
-
-	resp, err := testClient.Do(req)
-	Expect(err).NotTo(HaveOccurred())
-	return resp
-}
-
-// doPost performs a POST request with the given body and returns the response.
-// Caller is responsible for closing the response body.
-func doPost(path string, body []byte) *http.Response {
+func doPost(path string, body []byte) *httptest.ResponseRecorder {
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
 	}
-
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, testServer.URL+path, bodyReader)
-	Expect(err).NotTo(HaveOccurred())
-	req.Header.Set("Content-Type", "application/octet-stream")
-
-	resp, err := testClient.Do(req)
-	Expect(err).NotTo(HaveOccurred())
-	return resp
+	return testAPI.Post(path, "Content-Type: application/octet-stream", bodyReader)
 }

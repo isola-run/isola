@@ -10,11 +10,10 @@ import (
 
 var _ = Describe("Health", func() {
 	It("returns 200 with status ok", func() {
-		resp := doGet("/health")
-		defer func() { _ = resp.Body.Close() }()
+		resp := testAPI.Get("/health")
 
-		Expect(resp.StatusCode).To(Equal(http.StatusOK))
-		Expect(resp.Header.Get("Content-Type")).To(Equal("application/json"))
+		Expect(resp.Code).To(Equal(http.StatusOK))
+		Expect(resp.Header().Get("Content-Type")).To(ContainSubstring("application/json"))
 
 		var body map[string]string
 		err := json.NewDecoder(resp.Body).Decode(&body)

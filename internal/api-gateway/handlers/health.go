@@ -1,62 +1,37 @@
 package handlers
 
 import (
+	"context"
 	"log/slog"
-	"net/http"
 
-	"github.com/go-chi/render"
+	"github.com/danielgtaylor/huma/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 )
 
-type Handler struct {
+type HealthHandlers struct {
 	logger    *slog.Logger
 	k8sClient client.Client
 }
 
-func NewHandler(logger *slog.Logger, k8sClient client.Client) *Handler {
-	return &Handler{
+func NewHealthHandlers(logger *slog.Logger, k8sClient client.Client) *HealthHandlers {
+	return &HealthHandlers{
 		logger:    logger,
 		k8sClient: k8sClient,
 	}
 }
 
-type HealthResponse struct {
-	Status string `json:"status" example:"ok"`
+func (h *HealthHandlers) GetHealth(ctx context.Context, input *struct{}) (*HealthOutput, error) {
+	return &HealthOutput{Body: HealthResponse{Status: "ok"}}, nil
 }
 
-type ErrorResponse struct {
-	Message string `json:"message" example:"service not ready"`
-}
-
-// GetHealth godoc
-// @Summary Health check
-// @Description Returns the health status of the API
-// @Tags health
-// @Produce json
-// @Success 200 {object} HealthResponse
-// @Router /health [get]
-func (h *Handler) GetHealth(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, HealthResponse{Status: "ok"})
-}
-
-// GetReady godoc
-// @Summary Readiness check
-// @Description Returns the readiness status of the API
-// @Tags health
-// @Produce json
-// @Success 200 {object} HealthResponse
-// @Failure 503 {object} ErrorResponse
-// @Router /ready [get]
-func (h *Handler) GetReady(w http.ResponseWriter, r *http.Request) {
+func (h *HealthHandlers) GetReady(ctx context.Context, input *struct{}) (*HealthOutput, error) {
 	sandboxList := &sandboxv1alpha1.SandboxList{}
-	if err := h.k8sClient.List(r.Context(), sandboxList, client.Limit(1)); err != nil {
+	if err := h.k8sClient.List(ctx, sandboxList, client.Limit(1)); err != nil {
 		h.logger.Error("readiness check failed", "error", err)
-		render.Status(r, http.StatusServiceUnavailable)
-		render.JSON(w, r, ErrorResponse{Message: "not ready"})
-		return
+		return nil, huma.Error503ServiceUnavailable("not ready")
 	}
 
-	render.JSON(w, r, HealthResponse{Status: "ok"})
+	return &HealthOutput{Body: HealthResponse{Status: "ok"}}, nil
 }

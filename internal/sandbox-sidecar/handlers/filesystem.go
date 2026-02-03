@@ -1,20 +1,20 @@
 package handlers
 
 import (
+	"context"
 	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"github.com/go-chi/render"
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 )
 
-type FilesystemHandler struct {
+type FilesystemHandlers struct {
 	logger *slog.Logger
 	procFS proc.ProcFS
 
@@ -23,17 +23,15 @@ type FilesystemHandler struct {
 	cachedPIDs map[string]int
 }
 
-func NewFilesystemHandler(logger *slog.Logger, procFS proc.ProcFS) *FilesystemHandler {
-	return &FilesystemHandler{
+func NewFilesystemHandlers(logger *slog.Logger, procFS proc.ProcFS) *FilesystemHandlers {
+	return &FilesystemHandlers{
 		logger:     logger,
 		procFS:     procFS,
 		cachedPIDs: make(map[string]int),
 	}
 }
 
-// findContainerPID returns the PID for the given container, using a cache to avoid repeated /proc scans.
-// Validates cached PID still has the expected ISOLA_CONTAINER_NAME marker before returning.
-func (h *FilesystemHandler) findCachedContainerPID(containerName string) (int, error) {
+func (h *FilesystemHandlers) findCachedContainerPID(containerName string) (int, error) {
 	h.pidMu.RLock()
 	pid, ok := h.cachedPIDs[containerName]
 	h.pidMu.RUnlock()
@@ -70,56 +68,30 @@ func resolveAbsolutePath(path string, pid int, procFS proc.ProcFS) (string, erro
 	return filepath.Abs(relativePath)
 }
 
-// PostFilesystem godoc
-// @Summary Write a file to the sandbox filesystem
-// @Description Writes a file to the specified path in the sandbox container
-// @Tags filesystem
-// @Accept application/octet-stream
-// @Produce json
-// @Param path query string true "Destination path (absolute or relative to container cwd)"
-// @Param container query string false "Container name (defaults to main container)"
-// @Success 200 {object} FilesystemWriteResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /filesystem [post]
-func (h *FilesystemHandler) PostFilesystem(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Query().Get("path")
-	container := r.URL.Query().Get("container")
-
-	if path == "" {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, ErrorResponse{Message: "path query parameter is required"})
-		return
-	}
+func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
+	path := input.Path
+	container := input.Container
 
 	// Reject null bytes in path
 	if strings.ContainsRune(path, 0) {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, ErrorResponse{Message: "path contains invalid characters"})
-		return
+		return nil, huma.Error400BadRequest("path contains invalid characters")
 	}
 
 	pid, err := h.findCachedContainerPID(container)
 	if err != nil {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, ErrorResponse{Message: "container not found"})
-		return
+		return nil, huma.Error400BadRequest("container not found")
 	}
 
 	uid, gid, err := h.procFS.GetUIDGID(pid)
 	if err != nil {
 		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, ErrorResponse{Message: "failed to get container uid/gid"})
-		return
+		return nil, huma.Error500InternalServerError("failed to get container uid/gid")
 	}
 
 	resolvedPath, err := resolveAbsolutePath(path, pid, h.procFS)
 	if err != nil {
 		h.logger.Error("failed to resolve path", "error", err, "pid", pid)
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, ErrorResponse{Message: "failed to resolve path"})
-		return
+		return nil, huma.Error500InternalServerError("failed to resolve path")
 	}
 
 	// Build the host path via /proc/<pid>/root
@@ -128,27 +100,21 @@ func (h *FilesystemHandler) PostFilesystem(w http.ResponseWriter, r *http.Reques
 	parentDir := filepath.Dir(targetPath)
 	if err := os.MkdirAll(parentDir, 0755); err != nil { //nolint:gosec // intentional permissions for container access
 		h.logger.Error("failed to create parent directories", "error", err, "path", parentDir)
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, ErrorResponse{Message: "failed to create parent directories"})
-		return
+		return nil, huma.Error500InternalServerError("failed to create parent directories")
 	}
 
 	dst, err := os.Create(targetPath) //nolint:gosec
 	if err != nil {
 		h.logger.Error("failed to create file", "error", err, "path", targetPath)
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, ErrorResponse{Message: "failed to create file"})
-		return
+		return nil, huma.Error500InternalServerError("failed to create file")
 	}
 	defer func() { _ = dst.Close() }()
 
 	// Stream the body to the file
-	written, err := io.Copy(dst, r.Body)
+	written, err := io.Copy(dst, input.Stream)
 	if err != nil {
 		h.logger.Error("failed to write file", "error", err, "path", targetPath)
-		render.Status(r, http.StatusInternalServerError)
-		render.JSON(w, r, ErrorResponse{Message: "failed to write file"})
-		return
+		return nil, huma.Error500InternalServerError("failed to write file")
 	}
 
 	if err := os.Chmod(targetPath, 0600); err != nil {
@@ -158,9 +124,11 @@ func (h *FilesystemHandler) PostFilesystem(w http.ResponseWriter, r *http.Reques
 		h.logger.Error("failed to set file ownership", "error", err, "path", targetPath, "uid", uid, "gid", gid)
 	}
 
-	render.JSON(w, r, FilesystemWriteResponse{
-		AbsolutePath: resolvedPath,
-		BytesWritten: written,
-		Container:    container,
-	})
+	return &FilesystemWriteOutput{
+		Body: FilesystemWriteResponse{
+			AbsolutePath: resolvedPath,
+			BytesWritten: written,
+			Container:    container,
+		},
+	}, nil
 }
