@@ -23,8 +23,8 @@ jobs:
       - name: Install controller-gen
         run: go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.0
 
-      - name: Verify Swagger docs are in sync
-        run: make check-swagger
+      - name: Verify OpenAPI specs are in sync
+        run: make check-openapi
 
       - name: Verify CRD/RBAC manifests are in sync
         run: make check-manifests

@@ -1,21 +1,48 @@
 package handlers
 
 import (
-	"context"
+	"bytes"
+	"io"
 	"log/slog"
-	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/humatest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var (
-	testServer *httptest.Server
-	testClient *http.Client
+	testAPI     humatest.TestAPI
+	testRootDir string
+	testCwd     string
 )
+
+// MockProcFS implements proc.ProcFS for testing.
+type MockProcFS struct {
+	rootDir string
+	cwd     string
+	uid     int
+	gid     int
+}
+
+func (m *MockProcFS) FindMarkedPID(containerName string) (int, error) {
+	return 1, nil
+}
+
+func (m *MockProcFS) GetCwd(pid int) (string, error) {
+	return m.cwd, nil
+}
+
+func (m *MockProcFS) GetRoot(pid int) string {
+	return m.rootDir
+}
+
+func (m *MockProcFS) GetUIDGID(pid int) (int, int, error) {
+	return m.uid, m.gid, nil
+}
 
 func TestHandlers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -23,28 +50,39 @@ func TestHandlers(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	gin.SetMode(gin.TestMode)
 	logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
 
-	r := gin.New()
-	r.Use(gin.Recovery())
+	// Create temp directories for testing
+	var err error
+	testRootDir, err = os.MkdirTemp("", "sidecar-test-root-*")
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(func() { _ = os.RemoveAll(testRootDir) })
 
-	handler := NewHandler(logger)
-	r.GET("/health", handler.GetHealth)
+	testCwd = "/workspace"
+	// Create the cwd directory in the mock root
+	err = os.MkdirAll(testRootDir+testCwd, 0750)
+	Expect(err).NotTo(HaveOccurred())
 
-	testServer = httptest.NewServer(r)
-	DeferCleanup(testServer.Close)
+	mockProcFS := &MockProcFS{
+		rootDir: testRootDir,
+		cwd:     testCwd,
+		uid:     os.Getuid(),
+		gid:     os.Getgid(),
+	}
 
-	testClient = testServer.Client()
+	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
+
+	healthHandlers := NewHealthHandlers()
+	filesystemHandlers := NewFilesystemHandlers(logger, mockProcFS)
+
+	RegisterHealthRoutes(testAPI, healthHandlers)
+	RegisterFilesystemRoutes(testAPI, filesystemHandlers)
 })
 
-// doGet performs a GET request and returns the response.
-// Caller is responsible for closing the response body.
-func doGet(path string) *http.Response {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, testServer.URL+path, nil)
-	Expect(err).NotTo(HaveOccurred())
-
-	resp, err := testClient.Do(req)
-	Expect(err).NotTo(HaveOccurred())
-	return resp
+func doPost(path string, body []byte) *httptest.ResponseRecorder {
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+	return testAPI.Post(path, "Content-Type: application/octet-stream", bodyReader)
 }

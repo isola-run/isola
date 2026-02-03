@@ -3,12 +3,11 @@ package handlers
 import (
 	"context"
 	"log/slog"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/humatest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -27,12 +26,11 @@ import (
 const testNamespace = "test-sandbox"
 
 var (
-	ctx        context.Context
-	cancel     context.CancelFunc
-	testEnv    *envtest.Environment
-	k8sClient  client.Client
-	testServer *httptest.Server
-	testClient *http.Client
+	ctx       context.Context
+	cancel    context.CancelFunc
+	testEnv   *envtest.Environment
+	k8sClient client.Client
+	testAPI   humatest.TestAPI
 )
 
 func TestHandlers(t *testing.T) {
@@ -88,22 +86,12 @@ var _ = BeforeSuite(func() {
 	}
 	Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 
-	// Set up HTTP test server with gin
-	gin.SetMode(gin.TestMode)
 	logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
 
-	r := gin.New()
-	r.Use(gin.Recovery())
+	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
 
-	handler := NewHandler(logger, k8sClient)
-
-	r.GET("/health", handler.GetHealth)
-	r.GET("/ready", handler.GetReady)
-
-	testServer = httptest.NewServer(r)
-	DeferCleanup(testServer.Close)
-
-	testClient = testServer.Client()
+	healthHandlers := NewHealthHandlers(logger, k8sClient)
+	RegisterHealthRoutes(testAPI, healthHandlers)
 })
 
 var _ = AfterSuite(func() {
@@ -112,14 +100,3 @@ var _ = AfterSuite(func() {
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
-
-// doGet performs a GET request and returns the response.
-// Caller is responsible for closing the response body.
-func doGet(path string) *http.Response {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, testServer.URL+path, nil)
-	Expect(err).NotTo(HaveOccurred())
-
-	resp, err := testClient.Do(req)
-	Expect(err).NotTo(HaveOccurred())
-	return resp
-}

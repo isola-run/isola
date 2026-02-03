@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	"github.com/isola-ai/isola-sb/internal/constants"
 	netbuilder "github.com/isola-ai/isola-sb/internal/operator/controller/network"
 	"github.com/isola-ai/isola-sb/internal/operator/controller/podutil"
 	"github.com/isola-ai/isola-sb/internal/operator/controller/snapshot"
@@ -148,20 +149,17 @@ func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 	}
 }
 
-func (r *SandboxReconciler) injectSandboxSidecar(sandboxPod *corev1.Pod) error {
-	if len(sandboxPod.Spec.Containers) != 1 {
-		// todo: remove this assumption
-		return fmt.Errorf("sandbox pod must have exactly one container")
+// Mark each container with its name so the sidecar can discover it via /proc/<pid>/environ.
+func markContainers(sandboxPod *corev1.Pod) {
+	for i := range sandboxPod.Spec.Containers {
+		sandboxPod.Spec.Containers[i].Env = append(sandboxPod.Spec.Containers[i].Env, corev1.EnvVar{
+			Name:  constants.IsolaContainerNameEnv,
+			Value: sandboxPod.Spec.Containers[i].Name,
+		})
 	}
+}
 
-	// todo benl: Mark with sandboxPod.Spec.Containers[i].Name
-	// Mark the first container as the main container so the sidecar can discover it via /proc/<pid>/environ.
-	// Note: a single main container is supported. The sidecar's findMarkedProcess() returns the first PID it finds with the ISOLA_MAIN_CONTAINER marker.
-	sandboxPod.Spec.Containers[0].Env = append(sandboxPod.Spec.Containers[0].Env, corev1.EnvVar{
-		Name:  "ISOLA_MAIN_CONTAINER",
-		Value: "true",
-	})
-
+func (r *SandboxReconciler) injectSandboxSidecar(sandboxPod *corev1.Pod) error {
 	sidecarContainer := r.buildSandboxSidecarContainer()
 	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, sidecarContainer)
 	return nil
@@ -224,6 +222,11 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		Spec: template.Spec.PodTemplate.Spec,
 	}
 
+	// Inject imagePullSecrets for private registries (configured via Helm global.imagePullSecrets)
+	if len(r.ImagePullSecrets) > 0 {
+		sandboxPod.Spec.ImagePullSecrets = append(sandboxPod.Spec.ImagePullSecrets, r.ImagePullSecrets...)
+	}
+
 	// Set RuntimeClassName if configured (e.g. "gvisor" for sandboxed execution)
 	if r.RuntimeClassName != "" {
 		sandboxPod.Spec.RuntimeClassName = &r.RuntimeClassName
@@ -248,16 +251,13 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	configureDNS(sandboxPod, sandbox.Spec.Network)
 
-	// Inject imagePullSecrets for private registries (configured via Helm global.imagePullSecrets)
-	if len(r.ImagePullSecrets) > 0 {
-		sandboxPod.Spec.ImagePullSecrets = append(sandboxPod.Spec.ImagePullSecrets, r.ImagePullSecrets...)
-	}
+	markContainers(sandboxPod)
 
 	if err := r.injectSandboxSidecar(sandboxPod); err != nil {
 		log.Error(err, "Failed to inject sidecar")
 		return err
 	}
-	// Set Pod's object owner reference to the Sandbox object
+
 	if err := controllerutil.SetControllerReference(sandbox, sandboxPod, r.Scheme); err != nil {
 		log.Error(err, "Failed to set controller reference")
 		return err

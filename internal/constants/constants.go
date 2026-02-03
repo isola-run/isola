@@ -1,0 +1,5 @@
+package constants
+
+// IsolaContainerNameEnv is the environment variable used to mark containers
+// with their name for discovery by the sidecar via /proc/<pid>/environ.
+const IsolaContainerNameEnv = "ISOLA_CONTAINER_NAME"

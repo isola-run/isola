@@ -11,19 +11,6 @@ help: ## Display this help
 
 ##@ Development
 
-.PHONY: swagger
-swagger: ## Generate api-gateway Swagger docs
-	go tool swag init -g cmd/api-gateway/main.go -o api/openapi --parseDependency --parseInternal
-
-.PHONY: check-swagger
-check-swagger: swagger ## Verify api-gateway Swagger docs are up-to-date
-	@if ! git diff --quiet -- api/openapi/; then \
-		echo "ERROR: Swagger docs are out of sync"; \
-		echo "Run 'make swagger' and commit the changes"; \
-		git diff --stat -- api/openapi/; \
-		exit 1; \
-	fi
-
 .PHONY: generate
 generate: ## Generate CRD DeepCopy methods
 	controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
@@ -35,6 +22,21 @@ manifests: ## Generate CRD and RBAC manifests directly to Helm chart
 		paths="./api/..." paths="./internal/operator/controller/..." \
 		output:crd:artifacts:config=charts/isola/crds \
 		output:rbac:artifacts:config=charts/isola/generated
+
+.PHONY: openapi
+openapi: ## Generate OpenAPI specs for HTTP services
+	@mkdir -p api/openapi
+	go run ./cmd/openapi-gen -service api-gateway > api/openapi/api-gateway.yaml
+	go run ./cmd/openapi-gen -service sandbox-sidecar > api/openapi/sandbox-sidecar.yaml
+
+.PHONY: check-openapi
+check-openapi: openapi ## Verify OpenAPI specs are up-to-date
+	@if ! git diff --quiet -- api/openapi/; then \
+		echo "ERROR: OpenAPI specs are out of sync"; \
+		echo "Run 'make openapi' and commit the changes"; \
+		git diff --stat -- api/openapi/; \
+		exit 1; \
+	fi
 
 .PHONY: fmt
 fmt: ## Run golangci-lint fmt
@@ -70,7 +72,7 @@ check-manifests: manifests ## Verify generated manifests are up-to-date
 	fi
 
 .PHONY: check-all
-check-all: vet lint vulncheck check-swagger check-manifests ## Run all checks (read-only, CI-safe)
+check-all: vet lint vulncheck check-openapi check-manifests ## Run all checks (read-only, CI-safe)
 
 .PHONY: fix-all
 fix-all: fmt lint-fix ## Fix all auto-fixable issues

@@ -12,11 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-contrib/requestid"
-	"github.com/gin-gonic/gin"
-	sloggin "github.com/samber/slog-gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humachi"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httplog/v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -25,7 +24,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	_ "github.com/isola-ai/isola-sb/api/openapi" // swagger docs
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 	"github.com/isola-ai/isola-sb/internal/api-gateway/handlers"
 	"github.com/isola-ai/isola-sb/internal/env"
@@ -54,7 +52,6 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 		return nil, errors.New("sandbox namespace is required")
 	}
 
-	// Create controller-runtime Manager with namespace-scoped cache
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:  scheme,
 		Metrics: metricsserver.Options{BindAddress: "0"},
@@ -90,50 +87,6 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 	return mgr, nil
 }
 
-func initGinServer(logger *slog.Logger, cfg config, mgr ctrl.Manager) (*http.Server, error) {
-	if !cfg.devMode {
-		// default is debug mode
-		// in tests we might want to pass env GIN_MODE=test
-		// hence we only explicitly set it if devMode is false (otherwise use GIN_MODE or default to debug)
-		gin.SetMode(gin.ReleaseMode)
-	}
-
-	r := gin.New()
-	// no use of c.ClientIP() and thus no need to configure trusted proxies
-	// misconfiguring trusted proxies is a no-no: https://gin-gonic.com/en/docs/deployment/
-	if err := r.SetTrustedProxies(nil); err != nil {
-		logger.Error("unable to set trusted proxies", "error", err)
-		return nil, fmt.Errorf("set trusted proxies: %w", err)
-	}
-	// first middleware is sloggin to ensure logging is available for all other middlewares
-	r.Use(sloggin.NewWithConfig(logger, sloggin.Config{
-		WithRequestID: true,
-	}))
-	r.Use(requestid.New())
-	r.Use(gin.Recovery())
-
-	handler := handlers.NewHandler(logger, mgr.GetClient())
-
-	r.GET("/health", handler.GetHealth)
-	r.GET("/healthz", handler.GetHealth)
-	r.GET("/ready", handler.GetReady)
-	r.GET("/readyz", handler.GetReady)
-
-	// Swagger docs
-	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-
-	// todo benl: add timeouts configuration
-	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.httpPort),
-		Handler: r,
-	}
-
-	return srv, nil
-}
-
-// @title Isola Sandbox API
-// @version 1.0
-// @description API for managing sandboxes
 func main() {
 	cfg := config{}
 
@@ -148,7 +101,6 @@ func main() {
 		DevMode: cfg.devMode,
 	})
 
-	// Graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -158,10 +110,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv, err := initGinServer(logger, cfg, mgr)
-	if err != nil {
-		logger.Error("unable to create gin server", "error", err)
-		os.Exit(1)
+	r := chi.NewRouter()
+	// httplog.RequestLogger automatically includes chi's RequestID and Recoverer middleware
+	r.Use(httplog.RequestLogger(&httplog.Logger{
+		Logger: logger,
+		Options: httplog.Options{
+			LogLevel: slog.LevelInfo,
+			JSON:     !cfg.devMode,
+			Concise:  true,
+		},
+	}))
+
+	humaConfig := huma.DefaultConfig("Isola Sandbox API", "1.0.0")
+	humaConfig.Info.Description = "API for managing sandboxes"
+	api := humachi.New(r, humaConfig)
+
+	healthHandlers := handlers.NewHealthHandlers(logger, mgr.GetClient())
+	handlers.RegisterHealthRoutes(api, healthHandlers)
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.httpPort),
+		Handler: r,
 	}
 
 	go func() {
