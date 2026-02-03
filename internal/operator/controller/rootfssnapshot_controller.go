@@ -145,7 +145,7 @@ func (r *RootfsSnapshotReconciler) ensureLabels(ctx context.Context, snap *sandb
 // +kubebuilder:rbac:groups=node.k8s.io,resources=runtimeclasses,verbs=get;list;watch
 
 func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx).WithValues("rootfssnapshot", req.NamespacedName)
+	log := logf.FromContext(ctx)
 	log.Info("Reconciling RootfsSnapshot")
 
 	snap := &sandboxv1alpha1.RootfsSnapshot{}

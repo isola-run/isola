@@ -5,8 +5,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/isola-ai/isola-sb/internal/api-gateway/generated"
 )
 
 var _ = Describe("Health Endpoints", func() {
@@ -16,21 +14,21 @@ var _ = Describe("Health Endpoints", func() {
 			DeferCleanup(resp.Body.Close)
 
 			Expect(resp).To(HaveHTTPStatus(200))
-			Expect(resp).To(HaveHTTPHeaderWithValue("Content-Type", "application/json"))
+			Expect(resp).To(HaveHTTPHeaderWithValue("Content-Type", "application/json; charset=utf-8"))
 
-			var health generated.HealthResponse
+			var health HealthResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&health)).To(Succeed())
 			Expect(health.Status).To(Equal("ok"))
 		},
-		Entry("liveness probe (/health)", "/api/v1/health"),
-		Entry("readiness probe (/ready)", "/api/v1/ready"),
+		Entry("liveness probe (/health)", "/health"),
+		Entry("readiness probe (/ready)", "/ready"),
 	)
 
 })
 
 var _ = Describe("Unknown Endpoints", func() {
 	It("returns 404 for unregistered paths", func() {
-		resp := doGet("/api/v1/nonexistent")
+		resp := doGet("/nonexistent")
 		DeferCleanup(resp.Body.Close)
 
 		Expect(resp).To(HaveHTTPStatus(404))
