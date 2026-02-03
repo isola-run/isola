@@ -41,7 +41,7 @@ import (
 	netbuilder "github.com/isola-ai/isola-sb/internal/operator/controller/network"
 	"github.com/isola-ai/isola-sb/internal/operator/controller/podutil"
 	"github.com/isola-ai/isola-sb/internal/operator/controller/snapshot"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 )
 
 const (
@@ -94,7 +94,7 @@ const (
 type SandboxReconciler struct {
 	client.Client
 	Scheme              *runtime.Scheme
-	Recorder            record.EventRecorder
+	Recorder            events.EventRecorder
 	SandboxSidecarImage string
 	RuntimeClassName    string                        // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
 	PriorityClassName   string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
@@ -291,7 +291,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	log.Info("Pod created")
 
 	// todo benl: this doesn't print anything - rbac issues?
-	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "PodCreated", "Sandbox Pod created")
+	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "PodCreated", "Created", "Sandbox Pod created")
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
@@ -1039,7 +1039,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 
 	if !podutil.IsPodReady(sandboxPod) {
 		log.Info("Unable to perform rootfs snapshot: pod not ready")
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "PodNotReady", "Unable to perform rootfs snapshot: pod not ready")
+		r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "PodNotReady", "SnapshotBlocked", "Unable to perform rootfs snapshot: pod not ready")
 
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
@@ -1063,7 +1063,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 
 	if !supported {
 		log.Info("Unable to perform rootfs snapshot: runtime not supported")
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "RuntimeNotSupported", "Unable to perform rootfs snapshot")
+		r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "RuntimeNotSupported", "SnapshotBlocked", "Unable to perform rootfs snapshot")
 
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
@@ -1115,7 +1115,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 	if readyCond != nil && readyCond.Status == metav1.ConditionTrue {
 		log.Info("Snapshot completed successfully", "snapshot", snapshotName)
-		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", fmt.Sprintf("Snapshot %q completed", snapshotName))
+		r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "SnapshotSucceeded", "SnapshotCompleted", "Snapshot %q completed", snapshotName)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxRootfsSnapshotCondition,
@@ -1136,7 +1136,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		message = readyCond.Message
 	}
 	log.Info("Snapshot failed, proceeding with deletion", "snapshot", snapshotName)
-	r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", message)
+	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "SnapshotFailed", "SnapshotFailed", "%s", message)
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               SandboxRootfsSnapshotCondition,
@@ -1191,7 +1191,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 	}
 
 	log.Info("Created shutdown RootfsSnapshot", "name", rootfsSnapshot.Name)
-	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "RootfsSnapshotCreated", fmt.Sprintf("Created RootfsSnapshot %q", rootfsSnapshot.Name))
+	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "RootfsSnapshotCreated", "Created", "Created RootfsSnapshot %q", rootfsSnapshot.Name)
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
@@ -1210,7 +1210,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.Recorder = mgr.GetEventRecorderFor("sandbox-controller")
+	r.Recorder = mgr.GetEventRecorder("sandbox-controller")
 
 	// Field index for sandbox templateRef lookups
 	if err := mgr.GetFieldIndexer().IndexField(

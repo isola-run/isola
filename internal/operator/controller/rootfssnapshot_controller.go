@@ -30,7 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -59,7 +59,7 @@ var defaultRootfssnapshotSizeLimit = resource.MustParse("1Gi")
 type RootfsSnapshotReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 	Clock    Clock
 
 	// BucketURL is the bucket URL for rootfs snapshot storage (e.g., s3://bucket?region=us-east-1)
@@ -253,7 +253,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		}
 
 		log.Info("Created snapshot job", "job", jobName)
-		r.Recorder.Event(snap, corev1.EventTypeNormal, "JobCreated", fmt.Sprintf("Created snapshot job for container %s", containerName))
+		r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "JobCreated", "Created", "Created snapshot job for container %s", containerName)
 
 		return r.setInProgress(ctx, baseSnap, snap, containerName, containerID)
 	}
@@ -269,12 +269,12 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		result, err := r.getUploadResult(ctx, job)
 		if err != nil {
 			log.Error(err, "Failed to read upload result from termination message")
-			r.Recorder.Event(snap, corev1.EventTypeWarning, "TerminationLogReadFailed", err.Error())
+			r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "TerminationLogReadFailed", "ReadFailed", "%s", err.Error())
 			r.deleteJob(ctx, job)
 			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Failed to read upload result: %v", err))
 		}
 
-		r.Recorder.Event(snap, corev1.EventTypeNormal, "SnapshotComplete", "Snapshot completed successfully")
+		r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "SnapshotComplete", "Completed", "Snapshot completed successfully")
 
 		// Delete the job now that we've read the results
 		r.deleteJob(ctx, job)
@@ -288,7 +288,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 			message = fmt.Sprintf("Snapshot job failed: %s", condMsg)
 		}
 		log.Info(message, "job", jobName)
-		r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
+		r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "SnapshotFailed", "Failed", "%s", message)
 
 		// Delete the job - no point keeping failed jobs until we hit to snapshotter TTL
 		r.deleteJob(ctx, job)
@@ -601,7 +601,7 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletedAt = &now
 
-	r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
+	r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "SnapshotFailed", "Failed", "%s", message)
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
 		{
 			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
@@ -618,7 +618,7 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 }
 
 func (r *RootfsSnapshotReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.Recorder = mgr.GetEventRecorderFor("rootfssnapshot-controller")
+	r.Recorder = mgr.GetEventRecorder("rootfssnapshot-controller")
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.RootfsSnapshot{}).

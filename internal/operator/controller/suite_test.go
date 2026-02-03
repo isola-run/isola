@@ -32,7 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -62,7 +62,7 @@ var (
 	k8sCache  client.Client // Cached client for reconciler field index queries
 
 	// testRecorder captures events for test assertions
-	testRecorder *record.FakeRecorder
+	testRecorder *events.FakeRecorder
 )
 
 func TestControllers(t *testing.T) {
@@ -94,7 +94,7 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "charts", "isola-operator", "crds")},
+		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "charts", "isola", "crds")},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -158,7 +158,7 @@ var _ = BeforeSuite(func() {
 	Expect(k8sClient.Create(ctx, priorityClass)).To(Succeed())
 
 	// Create fake event recorder for test assertions
-	testRecorder = record.NewFakeRecorder(100)
+	testRecorder = events.NewFakeRecorder(100)
 })
 
 var _ = AfterSuite(func() {
@@ -172,7 +172,7 @@ var _ = AfterSuite(func() {
 // Uses direct k8sClient for immediate consistency in tests.
 // ControllerNamespace is not set, so it defaults to sandbox's namespace (single-namespace deployment).
 func newTestReconciler(clock Clock) *SandboxReconciler {
-	rec := record.NewFakeRecorder(100)
+	rec := events.NewFakeRecorder(100)
 	return &SandboxReconciler{
 		Client:              k8sClient,
 		Scheme:              scheme.Scheme,
@@ -186,7 +186,7 @@ func newTestReconciler(clock Clock) *SandboxReconciler {
 
 // newTestReconcilerWithRecorder creates a SandboxReconciler with a specific recorder for event testing.
 // Uses direct k8sClient for immediate consistency in tests.
-func newTestReconcilerWithRecorder(clock Clock, recorder record.EventRecorder) *SandboxReconciler {
+func newTestReconcilerWithRecorder(clock Clock, recorder events.EventRecorder) *SandboxReconciler {
 	return &SandboxReconciler{
 		Client:              k8sClient,
 		Scheme:              scheme.Scheme,
@@ -199,7 +199,7 @@ func newTestReconcilerWithRecorder(clock Clock, recorder record.EventRecorder) *
 // newTestReconcilerWithRuntimeClass creates a SandboxReconciler with RuntimeClassName set.
 // Used for testing gvisor-specific features like overlay2 annotation.
 func newTestReconcilerWithRuntimeClass(clock Clock, runtimeClassName string) *SandboxReconciler {
-	rec := record.NewFakeRecorder(100)
+	rec := events.NewFakeRecorder(100)
 	return &SandboxReconciler{
 		Client:              k8sClient,
 		Scheme:              scheme.Scheme,
@@ -213,7 +213,7 @@ func newTestReconcilerWithRuntimeClass(clock Clock, runtimeClassName string) *Sa
 // newTestReconcilerWithCache creates a SandboxReconciler using the cached client.
 // Required for testing field index queries like findSandboxesForTemplate.
 func newTestReconcilerWithCache(clock Clock) *SandboxReconciler {
-	rec := record.NewFakeRecorder(100)
+	rec := events.NewFakeRecorder(100)
 	return &SandboxReconciler{
 		Client:              k8sCache,
 		Scheme:              scheme.Scheme,

@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
@@ -51,7 +51,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-no-runtimeclass"
 			templateName := "template-no-runtimeclass"
 
-			recorder := record.NewFakeRecorder(10)
+			recorder := events.NewFakeRecorder(10)
 			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
 
 			timeout := int64(1)
@@ -108,7 +108,7 @@ var _ = Describe("Sandbox Controller", func() {
 			templateName := "template-unsupported-runtime"
 			runtimeClassName := "unsupported-runtime"
 
-			recorder := record.NewFakeRecorder(10)
+			recorder := events.NewFakeRecorder(10)
 			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
 
 			createRuntimeClass(ctx, runtimeClassName, "runc") // runc is not supported for snapshotting
@@ -285,7 +285,7 @@ var _ = Describe("Sandbox Controller", func() {
 			templateName := "template-snapshot-success"
 			runtimeClassName := "gvisor-success"
 
-			recorder := record.NewFakeRecorder(10)
+			recorder := events.NewFakeRecorder(10)
 			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
 
 			createRuntimeClass(ctx, runtimeClassName, "runsc")
