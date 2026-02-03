@@ -42,7 +42,7 @@ import (
 	netbuilder "github.com/isola-ai/isola-sb/internal/operator/controller/network"
 	"github.com/isola-ai/isola-sb/internal/operator/controller/podutil"
 	"github.com/isola-ai/isola-sb/internal/operator/controller/snapshot"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 )
 
 const (
@@ -69,12 +69,12 @@ const (
 	CondReasonDeleting          = "Deleting"
 	CondReasonReconciling       = "Reconciling"
 
-	// Snapshot-related reasons
-	CondReasonSnapshottingInProgress = "SnapshottingInProgress"
-	CondReasonSnapshotComplete       = "SnapshotComplete"
-	CondReasonSnapshotFailed         = "SnapshotFailed"
-	CondReasonSnapshotTimeout        = "SnapshotTimeout"
-	CondReasonInvalidRuntime         = "InvalidRuntime"
+	// RootfsSnapshot-related reasons
+	CondReasonRootfsSnapshottingInProgress = "RootfsSnapshottingInProgress"
+	CondReasonRootfsSnapshotComplete       = "RootfsSnapshotComplete"
+	CondReasonRootfsSnapshotFailed         = "RootfsSnapshotFailed"
+	CondReasonRootfsSnapshotTimeout        = "RootfsSnapshotTimeout"
+	CondReasonInvalidRuntime               = "InvalidRuntime"
 
 	// NetworkPolicy-related reasons
 	CondReasonNetworkPolicyApplied = "NetworkPolicyApplied"
@@ -95,7 +95,7 @@ const (
 type SandboxReconciler struct {
 	client.Client
 	Scheme              *runtime.Scheme
-	Recorder            record.EventRecorder
+	Recorder            events.EventRecorder
 	SandboxSidecarImage string
 	RuntimeClassName    string                        // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
 	PriorityClassName   string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
@@ -182,7 +182,7 @@ func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandbo
 }
 
 func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate) error {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 	// todo benl reduce verbose logging
 	log.Info("Creating Pod")
 
@@ -291,7 +291,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	log.Info("Pod created")
 
 	// todo benl: this doesn't print anything - rbac issues?
-	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "PodCreated", "Sandbox Pod created")
+	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "PodCreated", "Created", "Sandbox Pod created")
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
@@ -375,14 +375,14 @@ func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv
 	return sandboxPod, nil
 }
 
-func getShutdownSnapshotName(sandbox *sandboxv1alpha1.Sandbox) string {
+func getShutdownRootfssnapshotName(sandbox *sandboxv1alpha1.Sandbox) string {
 	return sandbox.Name + "-shutdown"
 }
 
-func (r *SandboxReconciler) getShutdownSnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
+func (r *SandboxReconciler) getShutdownRootfssnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      getShutdownSnapshotName(sandbox),
+		Name:      getShutdownRootfssnapshotName(sandbox),
 		Namespace: sandbox.Namespace,
 	}, snap)
 	if apierrors.IsNotFound(err) {
@@ -395,7 +395,7 @@ func (r *SandboxReconciler) getShutdownSnapshot(ctx context.Context, sandbox *sa
 }
 
 func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.SandboxTemplate, ctrl.Result, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 	template := &sandboxv1alpha1.SandboxTemplate{}
 
 	if err := r.Get(ctx, types.NamespacedName{Name: sandbox.Spec.TemplateRef.Name, Namespace: sandbox.Namespace}, template); err != nil {
@@ -457,7 +457,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
 ) error {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 
 	if !sandbox.NeedsCustomNetworkPolicy() {
 		return nil
@@ -519,7 +519,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 }
 
 func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 	// todo benl: update sandbox condition(s) here?
 	if template == nil || template.Spec.TimeoutSeconds == nil {
 		return nil
@@ -543,7 +543,7 @@ func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandb
 }
 
 func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time, err error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 	optionalTimeoutAt = r.calculateTimeout(ctx, sandbox, template, sandboxPod)
 	if optionalTimeoutAt == nil {
 		// no timeout is configured
@@ -583,11 +583,11 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	conditions = append(conditions, networkCondition)
 
 	// todo benl: currently, only shutdown snapsbot condition is reflected
-	shutdownSnapshot, err := r.getShutdownSnapshot(ctx, sandbox)
+	shutdownSnapshot, err := r.getShutdownRootfssnapshot(ctx, sandbox)
 	if err != nil {
 		return err
 	}
-	snapshotCondition := r.determineSnapshotCondition(sandbox, shutdownSnapshot)
+	snapshotCondition := r.determineRootfssnapshotCondition(sandbox, shutdownSnapshot)
 	conditions = append(conditions, snapshotCondition)
 
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod)
@@ -633,13 +633,13 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 	}
 }
 
-func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snap *sandboxv1alpha1.RootfsSnapshot) metav1.Condition {
+func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snap *sandboxv1alpha1.RootfsSnapshot) metav1.Condition {
 	if snap == nil {
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             "NoSnapshot",
-			Message:            "No shutdown snapshot exists",
+			Reason:             "NoRootfsSnapshot",
+			Message:            "No shutdown rootfs snapshot exists",
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
@@ -648,8 +648,8 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshottingInProgress,
-			Message:            fmt.Sprintf("Snapshot %q is in progress", snap.Name),
+			Reason:             CondReasonRootfsSnapshottingInProgress,
+			Message:            fmt.Sprintf("RootfsSnapshot %q is in progress", snap.Name),
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
@@ -659,21 +659,21 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshottingInProgress,
-			Message:            fmt.Sprintf("Snapshot %q status unknown", snap.Name),
+			Reason:             CondReasonRootfsSnapshottingInProgress,
+			Message:            fmt.Sprintf("RootfsSnapshot %q status unknown", snap.Name),
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
 
 	if readyCond.Status == metav1.ConditionTrue {
-		message := fmt.Sprintf("Snapshot %q completed", snap.Name)
+		message := fmt.Sprintf("RootfsSnapshot %q completed", snap.Name)
 		if snap.Status.Revision > 0 {
-			message = fmt.Sprintf("Snapshot %q completed (revision %d)", snap.Name, snap.Status.Revision)
+			message = fmt.Sprintf("RootfsSnapshot %q completed (revision %d)", snap.Name, snap.Status.Revision)
 		}
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionTrue,
-			Reason:             CondReasonSnapshotComplete,
+			Reason:             CondReasonRootfsSnapshotComplete,
 			Message:            message,
 			ObservedGeneration: sandbox.Generation,
 		}
@@ -682,8 +682,8 @@ func (r *SandboxReconciler) determineSnapshotCondition(sandbox *sandboxv1alpha1.
 	return metav1.Condition{
 		Type:               SandboxRootfsSnapshotCondition,
 		Status:             metav1.ConditionFalse,
-		Reason:             CondReasonSnapshotFailed,
-		Message:            fmt.Sprintf("Snapshot %q failed: %s", snap.Name, readyCond.Message),
+		Reason:             CondReasonRootfsSnapshotFailed,
+		Message:            fmt.Sprintf("RootfsSnapshot %q failed: %s", snap.Name, readyCond.Message),
 		ObservedGeneration: sandbox.Generation,
 	}
 }
@@ -751,7 +751,7 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// todo benl: pass params by value sometimes, to avoid dereferencing nils by accident
 	// todo benl: add r.RecordEvent for events (observability)
-	log := logf.FromContext(ctx).WithValues("sandbox", req.Name, "namespace", req.Namespace)
+	log := logf.FromContext(ctx)
 
 	log.Info("Reconciling Sandbox")
 
@@ -891,7 +891,7 @@ func (r *SandboxReconciler) finalizeSandbox(
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	template *sandboxv1alpha1.SandboxTemplate,
 ) (ctrl.Result, bool, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 
 	log.Info("Executing shutdown policy for deletion")
 
@@ -900,7 +900,7 @@ func (r *SandboxReconciler) finalizeSandbox(
 		return ctrl.Result{}, false, err
 	}
 
-	snapshotDeadline := r.calculateSnapshotDeadline(template)
+	snapshotDeadline := r.calculateRootfssnapshotDeadline(template)
 
 	result, cleanupDone, err := r.executeShutdownPolicy(
 		ctx, sandbox, baseSandbox, template, sandboxPod, snapshotDeadline, CleanupTriggerDeletion,
@@ -933,7 +933,7 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 	snapshotDeadline time.Time,
 	trigger CleanupTrigger,
 ) (ctrl.Result, bool, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace, "trigger", trigger)
+	log := logf.FromContext(ctx)
 
 	// Determine reason and message based on trigger
 	var reason, message string
@@ -964,7 +964,7 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 		{
 			Type:               SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshottingInProgress,
+			Reason:             CondReasonRootfsSnapshottingInProgress,
 			Message:            message + "; executing shutdown policy",
 			ObservedGeneration: sandbox.Generation,
 		},
@@ -988,7 +988,7 @@ func (r *SandboxReconciler) getActiveDeadlineSeconds(template *sandboxv1alpha1.S
 	return defaultActiveDeadlineSeconds
 }
 
-func (r *SandboxReconciler) calculateSnapshotDeadline(template *sandboxv1alpha1.SandboxTemplate) time.Time {
+func (r *SandboxReconciler) calculateRootfssnapshotDeadline(template *sandboxv1alpha1.SandboxTemplate) time.Time {
 	return r.clock().Now().Add(time.Duration(r.getActiveDeadlineSeconds(template)) * time.Second)
 }
 
@@ -1000,7 +1000,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	snapshotDeadline time.Time,
 	activeDeadlineSeconds int64,
 ) (ctrl.Result, bool, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 
 	now := r.clock().Now()
 	if now.After(snapshotDeadline) {
@@ -1009,7 +1009,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshotTimeout,
+				Reason:             CondReasonRootfsSnapshotTimeout,
 				Message:            "Rootfs snapshot did not complete before deadline",
 				ObservedGeneration: sandbox.Generation,
 			},
@@ -1027,7 +1027,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshotFailed,
+				Reason:             CondReasonRootfsSnapshotFailed,
 				Message:            "Sandbox pod no longer exists; snapshot skipped",
 				ObservedGeneration: sandbox.Generation,
 			},
@@ -1039,13 +1039,13 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 
 	if !podutil.IsPodReady(sandboxPod) {
 		log.Info("Unable to perform rootfs snapshot: pod not ready")
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "PodNotReady", "Unable to perform rootfs snapshot: pod not ready")
+		r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "PodNotReady", "SnapshotBlocked", "Unable to perform rootfs snapshot: pod not ready")
 
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshotFailed,
+				Reason:             CondReasonRootfsSnapshotFailed,
 				Message:            "Sandbox pod is not ready",
 				ObservedGeneration: sandbox.Generation,
 			},
@@ -1063,7 +1063,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 
 	if !supported {
 		log.Info("Unable to perform rootfs snapshot: runtime not supported")
-		r.Recorder.Event(sandbox, corev1.EventTypeWarning, "RuntimeNotSupported", "Unable to perform rootfs snapshot")
+		r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "RuntimeNotSupported", "SnapshotBlocked", "Unable to perform rootfs snapshot")
 
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
@@ -1079,7 +1079,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	snap, err := r.getShutdownSnapshot(ctx, sandbox)
+	snap, err := r.getShutdownRootfssnapshot(ctx, sandbox)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
@@ -1095,7 +1095,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonSnapshottingInProgress,
+				Reason:             CondReasonRootfsSnapshottingInProgress,
 				Message:            fmt.Sprintf("Snapshot %q is running", snapshotName),
 				ObservedGeneration: sandbox.Generation,
 			},
@@ -1115,12 +1115,12 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 	if readyCond != nil && readyCond.Status == metav1.ConditionTrue {
 		log.Info("Snapshot completed successfully", "snapshot", snapshotName)
-		r.Recorder.Event(sandbox, corev1.EventTypeNormal, "SnapshotSucceeded", fmt.Sprintf("Snapshot %q completed", snapshotName))
+		r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "SnapshotSucceeded", "SnapshotCompleted", "Snapshot %q completed", snapshotName)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxRootfsSnapshotCondition,
 				Status:             metav1.ConditionTrue,
-				Reason:             CondReasonSnapshotComplete,
+				Reason:             CondReasonRootfsSnapshotComplete,
 				Message:            fmt.Sprintf("Snapshot %q completed", snapshotName),
 				ObservedGeneration: sandbox.Generation,
 			},
@@ -1136,12 +1136,12 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		message = readyCond.Message
 	}
 	log.Info("Snapshot failed, proceeding with deletion", "snapshot", snapshotName)
-	r.Recorder.Event(sandbox, corev1.EventTypeWarning, "SnapshotFailed", message)
+	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "SnapshotFailed", "SnapshotFailed", "%s", message)
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshotFailed,
+			Reason:             CondReasonRootfsSnapshotFailed,
 			Message:            message,
 			ObservedGeneration: sandbox.Generation,
 		},
@@ -1157,9 +1157,9 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	activeDeadlineSeconds int64,
 ) (ctrl.Result, bool, error) {
-	log := logf.FromContext(ctx).WithValues("sandbox", sandbox.Name, "namespace", sandbox.Namespace)
+	log := logf.FromContext(ctx)
 
-	snapshotName := getShutdownSnapshotName(sandbox)
+	snapshotName := getShutdownRootfssnapshotName(sandbox)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      snapshotName,
@@ -1191,13 +1191,13 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 	}
 
 	log.Info("Created shutdown RootfsSnapshot", "name", rootfsSnapshot.Name)
-	r.Recorder.Event(sandbox, corev1.EventTypeNormal, "RootfsSnapshotCreated", fmt.Sprintf("Created RootfsSnapshot %q", rootfsSnapshot.Name))
+	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "RootfsSnapshotCreated", "Created", "Created RootfsSnapshot %q", rootfsSnapshot.Name)
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonSnapshottingInProgress,
+			Reason:             CondReasonRootfsSnapshottingInProgress,
 			Message:            fmt.Sprintf("RootfsSnapshot %q created, waiting for completion", rootfsSnapshot.Name),
 			ObservedGeneration: sandbox.Generation,
 		},
@@ -1210,7 +1210,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.Recorder = mgr.GetEventRecorderFor("sandbox-controller")
+	r.Recorder = mgr.GetEventRecorder("sandbox-controller")
 
 	// Field index for sandbox templateRef lookups
 	if err := mgr.GetFieldIndexer().IndexField(

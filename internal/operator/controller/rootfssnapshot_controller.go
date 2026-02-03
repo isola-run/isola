@@ -30,7 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -53,25 +53,33 @@ const (
 	LabelSandboxName = "sandbox.isola.run/sandbox-name"
 )
 
-// defaultSnapshotSizeLimit is used when the container has no ephemeral storage limit.
-var defaultSnapshotSizeLimit = resource.MustParse("1Gi")
+// defaultRootfssnapshotSizeLimit is used when the container has no ephemeral storage limit.
+var defaultRootfssnapshotSizeLimit = resource.MustParse("1Gi")
 
 type RootfsSnapshotReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 	Clock    Clock
 
-	// BucketURL is the bucket URL for snapshot storage (e.g., s3://bucket?region=us-east-1)
+	// BucketURL is the bucket URL for rootfs snapshot storage (e.g., s3://bucket?region=us-east-1)
 	BucketURL string
 	// CredentialSecretName is the optional Secret name for bucket credentials
 	CredentialSecretName string
 	// UploaderImage is the container image for the uploader sidecar
 	UploaderImage string
-	// SnapshotServiceAccount is the ServiceAccount for snapshot jobs
+	// SnapshotServiceAccount is the ServiceAccount for rootfs snapshot jobs
 	SnapshotServiceAccount string
 	// ImagePullSecrets for pulling uploader images from private registries
 	ImagePullSecrets []corev1.LocalObjectReference
+
+	// Enabled controls whether rootfs snapshot capability is enabled
+	// When false, reconciliation fails fast with "rootfs snapshot not configured"
+	Enabled bool
+	// GvisorRunscPath is the path to the runsc binary on cluster nodes
+	GvisorRunscPath string
+	// GvisorRunscRoot is the root directory where runsc stores runtime state
+	GvisorRunscRoot string
 }
 
 func (r *RootfsSnapshotReconciler) clock() Clock {
@@ -137,7 +145,7 @@ func (r *RootfsSnapshotReconciler) ensureLabels(ctx context.Context, snap *sandb
 // +kubebuilder:rbac:groups=node.k8s.io,resources=runtimeclasses,verbs=get;list;watch
 
 func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx).WithValues("rootfssnapshot", req.NamespacedName)
+	log := logf.FromContext(ctx)
 	log.Info("Reconciling RootfsSnapshot")
 
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
@@ -176,9 +184,14 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
+	if !r.Enabled {
+		log.Info("RootfsSnapshot capability disabled - runtime type is clusterDefault or rootfssnapshot.enabled is false")
+		return r.setFailed(ctx, baseSnap, snap, "RootfsSnapshot capability is not enabled. Set operator.sandboxRuntime.type=gvisor and operator.sandboxRuntime.gvisor.rootfssnapshot.enabled=true in Helm values.")
+	}
+
 	if r.BucketURL == "" {
-		log.Info("Snapshot storage not configured: ISOLA_SNAPSHOT_BUCKET_URL is required")
-		return r.setFailed(ctx, baseSnap, snap, "Snapshot storage not configured: ISOLA_SNAPSHOT_BUCKET_URL is required")
+		log.Info("RootfsSnapshot storage not configured: ISOLA_ROOTFSSNAPSHOT_BUCKET_URL is required")
+		return r.setFailed(ctx, baseSnap, snap, "RootfsSnapshot storage not configured: ISOLA_ROOTFSSNAPSHOT_BUCKET_URL is required")
 	}
 
 	sandboxPodName := podutil.GetSandboxPodName(snap.Spec.SandboxName)
@@ -240,7 +253,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		}
 
 		log.Info("Created snapshot job", "job", jobName)
-		r.Recorder.Event(snap, corev1.EventTypeNormal, "JobCreated", fmt.Sprintf("Created snapshot job for container %s", containerName))
+		r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "JobCreated", "Created", "Created snapshot job for container %s", containerName)
 
 		return r.setInProgress(ctx, baseSnap, snap, containerName, containerID)
 	}
@@ -256,12 +269,12 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		result, err := r.getUploadResult(ctx, job)
 		if err != nil {
 			log.Error(err, "Failed to read upload result from termination message")
-			r.Recorder.Event(snap, corev1.EventTypeWarning, "TerminationLogReadFailed", err.Error())
+			r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "TerminationLogReadFailed", "ReadFailed", "%s", err.Error())
 			r.deleteJob(ctx, job)
 			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Failed to read upload result: %v", err))
 		}
 
-		r.Recorder.Event(snap, corev1.EventTypeNormal, "SnapshotComplete", "Snapshot completed successfully")
+		r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "SnapshotComplete", "Completed", "Snapshot completed successfully")
 
 		// Delete the job now that we've read the results
 		r.deleteJob(ctx, job)
@@ -275,7 +288,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 			message = fmt.Sprintf("Snapshot job failed: %s", condMsg)
 		}
 		log.Info(message, "job", jobName)
-		r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
+		r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "SnapshotFailed", "Failed", "%s", message)
 
 		// Delete the job - no point keeping failed jobs until we hit to snapshotter TTL
 		r.deleteJob(ctx, job)
@@ -330,11 +343,11 @@ func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *bat
 	return nil, fmt.Errorf("uploader container not found or not terminated")
 }
 
-// getSnapshotSizeLimit returns the ephemeral storage limit for a container.
+// getRootfssnapshotSizeLimit returns the ephemeral storage limit for a container.
 // With gVisor's root:self overlay2, the rootfs upper layer is stored on disk
 // in the container's root filesystem, so Kubernetes ephemeral storage limits apply directly.
-// Falls back to defaultSnapshotSizeLimit if no limit is set.
-func (r *RootfsSnapshotReconciler) getSnapshotSizeLimit(pod *corev1.Pod, containerName string) *resource.Quantity {
+// Falls back to defaultRootfssnapshotSizeLimit if no limit is set.
+func (r *RootfsSnapshotReconciler) getRootfssnapshotSizeLimit(pod *corev1.Pod, containerName string) *resource.Quantity {
 	for _, c := range pod.Spec.Containers {
 		if c.Name == containerName {
 			if limit, ok := c.Resources.Limits[corev1.ResourceEphemeralStorage]; ok {
@@ -343,7 +356,7 @@ func (r *RootfsSnapshotReconciler) getSnapshotSizeLimit(pod *corev1.Pod, contain
 			break
 		}
 	}
-	return &defaultSnapshotSizeLimit
+	return &defaultRootfssnapshotSizeLimit
 }
 
 func (r *RootfsSnapshotReconciler) createSnapshotJob(
@@ -362,7 +375,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 		activeDeadlineSeconds = *snap.Spec.ActiveDeadlineSeconds
 	}
 
-	snapshotSizeLimit := r.getSnapshotSizeLimit(sandboxPod, containerName)
+	rootfssnapshotSizeLimit := r.getRootfssnapshotSizeLimit(sandboxPod, containerName)
 
 	hostPathDirectory := corev1.HostPathDirectory
 	hostPathFile := corev1.HostPathFile
@@ -418,8 +431,8 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 						{
 							Name:    "snapshotter",
 							Image:   "gcr.io/distroless/static:nonroot",
-							Command: []string{"/usr/local/bin/runsc"},
-							Args:    []string{"--root=/run/containerd/runsc/k8s.io", "tar", "rootfs-upper", "--file", localSnapshotPath, containerID},
+							Command: []string{r.GvisorRunscPath},
+							Args:    []string{fmt.Sprintf("--root=%s", r.GvisorRunscRoot), "tar", "rootfs-upper", "--file", localSnapshotPath, containerID},
 							SecurityContext: &corev1.SecurityContext{
 								RunAsUser:  ptr.To(int64(0)), // root needed to read runsc state files
 								RunAsGroup: ptr.To(int64(0)),
@@ -430,8 +443,8 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 								AllowPrivilegeEscalation: ptr.To(false),
 							},
 							VolumeMounts: []corev1.VolumeMount{
-								{Name: "runsc-bin", MountPath: "/usr/local/bin/runsc", ReadOnly: true},
-								{Name: "runsc-state", MountPath: "/run/containerd/runsc/k8s.io", ReadOnly: true},
+								{Name: "runsc-bin", MountPath: r.GvisorRunscPath, ReadOnly: true},
+								{Name: "runsc-state", MountPath: r.GvisorRunscRoot, ReadOnly: true},
 								{Name: "snapshot-data", MountPath: "/snapshot"},
 							},
 							Resources: corev1.ResourceRequirements{
@@ -476,20 +489,20 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 						{
 							Name: "runsc-bin",
 							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{Path: "/usr/local/bin/runsc", Type: &hostPathFile},
+								HostPath: &corev1.HostPathVolumeSource{Path: r.GvisorRunscPath, Type: &hostPathFile},
 							},
 						},
 						{
 							Name: "runsc-state",
 							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{Path: "/run/containerd/runsc/k8s.io", Type: &hostPathDirectory},
+								HostPath: &corev1.HostPathVolumeSource{Path: r.GvisorRunscRoot, Type: &hostPathDirectory},
 							},
 						},
 						{
 							Name: "snapshot-data",
 							VolumeSource: corev1.VolumeSource{
 								EmptyDir: &corev1.EmptyDirVolumeSource{
-									SizeLimit: snapshotSizeLimit,
+									SizeLimit: rootfssnapshotSizeLimit,
 								},
 							},
 						},
@@ -588,7 +601,7 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletedAt = &now
 
-	r.Recorder.Event(snap, corev1.EventTypeWarning, "SnapshotFailed", message)
+	r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "SnapshotFailed", "Failed", "%s", message)
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
 		{
 			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
@@ -605,7 +618,7 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 }
 
 func (r *RootfsSnapshotReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.Recorder = mgr.GetEventRecorderFor("rootfssnapshot-controller")
+	r.Recorder = mgr.GetEventRecorder("rootfssnapshot-controller")
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.RootfsSnapshot{}).

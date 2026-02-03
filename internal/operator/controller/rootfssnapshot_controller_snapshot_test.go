@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
@@ -37,12 +37,12 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 	var (
 		reconciler *RootfsSnapshotReconciler
 		fakeClock  *FakeClock
-		recorder   *record.FakeRecorder
+		recorder   *events.FakeRecorder
 	)
 
 	BeforeEach(func() {
 		fakeClock = NewFakeClock(time.Now())
-		recorder = record.NewFakeRecorder(10)
+		recorder = events.NewFakeRecorder(10)
 		reconciler = &RootfsSnapshotReconciler{
 			Client:                 k8sClient,
 			Scheme:                 k8sClient.Scheme(),
@@ -51,6 +51,9 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			BucketURL:              "s3://test-bucket?region=us-east-1",
 			UploaderImage:          "isola-uploader:test",
 			SnapshotServiceAccount: "test-snapshot-sa",
+			Enabled:                true,
+			GvisorRunscPath:        "/usr/local/bin/runsc",
+			GvisorRunscRoot:        "/run/containerd/runsc/k8s.io",
 		}
 	})
 
@@ -242,13 +245,17 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			// Use reconciler with credential secret configured
 			credsReconciler := &RootfsSnapshotReconciler{
-				Client:               k8sClient,
-				Scheme:               k8sClient.Scheme(),
-				Recorder:             recorder,
-				Clock:                fakeClock,
-				BucketURL:            "s3://test-bucket?region=us-east-1",
-				UploaderImage:        "isola-uploader:test",
-				CredentialSecretName: "cloud-credentials",
+				Client:                 k8sClient,
+				Scheme:                 k8sClient.Scheme(),
+				Recorder:               recorder,
+				Clock:                  fakeClock,
+				BucketURL:              "s3://test-bucket?region=us-east-1",
+				UploaderImage:          "isola-uploader:test",
+				CredentialSecretName:   "cloud-credentials",
+				SnapshotServiceAccount: "test-snapshot-sa",
+				Enabled:                true,
+				GvisorRunscPath:        "/usr/local/bin/runsc",
+				GvisorRunscRoot:        "/run/containerd/runsc/k8s.io",
 			}
 
 			_, err := credsReconciler.Reconcile(ctx, reconcile.Request{

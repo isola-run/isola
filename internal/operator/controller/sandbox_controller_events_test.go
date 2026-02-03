@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
@@ -37,12 +37,12 @@ var _ = Describe("Sandbox Controller", func() {
 		var (
 			reconciler *SandboxReconciler
 			fakeClock  *FakeClock
-			recorder   *record.FakeRecorder
+			recorder   *events.FakeRecorder
 		)
 
 		BeforeEach(func() {
 			fakeClock = NewFakeClock(time.Now())
-			recorder = record.NewFakeRecorder(100)
+			recorder = events.NewFakeRecorder(100)
 			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
 		})
 

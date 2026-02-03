@@ -33,7 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
@@ -43,12 +43,12 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 	var (
 		reconciler *RootfsSnapshotReconciler
 		fakeClock  *FakeClock
-		recorder   *record.FakeRecorder
+		recorder   *events.FakeRecorder
 	)
 
 	BeforeEach(func() {
 		fakeClock = NewFakeClock(time.Now())
-		recorder = record.NewFakeRecorder(10)
+		recorder = events.NewFakeRecorder(10)
 		reconciler = &RootfsSnapshotReconciler{
 			Client:                 k8sClient,
 			Scheme:                 k8sClient.Scheme(),
@@ -57,6 +57,9 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			BucketURL:              "s3://test-bucket?region=us-east-1",
 			UploaderImage:          "isola-uploader:test",
 			SnapshotServiceAccount: "test-snapshot-sa",
+			Enabled:                true,
+			GvisorRunscPath:        "/usr/local/bin/runsc",
+			GvisorRunscRoot:        "/run/containerd/runsc/k8s.io",
 		}
 	})
 
@@ -67,10 +70,13 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			// Create reconciler without bucket URL
 			noBucketReconciler := &RootfsSnapshotReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				Recorder: recorder,
-				Clock:    fakeClock,
+				Client:          k8sClient,
+				Scheme:          k8sClient.Scheme(),
+				Recorder:        recorder,
+				Clock:           fakeClock,
+				Enabled:         true,
+				GvisorRunscPath: "/usr/local/bin/runsc",
+				GvisorRunscRoot: "/run/containerd/runsc/k8s.io",
 				// BucketURL is intentionally empty
 			}
 
@@ -89,7 +95,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
-			Expect(readyCond.Message).To(ContainSubstring("ISOLA_SNAPSHOT_BUCKET_URL"))
+			Expect(readyCond.Message).To(ContainSubstring("ISOLA_ROOTFSSNAPSHOT_BUCKET_URL"))
 		})
 
 		It("should create job on first reconcile", func() {

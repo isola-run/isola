@@ -1,0 +1,30 @@
+{{- if .Values.apiGateway.enabled }}
+# Allow ingress from api-gateway to sandbox sidecars
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-gateway-ingress
+  namespace: {{ include "isola.sandboxNamespace" . }}
+  labels:
+    {{- include "isola.operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: isola-sandbox
+      app.kubernetes.io/managed-by: isola-operator
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "isola.name" . }}-api-gateway
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: 10032
+{{- end }}

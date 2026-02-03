@@ -10,8 +10,7 @@ RUN go mod download
 
 # Copy required source
 COPY cmd/sandbox-sidecar/ cmd/sandbox-sidecar/
-COPY internal/sandbox-sidecar/ internal/sandbox-sidecar/
-COPY internal/logging/ internal/logging/
+COPY internal/ internal/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o sandbox-sidecar ./cmd/sandbox-sidecar/main.go

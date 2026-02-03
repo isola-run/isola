@@ -31,8 +31,8 @@ make generate manifests
 ```
 
 This generates CRDs and RBAC directly to the Helm chart:
-- CRDs → `charts/isola-operator/crds/`
-- RBAC → `charts/isola-operator/generated/role.yaml`
+- CRDs → `charts/isola/crds/`
+- RBAC → `charts/isola/generated/role.yaml`
 
 The Helm `clusterrole.yaml` template uses `.Files.Get` to include the generated RBAC rules
 with proper Helm templating for name/labels.
@@ -69,7 +69,7 @@ to verify generated docs are in sync.
 - `internal/sandbox-sidecar/` - Sidecar handlers
 - `internal/snapshot/` - Shared snapshot types (used by operator and uploader)
 - `charts/` - Helm charts (source of truth for deployment)
-- `charts/isola-operator/generated/` - Auto-generated RBAC from kubebuilder annotations (do not edit)
+- `charts/isola/generated/` - Auto-generated RBAC from kubebuilder annotations (do not edit)
 
 **Default namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
 
@@ -111,6 +111,8 @@ to verify generated docs are in sync.
 4. Uploads to cloud storage (S3/GCS/Azure via gocloud.dev)
 5. Writes result to termination log, operator reads and updates status
 6. TTL controller deletes snapshot after `ttlSecondsAfterCompletion`
+
+**Dockerfiles copy all of internal/:** Each binary's Dockerfile copies the entire `internal/` directory rather than individual packages. This avoids needing to update Dockerfiles and Tiltfile when adding new `internal/` packages.
 
 ## Testing
 

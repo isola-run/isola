@@ -31,11 +31,11 @@ generate: ## Generate CRD DeepCopy methods
 
 .PHONY: manifests
 manifests: ## Generate CRD and RBAC manifests directly to Helm chart
-	@mkdir -p charts/isola-operator/generated
+	@mkdir -p charts/isola/generated
 	controller-gen rbac:roleName=isola-operator crd webhook \
 		paths="./api/..." paths="./internal/operator/controller/..." \
-		output:crd:artifacts:config=charts/isola-operator/crds \
-		output:rbac:artifacts:config=charts/isola-operator/generated
+		output:crd:artifacts:config=charts/isola/crds \
+		output:rbac:artifacts:config=charts/isola/generated
 
 .PHONY: fmt
 fmt: ## Run golangci-lint fmt
@@ -63,10 +63,10 @@ tidy: ## Run go mod tidy
 
 .PHONY: check-manifests
 check-manifests: manifests ## Verify generated manifests are up-to-date
-	@if ! git diff --quiet -- charts/isola-operator/crds/ charts/isola-operator/generated/; then \
+	@if ! git diff --quiet -- charts/isola/crds/ charts/isola/generated/; then \
 		echo "ERROR: Generated manifests are out of sync"; \
 		echo "Run 'make manifests' and commit the changes"; \
-		git diff --stat -- charts/isola-operator/crds/ charts/isola-operator/generated/; \
+		git diff --stat -- charts/isola/crds/ charts/isola/generated/; \
 		exit 1; \
 	fi
 
@@ -77,11 +77,6 @@ check-all: vet lint vulncheck check-swagger check-manifests ## Run all checks (r
 fix-all: fmt lint-fix ## Fix all auto-fixable issues
 
 ##@ Testing
-#
-# Variables for test filtering (following Cluster API / Kubernetes patterns):
-#   FOCUS        - Ginkgo focus pattern (e.g., FOCUS="Reconcile")
-#   SKIP         - Ginkgo skip pattern
-#   GO_TEST_FLAGS - Additional go test flags (e.g., GO_TEST_FLAGS="-race")
 
 ENVTEST_K8S_VERSION ?= 1.34
 FOCUS ?=
