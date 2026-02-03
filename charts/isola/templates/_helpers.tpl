@@ -151,39 +151,94 @@ Sidecar image
 {{- end }}
 
 {{/*
-Uploader image
+Runtime type selector
 */}}
-{{- define "isola.operator.uploaderImage" -}}
-{{- include "isola.image" (dict "imageConfig" .Values.operator.snapshot.uploader.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- define "isola.operator.runtimeType" -}}
+{{- .Values.operator.sandboxRuntime.type -}}
 {{- end }}
 
 {{/*
-Storage bucket URL
+RuntimeClassName for sandbox pods (conditional on runtime type)
+*/}}
+{{- define "isola.operator.runtimeClassName" -}}
+{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
+{{- .Values.operator.sandboxRuntime.gvisor.runtimeClassName -}}
+{{- else -}}
+{{- "" -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Snapshot enabled flag (only true for gvisor with snapshot.enabled)
+*/}}
+{{- define "isola.operator.snapshotEnabled" -}}
+{{- if and (eq .Values.operator.sandboxRuntime.type "gvisor") (.Values.operator.sandboxRuntime.gvisor.snapshot.enabled) -}}
+{{- "true" -}}
+{{- else -}}
+{{- "false" -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+gVisor runsc binary path (only used when snapshot enabled)
+*/}}
+{{- define "isola.operator.gvisorRunscPath" -}}
+{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
+{{- .Values.operator.sandboxRuntime.gvisor.snapshot.runsc.binaryPath -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+gVisor runsc root directory (only used when snapshot enabled)
+*/}}
+{{- define "isola.operator.gvisorRunscRoot" -}}
+{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
+{{- .Values.operator.sandboxRuntime.gvisor.snapshot.runsc.rootDir -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Snapshot bucket URL (from gvisor snapshot config)
 */}}
 {{- define "isola.operator.storageBucketUrl" -}}
-{{- .Values.operator.snapshot.storage.bucketUrl -}}
+{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
+{{- .Values.operator.sandboxRuntime.gvisor.snapshot.storage.bucketUrl -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Uploader image (from gvisor snapshot config)
+*/}}
+{{- define "isola.operator.uploaderImage" -}}
+{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
+{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.gvisor.snapshot.uploader.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- end -}}
 {{- end }}
 
 {{/*
 Storage credential secret name
 */}}
 {{- define "isola.operator.snapshotCredentialSecretName" -}}
-{{- if .Values.operator.snapshot.storage.credentials.existingSecret -}}
-{{- .Values.operator.snapshot.storage.credentials.existingSecret -}}
-{{- else if and .Values.operator.snapshot.storage.credentials.accessKeyId .Values.operator.snapshot.storage.credentials.secretAccessKey -}}
+{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
+{{- if .Values.operator.sandboxRuntime.gvisor.snapshot.storage.credentials.existingSecret -}}
+{{- .Values.operator.sandboxRuntime.gvisor.snapshot.storage.credentials.existingSecret -}}
+{{- else if and .Values.operator.sandboxRuntime.gvisor.snapshot.storage.credentials.accessKeyId .Values.operator.sandboxRuntime.gvisor.snapshot.storage.credentials.secretAccessKey -}}
 {{- printf "%s-snapshot-credentials" (include "isola.operator.fullname" .) -}}
+{{- end -}}
 {{- end -}}
 {{- end }}
 
 {{/*
-Snapshot service account name
+Snapshot service account name (from gvisor snapshot config)
 */}}
 {{- define "isola.operator.snapshotServiceAccountName" -}}
-{{- if .Values.operator.snapshot.serviceAccount.create }}
-{{- default (printf "%s-snapshot" (include "isola.operator.fullname" .)) .Values.operator.snapshot.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.operator.snapshot.serviceAccount.name }}
-{{- end }}
+{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
+{{- if .Values.operator.sandboxRuntime.gvisor.snapshot.serviceAccount.create -}}
+{{- .Values.operator.sandboxRuntime.gvisor.snapshot.serviceAccount.name | default (printf "%s-snapshot" (include "isola.operator.fullname" .)) -}}
+{{- else -}}
+{{- .Values.operator.sandboxRuntime.gvisor.snapshot.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
 {{- end }}
 
 {{/* ==========================================================================

@@ -36,9 +36,6 @@ spec:
         - --leader-elect
         - --health-probe-bind-address=:8081
         - --sidecar-image={{ include "isola.operator.sidecarImage" . }}
-        {{- if .Values.operator.sandboxRuntimeClassName }}
-        - --runtime-class={{ .Values.operator.sandboxRuntimeClassName }}
-        {{- end }}
         {{- if .Values.operator.sandboxPriorityClassName }}
         - --priority-class={{ .Values.operator.sandboxPriorityClassName }}
         {{- end }}
@@ -67,6 +64,11 @@ spec:
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
         env:
+        - name: ISOLA_RUNTIME_TYPE
+          value: {{ include "isola.operator.runtimeType" . | quote }}
+        - name: ISOLA_SNAPSHOT_ENABLED
+          value: {{ include "isola.operator.snapshotEnabled" . | quote }}
+        {{- if eq .Values.operator.sandboxRuntime.type "gvisor" }}
         {{- $bucketUrl := include "isola.operator.storageBucketUrl" . }}
         {{- if $bucketUrl }}
         - name: ISOLA_SNAPSHOT_BUCKET_URL
@@ -81,6 +83,11 @@ spec:
           value: {{ include "isola.operator.uploaderImage" . | quote }}
         - name: ISOLA_SNAPSHOT_SERVICE_ACCOUNT
           value: {{ include "isola.operator.snapshotServiceAccountName" . | quote }}
+        - name: ISOLA_GVISOR_RUNSC_PATH
+          value: {{ include "isola.operator.gvisorRunscPath" . | quote }}
+        - name: ISOLA_GVISOR_RUNSC_ROOT
+          value: {{ include "isola.operator.gvisorRunscRoot" . | quote }}
+        {{- end }}
         {{- $imagePullSecretNames := include "isola.imagePullSecretNames" . }}
         {{- if $imagePullSecretNames }}
         - name: ISOLA_IMAGE_PULL_SECRETS

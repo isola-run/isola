@@ -13,21 +13,29 @@ operator:
       repository: sandbox-sidecar
       tag: "dev"
 
-  sandboxRuntimeClassName: ""  # No gVisor in dev
+  sandboxRuntime:
+    type: gvisor # alternatively, if gvisor not installed, use clusterDefault
 
-  snapshot:
-    uploader:
-      image:
-        registry: ""
-        repository: isola-uploader
-        tag: "dev"
+    gvisor:
+      runtimeClassName: gvisor
 
-    storage:
-      bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
-      credentials:
-        accessKeyId: "test"
-        secretAccessKey: "test"
-        region: "us-east-1"
+      snapshot:
+        enabled: true
+        runsc:
+          binaryPath: /usr/local/bin/runsc
+          rootDir: /run/containerd/runsc/k8s.io
+        uploader:
+          image:
+            registry: ""
+            repository: isola-uploader
+            tag: "dev"
+
+        storage:
+          bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
+          credentials:
+            accessKeyId: "test"
+            secretAccessKey: "test"
+            region: "us-east-1"
 
 apiGateway:
   image:

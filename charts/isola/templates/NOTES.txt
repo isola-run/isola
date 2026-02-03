@@ -31,10 +31,13 @@ VERIFY INSTALLATION:
   kubectl get sandboxtemplates -A
   kubectl get sandboxes -A
 
-{{- if not .Values.operator.snapshot.storage.bucketUrl }}
+{{- $bucketUrl := include "isola.operator.storageBucketUrl" . }}
+{{- if not $bucketUrl }}
 
 NOTE: Snapshot storage is not configured. To enable snapshots, upgrade with:
-  --set operator.snapshot.storage.bucketUrl="s3://your-bucket?region=us-east-1"
+  --set operator.sandboxRuntime.type=gvisor
+  --set operator.sandboxRuntime.gvisor.snapshot.enabled=true
+  --set operator.sandboxRuntime.gvisor.snapshot.storage.bucketUrl="s3://your-bucket?region=us-east-1"
 {{- end }}
 
 DOCUMENTATION: https://github.com/isola-ai/isola-sb

@@ -72,6 +72,14 @@ type RootfsSnapshotReconciler struct {
 	SnapshotServiceAccount string
 	// ImagePullSecrets for pulling uploader images from private registries
 	ImagePullSecrets []corev1.LocalObjectReference
+
+	// Enabled controls whether snapshot capability is enabled
+	// When false, reconciliation fails fast with "snapshot not configured"
+	Enabled bool
+	// GvisorRunscPath is the path to the runsc binary on cluster nodes
+	GvisorRunscPath string
+	// GvisorRunscRoot is the root directory where runsc stores runtime state
+	GvisorRunscRoot string
 }
 
 func (r *RootfsSnapshotReconciler) clock() Clock {
@@ -174,6 +182,11 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		} else {
 			return ctrl.Result{RequeueAfter: ttlLeft}, nil
 		}
+	}
+
+	if !r.Enabled {
+		log.Info("Snapshot capability disabled - runtime type is clusterDefault or snapshot.enabled is false")
+		return r.setFailed(ctx, baseSnap, snap, "Snapshot capability is not enabled. Set operator.sandboxRuntime.type=gvisor and operator.sandboxRuntime.gvisor.snapshot.enabled=true in Helm values.")
 	}
 
 	if r.BucketURL == "" {
@@ -418,8 +431,8 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 						{
 							Name:    "snapshotter",
 							Image:   "gcr.io/distroless/static:nonroot",
-							Command: []string{"/usr/local/bin/runsc"},
-							Args:    []string{"--root=/run/containerd/runsc/k8s.io", "tar", "rootfs-upper", "--file", localSnapshotPath, containerID},
+							Command: []string{r.GvisorRunscPath},
+							Args:    []string{fmt.Sprintf("--root=%s", r.GvisorRunscRoot), "tar", "rootfs-upper", "--file", localSnapshotPath, containerID},
 							SecurityContext: &corev1.SecurityContext{
 								RunAsUser:  ptr.To(int64(0)), // root needed to read runsc state files
 								RunAsGroup: ptr.To(int64(0)),
@@ -430,8 +443,8 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 								AllowPrivilegeEscalation: ptr.To(false),
 							},
 							VolumeMounts: []corev1.VolumeMount{
-								{Name: "runsc-bin", MountPath: "/usr/local/bin/runsc", ReadOnly: true},
-								{Name: "runsc-state", MountPath: "/run/containerd/runsc/k8s.io", ReadOnly: true},
+								{Name: "runsc-bin", MountPath: r.GvisorRunscPath, ReadOnly: true},
+								{Name: "runsc-state", MountPath: r.GvisorRunscRoot, ReadOnly: true},
 								{Name: "snapshot-data", MountPath: "/snapshot"},
 							},
 							Resources: corev1.ResourceRequirements{
@@ -476,13 +489,13 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 						{
 							Name: "runsc-bin",
 							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{Path: "/usr/local/bin/runsc", Type: &hostPathFile},
+								HostPath: &corev1.HostPathVolumeSource{Path: r.GvisorRunscPath, Type: &hostPathFile},
 							},
 						},
 						{
 							Name: "runsc-state",
 							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{Path: "/run/containerd/runsc/k8s.io", Type: &hostPathDirectory},
+								HostPath: &corev1.HostPathVolumeSource{Path: r.GvisorRunscRoot, Type: &hostPathDirectory},
 							},
 						},
 						{

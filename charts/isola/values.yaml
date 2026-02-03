@@ -60,50 +60,81 @@ operator:
       tag: ""  # Defaults to Chart.appVersion
       digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
 
-  # RuntimeClassName for sandbox pods (not operator, leave empty for cluste default)
-  # - "gvisor": Requires RuntimeClass to exist (stronger isolation, production)
-  #   Provides strong isolation and advanced features like rootfs snapshotting.
-  #   Isola tests against and develops features for this runtime (or any runsc-based runtime).
-  # - "": Uses cluster default runtime (no gVisor required, development)
-  sandboxRuntimeClassName: "gvisor"
+  # Sandbox runtime configuration
+  # Selects which runtime to use for sandbox pods and configures runtime-specific features.
+  sandboxRuntime:
+    # Runtime type selector (mutually exclusive)
+    # - "gvisor": Use gVisor runtime with optional snapshot capability
+    # - "clusterDefault": Use cluster default runtime (typically runc, no snapshot support)
+    type: gvisor
 
-  # PriorityClassName for sandbox pods (not operator, leave empty for cluster default)
+    # gVisor runtime configuration
+    # Only used when type: gvisor
+    gvisor:
+      # Kubernetes RuntimeClassName for gVisor
+      # Must match a RuntimeClass resource in your cluster (e.g., created by hack/setup.sh)
+      runtimeClassName: gvisor
+
+      # Rootfs snapshot capability for gVisor sandboxes
+      # Allows creating point-in-time rootfs snapshots of sandbox container filesystems.
+      #
+      # SECURITY NOTE: Snapshot jobs require privileged operations:
+      # - hostPath mount of runsc binary and state directory
+      # - hostPID: true to verify sandbox is running
+      # - Root user in snapshotter init container
+      #
+      # Set enabled: false if your security policy prohibits these operations.
+      # Sandboxes will still run normally; only RootfsSnapshot CRs will fail.
+      snapshot:
+        enabled: true
+
+        # gVisor/runsc paths for snapshot operations
+        # These paths must match your cluster's gVisor installation
+        runsc:
+          binaryPath: /usr/local/bin/runsc
+          rootDir: /run/containerd/runsc/k8s.io
+
+        # Snapshot storage configuration (bucket for tarball uploads)
+        storage:
+          # Bucket URL (required for snapshotting to work)
+          # Examples:
+          #   s3://bucket-name?region=us-east-1 (AWS S3)
+          #   s3://bucket-name?endpoint=http://localstack:4566&use_path_style=true (LocalStack/MinIO)
+          #   gs://bucket-name (Google Cloud Storage)
+          #   azblob://container-name (Azure Blob Storage)
+          bucketUrl: ""
+
+          # Credentials - three modes:
+          #   1. Pod/Workload Identity: Leave all empty (recommended)
+          #   2. Existing Secret: Set existingSecret
+          #   3. Chart-managed: Provide accessKeyId/secretAccessKey (dev only)
+          credentials:
+            existingSecret: ""
+            accessKeyId: ""
+            secretAccessKey: ""
+            region: ""
+
+        # Uploader job configuration
+        uploader:
+          image:
+            registry: ghcr.io/isola-ai
+            repository: isola-uploader
+            tag: ""  # Defaults to Chart.appVersion
+            digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+
+        # ServiceAccount for snapshot jobs (needs cloud storage permissions)
+        serviceAccount:
+          create: true
+          name: "isola-snapshot-job"
+          annotations: {}  # For IRSA/Workload Identity
+
+    # Cluster default runtime configuration
+    # Uses cluster default RuntimeClass (no special configuration needed)
+    # Snapshot capability is not available with cluster default runtime
+    clusterDefault: {}
+
+  # PriorityClassName for sandbox pods (applies to both runtime types)
   sandboxPriorityClassName: ""
-
-# TODO BENL: rename snapshot, consolidate single snapshotter image
-  snapshot:
-    uploader:
-      image:
-        registry: ghcr.io/isola-ai
-        repository: isola-uploader
-        tag: ""  # Defaults to Chart.appVersion
-        digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
-
-    # Storage configuration for snapshot uploads
-    storage:
-      # Bucket URL (required for snapshotting to work)
-      # Examples:
-      #   s3://bucket-name?region=us-east-1 (AWS S3)
-      #   s3://bucket-name?endpoint=http://localstack:4566&use_path_style=true (LocalStack/MinIO)
-      #   gs://bucket-name (Google Cloud Storage)
-      #   azblob://container-name (Azure Blob Storage)
-      bucketUrl: ""
-
-      # Credentials - three modes:
-      #   1. Pod/Workload Identity: Leave all empty (recommended)
-      #   2. Existing Secret: Set existingSecret
-      #   3. Chart-managed: Provide accessKeyId/secretAccessKey (dev only)
-      credentials:
-        existingSecret: ""
-        accessKeyId: ""
-        secretAccessKey: ""
-        region: ""
-
-    # ServiceAccount for snapshot jobs
-    serviceAccount:
-      create: true
-      name: "isola-snapshot-job"
-      annotations: {}  # For IRSA/Workload Identity
 
 
 apiGateway:

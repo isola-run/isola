@@ -74,6 +74,10 @@ func main() {
 	var snapshotUploaderImage string
 	var snapshotServiceAccount string
 	var imagePullSecretsStr string
+	var runtimeType string
+	var snapshotEnabled bool
+	var gvisorRunscPath string
+	var gvisorRunscRoot string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -92,7 +96,7 @@ func main() {
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&sandboxSidecarImage, "sidecar-image", "sandbox-sidecar:latest", "Container image for the sandbox-sidecar")
-	flag.StringVar(&runtimeClassName, "runtime-class", "", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
+	flag.StringVar(&runtimeClassName, "runtime-class", "gvisor", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
 	flag.StringVar(&priorityClassName, "priority-class", "", "PriorityClassName to use for sandbox pods. Empty means use cluster default.")
 	flag.StringVar(&isolaAPINamespace, "api-namespace", "isola-system", "Namespace where api-gateway runs (for NetworkPolicy ingress rules)")
 	flag.StringVar(&isolaAPILabelName, "api-label-name", "api-gateway", "Value of app.kubernetes.io/name label for api-gateway pods")
@@ -101,11 +105,20 @@ func main() {
 	flag.StringVar(&snapshotUploaderImage, "snapshot-uploader-image", os.Getenv("ISOLA_UPLOADER_IMAGE"), "Container image for the snapshot uploader")
 	flag.StringVar(&snapshotServiceAccount, "snapshot-service-account", os.Getenv("ISOLA_SNAPSHOT_SERVICE_ACCOUNT"), "ServiceAccount for snapshot jobs")
 	flag.StringVar(&imagePullSecretsStr, "image-pull-secrets", os.Getenv("ISOLA_IMAGE_PULL_SECRETS"), "Comma-separated list of imagePullSecret names for sandbox pods and snapshot jobs")
+	flag.StringVar(&runtimeType, "runtime-type", os.Getenv("ISOLA_RUNTIME_TYPE"), "Runtime type: 'gvisor' or 'clusterDefault'")
+	flag.BoolVar(&snapshotEnabled, "snapshot-enabled", os.Getenv("ISOLA_SNAPSHOT_ENABLED") == "true", "Enable rootfs snapshot capability (requires gVisor runtime and privileged operations)")
+	flag.StringVar(&gvisorRunscPath, "gvisor-runsc-path", os.Getenv("ISOLA_GVISOR_RUNSC_PATH"), "Path to the runsc binary on cluster nodes (for gVisor snapshot support)")
+	flag.StringVar(&gvisorRunscRoot, "gvisor-runsc-root", os.Getenv("ISOLA_GVISOR_RUNSC_ROOT"), "Root directory where runsc stores runtime state (for gVisor snapshot support)")
 	opts := zap.Options{
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	if runtimeType != "" && runtimeType != "gvisor" && runtimeType != "clusterDefault" {
+		setupLog.Error(nil, "Invalid runtime type", "runtimeType", runtimeType, "allowed", []string{"gvisor", "clusterDefault"})
+		os.Exit(1)
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -223,6 +236,9 @@ func main() {
 		UploaderImage:          snapshotUploaderImage,
 		SnapshotServiceAccount: snapshotServiceAccount,
 		ImagePullSecrets:       imagePullSecrets,
+		Enabled:                snapshotEnabled,
+		GvisorRunscPath:        gvisorRunscPath,
+		GvisorRunscRoot:        gvisorRunscRoot,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RootfsSnapshot")
 		os.Exit(1)
