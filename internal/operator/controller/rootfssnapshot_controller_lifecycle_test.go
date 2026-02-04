@@ -74,7 +74,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      snapName,
 					Namespace: testNamespace,
-					Labels:    map[string]string{LabelSandboxName: sandboxName},
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 					SandboxName:             sandboxName,
@@ -143,7 +142,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      snapName,
 					Namespace: testNamespace,
-					Labels:    map[string]string{LabelSandboxName: sandboxName},
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 					SandboxName:             sandboxName,
@@ -261,7 +259,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      snapName,
 					Namespace: testNamespace,
-					Labels:    map[string]string{LabelSandboxName: sandboxName},
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 					SandboxName:           sandboxName,

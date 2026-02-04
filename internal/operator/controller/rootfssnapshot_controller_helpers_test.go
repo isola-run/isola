@@ -102,7 +102,6 @@ func createRootfsSnapshotCR(ctx context.Context, name, sandboxName string, conta
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: testNamespace,
-			Labels:    map[string]string{LabelSandboxName: sandboxName},
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 			SandboxName:    sandboxName,

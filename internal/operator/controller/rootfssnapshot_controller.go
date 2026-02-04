@@ -46,11 +46,6 @@ import (
 const (
 	defaultActiveDeadlineSecondsSnapshot int64 = 300
 	defaultTTLSecondsAfterFinished       int32 = 300
-
-	// LabelSandboxName is the label key used for discovering RootfsSnapshots by sandbox.
-	// This enables the Sandbox controller to find all snapshots for a given sandbox,
-	// regardless of whether they were created by the controller or manually by a user.
-	LabelSandboxName = "sandbox.isola.run/sandbox-name"
 )
 
 // defaultRootfssnapshotSizeLimit is used when the container has no ephemeral storage limit.
@@ -107,37 +102,6 @@ func (r *RootfsSnapshotReconciler) ttlLeft(snap *sandboxv1alpha1.RootfsSnapshot)
 	return deleteAt.Sub(now)
 }
 
-// ensureLabels ensures the RootfsSnapshot has the sandbox discovery label set.
-// This label enables the Sandbox controller to find all snapshots for a sandbox
-// via a label selector, regardless of who (user, another controller, etc) created the snapshot.
-// Returns (true, nil) if labels were patched, (false, nil) if no change needed.
-func (r *RootfsSnapshotReconciler) ensureLabels(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot) (bool, error) {
-	expected := snap.Spec.SandboxName
-	if expected == "" {
-		return false, nil
-	}
-
-	current := ""
-	if snap.Labels != nil {
-		current = snap.Labels[LabelSandboxName]
-	}
-
-	if current == expected {
-		return false, nil
-	}
-
-	patch := client.MergeFrom(snap.DeepCopy())
-	if snap.Labels == nil {
-		snap.Labels = make(map[string]string)
-	}
-	snap.Labels[LabelSandboxName] = expected
-
-	if err := r.Patch(ctx, snap, patch); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
@@ -154,17 +118,6 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
-	}
-
-	// Ensure the sandbox discovery label is set. This allows the Sandbox controller
-	// to find all snapshots for a sandbox via label selector.
-	if labelsPatched, err := r.ensureLabels(ctx, snap); err != nil {
-		log.Error(err, "Failed to ensure labels")
-		return ctrl.Result{}, err
-	} else if labelsPatched {
-		// Return immediately so the label is visible to other controllers via watch.
-		// The watch will trigger a new reconcile to continue.
-		return ctrl.Result{}, nil
 	}
 
 	// Create base copy for status patches
@@ -404,10 +357,6 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: snap.Namespace,
-			Labels: map[string]string{
-				"sandbox.isola.run/rootfs-snapshot": snap.Name,
-				"sandbox.isola.run/container":       containerName,
-			},
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit:          ptr.To(int32(0)),
