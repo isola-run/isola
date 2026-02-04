@@ -45,6 +45,21 @@ import (
 	"github.com/isola-ai/isola-sb/internal/operator/controller/podutil"
 )
 
+// NeedsCustomNetworkPolicy returns true if a sandbox with this network config requires
+// a custom NetworkPolicy beyond the Helm-installed static policies.
+func NeedsCustomNetworkPolicy(network *sandboxv1alpha1.NetworkSpec) bool {
+	if network == nil {
+		return false
+	}
+	// Custom policy needed for:
+	// - Custom CIDR rules
+	// - Pod egress rules
+	// - Custom nameservers (even with allowAllInternet, nameservers may be in blocked private ranges)
+	return len(network.AllowedEgressCIDRs) > 0 ||
+		len(network.AllowedEgressPods) > 0 ||
+		len(network.Nameservers) > 0
+}
+
 // egressCIDR holds a validated egress prefix with its computed exceptions.
 type egressCIDR struct {
 	Prefix netip.Prefix

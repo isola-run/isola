@@ -443,7 +443,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 ) error {
 	log := logf.FromContext(ctx)
 
-	if !sandbox.NeedsCustomNetworkPolicy() {
+	if !netbuilder.NeedsCustomNetworkPolicy(sandbox.Spec.Network) {
 		return nil
 	}
 
