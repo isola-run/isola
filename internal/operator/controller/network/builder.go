@@ -44,11 +44,6 @@ import (
 	"github.com/isola-ai/isola-sb/internal/operator/controller/network/cidr"
 )
 
-const (
-	// SandboxIDLabelKey is the label used to identify the sandbox pod.
-	SandboxIDLabelKey = "sandbox.isola.run/id"
-)
-
 // egressCIDR holds a validated egress prefix with its computed exceptions.
 type egressCIDR struct {
 	Prefix netip.Prefix
@@ -58,7 +53,7 @@ type egressCIDR struct {
 // BuildCustomNetworkPolicy creates a K8s NetworkPolicy for a sandbox with custom
 // network configuration (CIDRs, pod rules, or nameservers).
 //
-// The policy selects the specific sandbox pod using {SandboxIDLabelKey}={sandboxName}.
+// The policy selects the specific sandbox pod using app.kubernetes.io/instance={sandboxName}.
 //
 // This is only called when the sandbox needs custom rules beyond the static
 // Helm-installed policies. Returns nil if no custom policy is needed.
@@ -115,7 +110,7 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 			Name:      policyName,
 			Namespace: namespace,
 			Labels: map[string]string{
-				SandboxIDLabelKey:               sandboxName,
+				"app.kubernetes.io/instance":    sandboxName,
 				"app.kubernetes.io/managed-by":  "isola-operator",
 				"app.kubernetes.io/component":   "sandbox-network",
 				"isola.run/custom-network-rule": "true",
@@ -124,7 +119,7 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					SandboxIDLabelKey: sandboxName,
+					"app.kubernetes.io/instance": sandboxName,
 				},
 			},
 			// Only set egress policy type - ingress is handled by default-deny and allow-gw policies

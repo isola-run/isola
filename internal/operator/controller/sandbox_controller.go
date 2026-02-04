@@ -187,7 +187,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	log.Info("Creating Pod")
 
 	// Apply template labels first, then override with standard Kubernetes labels.
-	// This prevents templates from overriding app.kubernetes.io/*, isola.run/*, etc.
+	// This prevents templates from overriding app.kubernetes.io/* etc.
 	labels := make(map[string]string)
 	if template.Spec.PodTemplate.Labels != nil {
 		maps.Copy(labels, template.Spec.PodTemplate.Labels)
@@ -200,17 +200,9 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	labels["app.kubernetes.io/part-of"] = "isola"
 	labels["app.kubernetes.io/managed-by"] = "isola-operator"
 
-	labels["sandbox.isola.run/id"] = sandbox.Name
 	labels["cluster-autoscaler.kubernetes.io/safe-to-evict"] = "false"
 
 	maps.Copy(labels, buildNetworkLabels(sandbox.Spec.Network))
-
-	// todo benl: why this exists? ("sandbox-id")
-	if sandbox.Labels != nil {
-		if sandboxID, exists := sandbox.Labels["sandbox-id"]; exists {
-			labels["sandbox-id"] = sandboxID
-		}
-	}
 
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
