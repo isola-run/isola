@@ -60,6 +60,10 @@ func GetShutdownSnapshotName(sandboxName string) string {
 	return sandboxName + "-shutdown"
 }
 
+func GetSnapshotJobName(snapshotName, containerName string) string {
+	return snapshotName + "-" + containerName
+}
+
 // ExtractContainerID gets the container ID for a named container.
 // Returns the ID without the containerd:// prefix.
 // The containerName must match a container in the pod's status.

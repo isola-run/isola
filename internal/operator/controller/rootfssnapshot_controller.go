@@ -235,8 +235,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithValues("container", containerName)
 
-	// TODO: must bound to 63 chars max
-	jobName := fmt.Sprintf("%s-%s", snap.Name, containerName)
+	jobName := podutil.GetSnapshotJobName(snap.Name, containerName)
 	job := &batchv1.Job{}
 	err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: snap.Namespace}, job)
 
@@ -367,7 +366,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 ) error {
 	log := logf.FromContext(ctx)
 
-	jobName := fmt.Sprintf("%s-%s", snap.Name, containerName)
+	jobName := podutil.GetSnapshotJobName(snap.Name, containerName)
 	localSnapshotPath := "/snapshot/rootfs.tar"
 
 	activeDeadlineSeconds := defaultActiveDeadlineSecondsSnapshot
