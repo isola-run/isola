@@ -153,11 +153,6 @@ func (s *Sandbox) NeedsCustomNetworkPolicy() bool {
 		len(n.Nameservers) > 0
 }
 
-// GetCustomNetworkPolicyName returns the name for this sandbox's custom NetworkPolicy.
-func (s *Sandbox) GetCustomNetworkPolicyName() string {
-	return s.Name + "-custom-netpol"
-}
-
 // todo benl: for now, not storing sandbox pod or snapshotter pod info anywhere in the sandbox CRD
 // SandboxStatus defines the observed state of Sandbox.
 type SandboxStatus struct {

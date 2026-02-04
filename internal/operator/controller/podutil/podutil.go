@@ -52,6 +52,14 @@ func GetSandboxPodName(sandboxName string) string {
 	return sandboxName + "-pod"
 }
 
+func GetCustomNetworkPolicyName(sandboxName string) string {
+	return sandboxName + "-custom-netpol"
+}
+
+func GetShutdownSnapshotName(sandboxName string) string {
+	return sandboxName + "-shutdown"
+}
+
 // ExtractContainerID gets the container ID for a named container.
 // Returns the ID without the containerd:// prefix.
 // The containerName must match a container in the pod's status.

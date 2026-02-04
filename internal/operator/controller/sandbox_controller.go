@@ -206,7 +206,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      getSandboxPodName(sandbox),
+			Name:      podutil.GetSandboxPodName(sandbox.Name),
 			Namespace: sandbox.Namespace,
 			Labels:    labels,
 		},
@@ -348,12 +348,8 @@ func configureDNS(sandboxPod *corev1.Pod, network *sandboxv1alpha1.NetworkSpec) 
 	}
 }
 
-func getSandboxPodName(sandbox *sandboxv1alpha1.Sandbox) string {
-	return sandbox.Name + "-pod"
-}
-
 func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*corev1.Pod, error) {
-	podName := getSandboxPodName(sandbox)
+	podName := podutil.GetSandboxPodName(sandbox.Name)
 	podNamespace := sandbox.Namespace
 
 	sandboxPod := &corev1.Pod{}
@@ -367,14 +363,10 @@ func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv
 	return sandboxPod, nil
 }
 
-func getShutdownRootfssnapshotName(sandbox *sandboxv1alpha1.Sandbox) string {
-	return sandbox.Name + "-shutdown"
-}
-
 func (r *SandboxReconciler) getShutdownRootfssnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      getShutdownRootfssnapshotName(sandbox),
+		Name:      podutil.GetShutdownSnapshotName(sandbox.Name),
 		Namespace: sandbox.Namespace,
 	}, snap)
 	if apierrors.IsNotFound(err) {
@@ -478,7 +470,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	}
 
 	existingNP := &networkingv1.NetworkPolicy{}
-	policyName := sandbox.GetCustomNetworkPolicyName()
+	policyName := podutil.GetCustomNetworkPolicyName(sandbox.Name)
 	err = r.Get(ctx, types.NamespacedName{Name: policyName, Namespace: sandbox.Namespace}, existingNP)
 
 	if err == nil {
@@ -1151,7 +1143,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	snapshotName := getShutdownRootfssnapshotName(sandbox)
+	snapshotName := podutil.GetShutdownSnapshotName(sandbox.Name)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      snapshotName,

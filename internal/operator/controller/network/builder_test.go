@@ -55,7 +55,6 @@ func TestBuildCustomNetworkPolicy_WithAllowedEgressCIDRs(t *testing.T) {
 
 	g.Expect(np.Name).To(Equal("test-sandbox-custom-netpol"))
 	g.Expect(np.Namespace).To(Equal("default"))
-	g.Expect(np.Labels["app.kubernetes.io/instance"]).To(Equal("test-sandbox"))
 	g.Expect(np.Spec.PodSelector.MatchLabels["app.kubernetes.io/instance"]).To(Equal("test-sandbox"))
 	g.Expect(np.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeEgress))
 

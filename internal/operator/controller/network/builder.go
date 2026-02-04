@@ -42,6 +42,7 @@ import (
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 	"github.com/isola-ai/isola-sb/internal/operator/controller/network/cidr"
+	"github.com/isola-ai/isola-sb/internal/operator/controller/podutil"
 )
 
 // egressCIDR holds a validated egress prefix with its computed exceptions.
@@ -103,14 +104,11 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 		return nil, nil
 	}
 
-	policyName := sandboxName + "-custom-netpol"
-
 	np := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      policyName,
+			Name:      podutil.GetCustomNetworkPolicyName(sandboxName),
 			Namespace: namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/instance":    sandboxName,
 				"app.kubernetes.io/managed-by":  "isola-operator",
 				"app.kubernetes.io/component":   "sandbox-network",
 				"isola.run/custom-network-rule": "true",
