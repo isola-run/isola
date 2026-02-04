@@ -65,7 +65,6 @@ const (
 	CondReasonPodSucceeded      = "PodSucceeded"
 	CondReasonPodCreating       = "PodCreating"
 	CondReasonPodCreationFailed = "PodCreationFailed"
-	CondReasonSandboxTimedOut   = "TimedOut"
 	CondReasonDeleting          = "Deleting"
 	CondReasonReconciling       = "Reconciling"
 
@@ -84,13 +83,6 @@ const (
 const defaultActiveDeadlineSeconds int64 = 300
 
 const SandboxFinalizer = "sandbox.isola.run/cleanup"
-
-type CleanupTrigger string
-
-const (
-	CleanupTriggerTimeout  CleanupTrigger = "Timeout"
-	CleanupTriggerDeletion CleanupTrigger = "Deletion"
-)
 
 type SandboxReconciler struct {
 	client.Client
@@ -187,7 +179,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	log.Info("Creating Pod")
 
 	// Apply template labels first, then override with standard Kubernetes labels.
-	// This prevents templates from overriding app.kubernetes.io/*, isola.run/*, etc.
+	// This prevents templates from overriding app.kubernetes.io/* etc.
 	labels := make(map[string]string)
 	if template.Spec.PodTemplate.Labels != nil {
 		maps.Copy(labels, template.Spec.PodTemplate.Labels)
@@ -200,21 +192,13 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	labels["app.kubernetes.io/part-of"] = "isola"
 	labels["app.kubernetes.io/managed-by"] = "isola-operator"
 
-	labels["sandbox.isola.run/id"] = sandbox.Name
 	labels["cluster-autoscaler.kubernetes.io/safe-to-evict"] = "false"
 
 	maps.Copy(labels, buildNetworkLabels(sandbox.Spec.Network))
 
-	// todo benl: why this exists? ("sandbox-id")
-	if sandbox.Labels != nil {
-		if sandboxID, exists := sandbox.Labels["sandbox-id"]; exists {
-			labels["sandbox-id"] = sandboxID
-		}
-	}
-
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      getSandboxPodName(sandbox),
+			Name:      podutil.GetSandboxPodName(sandbox.Name),
 			Namespace: sandbox.Namespace,
 			Labels:    labels,
 		},
@@ -356,12 +340,8 @@ func configureDNS(sandboxPod *corev1.Pod, network *sandboxv1alpha1.NetworkSpec) 
 	}
 }
 
-func getSandboxPodName(sandbox *sandboxv1alpha1.Sandbox) string {
-	return sandbox.Name + "-pod"
-}
-
 func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*corev1.Pod, error) {
-	podName := getSandboxPodName(sandbox)
+	podName := podutil.GetSandboxPodName(sandbox.Name)
 	podNamespace := sandbox.Namespace
 
 	sandboxPod := &corev1.Pod{}
@@ -375,14 +355,10 @@ func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv
 	return sandboxPod, nil
 }
 
-func getShutdownRootfssnapshotName(sandbox *sandboxv1alpha1.Sandbox) string {
-	return sandbox.Name + "-shutdown"
-}
-
 func (r *SandboxReconciler) getShutdownRootfssnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      getShutdownRootfssnapshotName(sandbox),
+		Name:      podutil.GetShutdownSnapshotName(sandbox.Name),
 		Namespace: sandbox.Namespace,
 	}, snap)
 	if apierrors.IsNotFound(err) {
@@ -459,7 +435,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 ) error {
 	log := logf.FromContext(ctx)
 
-	if !sandbox.NeedsCustomNetworkPolicy() {
+	if !netbuilder.NeedsCustomNetworkPolicy(sandbox.Spec.Network) {
 		return nil
 	}
 
@@ -486,7 +462,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	}
 
 	existingNP := &networkingv1.NetworkPolicy{}
-	policyName := sandbox.GetCustomNetworkPolicyName()
+	policyName := podutil.GetCustomNetworkPolicyName(sandbox.Name)
 	err = r.Get(ctx, types.NamespacedName{Name: policyName, Namespace: sandbox.Namespace}, existingNP)
 
 	if err == nil {
@@ -903,7 +879,7 @@ func (r *SandboxReconciler) finalizeSandbox(
 	snapshotDeadline := r.calculateRootfssnapshotDeadline(template)
 
 	result, cleanupDone, err := r.executeShutdownPolicy(
-		ctx, sandbox, baseSandbox, template, sandboxPod, snapshotDeadline, CleanupTriggerDeletion,
+		ctx, sandbox, baseSandbox, template, sandboxPod, snapshotDeadline,
 	)
 	if err != nil {
 		return result, false, err
@@ -922,7 +898,6 @@ func (r *SandboxReconciler) finalizeSandbox(
 }
 
 // executeShutdownPolicy executes the shutdown policy for a sandbox being cleaned up.
-// trigger indicates whether this is due to timeout or user-initiated deletion.
 // snapshotDeadline is the deadline by which snapshotting must complete.
 func (r *SandboxReconciler) executeShutdownPolicy(
 	ctx context.Context,
@@ -931,27 +906,16 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 	template *sandboxv1alpha1.SandboxTemplate,
 	sandboxPod *corev1.Pod,
 	snapshotDeadline time.Time,
-	trigger CleanupTrigger,
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
-
-	// Determine reason and message based on trigger
-	var reason, message string
-	if trigger == CleanupTriggerTimeout {
-		reason = CondReasonSandboxTimedOut
-		message = "Sandbox timed out"
-	} else {
-		reason = CondReasonDeleting
-		message = "Sandbox being deleted"
-	}
 
 	if template.Spec.ShutdownPolicy == nil || template.Spec.ShutdownPolicy.Policy == sandboxv1alpha1.ShutdownPolicyDelete {
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxReadyCondition,
 				Status:             metav1.ConditionFalse,
-				Reason:             reason,
-				Message:            message + "; deleting",
+				Reason:             CondReasonDeleting,
+				Message:            "Sandbox being deleted",
 				ObservedGeneration: sandbox.Generation,
 			},
 		}); err != nil {
@@ -965,7 +929,7 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 			Type:               SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonRootfsSnapshottingInProgress,
-			Message:            message + "; executing shutdown policy",
+			Message:            "Sandbox being deleted; executing shutdown policy",
 			ObservedGeneration: sandbox.Generation,
 		},
 	}); err != nil {
@@ -1159,15 +1123,11 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	snapshotName := getShutdownRootfssnapshotName(sandbox)
+	snapshotName := podutil.GetShutdownSnapshotName(sandbox.Name)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      snapshotName,
 			Namespace: sandbox.Namespace,
-			Labels: map[string]string{
-				LabelSandboxName:            sandbox.Name,
-				"sandbox.isola.run/trigger": "shutdown",
-			},
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 			SandboxName:           sandbox.Name,

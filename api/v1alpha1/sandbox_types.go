@@ -137,28 +137,6 @@ type SandboxSpec struct {
 	Network *NetworkSpec `json:"network,omitempty"`
 }
 
-// NeedsCustomNetworkPolicy returns true if this sandbox requires a custom NetworkPolicy
-// (beyond the Helm-installed static policies).
-func (s *Sandbox) NeedsCustomNetworkPolicy() bool {
-	if s.Spec.Network == nil {
-		return false
-	}
-	n := s.Spec.Network
-	// Custom policy needed for:
-	// - Custom CIDR rules
-	// - Pod egress rules
-	// - Custom nameservers (even with allowAllInternet, nameservers may be in blocked private ranges)
-	return len(n.AllowedEgressCIDRs) > 0 ||
-		len(n.AllowedEgressPods) > 0 ||
-		len(n.Nameservers) > 0
-}
-
-// GetCustomNetworkPolicyName returns the name for this sandbox's custom NetworkPolicy.
-func (s *Sandbox) GetCustomNetworkPolicyName() string {
-	return s.Name + "-custom-netpol"
-}
-
-// todo benl: for now, not storing sandbox pod or snapshotter pod info anywhere in the sandbox CRD
 // SandboxStatus defines the observed state of Sandbox.
 type SandboxStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file

@@ -71,8 +71,8 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(np.Spec.Egress).To(HaveLen(1))
 			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
 
-			// Verify pod selector uses sandbox ID
-			Expect(np.Spec.PodSelector.MatchLabels).To(HaveKeyWithValue("sandbox.isola.run/id", sandboxName))
+			// Verify pod selector uses sandbox instance
+			Expect(np.Spec.PodSelector.MatchLabels).To(HaveKeyWithValue("app.kubernetes.io/instance", sandboxName))
 
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxNetworkReadyCondition, metav1.ConditionTrue, CondReasonNetworkPolicyApplied)).To(BeTrue())
