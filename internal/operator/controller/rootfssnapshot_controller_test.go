@@ -125,6 +125,23 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			// Verify job was created
 			job := getSnapshotJob(ctx, snapName+"-main")
 			Expect(job).NotTo(BeNil())
+
+			// Verify standard labels on Job metadata
+			expectedLabels := map[string]string{
+				"app.kubernetes.io/name":       "isola-sandbox",
+				"app.kubernetes.io/instance":   snapName,
+				"app.kubernetes.io/component":  "rootfssnapshot",
+				"app.kubernetes.io/part-of":    "isola",
+				"app.kubernetes.io/managed-by": "isola-operator",
+			}
+			for k, v := range expectedLabels {
+				Expect(job.Labels).To(HaveKeyWithValue(k, v))
+			}
+
+			// Verify same labels on pod template
+			for k, v := range expectedLabels {
+				Expect(job.Spec.Template.Labels).To(HaveKeyWithValue(k, v))
+			}
 		})
 	})
 

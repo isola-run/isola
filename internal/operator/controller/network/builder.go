@@ -109,10 +109,11 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 			Name:      podutil.GetCustomNetworkPolicyName(sandboxName),
 			Namespace: namespace,
 			Labels: map[string]string{
-				// todo benl: align with helm installed templates labels
-				"app.kubernetes.io/managed-by":  "isola-operator",
-				"app.kubernetes.io/component":   "sandbox-network",
-				"isola.run/custom-network-rule": "true",
+				"app.kubernetes.io/name":       "isola-sandbox",
+				"app.kubernetes.io/instance":   sandboxName,
+				"app.kubernetes.io/component":  "sandbox-network",
+				"app.kubernetes.io/part-of":    "isola",
+				"app.kubernetes.io/managed-by": "isola-operator",
 			},
 		},
 		Spec: networkingv1.NetworkPolicySpec{

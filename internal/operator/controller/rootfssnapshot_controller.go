@@ -353,10 +353,19 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 		}
 	}
 
+	jobLabels := map[string]string{
+		"app.kubernetes.io/name":       "isola-sandbox",
+		"app.kubernetes.io/instance":   snap.Name,
+		"app.kubernetes.io/component":  "rootfssnapshot",
+		"app.kubernetes.io/part-of":    "isola",
+		"app.kubernetes.io/managed-by": "isola-operator",
+	}
+
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: snap.Namespace,
+			Labels:    jobLabels,
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit:          ptr.To(int32(0)),
@@ -365,6 +374,9 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 			// reading results to avoid race conditions. Owner reference to
 			// RootfsSnapshot ensures cleanup if the snapshot is deleted.
 			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: jobLabels,
+				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: r.SnapshotServiceAccount,
 					HostPID:            true, // runsc tar needs host PID namespace to verify sandbox is running
