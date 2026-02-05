@@ -7,8 +7,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"os/exec"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -22,6 +22,8 @@ import (
 const (
 	defaultPTYCols = 80
 	defaultPTYRows = 24
+	maxPTYCols     = 500
+	maxPTYRows     = 200
 	defaultShell   = "/bin/sh"
 	ptyTimeout     = 24 * time.Hour // Long timeout for interactive sessions
 )
@@ -34,19 +36,11 @@ type PTYMessage struct {
 	Rows int    `json:"rows,omitempty"` // For resize
 }
 
-// PTYSession represents an active PTY session.
-type PTYSession struct {
-	ptmx   *os.File
-	cmd    *exec.Cmd
-	cancel context.CancelFunc
-}
-
 // PTYHandler handles PTY WebSocket connections.
 type PTYHandler struct {
-	logger   *slog.Logger
-	procFS   proc.ProcFS
-	fsh      *FilesystemHandlers
-	sessions sync.Map // map[string]*PTYSession
+	logger *slog.Logger
+	procFS proc.ProcFS
+	fsh    *FilesystemHandlers
 }
 
 // NewPTYHandler creates a new PTYHandler.
@@ -67,13 +61,18 @@ func (h *PTYHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cmd = defaultShell
 	}
 
+	// Parse and validate terminal size with bounds checking
 	cols := defaultPTYCols
 	rows := defaultPTYRows
 	if c := r.URL.Query().Get("cols"); c != "" {
-		fmt.Sscanf(c, "%d", &cols)
+		if v, err := strconv.Atoi(c); err == nil && v > 0 && v <= maxPTYCols {
+			cols = v
+		}
 	}
 	if rw := r.URL.Query().Get("rows"); rw != "" {
-		fmt.Sscanf(rw, "%d", &rows)
+		if v, err := strconv.Atoi(rw); err == nil && v > 0 && v <= maxPTYRows {
+			rows = v
+		}
 	}
 
 	// Upgrade to WebSocket
@@ -84,17 +83,20 @@ func (h *PTYHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = conn.Close() }()
 
+	// Mutex for concurrent WebSocket writes
+	var writeMu sync.Mutex
+
 	// Find container PID
 	pid, err := h.fsh.findCachedContainerPID(container)
 	if err != nil {
-		h.sendPTYError(conn, "container not found")
+		h.sendPTYError(conn, &writeMu, "container not found")
 		return
 	}
 
 	uid, gid, err := h.procFS.GetUIDGID(pid)
 	if err != nil {
 		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
-		h.sendPTYError(conn, "failed to get container uid/gid")
+		h.sendPTYError(conn, &writeMu, "failed to get container uid/gid")
 		return
 	}
 
@@ -120,12 +122,13 @@ func (h *PTYHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// Build command using nsenter for namespace isolation
+	// SECURITY: cmd must be quoted to prevent command injection
 	nsenterArgs := []string{
 		"-t", fmt.Sprintf("%d", pid),
 		"-m", "-u", "-i", "-n", "-p",
 		"--",
 		"sh", "-c",
-		fmt.Sprintf("cd %s && exec %s", shellQuote(cwd), cmd),
+		fmt.Sprintf("cd %s && exec %s", shellQuote(cwd), shellQuote(cmd)),
 	}
 
 	execCmd := exec.CommandContext(ctx, "nsenter", nsenterArgs...)
@@ -144,7 +147,7 @@ func (h *PTYHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Rows: uint16(rows),
 	})
 	if err != nil {
-		h.sendPTYError(conn, fmt.Sprintf("failed to start pty: %v", err))
+		h.sendPTYError(conn, &writeMu, fmt.Sprintf("failed to start pty: %v", err))
 		return
 	}
 	defer func() { _ = ptmx.Close() }()
@@ -165,9 +168,12 @@ func (h *PTYHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			switch msg.Type {
 			case "input":
-				_, _ = ptmx.Write([]byte(msg.Data))
+				if _, err := ptmx.Write([]byte(msg.Data)); err != nil {
+					h.logger.Debug("failed to write to pty", "error", err)
+					return
+				}
 			case "resize":
-				if msg.Cols > 0 && msg.Rows > 0 {
+				if msg.Cols > 0 && msg.Cols <= maxPTYCols && msg.Rows > 0 && msg.Rows <= maxPTYRows {
 					_ = pty.Setsize(ptmx, &pty.Winsize{
 						Cols: uint16(msg.Cols),
 						Rows: uint16(msg.Rows),
@@ -183,7 +189,7 @@ func (h *PTYHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for {
 			n, err := ptmx.Read(buf)
 			if n > 0 {
-				h.sendPTYMessage(conn, PTYMessage{
+				h.sendPTYMessage(conn, &writeMu, PTYMessage{
 					Type: "output",
 					Data: string(buf[:n]),
 				})
@@ -207,25 +213,27 @@ func (h *PTYHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send exit message
-	h.sendPTYMessage(conn, PTYMessage{
+	h.sendPTYMessage(conn, &writeMu, PTYMessage{
 		Type: "exit",
 		Data: fmt.Sprintf("%d", exitCode),
 	})
 }
 
-func (h *PTYHandler) sendPTYMessage(conn *websocket.Conn, msg PTYMessage) {
+func (h *PTYHandler) sendPTYMessage(conn *websocket.Conn, mu *sync.Mutex, msg PTYMessage) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		h.logger.Error("failed to marshal pty message", "error", err)
 		return
 	}
+	mu.Lock()
+	defer mu.Unlock()
 	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 		h.logger.Debug("failed to write pty websocket message", "error", err)
 	}
 }
 
-func (h *PTYHandler) sendPTYError(conn *websocket.Conn, message string) {
-	h.sendPTYMessage(conn, PTYMessage{
+func (h *PTYHandler) sendPTYError(conn *websocket.Conn, mu *sync.Mutex, message string) {
+	h.sendPTYMessage(conn, mu, PTYMessage{
 		Type: "error",
 		Data: message,
 	})

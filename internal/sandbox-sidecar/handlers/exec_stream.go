@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 )
+
+const streamingTimeout = 10 * time.Minute
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -75,17 +78,20 @@ func (h *ExecStreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = conn.Close() }()
 
+	// Mutex for concurrent WebSocket writes
+	var writeMu sync.Mutex
+
 	// Find container PID
 	pid, err := h.fsh.findCachedContainerPID(container)
 	if err != nil {
-		h.sendError(conn, "container not found")
+		h.sendError(conn, &writeMu, "container not found")
 		return
 	}
 
 	uid, gid, err := h.procFS.GetUIDGID(pid)
 	if err != nil {
 		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
-		h.sendError(conn, "failed to get container uid/gid")
+		h.sendError(conn, &writeMu, "failed to get container uid/gid")
 		return
 	}
 
@@ -105,8 +111,8 @@ func (h *ExecStreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		containerEnv = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
 	}
 
-	// Create context with timeout (10 minutes for streaming)
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(r.Context(), streamingTimeout)
 	defer cancel()
 
 	// Build command using nsenter
@@ -130,25 +136,25 @@ func (h *ExecStreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Get pipes for stdout/stderr
 	stdout, err := execCmd.StdoutPipe()
 	if err != nil {
-		h.sendError(conn, fmt.Sprintf("failed to create stdout pipe: %v", err))
+		h.sendError(conn, &writeMu, fmt.Sprintf("failed to create stdout pipe: %v", err))
 		return
 	}
 
 	stderr, err := execCmd.StderrPipe()
 	if err != nil {
-		h.sendError(conn, fmt.Sprintf("failed to create stderr pipe: %v", err))
+		h.sendError(conn, &writeMu, fmt.Sprintf("failed to create stderr pipe: %v", err))
 		return
 	}
 
 	stdin, err := execCmd.StdinPipe()
 	if err != nil {
-		h.sendError(conn, fmt.Sprintf("failed to create stdin pipe: %v", err))
+		h.sendError(conn, &writeMu, fmt.Sprintf("failed to create stdin pipe: %v", err))
 		return
 	}
 
 	// Start the command
 	if err := execCmd.Start(); err != nil {
-		h.sendError(conn, fmt.Sprintf("failed to start command: %v", err))
+		h.sendError(conn, &writeMu, fmt.Sprintf("failed to start command: %v", err))
 		return
 	}
 
@@ -167,16 +173,19 @@ func (h *ExecStreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if msg.Type == "stdin" {
-				_, _ = stdin.Write([]byte(msg.Data))
+				if _, err := stdin.Write([]byte(msg.Data)); err != nil {
+					h.logger.Debug("failed to write to stdin", "error", err)
+					return
+				}
 			}
 		}
 	}()
 
 	// Stream stdout
-	go h.streamOutput(conn, stdout, "stdout")
+	go h.streamOutput(conn, &writeMu, stdout, "stdout")
 
 	// Stream stderr
-	go h.streamOutput(conn, stderr, "stderr")
+	go h.streamOutput(conn, &writeMu, stderr, "stderr")
 
 	// Wait for command to complete
 	err = execCmd.Wait()
@@ -188,18 +197,18 @@ func (h *ExecStreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send exit message
-	h.sendMessage(conn, StreamMessage{
+	h.sendMessage(conn, &writeMu, StreamMessage{
 		Type:     "exit",
 		ExitCode: exitCode,
 	})
 }
 
-func (h *ExecStreamHandler) streamOutput(conn *websocket.Conn, reader io.Reader, outputType string) {
+func (h *ExecStreamHandler) streamOutput(conn *websocket.Conn, mu *sync.Mutex, reader io.Reader, outputType string) {
 	buf := make([]byte, 4096)
 	for {
 		n, err := reader.Read(buf)
 		if n > 0 {
-			h.sendMessage(conn, StreamMessage{
+			h.sendMessage(conn, mu, StreamMessage{
 				Type: outputType,
 				Data: string(buf[:n]),
 			})
@@ -210,19 +219,21 @@ func (h *ExecStreamHandler) streamOutput(conn *websocket.Conn, reader io.Reader,
 	}
 }
 
-func (h *ExecStreamHandler) sendMessage(conn *websocket.Conn, msg StreamMessage) {
+func (h *ExecStreamHandler) sendMessage(conn *websocket.Conn, mu *sync.Mutex, msg StreamMessage) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		h.logger.Error("failed to marshal message", "error", err)
 		return
 	}
+	mu.Lock()
+	defer mu.Unlock()
 	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-		h.logger.Error("failed to write websocket message", "error", err)
+		h.logger.Debug("failed to write websocket message", "error", err)
 	}
 }
 
-func (h *ExecStreamHandler) sendError(conn *websocket.Conn, message string) {
-	h.sendMessage(conn, StreamMessage{
+func (h *ExecStreamHandler) sendError(conn *websocket.Conn, mu *sync.Mutex, message string) {
+	h.sendMessage(conn, mu, StreamMessage{
 		Type: "error",
 		Data: message,
 	})
