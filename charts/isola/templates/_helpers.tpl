@@ -34,6 +34,7 @@ Common labels
 {{- define "isola.labels" -}}
 helm.sh/chart: {{ include "isola.chart" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/part-of: isola
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
