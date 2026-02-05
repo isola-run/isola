@@ -42,6 +42,20 @@ var BlockedV6 = []netip.Prefix{
 	netip.MustParsePrefix("ff00::/8"),           // Multicast
 }
 
+// IsBlocked returns true if addr falls within any blocked range (private, link-local, etc.).
+func IsBlocked(addr netip.Addr) bool {
+	blocked := BlockedV4
+	if addr.Is6() {
+		blocked = BlockedV6
+	}
+	for _, b := range blocked {
+		if b.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
 // ComputeExcept returns the list of blocked CIDRs to exclude from allowed in a NetworkPolicy.
 // Returns error if allowed is inside or equals any blocked CIDR.
 //

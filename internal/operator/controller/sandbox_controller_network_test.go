@@ -175,45 +175,6 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(np.Spec.Egress[0].To[0].IPBlock.Except).To(BeEmpty())
 		})
 
-		It("should create egress rules for allowed egress pods", func() {
-			sandboxName := "sandbox-egress-pods"
-
-			network := &sandboxv1alpha1.NetworkSpec{
-				AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
-					{
-						Namespace: "kube-system",
-						PodSelector: metav1.LabelSelector{
-							MatchLabels: map[string]string{"k8s-app": "kube-dns"},
-						},
-						Ports: []sandboxv1alpha1.NetworkPort{
-							{Protocol: corev1.ProtocolUDP, Port: 53},
-							{Protocol: corev1.ProtocolTCP, Port: 53},
-						},
-					},
-				},
-			}
-			createSandboxWithNetwork(ctx, sandboxName, network)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
-			Expect(np).NotTo(BeNil())
-			Expect(np.Spec.Egress).To(HaveLen(1))
-
-			// Verify namespace selector
-			Expect(np.Spec.Egress[0].To[0].NamespaceSelector).NotTo(BeNil())
-			Expect(np.Spec.Egress[0].To[0].NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"]).To(Equal("kube-system"))
-			// Verify pod selector
-			Expect(np.Spec.Egress[0].To[0].PodSelector).NotTo(BeNil())
-			Expect(np.Spec.Egress[0].To[0].PodSelector.MatchLabels["k8s-app"]).To(Equal("kube-dns"))
-			// Verify ports
-			Expect(np.Spec.Egress[0].Ports).To(HaveLen(2))
-		})
-
 		It("should recreate custom NetworkPolicy if deleted on next reconcile", func() {
 			sandboxName := "sandbox-np-recreate"
 
@@ -383,37 +344,8 @@ var _ = Describe("Sandbox Controller", func() {
 			reconciler = newTestReconciler(fakeClock)
 		})
 
-		It("should create custom NetworkPolicy with combined CIDR and pod rules", func() {
-			sandboxName := "sandbox-combined"
-
-			network := &sandboxv1alpha1.NetworkSpec{
-				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
-				AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
-					{
-						Namespace: "kube-system",
-						PodSelector: metav1.LabelSelector{
-							MatchLabels: map[string]string{"k8s-app": "kube-dns"},
-						},
-					},
-				},
-			}
-			createSandboxWithNetwork(ctx, sandboxName, network)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
-			Expect(np).NotTo(BeNil())
-			// Should have 2 egress rules: CIDR + pod selector
-			Expect(np.Spec.Egress).To(HaveLen(2))
-		})
-
-		It("should create custom NetworkPolicy for nameservers even with internet access", func() {
-			// Custom policy needed even with allowAllInternet=true because nameservers
-			// may be private IPs that fall within blocked ranges
+		It("should not create custom NetworkPolicy for public nameservers with internet access", func() {
+			// Public nameservers (8.8.8.8) already reachable via static allow-internet policy
 			sandboxName := "sandbox-internet-dns"
 
 			network := &sandboxv1alpha1.NetworkSpec{
@@ -427,21 +359,39 @@ var _ = Describe("Sandbox Controller", func() {
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Custom NetworkPolicy created for explicit DNS egress rules
+			// No custom NetworkPolicy — public NS already covered by static policy
 			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
-			Expect(np).NotTo(BeNil())
-			Expect(np.Spec.Egress).To(HaveLen(1))
-			Expect(np.Spec.Egress[0].Ports).To(HaveLen(2))
-			protocols := []corev1.Protocol{*np.Spec.Egress[0].Ports[0].Protocol, *np.Spec.Egress[0].Ports[1].Protocol}
-			Expect(protocols).To(ContainElements(corev1.ProtocolUDP, corev1.ProtocolTCP))
-			Expect(np.Spec.Egress[0].Ports[0].Port.IntVal).To(Equal(int32(53)))
-			Expect(np.Spec.Egress[0].Ports[1].Port.IntVal).To(Equal(int32(53)))
+			Expect(np).To(BeNil())
 
 			// Verify pod has correct labels and DNS config
 			pod := getPod(ctx, sandboxName+"-pod")
 			Expect(pod).NotTo(BeNil())
 			Expect(pod.Labels).To(HaveKeyWithValue(LabelAllowInternet, "true"))
 			Expect(pod.Spec.DNSConfig.Nameservers).To(ContainElement("8.8.8.8"))
+		})
+
+		It("should create custom NetworkPolicy for private nameservers with internet access", func() {
+			// Private nameservers (10.0.0.53) are in blocked ranges — need custom NP
+			sandboxName := "sandbox-internet-private-dns"
+
+			network := &sandboxv1alpha1.NetworkSpec{
+				AllowAllInternet: true,
+				Nameservers:      []string{"10.0.0.53"},
+			}
+			createSandboxWithNetwork(ctx, sandboxName, network)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
+			Expect(np).NotTo(BeNil())
+			Expect(np.Spec.Egress).To(HaveLen(1))
+			Expect(np.Spec.Egress[0].To).To(HaveLen(1))
+			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("10.0.0.53/32"))
+			Expect(np.Spec.Egress[0].Ports).To(HaveLen(2))
 		})
 	})
 

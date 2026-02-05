@@ -16,7 +16,7 @@ limitations under the License.
 
 /*
 Package network provides custom NetworkPolicy building for sandboxes with advanced
-network configurations (custom CIDRs, pod egress rules, or custom DNS).
+network configurations (custom CIDRs or custom DNS).
 
 # Architecture
 
@@ -27,7 +27,6 @@ Most sandboxes use static Helm-installed NetworkPolicies based on pod labels:
 
 This package builds custom NetworkPolicies only when needed:
   - Custom egress CIDRs are specified
-  - Pod-based egress rules are specified
   - Custom nameservers are specified (may be private IPs)
 */
 package network
@@ -45,21 +44,6 @@ import (
 	"github.com/isola-ai/isola-sb/internal/operator/controller/podutil"
 )
 
-// NeedsCustomNetworkPolicy returns true if a sandbox with this network config requires
-// a custom NetworkPolicy beyond the Helm-installed static policies.
-func NeedsCustomNetworkPolicy(network *sandboxv1alpha1.NetworkSpec) bool {
-	if network == nil {
-		return false
-	}
-	// Custom policy needed for:
-	// - Custom CIDR rules
-	// - Pod egress rules
-	// - Custom nameservers (even with allowAllInternet, nameservers may be in blocked private ranges)
-	return len(network.AllowedEgressCIDRs) > 0 ||
-		len(network.AllowedEgressPods) > 0 ||
-		len(network.Nameservers) > 0
-}
-
 // egressCIDR holds a validated egress prefix with its computed exceptions.
 type egressCIDR struct {
 	Prefix netip.Prefix
@@ -67,12 +51,10 @@ type egressCIDR struct {
 }
 
 // BuildCustomNetworkPolicy creates a K8s NetworkPolicy for a sandbox with custom
-// network configuration (CIDRs, pod rules, or nameservers).
+// network configuration (CIDRs or nameservers).
 //
 // The policy selects the specific sandbox pod using app.kubernetes.io/instance={sandboxName}.
-//
-// This is only called when the sandbox needs custom rules beyond the static
-// Helm-installed policies. Returns nil if no custom policy is needed.
+// Returns nil if no custom policy is needed (nil network or no custom rules).
 //
 // Returns error if CIDRs are invalid or if egress CIDRs completely overlap with blocked ranges.
 func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1alpha1.NetworkSpec) (*networkingv1.NetworkPolicy, error) {
@@ -102,19 +84,22 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 	}
 
 	// Parse nameserver IPs - egress to these IPs is automatically allowed on port 53.
-	// Always create rules even with allowAllInternet, since nameservers may be private IPs
-	// that fall within blocked ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16).
+	// When AllowAllInternet is true, skip public nameservers (already reachable via
+	// static allow-internet policy) — only private IPs in blocked ranges need rules.
 	var dnsAddrs []netip.Addr
 	for _, ipStr := range network.Nameservers {
 		addr, err := cidr.ParseDNSServerIP(ipStr)
 		if err != nil {
 			return nil, err
 		}
+		if network.AllowAllInternet && !cidr.IsBlocked(addr) {
+			continue
+		}
 		dnsAddrs = append(dnsAddrs, addr)
 	}
 
 	// Check if we actually need a custom policy
-	hasCustomRules := len(egressCIDRs) > 0 || len(dnsAddrs) > 0 || len(network.AllowedEgressPods) > 0
+	hasCustomRules := len(egressCIDRs) > 0 || len(dnsAddrs) > 0
 	if !hasCustomRules {
 		return nil, nil
 	}
@@ -124,6 +109,7 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 			Name:      podutil.GetCustomNetworkPolicyName(sandboxName),
 			Namespace: namespace,
 			Labels: map[string]string{
+				// todo benl: align with helm installed templates labels
 				"app.kubernetes.io/managed-by":  "isola-operator",
 				"app.kubernetes.io/component":   "sandbox-network",
 				"isola.run/custom-network-rule": "true",
@@ -142,28 +128,22 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 		},
 	}
 
-	np.Spec.Egress = buildEgressRules(egressCIDRs, dnsAddrs, network.AllowedEgressPods)
+	np.Spec.Egress = buildEgressRules(egressCIDRs, dnsAddrs)
 
 	return np, nil
 }
 
-// buildEgressRules creates NetworkPolicy egress rules from pre-computed CIDRs and pod selectors.
+// buildEgressRules creates NetworkPolicy egress rules from pre-computed CIDRs.
 // If dnsServers is non-empty, adds a rule to allow DNS traffic to those IPs.
-// If egressPodRules is non-empty, adds rules to allow traffic to those pods.
 // Accepts fully validated and computed egressCIDRs from BuildNetworkPolicy.
 func buildEgressRules(
 	egressCIDRs []egressCIDR,
 	dnsServers []netip.Addr,
-	egressPodRules []sandboxv1alpha1.EgressPodRule,
 ) []networkingv1.NetworkPolicyEgressRule {
 	var rules []networkingv1.NetworkPolicyEgressRule
 
 	if len(dnsServers) > 0 {
 		rules = append(rules, buildDNSServerEgressRule(dnsServers))
-	}
-
-	for _, podRule := range egressPodRules {
-		rules = append(rules, buildPodSelectorEgressRule(podRule))
 	}
 
 	for _, ecidr := range egressCIDRs {
@@ -184,39 +164,6 @@ func buildEgressRules(
 	}
 
 	return rules
-}
-
-func buildPodSelectorEgressRule(rule sandboxv1alpha1.EgressPodRule) networkingv1.NetworkPolicyEgressRule {
-	egressRule := networkingv1.NetworkPolicyEgressRule{
-		To: []networkingv1.NetworkPolicyPeer{
-			{
-				// Select namespace by the standard kubernetes.io/metadata.name label
-				NamespaceSelector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"kubernetes.io/metadata.name": rule.Namespace,
-					},
-				},
-				PodSelector: &rule.PodSelector,
-			},
-		},
-	}
-
-	if len(rule.Ports) > 0 {
-		egressRule.Ports = make([]networkingv1.NetworkPolicyPort, 0, len(rule.Ports))
-		for _, p := range rule.Ports {
-			protocol := p.Protocol
-			if protocol == "" {
-				protocol = corev1.ProtocolTCP
-			}
-			port := intstr.FromInt32(p.Port)
-			egressRule.Ports = append(egressRule.Ports, networkingv1.NetworkPolicyPort{
-				Protocol: &protocol,
-				Port:     &port,
-			})
-		}
-	}
-
-	return egressRule
 }
 
 // buildDNSServerEgressRule creates an egress rule allowing traffic to DNS server IPs on port 53.

@@ -65,39 +65,6 @@ type ShutdownPolicy struct {
 	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
 }
 
-// NetworkPort defines a port for network rules.
-type NetworkPort struct {
-	// Protocol (TCP or UDP). Defaults to TCP.
-	// +kubebuilder:validation:Enum=TCP;UDP
-	// +kubebuilder:default=TCP
-	// +optional
-	Protocol corev1.Protocol `json:"protocol,omitempty"`
-
-	// Port number.
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=65535
-	// +required
-	Port int32 `json:"port"`
-}
-
-// EgressPodRule defines a pod-based egress rule.
-// This allows sandboxes to communicate with specific pods in the cluster.
-type EgressPodRule struct {
-	// Namespace of the target pods.
-	// +kubebuilder:validation:MinLength=1
-	// +required
-	Namespace string `json:"namespace"`
-
-	// PodSelector selects pods in the namespace.
-	// An empty selector ({}) matches all pods in the namespace.
-	// +required
-	PodSelector metav1.LabelSelector `json:"podSelector"`
-
-	// Ports to allow. If empty, all ports are allowed to the selected pods.
-	// +optional
-	Ports []NetworkPort `json:"ports,omitempty"`
-}
-
 // NetworkSpec defines network isolation for a sandbox.
 // If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
 type NetworkSpec struct {
@@ -119,16 +86,11 @@ type NetworkSpec struct {
 	// +optional
 	AllowedEgressCIDRs []string `json:"allowedEgressCIDRs,omitempty"`
 
-	// AllowedEgressPods specifies pods the sandbox can reach via selectors.
-	// Uses full LabelSelector (matchLabels + matchExpressions) for flexibility.
-	// Creates a custom NetworkPolicy.
-	// +optional
-	AllowedEgressPods []EgressPodRule `json:"allowedEgressPods,omitempty"`
-
 	// Nameservers are DNS server IPs to inject into the pod.
 	// When allowClusterDNS=false: These are the only nameservers (or 127.0.0.1 sink if empty).
 	// When allowClusterDNS=true: Combined with cluster DNS.
 	// When specified with allowAllInternet=false, creates custom policy for DNS egress.
+	// Allows access to these IPs (even if in blocked ranges) on port 53.
 	// MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
 	// +kubebuilder:validation:MaxItems=3
 	// +kubebuilder:validation:XValidation:rule="self.all(s, isIP(s))",message="must be valid IP addresses"

@@ -141,13 +141,6 @@ func WithNameservers(servers ...string) NetworkSpecOption {
 	}
 }
 
-// WithAllowedEgressPods sets the allowed egress pod rules
-func WithAllowedEgressPods(rules ...sandboxv1alpha1.EgressPodRule) NetworkSpecOption {
-	return func(ns *sandboxv1alpha1.NetworkSpec) {
-		ns.AllowedEgressPods = rules
-	}
-}
-
 // NewTestNetworkSpec creates a new NetworkSpec for testing.
 func NewTestNetworkSpec(opts ...NetworkSpecOption) *sandboxv1alpha1.NetworkSpec {
 	ns := &sandboxv1alpha1.NetworkSpec{}
