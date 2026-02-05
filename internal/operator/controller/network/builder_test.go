@@ -27,6 +27,79 @@ import (
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 )
 
+func TestNeedsCustomNetworkPolicy(t *testing.T) {
+	tests := []struct {
+		name     string
+		network  *sandboxv1alpha1.NetworkSpec
+		expected bool
+	}{
+		{
+			name:     "nil network returns false",
+			network:  nil,
+			expected: false,
+		},
+		{
+			name:     "empty network spec returns false",
+			network:  &sandboxv1alpha1.NetworkSpec{},
+			expected: false,
+		},
+		{
+			name: "allowAllInternet only returns false",
+			network: &sandboxv1alpha1.NetworkSpec{
+				AllowAllInternet: true,
+			},
+			expected: false,
+		},
+		{
+			name: "allowClusterDNS only returns false",
+			network: &sandboxv1alpha1.NetworkSpec{
+				AllowClusterDNS: true,
+			},
+			expected: false,
+		},
+		{
+			name: "allowedEgressCIDRs returns true",
+			network: &sandboxv1alpha1.NetworkSpec{
+				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
+			},
+			expected: true,
+		},
+		{
+			name: "allowedEgressPods returns true",
+			network: &sandboxv1alpha1.NetworkSpec{
+				AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
+					{Namespace: "kube-system", PodSelector: metav1.LabelSelector{}},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "nameservers without internet access returns true",
+			network: &sandboxv1alpha1.NetworkSpec{
+				Nameservers:      []string{"8.8.8.8"},
+				AllowAllInternet: false,
+			},
+			expected: true,
+		},
+		{
+			name: "nameservers with internet access still returns true",
+			network: &sandboxv1alpha1.NetworkSpec{
+				Nameservers:      []string{"8.8.8.8"},
+				AllowAllInternet: true,
+			},
+			expected: true, // nameservers may be private IPs blocked by allowAllInternet
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			result := NeedsCustomNetworkPolicy(tt.network)
+			g.Expect(result).To(Equal(tt.expected))
+		})
+	}
+}
+
 func TestBuildCustomNetworkPolicy_NilNetwork(t *testing.T) {
 	g := NewWithT(t)
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", nil)
@@ -55,8 +128,7 @@ func TestBuildCustomNetworkPolicy_WithAllowedEgressCIDRs(t *testing.T) {
 
 	g.Expect(np.Name).To(Equal("test-sandbox-custom-netpol"))
 	g.Expect(np.Namespace).To(Equal("default"))
-	g.Expect(np.Labels[SandboxIDLabelKey]).To(Equal("test-sandbox"))
-	g.Expect(np.Spec.PodSelector.MatchLabels[SandboxIDLabelKey]).To(Equal("test-sandbox"))
+	g.Expect(np.Spec.PodSelector.MatchLabels["app.kubernetes.io/instance"]).To(Equal("test-sandbox"))
 	g.Expect(np.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeEgress))
 
 	g.Expect(np.Spec.Egress).To(HaveLen(1))
