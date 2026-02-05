@@ -81,6 +81,8 @@ spec:
         {{- end }}
         - name: ISOLA_UPLOADER_IMAGE
           value: {{ include "isola.operator.uploaderImage" . | quote }}
+        - name: ISOLA_RESTORER_IMAGE
+          value: {{ include "isola.operator.restorerImage" . | quote }}
         - name: ISOLA_ROOTFSSNAPSHOT_SERVICE_ACCOUNT
           value: {{ include "isola.operator.rootfssnapshotServiceAccountName" . | quote }}
         - name: ISOLA_GVISOR_RUNSC_PATH

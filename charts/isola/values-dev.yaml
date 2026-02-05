@@ -29,6 +29,11 @@ operator:
             registry: ""
             repository: isola-uploader
             tag: "dev"
+        restorer:
+          image:
+            registry: ""
+            repository: isola-restorer
+            tag: "dev"
 
         storage:
           bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"

@@ -74,6 +74,7 @@ func main() {
 	var rootfssnapshotBucketURL string
 	var rootfssnapshotCredentialSecret string
 	var rootfssnapshotUploaderImage string
+	var rootfssnapshotRestorerImage string
 	var rootfssnapshotServiceAccount string
 	var imagePullSecretsStr string
 	var runtimeType string
@@ -107,6 +108,7 @@ func main() {
 	flag.StringVar(&rootfssnapshotBucketURL, "rootfssnapshot-bucket-url", os.Getenv("ISOLA_ROOTFSSNAPSHOT_BUCKET_URL"), "Bucket URL for rootfs snapshot storage (e.g., s3://bucket?region=us-east-1)")
 	flag.StringVar(&rootfssnapshotCredentialSecret, "rootfssnapshot-credential-secret", os.Getenv("ISOLA_ROOTFSSNAPSHOT_CREDENTIAL_SECRET"), "Secret name for bucket credentials (optional, uses pod identity if not set)")
 	flag.StringVar(&rootfssnapshotUploaderImage, "rootfssnapshot-uploader-image", os.Getenv("ISOLA_UPLOADER_IMAGE"), "Container image for the rootfs snapshot uploader")
+	flag.StringVar(&rootfssnapshotRestorerImage, "rootfssnapshot-restorer-image", os.Getenv("ISOLA_RESTORER_IMAGE"), "Container image for the rootfs snapshot restorer")
 	flag.StringVar(&rootfssnapshotServiceAccount, "rootfssnapshot-service-account", os.Getenv("ISOLA_ROOTFSSNAPSHOT_SERVICE_ACCOUNT"), "ServiceAccount for rootfs snapshot jobs")
 	flag.StringVar(&imagePullSecretsStr, "image-pull-secrets", os.Getenv("ISOLA_IMAGE_PULL_SECRETS"), "Comma-separated list of imagePullSecret names for sandbox pods and rootfs snapshot jobs")
 	flag.StringVar(&runtimeType, "runtime-type", os.Getenv("ISOLA_RUNTIME_TYPE"), "Runtime type: 'gvisor' or 'clusterDefault'")
@@ -221,13 +223,16 @@ func main() {
 
 	// SandboxReconciler manages Sandbox resources.
 	if err := (&controller.SandboxReconciler{
-		Client:              mgr.GetClient(),
-		Scheme:              mgr.GetScheme(),
-		SandboxSidecarImage: sandboxSidecarImage,
-		RuntimeClassName:    runtimeClassName,
-		PriorityClassName:   priorityClassName,
-		ImagePullSecrets:    imagePullSecrets,
-		Clock:               controller.RealClock{},
+		Client:               mgr.GetClient(),
+		Scheme:               mgr.GetScheme(),
+		SandboxSidecarImage:  sandboxSidecarImage,
+		RuntimeClassName:     runtimeClassName,
+		PriorityClassName:    priorityClassName,
+		ImagePullSecrets:     imagePullSecrets,
+		Clock:                controller.RealClock{},
+		RestorerImage:        rootfssnapshotRestorerImage,
+		BucketURL:            rootfssnapshotBucketURL,
+		CredentialSecretName: rootfssnapshotCredentialSecret,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
 		os.Exit(1)

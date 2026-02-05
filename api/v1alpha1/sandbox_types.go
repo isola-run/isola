@@ -83,6 +83,29 @@ type EgressPodRule struct {
 	Ports []NetworkPort `json:"ports,omitempty"`
 }
 
+// RestoreFromSnapshot specifies a snapshot to restore when creating the sandbox.
+// The restored filesystem state will be available when containers start.
+type RestoreFromSnapshot struct {
+	// SnapshotName is the name of a RootfsSnapshot CR in the same namespace.
+	// The snapshot must be complete (Ready=True) and its SnapshotKey will be used.
+	// Mutually exclusive with SnapshotKey.
+	// +optional
+	SnapshotName string `json:"snapshotName,omitempty"`
+
+	// SnapshotKey is the direct object key in the bucket (e.g., "snapshots/ns/sandbox/rev-00001/main.tar").
+	// Use this when restoring from a snapshot that no longer has a RootfsSnapshot CR.
+	// Mutually exclusive with SnapshotName.
+	// +optional
+	SnapshotKey string `json:"snapshotKey,omitempty"`
+
+	// ContainerName specifies which container to restore the snapshot into.
+	// Must match a container name in the SandboxTemplate.
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ContainerName string `json:"containerName"`
+}
+
 // NetworkSpec defines network isolation for a sandbox.
 // If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
 type NetworkSpec struct {
@@ -124,6 +147,9 @@ type NetworkSpec struct {
 // SandboxSpec defines the desired state of Sandbox
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.network) || has(self.network)",message="network cannot be removed once set"
 // +kubebuilder:validation:XValidation:rule="!has(self.network) || !has(oldSelf.network) || self.network == oldSelf.network",message="network is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.restoreFrom) || has(self.restoreFrom)",message="restoreFrom cannot be removed once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.restoreFrom) || !has(oldSelf.restoreFrom) || self.restoreFrom == oldSelf.restoreFrom",message="restoreFrom is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.restoreFrom) || (has(self.restoreFrom.snapshotName) && !has(self.restoreFrom.snapshotKey)) || (!has(self.restoreFrom.snapshotName) && has(self.restoreFrom.snapshotKey))",message="restoreFrom must specify exactly one of snapshotName or snapshotKey"
 type SandboxSpec struct {
 	// TemplateRef references the SandboxTemplate to inherit pod configuration from.
 	// The SandboxTemplate must exist in the same namespace as this Sandbox.
@@ -135,6 +161,12 @@ type SandboxSpec struct {
 	// Network configuration is immutable after sandbox creation.
 	// +optional
 	Network *NetworkSpec `json:"network,omitempty"`
+
+	// RestoreFrom specifies a snapshot to restore when creating the sandbox.
+	// The snapshot tarball will be extracted to the container's rootfs before it starts.
+	// RestoreFrom is immutable after sandbox creation.
+	// +optional
+	RestoreFrom *RestoreFromSnapshot `json:"restoreFrom,omitempty"`
 }
 
 // SandboxStatus defines the observed state of Sandbox.

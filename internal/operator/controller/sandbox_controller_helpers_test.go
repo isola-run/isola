@@ -208,6 +208,23 @@ func createSandboxWithNetwork(ctx context.Context, name, templateRef string, net
 	ExpectWithOffset(1, k8sClient.Create(ctx, sandbox)).To(Succeed())
 }
 
+func createSandboxWithRestoreFrom(ctx context.Context, name, templateRef string, restoreFrom *sandboxv1alpha1.RestoreFromSnapshot) *sandboxv1alpha1.Sandbox {
+	sandbox := &sandboxv1alpha1.Sandbox{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: testNamespace,
+		},
+		Spec: sandboxv1alpha1.SandboxSpec{
+			TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
+				Name: templateRef,
+			},
+			RestoreFrom: restoreFrom,
+		},
+	}
+	ExpectWithOffset(1, k8sClient.Create(ctx, sandbox)).To(Succeed())
+	return sandbox
+}
+
 func hasConditionWithReason(sandbox *sandboxv1alpha1.Sandbox, condType string, status metav1.ConditionStatus, reason string) bool {
 	cond := meta.FindStatusCondition(sandbox.Status.Conditions, condType)
 	return cond != nil && cond.Status == status && cond.Reason == reason

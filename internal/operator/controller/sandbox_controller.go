@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -93,10 +94,18 @@ type SandboxReconciler struct {
 	PriorityClassName   string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
 	ImagePullSecrets    []corev1.LocalObjectReference // ImagePullSecrets for pulling sandbox-sidecar images from private registries.
 	Clock               Clock                         // Clock interface for time operations, allows mocking in tests
+
+	// Restore configuration (for restoring sandboxes from RootfsSnapshots)
+	RestorerImage        string // Container image for the restorer init container
+	BucketURL            string // Bucket URL for rootfs snapshot storage
+	CredentialSecretName string // Secret name for bucket credentials (optional)
 }
 
 const (
 	sandboxSidecarContainerName = "sandbox-sidecar"
+	restorerContainerName       = "restorer"
+	restoreVolumeName           = "restore-data"
+	restoreTarPath              = "/restore-data/rootfs.tar"
 
 	// Field index for efficient lookup of sandboxes by templates references
 	sandboxTemplateRefField = ".spec.templateRef.name"
@@ -155,6 +164,163 @@ func (r *SandboxReconciler) injectSandboxSidecar(sandboxPod *corev1.Pod) error {
 	sidecarContainer := r.buildSandboxSidecarContainer()
 	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, sidecarContainer)
 	return nil
+}
+
+// resolveSnapshotKey resolves the snapshot key from RestoreFrom specification.
+// It can either use a direct snapshotKey or look up the key from a RootfsSnapshot CR.
+func (r *SandboxReconciler) resolveSnapshotKey(ctx context.Context, namespace string, restoreFrom *sandboxv1alpha1.RestoreFromSnapshot) (string, error) {
+	if restoreFrom == nil {
+		return "", fmt.Errorf("restoreFrom is nil")
+	}
+
+	// If direct snapshot key is provided, use it
+	if restoreFrom.SnapshotKey != "" {
+		return restoreFrom.SnapshotKey, nil
+	}
+
+	// Otherwise, look up the RootfsSnapshot CR
+	if restoreFrom.SnapshotName == "" {
+		return "", fmt.Errorf("either snapshotName or snapshotKey must be specified")
+	}
+
+	snapshot := &sandboxv1alpha1.RootfsSnapshot{}
+	if err := r.Get(ctx, types.NamespacedName{Name: restoreFrom.SnapshotName, Namespace: namespace}, snapshot); err != nil {
+		return "", fmt.Errorf("failed to get RootfsSnapshot %q: %w", restoreFrom.SnapshotName, err)
+	}
+
+	// Check if snapshot is complete
+	completeCond := meta.FindStatusCondition(snapshot.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+	if completeCond == nil || completeCond.Status != metav1.ConditionTrue {
+		return "", fmt.Errorf("RootfsSnapshot %q is not complete", restoreFrom.SnapshotName)
+	}
+
+	// Find the container snapshot for the requested container
+	for _, cs := range snapshot.Status.ContainerSnapshots {
+		if cs.ContainerName == restoreFrom.ContainerName {
+			if cs.SnapshotKey == "" {
+				return "", fmt.Errorf("RootfsSnapshot %q has no snapshotKey for container %q", restoreFrom.SnapshotName, restoreFrom.ContainerName)
+			}
+			return cs.SnapshotKey, nil
+		}
+	}
+
+	return "", fmt.Errorf("RootfsSnapshot %q has no snapshot for container %q", restoreFrom.SnapshotName, restoreFrom.ContainerName)
+}
+
+// buildRestorerContainer creates the init container that downloads the snapshot tarball.
+func (r *SandboxReconciler) buildRestorerContainer(snapshotKey string) corev1.Container {
+	env := []corev1.EnvVar{
+		{Name: "ISOLA_BUCKET_URL", Value: r.BucketURL},
+		{Name: "RESTORE_SNAPSHOT_KEY", Value: snapshotKey},
+		{Name: "RESTORE_FILE", Value: restoreTarPath},
+	}
+
+	var envFrom []corev1.EnvFromSource
+	if r.CredentialSecretName != "" {
+		envFrom = []corev1.EnvFromSource{
+			{
+				SecretRef: &corev1.SecretEnvSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: r.CredentialSecretName,
+					},
+				},
+			},
+		}
+	}
+
+	return corev1.Container{
+		Name:    restorerContainerName,
+		Image:   r.RestorerImage,
+		Env:     env,
+		EnvFrom: envFrom,
+		SecurityContext: &corev1.SecurityContext{
+			RunAsUser:    ptr.To(int64(65534)), // nobody
+			RunAsGroup:   ptr.To(int64(65534)),
+			RunAsNonRoot: ptr.To(true),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			ReadOnlyRootFilesystem:   ptr.To(true),
+			AllowPrivilegeEscalation: ptr.To(false),
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: restoreVolumeName, MountPath: "/restore-data"},
+		},
+	}
+}
+
+// configureContainerForRestore modifies a container to extract the restore tarball on startup.
+// It wraps the container's command (if present) or adds a postStart lifecycle hook.
+func configureContainerForRestore(container *corev1.Container) {
+	extractCmd := fmt.Sprintf("tar xf %s -C / 2>/dev/null || true", restoreTarPath)
+
+	// Add volume mount for restore data
+	container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+		Name:      restoreVolumeName,
+		MountPath: "/restore-data",
+		ReadOnly:  true,
+	})
+
+	// If the container has an explicit command, wrap it to extract first
+	if len(container.Command) > 0 {
+		// Build the original command string
+		originalCmd := buildCommandString(container.Command, container.Args)
+		container.Command = []string{"/bin/sh", "-c"}
+		container.Args = []string{fmt.Sprintf("%s; exec %s", extractCmd, originalCmd)}
+	} else {
+		// No explicit command - use lifecycle hook (less reliable but works for images with entrypoints)
+		if container.Lifecycle == nil {
+			container.Lifecycle = &corev1.Lifecycle{}
+		}
+		container.Lifecycle.PostStart = &corev1.LifecycleHandler{
+			Exec: &corev1.ExecAction{
+				Command: []string{"/bin/sh", "-c", extractCmd},
+			},
+		}
+	}
+}
+
+// buildCommandString builds a shell-safe command string from command and args.
+func buildCommandString(command, args []string) string {
+	all := append(command, args...)
+	quoted := make([]string, len(all))
+	for i, s := range all {
+		// Simple quoting - wrap in single quotes and escape existing single quotes
+		quoted[i] = "'" + escapeShellSingleQuote(s) + "'"
+	}
+	return strings.Join(quoted, " ")
+}
+
+// escapeShellSingleQuote escapes single quotes for shell single-quoted strings.
+func escapeShellSingleQuote(s string) string {
+	// In single quotes, only single quote needs escaping: ' -> '\''
+	return strings.ReplaceAll(s, "'", "'\\''")
+}
+
+// injectRestorer adds the restorer init container and configures the target container.
+func (r *SandboxReconciler) injectRestorer(sandboxPod *corev1.Pod, restoreFrom *sandboxv1alpha1.RestoreFromSnapshot, snapshotKey string) error {
+	// Add the restore data volume
+	sandboxPod.Spec.Volumes = append(sandboxPod.Spec.Volumes, corev1.Volume{
+		Name: restoreVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	})
+
+	// Add the restorer init container (runs before sidecar)
+	restorerContainer := r.buildRestorerContainer(snapshotKey)
+	// Prepend to init containers so it runs first
+	sandboxPod.Spec.InitContainers = append([]corev1.Container{restorerContainer}, sandboxPod.Spec.InitContainers...)
+
+	// Configure the target container to extract the tarball
+	for i := range sandboxPod.Spec.Containers {
+		if sandboxPod.Spec.Containers[i].Name == restoreFrom.ContainerName {
+			configureContainerForRestore(&sandboxPod.Spec.Containers[i])
+			return nil
+		}
+	}
+
+	return fmt.Errorf("container %q not found in pod spec", restoreFrom.ContainerName)
 }
 
 func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandboxv1alpha1.Sandbox, newSandbox *sandboxv1alpha1.Sandbox, newConditions []metav1.Condition) error {
@@ -236,6 +402,32 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	configureDNS(sandboxPod, sandbox.Spec.Network)
 
 	markContainers(sandboxPod)
+
+	// Handle restore from snapshot if specified
+	if sandbox.Spec.RestoreFrom != nil {
+		if r.RestorerImage == "" {
+			err := fmt.Errorf("restoreFrom specified but restorer image not configured")
+			log.Error(err, "Cannot restore sandbox")
+			return err
+		}
+		if r.BucketURL == "" {
+			err := fmt.Errorf("restoreFrom specified but bucket URL not configured")
+			log.Error(err, "Cannot restore sandbox")
+			return err
+		}
+
+		snapshotKey, err := r.resolveSnapshotKey(ctx, sandbox.Namespace, sandbox.Spec.RestoreFrom)
+		if err != nil {
+			log.Error(err, "Failed to resolve snapshot key")
+			return err
+		}
+
+		log.Info("Injecting restorer for snapshot", "snapshotKey", snapshotKey, "containerName", sandbox.Spec.RestoreFrom.ContainerName)
+		if err := r.injectRestorer(sandboxPod, sandbox.Spec.RestoreFrom, snapshotKey); err != nil {
+			log.Error(err, "Failed to inject restorer")
+			return err
+		}
+	}
 
 	if err := r.injectSandboxSidecar(sandboxPod); err != nil {
 		log.Error(err, "Failed to inject sidecar")

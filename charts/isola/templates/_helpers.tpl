@@ -216,6 +216,15 @@ Uploader image (from gvisor rootfssnapshot config)
 {{- end }}
 
 {{/*
+Restorer image (from gvisor rootfssnapshot config)
+*/}}
+{{- define "isola.operator.restorerImage" -}}
+{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
+{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.restorer.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Storage credential secret name
 */}}
 {{- define "isola.operator.rootfssnapshotCredentialSecretName" -}}

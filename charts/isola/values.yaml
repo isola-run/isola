@@ -114,11 +114,19 @@ operator:
             secretAccessKey: ""
             region: ""
 
-        # Uploader job configuration
+        # Uploader job configuration (for creating snapshots)
         uploader:
           image:
             registry: ghcr.io/isola-ai
             repository: isola-uploader
+            tag: ""  # Defaults to Chart.appVersion
+            digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+
+        # Restorer init container configuration (for restoring from snapshots)
+        restorer:
+          image:
+            registry: ghcr.io/isola-ai
+            repository: isola-restorer
             tag: ""  # Defaults to Chart.appVersion
             digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
 

@@ -15,7 +15,8 @@ default_registry('localhost:5001')
 # Suppress warning for images that are built but deployed indirectly
 # - sandbox-sidecar: injected by operator into sandbox pods
 # - isola-uploader: used by triggered rootfs snapshot jobs
-update_settings(suppress_unused_image_warnings=["sandbox-sidecar", "isola-uploader"])
+# - isola-restorer: used by sandbox pods to restore from snapshots
+update_settings(suppress_unused_image_warnings=["sandbox-sidecar", "isola-uploader", "isola-restorer"])
 
 # ==============================================================================
 # LocalStack (S3 storage backend)
@@ -61,6 +62,13 @@ docker_build(
 )
 
 docker_build(
+    'isola-restorer',
+    context='.',
+    dockerfile='cmd/restorer/Dockerfile',
+    only=['cmd/restorer/', 'internal/', 'go.mod', 'go.sum'],
+)
+
+docker_build(
     'sandbox-sidecar',
     context='.',
     dockerfile='cmd/sandbox-sidecar/Dockerfile',
@@ -75,11 +83,12 @@ helm_resource(
         '--create-namespace',
         '-f', 'charts/isola/values-dev.yaml',
     ],
-    image_deps=['isola-operator', 'sandbox-sidecar', 'isola-uploader', 'api-gateway'],
+    image_deps=['isola-operator', 'sandbox-sidecar', 'isola-uploader', 'isola-restorer', 'api-gateway'],
     image_keys=[
         ('operator.image.repository', 'operator.image.tag'),
         ('operator.sidecar.image.repository', 'operator.sidecar.image.tag'),
         ('operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.repository', 'operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.tag'),
+        ('operator.sandboxRuntime.gvisor.rootfssnapshot.restorer.image.repository', 'operator.sandboxRuntime.gvisor.rootfssnapshot.restorer.image.tag'),
         ('apiGateway.image.repository', 'apiGateway.image.tag'),
     ],
     deps=['charts/isola'],
