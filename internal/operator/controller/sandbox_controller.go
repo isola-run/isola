@@ -189,9 +189,9 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        podutil.GetSandboxPodName(sandbox.Name),
-			Namespace:   sandbox.Namespace,
-			Labels:      labels,
+			Name:      podutil.GetSandboxPodName(sandbox.Name),
+			Namespace: sandbox.Namespace,
+			Labels:    labels,
 			// There's a security gate in runsc/config/flags.go
 			// where only flags deemed safe for container authors
 			// to set because they don't weaken the sandbox.
