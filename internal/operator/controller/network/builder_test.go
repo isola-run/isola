@@ -22,7 +22,6 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 )
@@ -61,15 +60,6 @@ func TestNeedsCustomNetworkPolicy(t *testing.T) {
 			name: "allowedEgressCIDRs returns true",
 			network: &sandboxv1alpha1.NetworkSpec{
 				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
-			},
-			expected: true,
-		},
-		{
-			name: "allowedEgressPods returns true",
-			network: &sandboxv1alpha1.NetworkSpec{
-				AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
-					{Namespace: "kube-system", PodSelector: metav1.LabelSelector{}},
-				},
 			},
 			expected: true,
 		},
@@ -276,63 +266,19 @@ func TestBuildCustomNetworkPolicy_BlockedEgressCIDR(t *testing.T) {
 	}
 }
 
-func TestBuildCustomNetworkPolicy_WithEgressPods(t *testing.T) {
-	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
-		AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
-			{
-				Namespace: "kube-system",
-				PodSelector: metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"k8s-app": "kube-dns",
-					},
-				},
-				Ports: []sandboxv1alpha1.NetworkPort{
-					{Protocol: corev1.ProtocolUDP, Port: 53},
-				},
-			},
-		},
-	}
-
-	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(np).ToNot(BeNil())
-
-	g.Expect(np.Spec.Egress).To(HaveLen(1))
-	egressRule := np.Spec.Egress[0]
-
-	g.Expect(egressRule.To).To(HaveLen(1))
-	peer := egressRule.To[0]
-
-	g.Expect(peer.NamespaceSelector).ToNot(BeNil())
-	g.Expect(peer.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"]).To(Equal("kube-system"))
-
-	g.Expect(peer.PodSelector).ToNot(BeNil())
-	g.Expect(peer.PodSelector.MatchLabels["k8s-app"]).To(Equal("kube-dns"))
-
-	g.Expect(egressRule.Ports).To(HaveLen(1))
-	g.Expect(egressRule.Ports[0].Port.IntVal).To(Equal(int32(53)))
-}
-
 func TestBuildCustomNetworkPolicy_CombinedRules(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
 		Nameservers:        []string{"8.8.8.8"},
 		AllowedEgressCIDRs: []string{"1.1.1.0/24"},
-		AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
-			{
-				Namespace:   "my-namespace",
-				PodSelector: metav1.LabelSelector{},
-			},
-		},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(np).ToNot(BeNil())
 
-	// Should have 3 egress rules: DNS IP + CIDR + pod selector
-	g.Expect(np.Spec.Egress).To(HaveLen(3))
+	// Should have 2 egress rules: DNS IP + CIDR
+	g.Expect(np.Spec.Egress).To(HaveLen(2))
 }
 
 func TestBuildCustomNetworkPolicy_DeduplicatesCIDRs(t *testing.T) {

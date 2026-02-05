@@ -175,45 +175,6 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(np.Spec.Egress[0].To[0].IPBlock.Except).To(BeEmpty())
 		})
 
-		It("should create egress rules for allowed egress pods", func() {
-			sandboxName := "sandbox-egress-pods"
-
-			network := &sandboxv1alpha1.NetworkSpec{
-				AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
-					{
-						Namespace: "kube-system",
-						PodSelector: metav1.LabelSelector{
-							MatchLabels: map[string]string{"k8s-app": "kube-dns"},
-						},
-						Ports: []sandboxv1alpha1.NetworkPort{
-							{Protocol: corev1.ProtocolUDP, Port: 53},
-							{Protocol: corev1.ProtocolTCP, Port: 53},
-						},
-					},
-				},
-			}
-			createSandboxWithNetwork(ctx, sandboxName, network)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
-			Expect(np).NotTo(BeNil())
-			Expect(np.Spec.Egress).To(HaveLen(1))
-
-			// Verify namespace selector
-			Expect(np.Spec.Egress[0].To[0].NamespaceSelector).NotTo(BeNil())
-			Expect(np.Spec.Egress[0].To[0].NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"]).To(Equal("kube-system"))
-			// Verify pod selector
-			Expect(np.Spec.Egress[0].To[0].PodSelector).NotTo(BeNil())
-			Expect(np.Spec.Egress[0].To[0].PodSelector.MatchLabels["k8s-app"]).To(Equal("kube-dns"))
-			// Verify ports
-			Expect(np.Spec.Egress[0].Ports).To(HaveLen(2))
-		})
-
 		It("should recreate custom NetworkPolicy if deleted on next reconcile", func() {
 			sandboxName := "sandbox-np-recreate"
 
@@ -381,34 +342,6 @@ var _ = Describe("Sandbox Controller", func() {
 		BeforeEach(func() {
 			fakeClock = NewFakeClock(time.Now())
 			reconciler = newTestReconciler(fakeClock)
-		})
-
-		It("should create custom NetworkPolicy with combined CIDR and pod rules", func() {
-			sandboxName := "sandbox-combined"
-
-			network := &sandboxv1alpha1.NetworkSpec{
-				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
-				AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
-					{
-						Namespace: "kube-system",
-						PodSelector: metav1.LabelSelector{
-							MatchLabels: map[string]string{"k8s-app": "kube-dns"},
-						},
-					},
-				},
-			}
-			createSandboxWithNetwork(ctx, sandboxName, network)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
-			Expect(np).NotTo(BeNil())
-			// Should have 2 egress rules: CIDR + pod selector
-			Expect(np.Spec.Egress).To(HaveLen(2))
 		})
 
 		It("should create custom NetworkPolicy for nameservers even with internet access", func() {

@@ -53,10 +53,8 @@ func NeedsCustomNetworkPolicy(network *sandboxv1alpha1.NetworkSpec) bool {
 	}
 	// Custom policy needed for:
 	// - Custom CIDR rules
-	// - Pod egress rules
 	// - Custom nameservers (even with allowAllInternet, nameservers may be in blocked private ranges)
 	return len(network.AllowedEgressCIDRs) > 0 ||
-		len(network.AllowedEgressPods) > 0 ||
 		len(network.Nameservers) > 0
 }
 
@@ -114,7 +112,7 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 	}
 
 	// Check if we actually need a custom policy
-	hasCustomRules := len(egressCIDRs) > 0 || len(dnsAddrs) > 0 || len(network.AllowedEgressPods) > 0
+	hasCustomRules := len(egressCIDRs) > 0 || len(dnsAddrs) > 0
 	if !hasCustomRules {
 		return nil, nil
 	}
@@ -142,28 +140,22 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 		},
 	}
 
-	np.Spec.Egress = buildEgressRules(egressCIDRs, dnsAddrs, network.AllowedEgressPods)
+	np.Spec.Egress = buildEgressRules(egressCIDRs, dnsAddrs)
 
 	return np, nil
 }
 
-// buildEgressRules creates NetworkPolicy egress rules from pre-computed CIDRs and pod selectors.
+// buildEgressRules creates NetworkPolicy egress rules from pre-computed CIDRs.
 // If dnsServers is non-empty, adds a rule to allow DNS traffic to those IPs.
-// If egressPodRules is non-empty, adds rules to allow traffic to those pods.
 // Accepts fully validated and computed egressCIDRs from BuildNetworkPolicy.
 func buildEgressRules(
 	egressCIDRs []egressCIDR,
 	dnsServers []netip.Addr,
-	egressPodRules []sandboxv1alpha1.EgressPodRule,
 ) []networkingv1.NetworkPolicyEgressRule {
 	var rules []networkingv1.NetworkPolicyEgressRule
 
 	if len(dnsServers) > 0 {
 		rules = append(rules, buildDNSServerEgressRule(dnsServers))
-	}
-
-	for _, podRule := range egressPodRules {
-		rules = append(rules, buildPodSelectorEgressRule(podRule))
 	}
 
 	for _, ecidr := range egressCIDRs {
@@ -184,39 +176,6 @@ func buildEgressRules(
 	}
 
 	return rules
-}
-
-func buildPodSelectorEgressRule(rule sandboxv1alpha1.EgressPodRule) networkingv1.NetworkPolicyEgressRule {
-	egressRule := networkingv1.NetworkPolicyEgressRule{
-		To: []networkingv1.NetworkPolicyPeer{
-			{
-				// Select namespace by the standard kubernetes.io/metadata.name label
-				NamespaceSelector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"kubernetes.io/metadata.name": rule.Namespace,
-					},
-				},
-				PodSelector: &rule.PodSelector,
-			},
-		},
-	}
-
-	if len(rule.Ports) > 0 {
-		egressRule.Ports = make([]networkingv1.NetworkPolicyPort, 0, len(rule.Ports))
-		for _, p := range rule.Ports {
-			protocol := p.Protocol
-			if protocol == "" {
-				protocol = corev1.ProtocolTCP
-			}
-			port := intstr.FromInt32(p.Port)
-			egressRule.Ports = append(egressRule.Ports, networkingv1.NetworkPolicyPort{
-				Protocol: &protocol,
-				Port:     &port,
-			})
-		}
-	}
-
-	return egressRule
 }
 
 // buildDNSServerEgressRule creates an egress rule allowing traffic to DNS server IPs on port 53.

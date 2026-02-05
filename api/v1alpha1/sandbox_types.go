@@ -65,39 +65,6 @@ type ShutdownPolicy struct {
 	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
 }
 
-// NetworkPort defines a port for network rules.
-type NetworkPort struct {
-	// Protocol (TCP or UDP). Defaults to TCP.
-	// +kubebuilder:validation:Enum=TCP;UDP
-	// +kubebuilder:default=TCP
-	// +optional
-	Protocol corev1.Protocol `json:"protocol,omitempty"`
-
-	// Port number.
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=65535
-	// +required
-	Port int32 `json:"port"`
-}
-
-// EgressPodRule defines a pod-based egress rule.
-// This allows sandboxes to communicate with specific pods in the cluster.
-type EgressPodRule struct {
-	// Namespace of the target pods.
-	// +kubebuilder:validation:MinLength=1
-	// +required
-	Namespace string `json:"namespace"`
-
-	// PodSelector selects pods in the namespace.
-	// An empty selector ({}) matches all pods in the namespace.
-	// +required
-	PodSelector metav1.LabelSelector `json:"podSelector"`
-
-	// Ports to allow. If empty, all ports are allowed to the selected pods.
-	// +optional
-	Ports []NetworkPort `json:"ports,omitempty"`
-}
-
 // NetworkSpec defines network isolation for a sandbox.
 // If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
 type NetworkSpec struct {
@@ -118,12 +85,6 @@ type NetworkSpec struct {
 	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$`
 	// +optional
 	AllowedEgressCIDRs []string `json:"allowedEgressCIDRs,omitempty"`
-
-	// AllowedEgressPods specifies pods the sandbox can reach via selectors.
-	// Uses full LabelSelector (matchLabels + matchExpressions) for flexibility.
-	// Creates a custom NetworkPolicy.
-	// +optional
-	AllowedEgressPods []EgressPodRule `json:"allowedEgressPods,omitempty"`
 
 	// Nameservers are DNS server IPs to inject into the pod.
 	// When allowClusterDNS=false: These are the only nameservers (or 127.0.0.1 sink if empty).
