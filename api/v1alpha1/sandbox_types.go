@@ -90,6 +90,7 @@ type NetworkSpec struct {
 	// When allowClusterDNS=false: These are the only nameservers (or 127.0.0.1 sink if empty).
 	// When allowClusterDNS=true: Combined with cluster DNS.
 	// When specified with allowAllInternet=false, creates custom policy for DNS egress.
+	// Allows access to these IPs (even if in blocked ranges) on port 53.
 	// MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
 	// +kubebuilder:validation:MaxItems=3
 	// +kubebuilder:validation:XValidation:rule="self.all(s, isIP(s))",message="must be valid IP addresses"

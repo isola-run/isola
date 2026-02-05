@@ -364,17 +364,13 @@ func (r *SandboxReconciler) getShutdownRootfssnapshot(ctx context.Context, sandb
 }
 
 // ensureCustomNetworkPolicy creates or updates a custom NetworkPolicy for sandboxes
-// that need more than the static Helm-installed policies (custom CIDRs, pod rules, or DNS).
+// that need more than the static Helm-installed policies (custom CIDRs or DNS).
 func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
 ) error {
 	log := logf.FromContext(ctx)
-
-	if !netbuilder.NeedsCustomNetworkPolicy(sandbox.Spec.Network) {
-		return nil
-	}
 
 	desiredNP, err := netbuilder.BuildCustomNetworkPolicy(sandbox.Name, sandbox.Namespace, sandbox.Spec.Network)
 	if err != nil {
