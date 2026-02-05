@@ -35,6 +35,10 @@ spec:
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081
+        {{- if .Values.operator.metrics.enabled }}
+        - --metrics-bind-address=:{{ .Values.operator.metrics.port }}
+        - --metrics-secure=false
+        {{- end }}
         - --sidecar-image={{ include "isola.operator.sidecarImage" . }}
         {{- if .Values.operator.sandboxPriorityClassName }}
         - --priority-class={{ .Values.operator.sandboxPriorityClassName }}
@@ -43,6 +47,11 @@ spec:
         - name: health
           containerPort: 8081
           protocol: TCP
+        {{- if .Values.operator.metrics.enabled }}
+        - name: metrics
+          containerPort: {{ .Values.operator.metrics.port }}
+          protocol: TCP
+        {{- end }}
         livenessProbe:
           httpGet:
             path: /healthz
