@@ -1,6 +1,6 @@
 module github.com/isola-ai/isola-sb
 
-go 1.25.5
+go 1.25.7
 
 require (
 	github.com/danielgtaylor/huma/v2 v2.35.0
