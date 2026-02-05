@@ -78,6 +78,11 @@ func main() {
 	var imagePullSecretsStr string
 	var runtimeType string
 	var rootfssnapshotEnabled bool
+	var checkpointBucketURL string
+	var checkpointCredentialSecret string
+	var checkpointUploaderImage string
+	var checkpointServiceAccount string
+	var checkpointEnabled bool
 	var gvisorRunscPath string
 	var gvisorRunscRoot string
 	var logLevel string
@@ -111,6 +116,11 @@ func main() {
 	flag.StringVar(&imagePullSecretsStr, "image-pull-secrets", os.Getenv("ISOLA_IMAGE_PULL_SECRETS"), "Comma-separated list of imagePullSecret names for sandbox pods and rootfs snapshot jobs")
 	flag.StringVar(&runtimeType, "runtime-type", os.Getenv("ISOLA_RUNTIME_TYPE"), "Runtime type: 'gvisor' or 'clusterDefault'")
 	flag.BoolVar(&rootfssnapshotEnabled, "rootfssnapshot-enabled", os.Getenv("ISOLA_ROOTFSSNAPSHOT_ENABLED") == "true", "Enable rootfs snapshot capability (requires gVisor runtime and privileged operations)")
+	flag.StringVar(&checkpointBucketURL, "checkpoint-bucket-url", os.Getenv("ISOLA_CHECKPOINT_BUCKET_URL"), "Bucket URL for checkpoint storage (e.g., s3://bucket?region=us-east-1)")
+	flag.StringVar(&checkpointCredentialSecret, "checkpoint-credential-secret", os.Getenv("ISOLA_CHECKPOINT_CREDENTIAL_SECRET"), "Secret name for checkpoint bucket credentials (optional, uses pod identity if not set)")
+	flag.StringVar(&checkpointUploaderImage, "checkpoint-uploader-image", os.Getenv("ISOLA_CHECKPOINT_UPLOADER_IMAGE"), "Container image for the checkpoint uploader")
+	flag.StringVar(&checkpointServiceAccount, "checkpoint-service-account", os.Getenv("ISOLA_CHECKPOINT_SERVICE_ACCOUNT"), "ServiceAccount for checkpoint jobs")
+	flag.BoolVar(&checkpointEnabled, "checkpoint-enabled", os.Getenv("ISOLA_CHECKPOINT_ENABLED") == "true", "Enable checkpoint capability (requires gVisor runtime and privileged operations)")
 	flag.StringVar(&gvisorRunscPath, "gvisor-runsc-path", os.Getenv("ISOLA_GVISOR_RUNSC_PATH"), "Path to the runsc binary on cluster nodes (for gVisor snapshot support)")
 	flag.StringVar(&gvisorRunscRoot, "gvisor-runsc-root", os.Getenv("ISOLA_GVISOR_RUNSC_ROOT"), "Root directory where runsc stores runtime state (for gVisor snapshot support)")
 	flag.StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
@@ -249,6 +259,25 @@ func main() {
 		GvisorRunscRoot:        gvisorRunscRoot,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RootfsSnapshot")
+		os.Exit(1)
+	}
+
+	// GvisorCheckpointReconciler manages GvisorCheckpoint resources.
+	// It creates Jobs to checkpoint container state and upload to bucket storage.
+	if err := (&controller.GvisorCheckpointReconciler{
+		Client:                   mgr.GetClient(),
+		Scheme:                   mgr.GetScheme(),
+		Clock:                    controller.RealClock{},
+		BucketURL:                checkpointBucketURL,
+		CredentialSecretName:     checkpointCredentialSecret,
+		UploaderImage:            checkpointUploaderImage,
+		CheckpointServiceAccount: checkpointServiceAccount,
+		ImagePullSecrets:         imagePullSecrets,
+		Enabled:                  checkpointEnabled,
+		GvisorRunscPath:          gvisorRunscPath,
+		GvisorRunscRoot:          gvisorRunscRoot,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "GvisorCheckpoint")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

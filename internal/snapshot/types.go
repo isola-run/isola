@@ -14,18 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package snapshot provides shared types for snapshot operations between
-// the isola-operator controller and isola-uploader.
+// Package snapshot provides shared types for snapshot and checkpoint operations
+// between the isola-operator controller and isola-uploader/checkpoint-uploader.
 package snapshot
 
 // UploadResult is the contract between the uploader and the controller.
 // The uploader writes this as JSON to its termination log (/dev/termination-log),
-// and the controller parses it to update the RootfsSnapshot status.
+// and the controller parses it to update the RootfsSnapshot or GvisorCheckpoint status.
 //
 // This struct is the single source of truth - both services import this package
 // to ensure type safety and prevent drift.
 type UploadResult struct {
 	// SnapshotKey is the object key in the bucket (e.g., "snapshots/ns/sandbox/rev-00001/main.tar")
+	// For checkpoints, this is the checkpoint directory key (e.g., "checkpoints/ns/sandbox/rev-00001/container/")
 	SnapshotKey string `json:"snapshotKey"`
 	// Revision is the revision number determined by the uploader
 	Revision int32 `json:"revision"`

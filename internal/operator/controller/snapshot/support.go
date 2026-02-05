@@ -30,6 +30,18 @@ import (
 // Returns true if the pod uses a gvisor/runsc runtime.
 // Caller should check pod readiness before calling this.
 func CheckRootfsSnapshotSupport(ctx context.Context, c client.Client, pod *corev1.Pod) (bool, error) {
+	return checkGvisorRuntime(ctx, c, pod)
+}
+
+// CheckGvisorCheckpointSupport checks if the pod's runtime class supports checkpointing.
+// Returns true if the pod uses a gvisor/runsc runtime.
+// Caller should check pod readiness before calling this.
+func CheckGvisorCheckpointSupport(ctx context.Context, c client.Client, pod *corev1.Pod) (bool, error) {
+	return checkGvisorRuntime(ctx, c, pod)
+}
+
+// checkGvisorRuntime is a shared helper that checks if the pod uses a gvisor/runsc runtime.
+func checkGvisorRuntime(ctx context.Context, c client.Client, pod *corev1.Pod) (bool, error) {
 	if pod == nil {
 		return false, nil
 	}

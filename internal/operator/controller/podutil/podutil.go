@@ -64,6 +64,10 @@ func GetSnapshotJobName(snapshotName, containerName string) string {
 	return snapshotName + "-" + containerName
 }
 
+func GetCheckpointJobName(checkpointName string) string {
+	return checkpointName + "-checkpoint"
+}
+
 // ExtractContainerID gets the container ID for a named container.
 // Returns the ID without the containerd:// prefix.
 // The containerName must match a container in the pod's status.
