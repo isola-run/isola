@@ -197,3 +197,25 @@ apiGateway:
   affinity: {}
   topologySpreadConstraints: []
   podAnnotations: {}
+
+  # Prometheus metrics configuration
+  metrics:
+    # Enable metrics endpoint
+    enabled: false
+    # Port for metrics endpoint
+    port: 8081
+
+  # ServiceMonitor for Prometheus Operator
+  serviceMonitor:
+    # Create a ServiceMonitor resource for Prometheus Operator
+    enabled: false
+    # Labels to add to the ServiceMonitor (for Prometheus selector matching)
+    labels: {}
+    # Scrape interval (e.g., "30s")
+    interval: ""
+    # Scrape timeout (e.g., "10s")
+    scrapeTimeout: ""
+    # Metric relabeling configs
+    metricRelabelings: []
+    # Relabeling configs
+    relabelings: []

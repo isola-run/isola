@@ -63,6 +63,7 @@ func init() {
 
 type config struct {
 	httpPort         int
+	metricsPort      int
 	logLevel         string
 	devMode          bool
 	sandboxNamespace string
@@ -74,9 +75,14 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 		return nil, errors.New("sandbox namespace is required")
 	}
 
+	metricsBindAddress := "0"
+	if cfg.metricsPort > 0 {
+		metricsBindAddress = fmt.Sprintf(":%d", cfg.metricsPort)
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:  scheme,
-		Metrics: metricsserver.Options{BindAddress: "0"},
+		Metrics: metricsserver.Options{BindAddress: metricsBindAddress},
 		Cache: cache.Options{
 			DefaultNamespaces: map[string]cache.Config{
 				cfg.sandboxNamespace: {},
@@ -113,6 +119,7 @@ func main() {
 	cfg := config{}
 
 	flag.IntVar(&cfg.httpPort, "http-port", env.GetOrDefaultInt("ISOLA_HTTP_PORT", 8080), "HTTP server port")
+	flag.IntVar(&cfg.metricsPort, "metrics-port", env.GetOrDefaultInt("ISOLA_METRICS_PORT", 0), "Metrics server port (0 to disable)")
 	flag.StringVar(&cfg.logLevel, "log-level", env.GetOrDefault("ISOLA_LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
 	flag.BoolVar(&cfg.devMode, "dev", env.GetOrDefault("ISOLA_DEV_MODE", "") != "", "Enable development mode (text logging)")
 	flag.StringVar(&cfg.sandboxNamespace, "sandbox-namespace", os.Getenv("ISOLA_SANDBOX_NAMESPACE"), "Namespace where sandboxes are created (required)")

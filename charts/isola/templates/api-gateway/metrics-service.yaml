@@ -1,0 +1,17 @@
+{{- if and .Values.apiGateway.enabled .Values.apiGateway.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "isola.apiGateway.fullname" . }}-metrics
+  labels:
+    {{- include "isola.apiGateway.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: {{ .Values.apiGateway.metrics.port }}
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    {{- include "isola.apiGateway.selectorLabels" . | nindent 4 }}
+{{- end }}

@@ -34,10 +34,18 @@ spec:
             {{- if .Values.apiGateway.logging.devMode }}
             - --dev
             {{- end }}
+            {{- if .Values.apiGateway.metrics.enabled }}
+            - -metrics-port={{ .Values.apiGateway.metrics.port }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080
               protocol: TCP
+            {{- if .Values.apiGateway.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.apiGateway.metrics.port }}
+              protocol: TCP
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /api/v1/health
