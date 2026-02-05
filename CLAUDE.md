@@ -62,7 +62,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 **Single Go module:** The project uses a single `go.mod` at the root (`github.com/isola-ai/isola-sb`). All binaries import from this module.
 
 **Project structure:**
-- `api/v1alpha1/` - CRD type definitions (Sandbox, SandboxTemplate, RootfsSnapshot)
+- `api/v1alpha1/` - CRD type definitions (Sandbox, RootfsSnapshot)
 - `api/openapi/` - Generated OpenAPI specs (api-gateway.yaml, sandbox-sidecar.yaml)
 - `cmd/operator/` - Kubebuilder operator entry point
 - `cmd/api-gateway/` - API gateway for external clients
@@ -82,9 +82,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 ## CRDs
 
-**Sandbox** - A running sandbox instance. References a SandboxTemplate and optionally embeds NetworkSpec.
-
-**SandboxTemplate** - Reusable pod configuration (image, resources, env vars). Referenced by Sandbox via `templateRef`.
+**Sandbox** - A running sandbox instance. Contains an inlined PodTemplate, optional TimeoutSeconds, ShutdownPolicy, and NetworkSpec.
 
 **RootfsSnapshot** - Triggers a snapshot of a sandbox's filesystem. Creates an uploader Job that tarballs the container rootfs and uploads to cloud storage. Supports TTL-based auto-deletion.
 
@@ -107,7 +105,6 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **Finalizers:** `sandbox.isola.run/cleanup` ensures cleanup before sandbox deletion.
 
-**Field indexing:** Reconcilers index `templateRef` for efficient lookups. See `SetupWithManager()` for index registration.
 
 **Snapshot workflow:**
 1. Create RootfsSnapshot CR referencing a sandbox

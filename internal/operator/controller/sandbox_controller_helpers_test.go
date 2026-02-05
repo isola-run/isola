@@ -35,29 +35,13 @@ import (
 
 // Helper functions for sandbox controller tests
 
-func createSandbox(ctx context.Context, name, templateRef string) *sandboxv1alpha1.Sandbox {
+func createSandbox(ctx context.Context, name string, opts ...func(*sandboxv1alpha1.Sandbox)) *sandboxv1alpha1.Sandbox {
 	sandbox := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: testNamespace,
 		},
 		Spec: sandboxv1alpha1.SandboxSpec{
-			TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-				Name: templateRef,
-			},
-		},
-	}
-	ExpectWithOffset(1, k8sClient.Create(ctx, sandbox)).To(Succeed())
-	return sandbox
-}
-
-func createTemplate(ctx context.Context, name string, opts ...func(*sandboxv1alpha1.SandboxTemplate)) *sandboxv1alpha1.SandboxTemplate {
-	template := &sandboxv1alpha1.SandboxTemplate{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: testNamespace,
-		},
-		Spec: sandboxv1alpha1.SandboxTemplateSpec{
 			PodTemplate: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
@@ -72,10 +56,10 @@ func createTemplate(ctx context.Context, name string, opts ...func(*sandboxv1alp
 		},
 	}
 	for _, opt := range opts {
-		opt(template)
+		opt(sandbox)
 	}
-	ExpectWithOffset(1, k8sClient.Create(ctx, template)).To(Succeed())
-	return template
+	ExpectWithOffset(1, k8sClient.Create(ctx, sandbox)).To(Succeed())
+	return sandbox
 }
 
 func createRuntimeClass(ctx context.Context, name, handler string) {
@@ -112,16 +96,6 @@ func deleteSandbox(ctx context.Context, name string) {
 	}
 	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, sandbox))).NotTo(HaveOccurred())
-}
-
-func deleteTemplate(ctx context.Context, name string) {
-	template := &sandboxv1alpha1.SandboxTemplate{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, template)
-	if errors.IsNotFound(err) {
-		return // Already deleted
-	}
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, template))).NotTo(HaveOccurred())
 }
 
 func deleteRuntimeClass(ctx context.Context, name string) {
@@ -192,15 +166,23 @@ func setShutdownSnapshotReady(ctx context.Context, sandboxName string, ready boo
 	setRootfsSnapshotReady(ctx, sandboxName+"-shutdown", ready, reason, message)
 }
 
-func createSandboxWithNetwork(ctx context.Context, name, templateRef string, network *sandboxv1alpha1.NetworkSpec) {
+func createSandboxWithNetwork(ctx context.Context, name string, network *sandboxv1alpha1.NetworkSpec) {
 	sandbox := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: testNamespace,
 		},
 		Spec: sandboxv1alpha1.SandboxSpec{
-			TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-				Name: templateRef,
+			PodTemplate: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:    "sandbox",
+							Image:   "busybox:latest",
+							Command: []string{"sleep", "infinity"},
+						},
+					},
+				},
 			},
 			Network: network,
 		},

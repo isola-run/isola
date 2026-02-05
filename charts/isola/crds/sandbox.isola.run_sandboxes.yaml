@@ -21,10 +21,6 @@ spec:
       jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: Ready
       type: string
-    - description: SandboxTemplate reference
-      jsonPath: .spec.templateRef.name
-      name: Template
-      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -191,23 +187,45 @@ spec:
                     - message: must be valid IP addresses
                       rule: self.all(s, isIP(s))
                 type: object
-              templateRef:
+              podTemplate:
                 description: |-
-                  TemplateRef references the SandboxTemplate to inherit pod configuration from.
-                  The SandboxTemplate must exist in the same namespace as this Sandbox.
+                  PodTemplate describes the pod that will be created to run the sandbox.
+                  The Sandbox controller will override specific security settings (runtimeClassName, etc.)
+                  but allows users to define containers, volumes, and env vars.
+                x-kubernetes-preserve-unknown-fields: true
+              shutdownPolicy:
+                description: ShutdownPolicy defines what to do when the sandbox ends
                 properties:
-                  name:
+                  activeDeadlineSeconds:
+                    default: 300
                     description: |-
-                      Name of the SandboxTemplate in the same namespace.
-                      The referenced SandboxTemplate provides the pod configuration (containers, initContainers, etc.)
-                      and lifecycle settings (timeout, shutdown policy) for this Sandbox.
-                    minLength: 1
+                      ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
+                      that the snapshot job may be active before the system tries to terminate it.
+                      Only used when Policy is SnapshotRootfs.
+                    format: int64
+                    minimum: 1
+                    type: integer
+                  policy:
+                    allOf:
+                    - enum:
+                      - Delete
+                      - SnapshotRootfs
+                    - enum:
+                      - Delete
+                      - SnapshotRootfs
+                    default: Delete
+                    description: Policy determines the action taken when the sandbox
+                      shuts down
                     type: string
-                required:
-                - name
                 type: object
+              timeoutSeconds:
+                description: TimeoutSeconds defines how long the sandbox runs before
+                  being terminated
+                format: int64
+                minimum: 1
+                type: integer
             required:
-            - templateRef
+            - podTemplate
             type: object
             x-kubernetes-validations:
             - message: network cannot be removed once set

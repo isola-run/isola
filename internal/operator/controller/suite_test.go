@@ -116,15 +116,6 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	// Register field index for sandbox templateRef lookups
-	err = mgr.GetFieldIndexer().IndexField(
-		ctx,
-		&sandboxv1alpha1.Sandbox{},
-		sandboxTemplateRefField,
-		extractTemplateRefName,
-	)
-	Expect(err).NotTo(HaveOccurred())
-
 	// Start manager cache in background (needed for field indexing)
 	go func() {
 		defer GinkgoRecover()
@@ -207,18 +198,5 @@ func newTestReconcilerWithRuntimeClass(clock Clock, runtimeClassName string) *Sa
 		SandboxSidecarImage: "sandbox-sidecar:test",
 		Clock:               clock,
 		RuntimeClassName:    runtimeClassName,
-	}
-}
-
-// newTestReconcilerWithCache creates a SandboxReconciler using the cached client.
-// Required for testing field index queries like findSandboxesForTemplate.
-func newTestReconcilerWithCache(clock Clock) *SandboxReconciler {
-	rec := events.NewFakeRecorder(100)
-	return &SandboxReconciler{
-		Client:              k8sCache,
-		Scheme:              scheme.Scheme,
-		Recorder:            rec,
-		SandboxSidecarImage: "sandbox-sidecar:test",
-		Clock:               clock,
 	}
 }

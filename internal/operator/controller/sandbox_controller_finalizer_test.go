@@ -48,14 +48,10 @@ var _ = Describe("Sandbox Controller", func() {
 			reconciler = newTestReconciler(fakeClock)
 		})
 
-		It("should add finalizer after template validation", func() {
+		It("should add finalizer on reconcile", func() {
 			sandboxName := "sandbox-finalizer-add"
-			templateName := "template-finalizer-add"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -71,12 +67,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should preserve all conditions after finalizer is added", func() {
 			sandboxName := "sandbox-conditions-preserved"
-			templateName := "template-conditions-preserved"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -89,13 +81,8 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(sandbox.Finalizers).To(ContainElement(SandboxFinalizer))
 
-			// TemplateReady should be persisted (set by EnsureTemplate before finalizer was added)
-			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxTemplateReadyCondition)
-			Expect(cond).NotTo(BeNil(), "TemplateReady condition should be preserved")
-			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-
-			// PodReady should be set (set by CreateSandboxPod after finalizer was added)
-			cond = meta.FindStatusCondition(sandbox.Status.Conditions, SandboxPodReadyCondition)
+			// PodReady should be set
+			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxPodReadyCondition)
 			Expect(cond).NotTo(BeNil(), "PodReady condition should be set")
 
 			// Ready should be set
@@ -105,12 +92,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should execute Delete policy and remove finalizer on deletion", func() {
 			sandboxName := "sandbox-delete-policy"
-			templateName := "template-delete-policy"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -120,34 +103,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(sandbox.Finalizers).To(ContainElement(SandboxFinalizer))
-
-			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
-
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(err).To(Satisfy(errors.IsNotFound))
-		})
-
-		It("should remove finalizer if template not found during deletion", func() {
-			sandboxName := "sandbox-no-template-delete"
-			templateName := "template-no-template-delete"
-
-			createTemplate(ctx, templateName)
-			createSandbox(ctx, sandboxName, templateName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			sandbox := getSandbox(ctx, sandboxName)
-			Expect(sandbox.Finalizers).To(ContainElement(SandboxFinalizer))
-
-			deleteTemplate(ctx, templateName)
 
 			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
 
@@ -161,7 +116,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should execute SnapshotRootfs policy on deletion", func() {
 			sandboxName := "sandbox-snapshot-delete"
-			templateName := "template-snapshot-delete"
 			runtimeClassName := "gvisor-delete"
 
 			recorder := events.NewFakeRecorder(10)
@@ -170,15 +124,12 @@ var _ = Describe("Sandbox Controller", func() {
 			createRuntimeClass(ctx, runtimeClassName, "runsc")
 			defer deleteRuntimeClass(ctx, runtimeClassName)
 
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
-				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
+				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
