@@ -148,7 +148,12 @@ func main() {
 	api := humachi.New(r, humaConfig)
 
 	healthHandlers := handlers.NewHealthHandlers(logger, mgr.GetClient())
+	sandboxHandlers := handlers.NewSandboxHandlers(logger, mgr.GetClient(), cfg.sandboxNamespace)
+	wsProxyHandler := handlers.NewWebSocketProxyHandler(logger, mgr.GetClient(), cfg.sandboxNamespace)
+
 	handlers.RegisterHealthRoutes(api, healthHandlers)
+	handlers.RegisterSandboxRoutes(api, sandboxHandlers)
+	handlers.RegisterSandboxWebSocketRoutes(r, wsProxyHandler)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.httpPort),

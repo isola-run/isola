@@ -3,10 +3,12 @@ module github.com/isola-ai/isola-sb
 go 1.25.5
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/danielgtaylor/huma/v2 v2.35.0
 	github.com/go-chi/chi/v5 v5.2.4
 	github.com/go-chi/httplog/v2 v2.1.1
 	github.com/go-logr/logr v1.4.3
+	github.com/gorilla/websocket v1.5.3
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	gocloud.dev v0.44.0

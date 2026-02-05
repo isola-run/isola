@@ -151,3 +151,22 @@ func (r *RealProcFS) GetUIDGID(pid int) (uid, gid int, err error) {
 	}
 	return int(stat.Uid), int(stat.Gid), nil
 }
+
+// GetEnviron reads the environment variables from /proc/<pid>/environ.
+// Returns a slice of KEY=VALUE strings.
+func GetEnviron(pid int) ([]string, error) {
+	environPath := fmt.Sprintf("/proc/%d/environ", pid)
+	data, err := os.ReadFile(environPath) //nolint:gosec // path is constructed from trusted PID
+	if err != nil {
+		return nil, fmt.Errorf("read environ: %w", err)
+	}
+
+	// environ is null-byte separated
+	var env []string
+	for _, entry := range strings.Split(string(data), "\x00") {
+		if entry != "" {
+			env = append(env, entry)
+		}
+	}
+	return env, nil
+}

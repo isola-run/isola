@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-chi/chi/v5"
 )
 
 func RegisterHealthRoutes(api huma.API, h *HealthHandlers) {
@@ -46,4 +47,25 @@ func RegisterHealthRoutes(api huma.API, h *HealthHandlers) {
 		DefaultStatus: http.StatusOK,
 		Errors:        []int{http.StatusServiceUnavailable},
 	}, h.GetReady)
+}
+
+// RegisterSandboxRoutes registers sandbox-related API routes.
+func RegisterSandboxRoutes(api huma.API, h *SandboxHandlers) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "post-sandbox-exec",
+		Method:        http.MethodPost,
+		Path:          "/sandboxes/{sandbox_name}/exec",
+		Summary:       "Execute a command in a sandbox",
+		Description:   "Executes a command in the specified sandbox and returns stdout, stderr, and exit code",
+		Tags:          []string{"sandbox"},
+		DefaultStatus: http.StatusOK,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusBadGateway, http.StatusGatewayTimeout},
+	}, h.PostExec)
+}
+
+// RegisterSandboxWebSocketRoutes registers WebSocket routes for sandbox interactions.
+// These cannot use Huma as WebSocket upgrades require direct HTTP handler access.
+func RegisterSandboxWebSocketRoutes(r chi.Router, h *WebSocketProxyHandler) {
+	r.Get("/sandboxes/{sandbox_name}/exec/stream", h.ExecStreamHandler)
+	r.Get("/sandboxes/{sandbox_name}/pty", h.PTYHandler)
 }

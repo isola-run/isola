@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-chi/chi/v5"
 )
 
 func RegisterHealthRoutes(api huma.API, h *HealthHandlers) {
@@ -46,4 +47,24 @@ func RegisterFilesystemRoutes(api huma.API, h *FilesystemHandlers) {
 		DefaultStatus: http.StatusOK,
 		Errors:        []int{http.StatusBadRequest, http.StatusInternalServerError},
 	}, h.PostFilesystem)
+}
+
+func RegisterExecRoutes(api huma.API, h *ExecHandlers) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "post-exec",
+		Method:        http.MethodPost,
+		Path:          "/exec",
+		Summary:       "Execute a command in the sandbox",
+		Description:   "Executes a command in the sandbox container and returns the output",
+		Tags:          []string{"exec"},
+		DefaultStatus: http.StatusOK,
+		Errors:        []int{http.StatusBadRequest, http.StatusInternalServerError, http.StatusGatewayTimeout},
+	}, h.PostExec)
+}
+
+// RegisterWebSocketRoutes registers WebSocket endpoints on the chi router.
+// These cannot use Huma as WebSocket upgrades require direct HTTP handler access.
+func RegisterWebSocketRoutes(r chi.Router, execStream *ExecStreamHandler, ptyHandler *PTYHandler) {
+	r.Get("/exec/stream", execStream.ServeHTTP)
+	r.Get("/pty", ptyHandler.ServeHTTP)
 }
