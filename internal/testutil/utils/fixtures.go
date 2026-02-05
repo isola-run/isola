@@ -24,48 +24,50 @@ import (
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 )
 
-// TemplateOption is a functional option for configuring SandboxTemplate
-type TemplateOption func(*sandboxv1alpha1.SandboxTemplate)
+// SandboxOption is a functional option for configuring Sandbox
+type SandboxOption func(*sandboxv1alpha1.Sandbox)
 
-func WithTimeout(seconds int64) TemplateOption {
-	return func(t *sandboxv1alpha1.SandboxTemplate) {
-		t.Spec.TimeoutSeconds = &seconds
+// WithSandboxTimeout sets the timeout for the sandbox
+func WithSandboxTimeout(seconds int64) SandboxOption {
+	return func(s *sandboxv1alpha1.Sandbox) {
+		s.Spec.TimeoutSeconds = &seconds
 	}
 }
 
-func WithShutdownPolicy(policy sandboxv1alpha1.SandboxShutdownPolicy) TemplateOption {
-	return func(t *sandboxv1alpha1.SandboxTemplate) {
-		t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+// WithSandboxShutdownPolicy sets the shutdown policy for the sandbox
+func WithSandboxShutdownPolicy(policy sandboxv1alpha1.SandboxShutdownPolicy) SandboxOption {
+	return func(s *sandboxv1alpha1.Sandbox) {
+		s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 			Policy: policy,
 		}
 	}
 }
 
-func WithActiveDeadlineSeconds(seconds int64) TemplateOption {
-	return func(t *sandboxv1alpha1.SandboxTemplate) {
-		if t.Spec.ShutdownPolicy == nil {
-			t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+// WithSandboxActiveDeadlineSeconds sets the active deadline seconds for the sandbox shutdown policy
+func WithSandboxActiveDeadlineSeconds(seconds int64) SandboxOption {
+	return func(s *sandboxv1alpha1.Sandbox) {
+		if s.Spec.ShutdownPolicy == nil {
+			s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 				Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 			}
 		}
-		t.Spec.ShutdownPolicy.ActiveDeadlineSeconds = &seconds
+		s.Spec.ShutdownPolicy.ActiveDeadlineSeconds = &seconds
 	}
 }
 
-func WithPodSpec(spec corev1.PodSpec) TemplateOption {
-	return func(t *sandboxv1alpha1.SandboxTemplate) {
-		t.Spec.PodTemplate.Spec = spec
+// WithPodTemplate sets the pod template for the sandbox
+func WithPodTemplate(spec corev1.PodTemplateSpec) SandboxOption {
+	return func(s *sandboxv1alpha1.Sandbox) {
+		s.Spec.PodTemplate = spec
 	}
 }
 
-func WithRuntimeClass(name string) TemplateOption {
-	return func(t *sandboxv1alpha1.SandboxTemplate) {
-		t.Spec.PodTemplate.Spec.RuntimeClassName = &name
+// WithSandboxRuntimeClass sets the runtime class for the sandbox pod
+func WithSandboxRuntimeClass(name string) SandboxOption {
+	return func(s *sandboxv1alpha1.Sandbox) {
+		s.Spec.PodTemplate.Spec.RuntimeClassName = &name
 	}
 }
-
-// SandboxOption is a functional option for configuring Sandbox
-type SandboxOption func(*sandboxv1alpha1.Sandbox)
 
 // WithNetworkSpec sets the network configuration for the sandbox
 func WithNetworkSpec(spec *sandboxv1alpha1.NetworkSpec) SandboxOption {
@@ -94,33 +96,13 @@ func WithClusterDNS() SandboxOption {
 	}
 }
 
-func NewTestSandbox(name, namespace, templateRef string, opts ...SandboxOption) *sandboxv1alpha1.Sandbox {
+func NewTestSandbox(name, namespace string, opts ...SandboxOption) *sandboxv1alpha1.Sandbox {
 	sandbox := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
 		Spec: sandboxv1alpha1.SandboxSpec{
-			TemplateRef: sandboxv1alpha1.SandboxTemplateReference{
-				Name: templateRef,
-			},
-		},
-	}
-
-	for _, opt := range opts {
-		opt(sandbox)
-	}
-
-	return sandbox
-}
-
-func NewTestSandboxTemplate(name, namespace string, opts ...TemplateOption) *sandboxv1alpha1.SandboxTemplate {
-	template := &sandboxv1alpha1.SandboxTemplate{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: sandboxv1alpha1.SandboxTemplateSpec{
 			PodTemplate: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
@@ -136,10 +118,10 @@ func NewTestSandboxTemplate(name, namespace string, opts ...TemplateOption) *san
 	}
 
 	for _, opt := range opts {
-		opt(template)
+		opt(sandbox)
 	}
 
-	return template
+	return sandbox
 }
 
 // NetworkSpecOption is a functional option for configuring NetworkSpec

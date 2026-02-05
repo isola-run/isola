@@ -49,21 +49,17 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should skip snapshot when RuntimeClassName is not set", func() {
 			sandboxName := "sandbox-no-runtimeclass"
-			templateName := "template-no-runtimeclass"
 
 			recorder := events.NewFakeRecorder(10)
 			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
 
 			timeout := int64(1)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -105,7 +101,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should skip snapshot when runtime handler is not supported", func() {
 			sandboxName := "sandbox-unsupported-runtime"
-			templateName := "template-unsupported-runtime"
 			runtimeClassName := "unsupported-runtime"
 
 			recorder := events.NewFakeRecorder(10)
@@ -115,16 +110,13 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
-				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
+				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -166,23 +158,19 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should create RootfsSnapshot for supported runtime (runsc)", func() {
 			sandboxName := "sandbox-runsc-snapshot"
-			templateName := "template-runsc-snapshot"
 			runtimeClassName := "gvisor-runsc"
 
 			createRuntimeClass(ctx, runtimeClassName, "runsc")
 			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
-				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
+				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -246,18 +234,14 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should set condition when sandbox pod is not found during snapshot", func() {
 			sandboxName := "sandbox-no-pod-snapshot"
-			templateName := "template-no-pod-snapshot"
 
 			timeout := int64(1)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -282,7 +266,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should mark snapshot complete when RootfsSnapshot Ready=True", func() {
 			sandboxName := "sandbox-snapshot-success"
-			templateName := "template-snapshot-success"
 			runtimeClassName := "gvisor-success"
 
 			recorder := events.NewFakeRecorder(10)
@@ -292,16 +275,13 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
-				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
+				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -361,23 +341,19 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should mark snapshot failed when RootfsSnapshot fails", func() {
 			sandboxName := "sandbox-snapshot-fail"
-			templateName := "template-snapshot-fail"
 			runtimeClassName := "gvisor-fail"
 
 			createRuntimeClass(ctx, runtimeClassName, "runsc")
 			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
-				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
+				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -423,24 +399,20 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should use default activeDeadlineSeconds when not specified", func() {
 			sandboxName := "sandbox-default-deadline"
-			templateName := "template-default-deadline"
 			runtimeClassName := "gvisor-default-deadline"
 
 			createRuntimeClass(ctx, runtimeClassName, "runsc")
 			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 					// ActiveDeadlineSeconds not set - should use default (300)
 				}
-				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
+				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -487,20 +459,16 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should handle RuntimeClass not found during snapshot verification", func() {
 			sandboxName := "sandbox-rc-not-found"
-			templateName := "template-rc-not-found"
 			runtimeClassName := "nonexistent-runtime"
 
 			timeout := int64(1)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
-				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
+				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -516,23 +484,19 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should create RootfsSnapshot exactly once even if reconciled multiple times", func() {
 			sandboxName := "sandbox-snapshot-idempotent"
-			templateName := "template-snapshot-idempotent"
 			runtimeClassName := "gvisor-idempotent"
 
 			createRuntimeClass(ctx, runtimeClassName, "runsc")
 			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
 				}
-				t.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
+				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"

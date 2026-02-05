@@ -39,15 +39,30 @@ const (
 	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
 )
 
-// SandboxTemplateReference identifies a SandboxTemplate in the same namespace.
-type SandboxTemplateReference struct {
-	// Name of the SandboxTemplate in the same namespace.
-	// The referenced SandboxTemplate provides the pod configuration (containers, initContainers, etc.)
-	// and lifecycle settings (timeout, shutdown policy) for this Sandbox.
-	// +required
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	Name string `json:"name"`
+// SandboxShutdownPolicy defines the policy for handling sandbox termination
+// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
+type SandboxShutdownPolicy string
+
+const (
+	ShutdownPolicyDelete         SandboxShutdownPolicy = "Delete"
+	ShutdownPolicySnapshotRootfs SandboxShutdownPolicy = "SnapshotRootfs"
+)
+
+// ShutdownPolicy controls how the sandbox is handled when it ends
+type ShutdownPolicy struct {
+	// Policy determines the action taken when the sandbox shuts down
+	// +optional
+	// +kubebuilder:default=Delete
+	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
+	Policy SandboxShutdownPolicy `json:"policy"`
+
+	// ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
+	// that the snapshot job may be active before the system tries to terminate it.
+	// Only used when Policy is SnapshotRootfs.
+	// +optional
+	// +kubebuilder:default=300
+	// +kubebuilder:validation:Minimum=1
+	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
 }
 
 // NetworkPort defines a port for network rules.
@@ -125,13 +140,25 @@ type NetworkSpec struct {
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.network) || has(self.network)",message="network cannot be removed once set"
 // +kubebuilder:validation:XValidation:rule="!has(self.network) || !has(oldSelf.network) || self.network == oldSelf.network",message="network is immutable once set"
 type SandboxSpec struct {
-	// TemplateRef references the SandboxTemplate to inherit pod configuration from.
-	// The SandboxTemplate must exist in the same namespace as this Sandbox.
+	// PodTemplate describes the pod that will be created to run the sandbox.
+	// The Sandbox controller will override specific security settings (runtimeClassName, etc.)
+	// but allows users to define containers, volumes, and env vars.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
 	// +required
-	TemplateRef SandboxTemplateReference `json:"templateRef"`
+	PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
+
+	// TimeoutSeconds defines how long the sandbox runs before being shut down
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
+
+	// ShutdownPolicy defines what to do when the sandbox ends (defaults to Delete if unspecified)
+	// +optional
+	ShutdownPolicy *ShutdownPolicy `json:"shutdownPolicy,omitempty"`
 
 	// Network specifies the network isolation configuration for this sandbox.
-	// If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
+	// If not specified, the sandbox has deny-all egress.
 	// Network configuration is immutable after sandbox creation.
 	// +optional
 	Network *NetworkSpec `json:"network,omitempty"`
@@ -169,7 +196,7 @@ type SandboxStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// TimeoutAt is the absolute time at which the sandbox should be considered timed out.
-	// It is set by the controller (derived from template timeout + chosen start time).
+	// It is set by the controller (derived from sandbox timeout).
 	// +optional
 	TimeoutAt *metav1.Time `json:"timeoutAt,omitempty"`
 
@@ -182,7 +209,6 @@ type SandboxStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=sb
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status",description="Aggregate readiness"
-// +kubebuilder:printcolumn:name="Template",type="string",JSONPath=".spec.templateRef.name",description="SandboxTemplate reference"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason",priority=1,description="Reason for Ready condition"
 // Sandbox is the Schema for the sandboxes API

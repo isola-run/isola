@@ -46,12 +46,11 @@ var _ = Describe("Sandbox Controller", func() {
 			reconciler = newTestReconciler(fakeClock)
 		})
 
-		It("should create pod with correct spec from template", func() {
+		It("should create pod with correct spec from sandbox", func() {
 			sandboxName := "sandbox-pod-spec"
-			templateName := "template-pod-spec"
 
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.PodTemplate.Spec.Containers = []corev1.Container{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.PodTemplate.Spec.Containers = []corev1.Container{
 					{
 						Name:    "my-sandbox",
 						Image:   "python:3.11",
@@ -59,9 +58,6 @@ var _ = Describe("Sandbox Controller", func() {
 					},
 				}
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -79,12 +75,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should inject sandbox-sidecar as init container", func() {
 			sandboxName := "sandbox-sidecar"
-			templateName := "template-sidecar"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -102,12 +94,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should set owner reference for garbage collection", func() {
 			sandboxName := "sandbox-owner-ref"
-			templateName := "template-owner-ref"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -127,12 +115,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should apply controller labels to pod", func() {
 			sandboxName := "sandbox-labels"
-			templateName := "template-labels"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -155,7 +139,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should add gvisor overlay2 annotation when RuntimeClassName is set", func() {
 			sandboxName := "sandbox-gvisor-overlay"
-			templateName := "template-gvisor-overlay"
 			runtimeClassName := "gvisor"
 
 			createRuntimeClass(ctx, runtimeClassName, "runsc")
@@ -164,10 +147,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Use reconciler with RuntimeClassName configured
 			reconcilerWithRuntime := newTestReconcilerWithRuntimeClass(fakeClock, runtimeClassName)
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -185,12 +165,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should not add gvisor overlay2 annotation when RuntimeClassName is not set", func() {
 			sandboxName := "sandbox-no-runtime"
-			templateName := "template-no-runtime"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -205,12 +181,11 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.overlay2"))
 		})
 
-		It("should preserve template init containers when injecting sidecar", func() {
+		It("should preserve sandbox init containers when injecting sidecar", func() {
 			sandboxName := "sandbox-preserve-init"
-			templateName := "template-preserve-init"
 
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.PodTemplate.Spec.InitContainers = []corev1.Container{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.PodTemplate.Spec.InitContainers = []corev1.Container{
 					{
 						Name:    "init-setup",
 						Image:   "busybox:latest",
@@ -223,9 +198,6 @@ var _ = Describe("Sandbox Controller", func() {
 					},
 				}
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -259,12 +231,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should initialize conditions array on new sandbox", func() {
 			sandboxName := "sandbox-init-conds"
-			templateName := "template-init-conds"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -278,12 +246,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should set PodPending condition when pod is not ready", func() {
 			sandboxName := "sandbox-pod-pending"
-			templateName := "template-pod-pending"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -303,12 +267,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should set Ready condition when pod is running", func() {
 			sandboxName := "sandbox-pod-running"
-			templateName := "template-pod-running"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -339,12 +299,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should reflect pod failure in conditions with PodFailed reason", func() {
 			sandboxName := "sandbox-pod-failed"
-			templateName := "template-pod-failed"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -374,12 +330,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should reflect pod success in conditions with PodSucceeded reason", func() {
 			sandboxName := "sandbox-pod-succeeded"
-			templateName := "template-pod-succeeded"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -409,12 +361,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should maintain stable conditions across multiple reconciles", func() {
 			sandboxName := "sandbox-stable-conds"
-			templateName := "template-stable-conds"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -450,12 +398,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should update ObservedGeneration in conditions", func() {
 			sandboxName := "sandbox-observed-gen"
-			templateName := "template-observed-gen"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -472,12 +416,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should set PodIP in sandbox status when pod has IP", func() {
 			sandboxName := "sandbox-pod-ip"
-			templateName := "template-pod-ip"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"

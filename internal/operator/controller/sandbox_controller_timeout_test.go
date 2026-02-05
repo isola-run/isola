@@ -48,12 +48,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should not set TimeoutAt when no timeout configured", func() {
 			sandboxName := "sandbox-no-timeout"
-			templateName := "template-no-timeout"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -66,15 +62,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should calculate TimeoutAt from pod start time when available", func() {
 			sandboxName := "sandbox-timeout-pod-start"
-			templateName := "template-timeout-pod-start"
 
 			timeout := int64(60)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
@@ -108,15 +100,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should fallback to sandbox creation time when pod has no start time", func() {
 			sandboxName := "sandbox-timeout-fallback"
-			templateName := "template-timeout-fallback"
 
 			timeout := int64(60)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -132,18 +120,14 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should delete sandbox with Delete policy when timeout exceeded and set TimedOut reason", func() {
 			sandboxName := "sandbox-timeout-delete"
-			templateName := "template-timeout-delete"
 
 			timeout := int64(1) // 1 second timeout
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
-				t.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Policy: sandboxv1alpha1.ShutdownPolicyDelete,
 				}
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -165,19 +149,16 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should set TimedOut condition reason before deleting sandbox", func() {
 			sandboxName := "sandbox-timeout-condition"
-			templateName := "template-timeout-condition"
 
 			timeout := int64(1)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
 				// Default policy is Delete when nil
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			sandbox := createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
+			sandbox := getSandbox(ctx, sandboxName)
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -197,15 +178,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should schedule requeue before timeout", func() {
 			sandboxName := "sandbox-requeue"
-			templateName := "template-requeue"
 
 			timeout := int64(60)
-			createTemplate(ctx, templateName, func(t *sandboxv1alpha1.SandboxTemplate) {
-				t.Spec.TimeoutSeconds = &timeout
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
 			})
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 

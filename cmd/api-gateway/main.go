@@ -60,9 +60,8 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 				cfg.sandboxNamespace: {},
 			},
 			ByObject: map[client.Object]cache.ByObject{
-				&sandboxv1alpha1.Sandbox{}:         {},
-				&sandboxv1alpha1.SandboxTemplate{}: {},
-				&sandboxv1alpha1.RootfsSnapshot{}:  {},
+				&sandboxv1alpha1.Sandbox{}:        {},
+				&sandboxv1alpha1.RootfsSnapshot{}: {},
 			},
 		},
 	})

@@ -83,11 +83,3 @@ rules:
   - sandboxes/finalizers
   verbs:
   - update
-- apiGroups:
-  - sandbox.isola.run
-  resources:
-  - sandboxtemplates
-  verbs:
-  - get
-  - list
-  - watch

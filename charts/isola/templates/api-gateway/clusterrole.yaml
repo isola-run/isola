@@ -6,9 +6,9 @@ metadata:
   labels:
     {{- include "isola.apiGateway.labels" . | nindent 4 }}
 rules:
-  # Sandbox and SandboxTemplate access
+  # Sandbox access
   - apiGroups: ["sandbox.isola.run"]
-    resources: ["sandboxes", "sandboxtemplates"]
+    resources: ["sandboxes"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["sandbox.isola.run"]
     resources: ["sandboxes/status"]

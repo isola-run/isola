@@ -33,9 +33,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 	"github.com/isola-ai/isola-sb/internal/constants"
@@ -49,16 +47,12 @@ const (
 	// Summary condition
 	SandboxReadyCondition = "Ready"
 
-	SandboxTemplateReadyCondition  = "TemplateReady"
 	SandboxPodReadyCondition       = "PodReady"
 	SandboxNetworkReadyCondition   = "NetworkConfigured"
 	SandboxRootfsSnapshotCondition = "RootfsSnapshot"
 )
 
 const (
-	CondReasonTemplateNotFound = "TemplateNotFound"
-	CondReasonTemplateResolved = "TemplateResolved"
-
 	CondReasonPodPending        = "PodPending"
 	CondReasonPodRunning        = "PodRunning"
 	CondReasonPodFailed         = "PodFailed"
@@ -105,9 +99,6 @@ type SandboxReconciler struct {
 
 const (
 	sandboxSidecarContainerName = "sandbox-sidecar"
-
-	// Field index for efficient lookup of sandboxes by templates references
-	sandboxTemplateRefField = ".spec.templateRef.name"
 
 	// Network labels for pod selection by Helm-installed NetworkPolicies
 	LabelAllowInternet   = "isola.run/allow-internet"
@@ -181,16 +172,16 @@ func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandbo
 	return nil
 }
 
-func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate) error {
+func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) error {
 	log := logf.FromContext(ctx)
 	// todo benl reduce verbose logging
 	log.Info("Creating Pod")
 
-	// Apply template labels first, then override with standard Kubernetes labels.
-	// This prevents templates from overriding app.kubernetes.io/*, isola.run/*, etc.
+	// Apply sandbox pod template labels first, then override with standard Kubernetes labels.
+	// This prevents pod templates from overriding app.kubernetes.io/*, isola.run/*, etc.
 	labels := make(map[string]string)
-	if template.Spec.PodTemplate.Labels != nil {
-		maps.Copy(labels, template.Spec.PodTemplate.Labels)
+	if sandbox.Spec.PodTemplate.Labels != nil {
+		maps.Copy(labels, sandbox.Spec.PodTemplate.Labels)
 	}
 
 	// Standard Kubernetes recommended labels (https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
@@ -200,26 +191,21 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	labels["app.kubernetes.io/part-of"] = "isola"
 	labels["app.kubernetes.io/managed-by"] = "isola-operator"
 
-	labels["sandbox.isola.run/id"] = sandbox.Name
 	labels["cluster-autoscaler.kubernetes.io/safe-to-evict"] = "false"
 
 	maps.Copy(labels, buildNetworkLabels(sandbox.Spec.Network))
 
-	// todo benl: why this exists? ("sandbox-id")
-	if sandbox.Labels != nil {
-		if sandboxID, exists := sandbox.Labels["sandbox-id"]; exists {
-			labels["sandbox-id"] = sandboxID
-		}
-	}
-
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      getSandboxPodName(sandbox),
-			Namespace: sandbox.Namespace,
-			Labels:    labels,
+			Name:        getSandboxPodName(sandbox),
+			Namespace:   sandbox.Namespace,
+			Labels:      labels,
+			// There's a security gate in runsc/config/flags.go
+			// where only flags deemed safe for container authors
+			// to set because they don't weaken the sandbox.
+			Annotations: sandbox.Spec.PodTemplate.Annotations,
 		},
-		// todo benl: copy annotations as well?
-		Spec: template.Spec.PodTemplate.Spec,
+		Spec: sandbox.Spec.PodTemplate.Spec,
 	}
 
 	// Inject imagePullSecrets for private registries (configured via Helm global.imagePullSecrets)
@@ -290,7 +276,6 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	log.Info("Pod created")
 
-	// todo benl: this doesn't print anything - rbac issues?
 	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "PodCreated", "Created", "Sandbox Pod created")
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -394,62 +379,6 @@ func (r *SandboxReconciler) getShutdownRootfssnapshot(ctx context.Context, sandb
 	return snap, nil
 }
 
-func (r *SandboxReconciler) EnsureTemplate(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.SandboxTemplate, ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-	template := &sandboxv1alpha1.SandboxTemplate{}
-
-	if err := r.Get(ctx, types.NamespacedName{Name: sandbox.Spec.TemplateRef.Name, Namespace: sandbox.Namespace}, template); err != nil {
-		if apierrors.IsNotFound(err) {
-
-			if err := r.patchStatus(
-				ctx,
-				baseSandbox,
-				sandbox,
-				[]metav1.Condition{
-					{
-						Type:               SandboxTemplateReadyCondition,
-						Status:             metav1.ConditionFalse,
-						Reason:             CondReasonTemplateNotFound,
-						Message:            "Sandbox template not found",
-						ObservedGeneration: sandbox.Generation,
-					},
-					{
-						Type:               SandboxReadyCondition,
-						Status:             metav1.ConditionFalse,
-						Reason:             CondReasonTemplateNotFound,
-						Message:            "Sandbox template not found",
-						ObservedGeneration: sandbox.Generation,
-					},
-				},
-			); err != nil {
-				log.Error(err, "Failed to update Sandbox status")
-				return nil, ctrl.Result{}, err
-			}
-
-			log.Error(err, "Sandbox template not found")
-			// todo benl: we'll stop reconciling (steady failed state) - add watch on SandboxTemplate to reconcile the sandbox when template is created
-			return nil, ctrl.Result{}, nil
-		}
-		log.Error(err, "Failed to get Sandbox template")
-		return nil, ctrl.Result{}, err
-	}
-
-	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-		{
-			Type:               SandboxTemplateReadyCondition,
-			Status:             metav1.ConditionTrue,
-			Reason:             CondReasonTemplateResolved,
-			Message:            "Template resolved",
-			ObservedGeneration: sandbox.Generation,
-		},
-	}); err != nil {
-		log.Error(err, "Failed to update Sandbox status")
-		return nil, ctrl.Result{}, err
-	}
-
-	return template, ctrl.Result{}, nil
-}
-
 // ensureCustomNetworkPolicy creates or updates a custom NetworkPolicy for sandboxes
 // that need more than the static Helm-installed policies (custom CIDRs, pod rules, or DNS).
 func (r *SandboxReconciler) ensureCustomNetworkPolicy(
@@ -518,10 +447,10 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	return nil
 }
 
-func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
+func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
 	log := logf.FromContext(ctx)
 	// todo benl: update sandbox condition(s) here?
-	if template == nil || template.Spec.TimeoutSeconds == nil {
+	if sandbox.Spec.TimeoutSeconds == nil {
 		return nil
 	}
 
@@ -536,15 +465,15 @@ func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandb
 		startTime = sandbox.CreationTimestamp.Time
 	}
 
-	timeoutAt := startTime.Add(time.Duration(*template.Spec.TimeoutSeconds) * time.Second)
+	timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.TimeoutSeconds) * time.Second)
 
 	log.Info("calculated sandbox timeout", "timeoutAt", timeoutAt)
 	return &metav1.Time{Time: timeoutAt}
 }
 
-func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, template *sandboxv1alpha1.SandboxTemplate, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time, err error) {
+func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time, err error) {
 	log := logf.FromContext(ctx)
-	optionalTimeoutAt = r.calculateTimeout(ctx, sandbox, template, sandboxPod)
+	optionalTimeoutAt = r.calculateTimeout(ctx, sandbox, sandboxPod)
 	if optionalTimeoutAt == nil {
 		// no timeout is configured
 		return nil, nil
@@ -741,7 +670,6 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/finalizers,verbs=update
-// +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxtemplates,verbs=get;list;watch
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
@@ -793,30 +721,9 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		baseSandbox = sandbox.DeepCopy()
 	}
 
-	template, result, err := r.EnsureTemplate(ctx, sandbox, baseSandbox)
-	if err != nil {
-		return result, err
-	}
-
-	if sandboxDeleted && !noFinalizer {
-		if template == nil {
-			// Template not found during deletion - can't determine shutdown policy
-			// Remove finalizer and allow deletion to proceed
-			log.Info("Template not found during deletion; removing finalizer without executing shutdown policy")
-			controllerutil.RemoveFinalizer(sandbox, SandboxFinalizer)
-			if err := r.Update(ctx, sandbox); err != nil {
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{}, nil
-		}
-
-		res, _, err := r.finalizeSandbox(ctx, sandbox, baseSandbox, template)
+	if sandboxDeleted && !noFinalizer { // run finalizer logic
+		res, _, err := r.finalizeSandbox(ctx, sandbox, baseSandbox)
 		return res, err
-	}
-
-	if template == nil {
-		log.Info("Template not found, waiting", "template", sandbox.Spec.TemplateRef.Name)
-		return ctrl.Result{}, nil
 	}
 
 	if err := r.ensureCustomNetworkPolicy(ctx, sandbox, baseSandbox); err != nil {
@@ -829,7 +736,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// whether we created the pod or not, check for sandbox timeout before proceeding:
-	optionalTimeoutAt, err := r.ensureTimeout(ctx, sandbox, baseSandbox, template, sandboxPod)
+	optionalTimeoutAt, err := r.ensureTimeout(ctx, sandbox, baseSandbox, sandboxPod)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -837,7 +744,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if optionalTimeoutAt != nil && r.clock().Now().After(optionalTimeoutAt.Time) {
 		log.Info("Sandbox timed out")
 
-		res, cleanupDone, err := r.finalizeSandbox(ctx, sandbox, baseSandbox, template)
+		res, cleanupDone, err := r.finalizeSandbox(ctx, sandbox, baseSandbox)
 		if err != nil {
 			return res, err
 		}
@@ -864,7 +771,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if sandboxPod == nil {
-		if err := r.CreateSandboxPod(ctx, sandbox, baseSandbox, template); err != nil {
+		if err := r.CreateSandboxPod(ctx, sandbox, baseSandbox); err != nil {
 			return ctrl.Result{}, err
 		}
 		if err := r.reconcileSandboxStatus(ctx, sandbox, baseSandbox, nil); err != nil {
@@ -889,7 +796,6 @@ func (r *SandboxReconciler) finalizeSandbox(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
-	template *sandboxv1alpha1.SandboxTemplate,
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
@@ -900,10 +806,10 @@ func (r *SandboxReconciler) finalizeSandbox(
 		return ctrl.Result{}, false, err
 	}
 
-	snapshotDeadline := r.calculateRootfssnapshotDeadline(template)
+	snapshotDeadline := r.calculateRootfssnapshotDeadline(sandbox)
 
 	result, cleanupDone, err := r.executeShutdownPolicy(
-		ctx, sandbox, baseSandbox, template, sandboxPod, snapshotDeadline, CleanupTriggerDeletion,
+		ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, CleanupTriggerDeletion,
 	)
 	if err != nil {
 		return result, false, err
@@ -928,7 +834,6 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
-	template *sandboxv1alpha1.SandboxTemplate,
 	sandboxPod *corev1.Pod,
 	snapshotDeadline time.Time,
 	trigger CleanupTrigger,
@@ -945,7 +850,7 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 		message = "Sandbox being deleted"
 	}
 
-	if template.Spec.ShutdownPolicy == nil || template.Spec.ShutdownPolicy.Policy == sandboxv1alpha1.ShutdownPolicyDelete {
+	if sandbox.Spec.ShutdownPolicy == nil || sandbox.Spec.ShutdownPolicy.Policy == sandboxv1alpha1.ShutdownPolicyDelete {
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxReadyCondition,
@@ -972,24 +877,24 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 		return ctrl.Result{}, false, err
 	}
 
-	switch template.Spec.ShutdownPolicy.Policy {
+	switch sandbox.Spec.ShutdownPolicy.Policy {
 	case sandboxv1alpha1.ShutdownPolicySnapshotRootfs:
-		return r.handleRootfsSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, r.getActiveDeadlineSeconds(template))
+		return r.handleRootfsSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, r.getActiveDeadlineSeconds(sandbox))
 	default:
-		log.Info("Unknown shutdown policy; proceeding with deletion", "policy", template.Spec.ShutdownPolicy.Policy)
+		log.Info("Unknown shutdown policy; proceeding with deletion", "policy", sandbox.Spec.ShutdownPolicy.Policy)
 		return ctrl.Result{}, true, nil
 	}
 }
 
-func (r *SandboxReconciler) getActiveDeadlineSeconds(template *sandboxv1alpha1.SandboxTemplate) int64 {
-	if template != nil && template.Spec.ShutdownPolicy != nil && template.Spec.ShutdownPolicy.ActiveDeadlineSeconds != nil {
-		return *template.Spec.ShutdownPolicy.ActiveDeadlineSeconds
+func (r *SandboxReconciler) getActiveDeadlineSeconds(sandbox *sandboxv1alpha1.Sandbox) int64 {
+	if sandbox != nil && sandbox.Spec.ShutdownPolicy != nil && sandbox.Spec.ShutdownPolicy.ActiveDeadlineSeconds != nil {
+		return *sandbox.Spec.ShutdownPolicy.ActiveDeadlineSeconds
 	}
 	return defaultActiveDeadlineSeconds
 }
 
-func (r *SandboxReconciler) calculateRootfssnapshotDeadline(template *sandboxv1alpha1.SandboxTemplate) time.Time {
-	return r.clock().Now().Add(time.Duration(r.getActiveDeadlineSeconds(template)) * time.Second)
+func (r *SandboxReconciler) calculateRootfssnapshotDeadline(sandbox *sandboxv1alpha1.Sandbox) time.Time {
+	return r.clock().Now().Add(time.Duration(r.getActiveDeadlineSeconds(sandbox)) * time.Second)
 }
 
 func (r *SandboxReconciler) handleRootfsSnapshot(
@@ -1212,55 +1117,11 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 func (r *SandboxReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Recorder = mgr.GetEventRecorder("sandbox-controller")
 
-	// Field index for sandbox templateRef lookups
-	if err := mgr.GetFieldIndexer().IndexField(
-		context.Background(),
-		&sandboxv1alpha1.Sandbox{},
-		sandboxTemplateRefField,
-		extractTemplateRefName,
-	); err != nil {
-		return err
-	}
-
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.Sandbox{}).
 		Owns(&corev1.Pod{}).
 		Owns(&sandboxv1alpha1.RootfsSnapshot{}).
 		Owns(&networkingv1.NetworkPolicy{}).
-		// Watch SandboxTemplate changes to reconcile affected sandboxes
-		Watches(
-			&sandboxv1alpha1.SandboxTemplate{},
-			handler.EnqueueRequestsFromMapFunc(r.findSandboxesForTemplate),
-		).
 		Named("sandbox").
 		Complete(r)
-}
-
-func extractTemplateRefName(obj client.Object) []string {
-	sandbox, ok := obj.(*sandboxv1alpha1.Sandbox)
-	if !ok || sandbox.Spec.TemplateRef.Name == "" {
-		return nil
-	}
-	return []string{sandbox.Spec.TemplateRef.Name}
-}
-
-func (r *SandboxReconciler) findSandboxesForTemplate(ctx context.Context, template client.Object) []reconcile.Request {
-	sandboxList := &sandboxv1alpha1.SandboxList{}
-	if err := r.List(ctx, sandboxList,
-		client.InNamespace(template.GetNamespace()),
-		client.MatchingFields{sandboxTemplateRefField: template.GetName()},
-	); err != nil {
-		return nil
-	}
-
-	requests := make([]reconcile.Request, 0, len(sandboxList.Items))
-	for _, sandbox := range sandboxList.Items {
-		requests = append(requests, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      sandbox.Name,
-				Namespace: sandbox.Namespace,
-			},
-		})
-	}
-	return requests
 }

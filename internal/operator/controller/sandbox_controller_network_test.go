@@ -47,15 +47,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should create custom NetworkPolicy when allowedEgressCIDRs is specified", func() {
 			sandboxName := "sandbox-netpol-cidr"
-			templateName := "template-netpol-cidr"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
@@ -80,12 +76,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should not create custom NetworkPolicy when network spec is nil", func() {
 			sandboxName := "sandbox-no-netpol"
-			templateName := "template-no-netpol"
 
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
-
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -99,15 +91,11 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should not create custom NetworkPolicy when only allowAllInternet is set", func() {
 			// Internet access is handled by Helm-installed NetworkPolicy, no custom policy needed
 			sandboxName := "sandbox-internet-only"
-			templateName := "template-internet-only"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowAllInternet: true,
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -120,15 +108,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should create custom NetworkPolicy when nameservers specified without internet access", func() {
 			sandboxName := "sandbox-dns-allowed"
-			templateName := "template-dns-allowed"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				Nameservers: []string{"8.8.8.8"},
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
@@ -150,15 +134,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should block risky CIDRs (169.254.0.0/16) when egress allows 0.0.0.0/0", func() {
 			sandboxName := "sandbox-block-metadata"
-			templateName := "template-block-metadata"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowedEgressCIDRs: []string{"0.0.0.0/0"},
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
@@ -176,15 +156,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should not add except for public CIDRs that don't overlap blocked ranges", func() {
 			sandboxName := "sandbox-public-range"
-			templateName := "template-public-range"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
@@ -201,10 +177,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should create egress rules for allowed egress pods", func() {
 			sandboxName := "sandbox-egress-pods"
-			templateName := "template-egress-pods"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowedEgressPods: []sandboxv1alpha1.EgressPodRule{
@@ -220,7 +192,7 @@ var _ = Describe("Sandbox Controller", func() {
 					},
 				},
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
@@ -244,15 +216,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should recreate custom NetworkPolicy if deleted on next reconcile", func() {
 			sandboxName := "sandbox-np-recreate"
-			templateName := "template-np-recreate"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
@@ -283,15 +251,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should add network labels to pod for allowAllInternet", func() {
 			sandboxName := "sandbox-internet-labels"
-			templateName := "template-internet-labels"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowAllInternet: true,
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -305,15 +269,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should add network labels to pod for allowClusterDNS", func() {
 			sandboxName := "sandbox-dns-labels"
-			templateName := "template-dns-labels"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowClusterDNS: true,
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -327,15 +287,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should set DNSPolicy to ClusterFirst when allowClusterDNS is true", func() {
 			sandboxName := "sandbox-dns-cluster"
-			templateName := "template-dns-cluster"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowClusterDNS: true,
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -349,13 +305,9 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should set DNSPolicy to None with sink DNS when no network config", func() {
 			sandboxName := "sandbox-dns-sink"
-			templateName := "template-dns-sink"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			// No network config - should use sink DNS
-			createSandbox(ctx, sandboxName, templateName)
+			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -371,15 +323,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should set custom nameservers when specified", func() {
 			sandboxName := "sandbox-dns-custom"
-			templateName := "template-dns-custom"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				Nameservers: []string{"1.1.1.1", "8.8.8.8"},
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
@@ -398,15 +346,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should set NetworkConfigured condition to false with blocked CIDR", func() {
 			sandboxName := "sandbox-blocked-cidr"
-			templateName := "template-blocked-cidr"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowedEgressCIDRs: []string{"10.0.0.0/8"}, // Private range - blocked
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
@@ -441,10 +385,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should create custom NetworkPolicy with combined CIDR and pod rules", func() {
 			sandboxName := "sandbox-combined"
-			templateName := "template-combined"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
@@ -457,7 +397,7 @@ var _ = Describe("Sandbox Controller", func() {
 					},
 				},
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
@@ -475,16 +415,12 @@ var _ = Describe("Sandbox Controller", func() {
 			// Custom policy needed even with allowAllInternet=true because nameservers
 			// may be private IPs that fall within blocked ranges
 			sandboxName := "sandbox-internet-dns"
-			templateName := "template-internet-dns"
-
-			createTemplate(ctx, templateName)
-			defer deleteTemplate(ctx, templateName)
 
 			network := &sandboxv1alpha1.NetworkSpec{
 				AllowAllInternet: true,
 				Nameservers:      []string{"8.8.8.8"},
 			}
-			createSandboxWithNetwork(ctx, sandboxName, templateName, network)
+			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
