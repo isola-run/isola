@@ -175,3 +175,22 @@ paths:
       summary: Readiness check (alias)
       tags:
         - health
+  /v1/sandboxes/{sandboxID}/ws/exec:
+    get:
+      operationId: ws-sandbox-exec
+      parameters:
+        - description: Sandbox ID
+          in: path
+          name: sandboxID
+          required: true
+          schema:
+            description: Sandbox ID
+            type: string
+      responses:
+        "101":
+          description: Switching Protocols — WebSocket connection established
+        "200":
+          description: OK
+      summary: Interactive shell via WebSocket
+      tags:
+        - exec

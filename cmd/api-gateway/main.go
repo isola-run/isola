@@ -147,7 +147,10 @@ func main() {
 	api := humachi.New(r, humaConfig)
 
 	healthHandlers := handlers.NewHealthHandlers(logger, mgr.GetClient())
+	execHandlers := handlers.NewExecHandlers(logger, mgr.GetClient(), cfg.sandboxNamespace)
+
 	handlers.RegisterHealthRoutes(api, healthHandlers)
+	handlers.RegisterExecRoutes(api, execHandlers)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.httpPort),

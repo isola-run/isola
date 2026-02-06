@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
 	"net/http/httptest"
@@ -15,9 +16,11 @@ import (
 )
 
 var (
-	testAPI     humatest.TestAPI
-	testRootDir string
-	testCwd     string
+	testAPI          humatest.TestAPI
+	testRootDir      string
+	testCwd          string
+	testExecHandlers *ExecHandlers
+	testExecCtx      context.Context
 )
 
 // MockProcFS implements proc.ProcFS for testing.
@@ -42,6 +45,10 @@ func (m *MockProcFS) GetRoot(pid int) string {
 
 func (m *MockProcFS) GetUIDGID(pid int) (int, int, error) {
 	return m.uid, m.gid, nil
+}
+
+func (m *MockProcFS) ReadEnviron(pid int) ([]string, error) {
+	return []string{"PATH=/usr/bin", "HOME=/root"}, nil
 }
 
 func TestHandlers(t *testing.T) {
@@ -73,10 +80,15 @@ var _ = BeforeSuite(func() {
 	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
 
 	healthHandlers := NewHealthHandlers()
-	filesystemHandlers := NewFilesystemHandlers(logger, mockProcFS)
+	pidCache := NewPIDCache(mockProcFS)
+	filesystemHandlers := NewFilesystemHandlers(logger, mockProcFS, pidCache)
+
+	testExecHandlers = NewExecHandlers(logger, mockProcFS, pidCache)
+	testExecCtx = context.Background()
 
 	RegisterHealthRoutes(testAPI, healthHandlers)
 	RegisterFilesystemRoutes(testAPI, filesystemHandlers)
+	RegisterExecRoutes(testAPI, testExecHandlers)
 })
 
 func doPost(path string, body []byte) *httptest.ResponseRecorder {

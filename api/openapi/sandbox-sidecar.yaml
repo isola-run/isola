@@ -208,3 +208,58 @@ paths:
       summary: Health check (alias)
       tags:
         - health
+  /ws/exec:
+    get:
+      operationId: ws-exec
+      parameters:
+        - description: Container name (optional if single container)
+          explode: false
+          in: query
+          name: container
+          schema:
+            description: Container name (optional if single container)
+            type: string
+        - description: Shell binary path (absolute)
+          explode: false
+          in: query
+          name: shell
+          schema:
+            default: /bin/sh
+            description: Shell binary path (absolute)
+            type: string
+        - description: Raw mode (no channel framing)
+          explode: false
+          in: query
+          name: raw
+          schema:
+            default: false
+            description: Raw mode (no channel framing)
+            type: boolean
+        - description: Terminal columns (1-1000)
+          explode: false
+          in: query
+          name: cols
+          schema:
+            default: 80
+            description: Terminal columns (1-1000)
+            format: int32
+            minimum: 0
+            type: integer
+        - description: Terminal rows (1-1000)
+          explode: false
+          in: query
+          name: rows
+          schema:
+            default: 24
+            description: Terminal rows (1-1000)
+            format: int32
+            minimum: 0
+            type: integer
+      responses:
+        "101":
+          description: Switching Protocols — WebSocket connection established
+        "200":
+          description: OK
+      summary: Interactive shell via WebSocket
+      tags:
+        - exec

@@ -35,6 +35,10 @@ func (m *errorMockProcFS) GetUIDGID(pid int) (int, int, error) {
 	return os.Getuid(), os.Getgid(), nil
 }
 
+func (m *errorMockProcFS) ReadEnviron(pid int) ([]string, error) {
+	return nil, nil
+}
+
 var _ = Describe("Filesystem error cases", func() {
 	var errorAPI humatest.TestAPI
 
@@ -47,7 +51,8 @@ var _ = Describe("Filesystem error cases", func() {
 			}
 
 			_, errorAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Error Test API", "1.0.0"))
-			handler := NewFilesystemHandlers(logger, mockProcFS)
+			pidCache := NewPIDCache(mockProcFS)
+			handler := NewFilesystemHandlers(logger, mockProcFS, pidCache)
 			RegisterFilesystemRoutes(errorAPI, handler)
 		})
 

@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -15,45 +14,17 @@ import (
 )
 
 type FilesystemHandlers struct {
-	logger *slog.Logger
-	procFS proc.ProcFS
-
-	// PID cache to avoid repeated /proc scans (containerName -> pid)
-	pidMu      sync.RWMutex
-	cachedPIDs map[string]int
+	logger   *slog.Logger
+	procFS   proc.ProcFS
+	pidCache *PIDCache
 }
 
-func NewFilesystemHandlers(logger *slog.Logger, procFS proc.ProcFS) *FilesystemHandlers {
+func NewFilesystemHandlers(logger *slog.Logger, procFS proc.ProcFS, pidCache *PIDCache) *FilesystemHandlers {
 	return &FilesystemHandlers{
-		logger:     logger,
-		procFS:     procFS,
-		cachedPIDs: make(map[string]int),
+		logger:   logger,
+		procFS:   procFS,
+		pidCache: pidCache,
 	}
-}
-
-func (h *FilesystemHandlers) findCachedContainerPID(containerName string) (int, error) {
-	h.pidMu.RLock()
-	pid, ok := h.cachedPIDs[containerName]
-	h.pidMu.RUnlock()
-
-	// Validate cached PID still has the expected marker
-	if ok {
-		if name, found := proc.GetContainerName(pid); found && (containerName == "" || name == containerName) {
-			return pid, nil
-		}
-	}
-
-	// Cache miss or stale - rescan
-	newPID, err := h.procFS.FindMarkedPID(containerName)
-	if err != nil {
-		return 0, err
-	}
-
-	h.pidMu.Lock()
-	h.cachedPIDs[containerName] = newPID
-	h.pidMu.Unlock()
-
-	return newPID, nil
 }
 
 func resolveAbsolutePath(path string, pid int, procFS proc.ProcFS) (string, error) {
@@ -77,7 +48,7 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 		return nil, huma.Error400BadRequest("path contains invalid characters")
 	}
 
-	pid, err := h.findCachedContainerPID(container)
+	pid, err := h.pidCache.FindPID(container)
 	if err != nil {
 		return nil, huma.Error400BadRequest("container not found")
 	}

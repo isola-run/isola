@@ -91,7 +91,10 @@ var _ = BeforeSuite(func() {
 	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
 
 	healthHandlers := NewHealthHandlers(logger, k8sClient)
+	execHandlers := NewExecHandlers(logger, k8sClient, testNamespace)
+
 	RegisterHealthRoutes(testAPI, healthHandlers)
+	RegisterExecRoutes(testAPI, execHandlers)
 })
 
 var _ = AfterSuite(func() {

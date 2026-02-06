@@ -53,11 +53,16 @@ func main() {
 	humaConfig.Info.Description = "Internal API for sandbox filesystem operations"
 	api := humachi.New(r, humaConfig)
 
+	procFS := &proc.RealProcFS{}
+	pidCache := handlers.NewPIDCache(procFS)
+
 	healthHandlers := handlers.NewHealthHandlers()
-	filesystemHandlers := handlers.NewFilesystemHandlers(logger, &proc.RealProcFS{})
+	filesystemHandlers := handlers.NewFilesystemHandlers(logger, procFS, pidCache)
+	execHandlers := handlers.NewExecHandlers(logger, procFS, pidCache)
 
 	handlers.RegisterHealthRoutes(api, healthHandlers)
 	handlers.RegisterFilesystemRoutes(api, filesystemHandlers)
+	handlers.RegisterExecRoutes(api, execHandlers)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
