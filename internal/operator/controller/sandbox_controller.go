@@ -553,7 +553,7 @@ func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1a
 		}
 	}
 
-	if snap.Status.CompletedAt == nil {
+	if snap.Status.CompletionTime == nil {
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
@@ -563,18 +563,8 @@ func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1a
 		}
 	}
 
-	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
-	if readyCond == nil {
-		return metav1.Condition{
-			Type:               SandboxRootfsSnapshotCondition,
-			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonRootfsSnapshottingInProgress,
-			Message:            fmt.Sprintf("RootfsSnapshot %q status unknown", snap.Name),
-			ObservedGeneration: sandbox.Generation,
-		}
-	}
-
-	if readyCond.Status == metav1.ConditionTrue {
+	completeCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+	if completeCond != nil && completeCond.Status == metav1.ConditionTrue {
 		message := fmt.Sprintf("RootfsSnapshot %q completed", snap.Name)
 		if snap.Status.Revision > 0 {
 			message = fmt.Sprintf("RootfsSnapshot %q completed (revision %d)", snap.Name, snap.Status.Revision)
@@ -588,11 +578,22 @@ func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1a
 		}
 	}
 
+	failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
+	if failedCond != nil && failedCond.Status == metav1.ConditionTrue {
+		return metav1.Condition{
+			Type:               SandboxRootfsSnapshotCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             CondReasonRootfsSnapshotFailed,
+			Message:            fmt.Sprintf("RootfsSnapshot %q failed: %s", snap.Name, failedCond.Message),
+			ObservedGeneration: sandbox.Generation,
+		}
+	}
+
 	return metav1.Condition{
 		Type:               SandboxRootfsSnapshotCondition,
 		Status:             metav1.ConditionFalse,
-		Reason:             CondReasonRootfsSnapshotFailed,
-		Message:            fmt.Sprintf("RootfsSnapshot %q failed: %s", snap.Name, readyCond.Message),
+		Reason:             CondReasonRootfsSnapshottingInProgress,
+		Message:            fmt.Sprintf("RootfsSnapshot %q status unknown", snap.Name),
 		ObservedGeneration: sandbox.Generation,
 	}
 }
@@ -962,7 +963,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	}
 
 	snapshotName := snap.Name
-	if snap.Status.CompletedAt == nil {
+	if snap.Status.CompletionTime == nil {
 		log.Info("Snapshot in progress, waiting", "snapshot", snapshotName)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
@@ -985,8 +986,8 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{RequeueAfter: requeueAfter}, false, nil
 	}
 
-	readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
-	if readyCond != nil && readyCond.Status == metav1.ConditionTrue {
+	completeCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+	if completeCond != nil && completeCond.Status == metav1.ConditionTrue {
 		log.Info("Snapshot completed successfully", "snapshot", snapshotName)
 		r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "SnapshotSucceeded", "SnapshotCompleted", "Snapshot %q completed", snapshotName)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -1004,9 +1005,10 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	}
 
 	// Completed but failed - proceed with deletion anyway
+	failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
 	message := "Snapshot failed"
-	if readyCond != nil && readyCond.Message != "" {
-		message = readyCond.Message
+	if failedCond != nil && failedCond.Message != "" {
+		message = failedCond.Message
 	}
 	log.Info("Snapshot failed, proceeding with deletion", "snapshot", snapshotName)
 	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "SnapshotFailed", "SnapshotFailed", "%s", message)
