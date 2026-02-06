@@ -96,7 +96,7 @@ func getTTLSeconds(snap *sandboxv1alpha1.RootfsSnapshot) time.Duration {
 func (r *RootfsSnapshotReconciler) ttlLeft(snap *sandboxv1alpha1.RootfsSnapshot) (ttlLeft time.Duration) {
 	ttl := getTTLSeconds(snap)
 
-	deleteAt := snap.Status.CompletedAt.Add(ttl)
+	deleteAt := snap.Status.CompletionTime.Add(ttl)
 	now := r.clock().Now()
 
 	return deleteAt.Sub(now)
@@ -123,7 +123,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// Create base copy for status patches
 	baseSnap := snap.DeepCopy()
 
-	isComplete := snap.Status.CompletedAt != nil
+	isComplete := snap.Status.CompletionTime != nil
 	if isComplete {
 		ttlLeft := r.ttlLeft(snap)
 		if ttlLeft <= 0 {
@@ -509,22 +509,14 @@ func (r *RootfsSnapshotReconciler) patchStatus(ctx context.Context, base, snap *
 
 func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, containerName, containerID string) (ctrl.Result, error) {
 	now := metav1.NewTime(r.clock().Now())
-	snap.Status.StartedAt = &now
+	snap.Status.StartTime = &now
 	snap.Status.ContainerSnapshots = []sandboxv1alpha1.ContainerSnapshotStatus{
 		{
 			ContainerName: containerName,
 			ContainerID:   containerID,
 		},
 	}
-	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
-		{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
-			Status:             metav1.ConditionFalse,
-			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotInProgress,
-			Message:            "Snapshot job running",
-			ObservedGeneration: snap.Generation,
-		},
-	}); err != nil {
+	if err := r.patchStatus(ctx, base, snap, nil); err != nil {
 		return ctrl.Result{}, err
 	}
 	// Job watch (via Owns) will trigger reconciliation when job status changes
@@ -533,7 +525,7 @@ func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap
 
 func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, result *snapshotpkg.UploadResult) (ctrl.Result, error) {
 	now := metav1.NewTime(r.clock().Now())
-	snap.Status.CompletedAt = &now
+	snap.Status.CompletionTime = &now
 
 	if result != nil {
 		snap.Status.Revision = result.Revision
@@ -559,13 +551,13 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap 
 
 func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, message string) (ctrl.Result, error) {
 	now := metav1.NewTime(r.clock().Now())
-	snap.Status.CompletedAt = &now
+	snap.Status.CompletionTime = &now
 
 	r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "SnapshotFailed", "Failed", "%s", message)
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
 		{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
-			Status:             metav1.ConditionFalse,
+			Type:               string(sandboxv1alpha1.RootfsSnapshotFailed),
+			Status:             metav1.ConditionTrue,
 			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
 			Message:            message,
 			ObservedGeneration: snap.Generation,

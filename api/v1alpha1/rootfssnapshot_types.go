@@ -24,10 +24,13 @@ import (
 type RootfsSnapshotConditionType string
 
 const (
-	// RootfsSnapshotComplete indicates all containers have been snapshotted.
+	// RootfsSnapshotComplete indicates all containers have been snapshotted successfully.
 	// True when all container snapshots succeeded.
-	// False when any snapshot failed or is still in progress.
 	RootfsSnapshotComplete RootfsSnapshotConditionType = "Complete"
+
+	// RootfsSnapshotFailed indicates the snapshot operation failed.
+	// True when any snapshot failed.
+	RootfsSnapshotFailed RootfsSnapshotConditionType = "Failed"
 )
 
 // ContainerSnapshotConditionType defines condition types for per-container status
@@ -42,11 +45,8 @@ const (
 
 // Condition reasons for RootfsSnapshot
 const (
-	// Ready condition reasons
-	ReasonRootfsSnapshotPending    = "Pending"
-	ReasonRootfsSnapshotInProgress = "InProgress"
-	ReasonRootfsSnapshotSucceeded  = "Succeeded"
-	ReasonRootfsSnapshotFailed     = "Failed"
+	ReasonRootfsSnapshotSucceeded = "Succeeded"
+	ReasonRootfsSnapshotFailed    = "Failed"
 
 	// RuntimeSupported condition reasons
 	ReasonRuntimeSupported    = "Supported"
@@ -129,20 +129,22 @@ type RootfsSnapshotStatus struct {
 	// +optional
 	Revision int32 `json:"revision,omitempty"`
 
-	// StartedAt is when the first snapshot job was created
+	// StartTime is when the first snapshot job was created
 	// +optional
-	StartedAt *metav1.Time `json:"startedAt,omitempty"`
+	StartTime *metav1.Time `json:"startTime,omitempty"`
 
-	// CompletedAt is when all snapshots finished (success or failure)
+	// CompletionTime is when all snapshots finished (success or failure).
+	// Set on both success and failure (unlike K8s Job which only sets it on success)
+	// because it is used for TTL calculation.
 	// +optional
-	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
+	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=rfs
 // +kubebuilder:printcolumn:name="Complete",type="string",JSONPath=".status.conditions[?(@.type=='Complete')].status",description="All snapshots completed successfully"
-// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Complete')].reason",description="Reason for Complete condition"
+// +kubebuilder:printcolumn:name="Failed",type="string",JSONPath=".status.conditions[?(@.type=='Failed')].status",description="Snapshot failed"
 // +kubebuilder:printcolumn:name="Sandbox",type="string",JSONPath=".spec.sandboxName",description="Sandbox being snapshotted"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 

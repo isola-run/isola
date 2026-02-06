@@ -21,9 +21,9 @@ spec:
       jsonPath: .status.conditions[?(@.type=='Complete')].status
       name: Complete
       type: string
-    - description: Reason for Complete condition
-      jsonPath: .status.conditions[?(@.type=='Complete')].reason
-      name: Reason
+    - description: Snapshot failed
+      jsonPath: .status.conditions[?(@.type=='Failed')].status
+      name: Failed
       type: string
     - description: Sandbox being snapshotted
       jsonPath: .spec.sandboxName
@@ -100,9 +100,11 @@ spec:
           status:
             description: status defines the observed state
             properties:
-              completedAt:
-                description: CompletedAt is when all snapshots finished (success or
-                  failure)
+              completionTime:
+                description: |-
+                  CompletionTime is when all snapshots finished (success or failure).
+                  Set on both success and failure (unlike K8s Job which only sets it on success)
+                  because it is used for TTL calculation.
                 format: date-time
                 type: string
               conditions:
@@ -253,8 +255,8 @@ spec:
                 description: Revision is the snapshot revision number for this sandbox
                 format: int32
                 type: integer
-              startedAt:
-                description: StartedAt is when the first snapshot job was created
+              startTime:
+                description: StartTime is when the first snapshot job was created
                 format: date-time
                 type: string
             type: object
