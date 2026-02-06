@@ -16,7 +16,6 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog/v2"
-	gonanoid "github.com/matoous/go-nanoid/v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -32,27 +31,6 @@ import (
 )
 
 const shutdownTimeout = 30 * time.Second
-
-const (
-	sandboxNameLength = 22
-	letterAlphabet    = "abcdefghijklmnopqrstuvwxyz"
-	fullAlphabet      = "abcdefghijklmnopqrstuvwxyz0123456789"
-)
-
-// GenerateSandboxName creates a unique sandbox name suitable for Kubernetes DNS-1123 labels.
-func GenerateSandboxName() (string, error) {
-	first, err := gonanoid.Generate(letterAlphabet, 1)
-	if err != nil {
-		return "", fmt.Errorf("generate first char: %w", err)
-	}
-
-	rest, err := gonanoid.Generate(fullAlphabet, sandboxNameLength-1)
-	if err != nil {
-		return "", fmt.Errorf("generate remaining chars: %w", err)
-	}
-
-	return first + rest, nil
-}
 
 var scheme = runtime.NewScheme()
 
@@ -148,6 +126,9 @@ func main() {
 
 	healthHandlers := handlers.NewHealthHandlers(logger, mgr.GetClient())
 	handlers.RegisterHealthRoutes(api, healthHandlers)
+
+	sandboxHandlers := handlers.NewSandboxHandlers(logger, cfg.sandboxNamespace, mgr.GetClient())
+	handlers.RegisterSandboxRoutes(api, sandboxHandlers)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.httpPort),

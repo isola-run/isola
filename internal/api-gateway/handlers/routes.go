@@ -47,3 +47,41 @@ func RegisterHealthRoutes(api huma.API, h *HealthHandlers) {
 		Errors:        []int{http.StatusServiceUnavailable},
 	}, h.GetReady)
 }
+
+func RegisterSandboxRoutes(api huma.API, h *SandboxHandlers) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "create-sandbox",
+		Method:        http.MethodPost,
+		Path:          "/sandboxes",
+		Summary:       "Create a sandbox",
+		Tags:          []string{"sandboxes"},
+		DefaultStatus: http.StatusCreated,
+		Errors:        []int{http.StatusBadRequest},
+	}, h.PostSandbox)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "list-sandboxes",
+		Method:      http.MethodGet,
+		Path:        "/sandboxes",
+		Summary:     "List sandboxes",
+		Tags:        []string{"sandboxes"},
+	}, h.ListSandboxes)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-sandbox",
+		Method:      http.MethodGet,
+		Path:        "/sandboxes/{id}",
+		Summary:     "Get sandbox details",
+		Tags:        []string{"sandboxes"},
+		Errors:      []int{http.StatusNotFound},
+	}, h.GetSandbox)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "delete-sandbox",
+		Method:      http.MethodDelete,
+		Path:        "/sandboxes/{id}",
+		Summary:     "Delete a sandbox",
+		Tags:        []string{"sandboxes"},
+		Errors:      []int{http.StatusNotFound},
+	}, h.DeleteSandbox)
+}

@@ -32,8 +32,8 @@ type FilesystemWriteInput struct {
 }
 
 type FilesystemWriteResponse struct {
-	AbsolutePath string `json:"absolute_path" example:"/workspace/file.txt" doc:"Absolute path where file was written"`
-	BytesWritten int64  `json:"bytes_written" example:"1024" doc:"Number of bytes written"`
+	AbsolutePath string `json:"absolutePath" example:"/workspace/file.txt" doc:"Absolute path where file was written"`
+	BytesWritten int64  `json:"bytesWritten" example:"1024" doc:"Number of bytes written"`
 	Container    string `json:"container,omitempty" example:"main" doc:"Container name"`
 }
 

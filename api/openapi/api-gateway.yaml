@@ -1,5 +1,57 @@
 components:
   schemas:
+    CreateSandboxRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/CreateSandboxRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        env:
+          additionalProperties:
+            type: string
+          description: Environment variables
+          type: object
+        image:
+          description: Container image
+          type: string
+        network:
+          $ref: "#/components/schemas/NetworkSpec"
+          description: Network isolation config
+        resources:
+          $ref: "#/components/schemas/ResourcesSpec"
+          description: Resource requests and limits
+        timeoutSeconds:
+          description: Max lifetime in seconds. Omit for no timeout
+          format: int64
+          minimum: 1
+          type: integer
+      required:
+        - image
+      type: object
+    DeleteSandboxResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/DeleteSandboxResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          description: Sandbox identifier
+          type: string
+        status:
+          description: Sandbox status
+          type: string
+      required:
+        - id
+        - status
+      type: object
     ErrorDetail:
       additionalProperties: false
       properties:
@@ -76,6 +128,148 @@ components:
           type: string
       required:
         - status
+      type: object
+    ListSandboxesResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/ListSandboxesResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        sandboxes:
+          description: List of sandboxes
+          items:
+            $ref: "#/components/schemas/SandboxSummary"
+          type:
+            - array
+            - "null"
+      required:
+        - sandboxes
+      type: object
+    NetworkSpec:
+      additionalProperties: false
+      properties:
+        allowAllInternet:
+          description: Allow public internet egress
+          type: boolean
+        allowClusterDNS:
+          description: Allow cluster DNS queries
+          type: boolean
+        allowedEgressCIDRs:
+          description: Allowed egress CIDRs
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        nameservers:
+          description: Custom DNS servers (max 3)
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+      type: object
+    ResourceList:
+      additionalProperties: false
+      properties:
+        cpu:
+          description: CPU (K8s quantity)
+          examples:
+            - 125m
+          type: string
+        ephemeralStorage:
+          description: Ephemeral storage (K8s quantity)
+          examples:
+            - 1Gi
+          type: string
+        memory:
+          description: Memory (K8s quantity)
+          examples:
+            - 512Mi
+          type: string
+      type: object
+    ResourcesSpec:
+      additionalProperties: false
+      properties:
+        limits:
+          $ref: "#/components/schemas/ResourceList"
+          description: Resource limits
+        requests:
+          $ref: "#/components/schemas/ResourceList"
+          description: Resource requests (defaults to limits)
+      type: object
+    SandboxResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/SandboxResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        creationTimestamp:
+          description: Creation timestamp
+          type: string
+        env:
+          additionalProperties:
+            type: string
+          description: Environment variables
+          type: object
+        id:
+          description: Sandbox identifier
+          type: string
+        image:
+          description: Container image
+          type: string
+        network:
+          $ref: "#/components/schemas/NetworkSpec"
+          description: Network isolation config
+        resources:
+          $ref: "#/components/schemas/ResourcesSpec"
+          description: Resource requests and limits
+        status:
+          description: Sandbox status
+          enum:
+            - creating
+            - running
+            - shuttingDown
+            - failed
+            - stopped
+            - unknown
+          type: string
+        timeoutSeconds:
+          description: Max lifetime in seconds
+          format: int64
+          type: integer
+      required:
+        - id
+        - status
+        - creationTimestamp
+      type: object
+    SandboxSummary:
+      additionalProperties: false
+      properties:
+        creationTimestamp:
+          description: Creation timestamp
+          type: string
+        id:
+          description: Sandbox identifier
+          type: string
+        image:
+          description: Container image
+          type: string
+        status:
+          description: Sandbox status
+          type: string
+      required:
+        - id
+        - status
+        - creationTimestamp
       type: object
 info:
   description: API for managing sandboxes
@@ -175,3 +369,135 @@ paths:
       summary: Readiness check (alias)
       tags:
         - health
+  /sandboxes:
+    get:
+      operationId: list-sandboxes
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListSandboxesResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List sandboxes
+      tags:
+        - sandboxes
+    post:
+      operationId: create-sandbox
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSandboxRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxResponse"
+          description: Created
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Bad Request
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+      summary: Create a sandbox
+      tags:
+        - sandboxes
+  /sandboxes/{id}:
+    delete:
+      operationId: delete-sandbox
+      parameters:
+        - description: Sandbox identifier
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Sandbox identifier
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSandboxResponse"
+          description: OK
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+      summary: Delete a sandbox
+      tags:
+        - sandboxes
+    get:
+      operationId: get-sandbox
+      parameters:
+        - description: Sandbox identifier
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Sandbox identifier
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxResponse"
+          description: OK
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+      summary: Get sandbox details
+      tags:
+        - sandboxes

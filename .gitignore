@@ -25,6 +25,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+openapi-gen
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -219,3 +220,4 @@ bin/
 cover.out
 go.work
 go.work.sumapi-gateway
+api-gateway
