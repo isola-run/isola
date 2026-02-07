@@ -56,7 +56,7 @@ func RegisterSandboxRoutes(api huma.API, h *SandboxHandlers) {
 		Summary:       "Create a sandbox",
 		Tags:          []string{"sandboxes"},
 		DefaultStatus: http.StatusCreated,
-		Errors:        []int{http.StatusBadRequest},
+		Errors:        []int{http.StatusBadRequest, http.StatusConflict},
 	}, h.PostSandbox)
 
 	huma.Register(api, huma.Operation{
