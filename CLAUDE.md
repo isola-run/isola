@@ -23,6 +23,22 @@ tilt up                 # Start dev environment (http://localhost:10350)
 # Make sure to keep the Tiltfile updated on changes to the cluster
 ```
 
+## Critical Rules
+
+**NEVER GUESS technical details.** This includes but is not limited to:
+- Version numbers or version tags (e.g., package versions, tool versions, API versions)
+- Package import paths or module names
+- API endpoints, URLs, or connection strings
+- Configuration file formats or schema details
+- Command-line flags or arguments
+
+If you don't know something:
+1. **Search/verify first** - Use WebSearch, WebFetch, or Read to find accurate information
+2. **Ask the user** - If you can't verify, ask rather than assume
+3. **Test it** - When possible, try the command/code to verify it works
+
+Never make assumptions about version compatibility, release tag formats, or tool behavior. Always verify.
+
 ## CRD Workflow
 
 After modifying `api/v1alpha1/*_types.go`:
