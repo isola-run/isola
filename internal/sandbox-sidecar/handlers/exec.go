@@ -3,7 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"io"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -116,26 +116,52 @@ func (h *ExecHandlers) handleExecWS(humaCtx huma.Context, input *ExecInput, pid,
 	}
 	defer conn.CloseNow() //nolint:errcheck
 
+	h.logger.Info("exec session started", "container", input.Container, "shell", input.Shell, "raw", input.Raw, "cols", input.Cols, "rows", input.Rows)
+
 	conn.SetReadLimit(wsReadLimit)
 
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		h.logger.Error("pty open failed", "error", err)
+		conn.Close(websocket.StatusInternalError, "failed to open pty") //nolint:errcheck
+		return
+	}
+	defer func() { _ = tty.Close() }()
+
+	if err := pty.Setsize(ptmx, &pty.Winsize{Rows: input.Rows, Cols: input.Cols}); err != nil {
+		h.logger.Error("pty setsize failed", "error", err)
+		_ = ptmx.Close()
+		conn.Close(websocket.StatusInternalError, "failed to set terminal size") //nolint:errcheck
+		return
+	}
+
 	cmd := &exec.Cmd{
-		Path: input.Shell,
-		Args: []string{filepath.Base(input.Shell)},
-		Dir:  "/",
-		Env:  environ,
+		Path:       input.Shell,
+		Args:       []string{filepath.Base(input.Shell)},
+		Dir:        "/",
+		Env:        environ,
+		Stdin:      tty,
+		Stdout:     tty,
+		Stderr:     tty,
+		ExtraFiles: []*os.File{tty},
 		SysProcAttr: &syscall.SysProcAttr{
 			Chroot:     h.procFS.GetRoot(pid),
 			Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}, //nolint:gosec // uid/gid from trusted /proc
+			Setsid:     true,
+			Setctty:    true,
+			Ctty:       3, // fd 3 = ExtraFiles[0] = tty
 		},
 	}
 
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: input.Rows, Cols: input.Cols})
+	err = cmd.Start()
 	if err != nil {
-		h.logger.Error("pty start failed", "error", err, "shell", input.Shell)
+		h.logger.Error("shell start failed", "error", err, "shell", input.Shell)
 		conn.Close(websocket.StatusInternalError, "failed to start shell") //nolint:errcheck
 		return
 	}
 	defer func() { _ = ptmx.Close() }()
+
+	h.logger.Info("shell process started", "pid", cmd.Process.Pid, "shell", input.Shell)
 
 	connCtx := r.Context()
 
@@ -145,13 +171,14 @@ func (h *ExecHandlers) handleExecWS(humaCtx huma.Context, input *ExecInput, pid,
 		h.bridgeFramed(connCtx, conn, ptmx)
 	}
 
-	// Wait for process exit and send exit code in framed mode
 	exitCode := 0
 	if err := cmd.Wait(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		}
 	}
+
+	h.logger.Info("exec session ended", "exitCode", exitCode)
 
 	if !input.Raw {
 		exitJSON, _ := json.Marshal(map[string]int{"code": exitCode})
@@ -168,19 +195,47 @@ func (h *ExecHandlers) bridgeRaw(ctx context.Context, conn *websocket.Conn, ptmx
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	nc := websocket.NetConn(ctx, conn, websocket.MessageBinary)
-
 	g, _ := errgroup.WithContext(ctx)
+
+	// PTY → WS
 	g.Go(func() error {
 		defer cancel()
-		_, err := io.Copy(nc, ptmx)
-		return err
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := ptmx.Read(buf)
+			if n > 0 {
+				if writeErr := conn.Write(ctx, websocket.MessageBinary, buf[:n]); writeErr != nil {
+					h.logger.Error("failed writing pty output to websocket", "error", writeErr)
+					return writeErr
+				}
+			}
+			if err != nil {
+				if !isExpectedPTYClose(err) {
+					h.logger.Error("failed reading from pty", "error", err)
+				}
+				return err
+			}
+		}
 	})
+
+	// WS → PTY (accept any message type — clients may send text or binary)
 	g.Go(func() error {
 		defer cancel()
-		_, err := io.Copy(ptmx, nc)
-		return err
+		for {
+			_, data, err := conn.Read(ctx)
+			if err != nil {
+				if !isExpectedWSClose(err) {
+					h.logger.Error("failed reading from websocket", "error", err)
+				}
+				return err
+			}
+			if _, err := ptmx.Write(data); err != nil {
+				h.logger.Error("failed writing websocket input to pty", "error", err)
+				return err
+			}
+		}
 	})
+
 	_ = g.Wait()
 }
 
@@ -199,11 +254,15 @@ func (h *ExecHandlers) bridgeFramed(ctx context.Context, conn *websocket.Conn, p
 			n, err := ptmx.Read(buf[1:])
 			if n > 0 {
 				if writeErr := conn.Write(ctx, websocket.MessageBinary, buf[:n+1]); writeErr != nil {
+					h.logger.Error("failed writing pty output to websocket", "error", writeErr)
 					return writeErr
 				}
 			}
 			if err != nil {
-				return err // EIO on child exit is expected
+				if !isExpectedPTYClose(err) {
+					h.logger.Error("failed reading from pty", "error", err)
+				}
+				return err
 			}
 		}
 	})
@@ -214,6 +273,9 @@ func (h *ExecHandlers) bridgeFramed(ctx context.Context, conn *websocket.Conn, p
 		for {
 			_, msg, err := conn.Read(ctx)
 			if err != nil {
+				if !isExpectedWSClose(err) {
+					h.logger.Error("failed reading from websocket", "error", err)
+				}
 				return err
 			}
 			if len(msg) == 0 {
@@ -222,6 +284,7 @@ func (h *ExecHandlers) bridgeFramed(ctx context.Context, conn *websocket.Conn, p
 			switch msg[0] {
 			case channelStdin:
 				if _, err := ptmx.Write(msg[1:]); err != nil {
+					h.logger.Error("failed writing websocket input to pty", "error", err)
 					return err
 				}
 			case channelResize:
@@ -245,6 +308,17 @@ func (h *ExecHandlers) handleResize(ptmx *os.File, data []byte) {
 	if err := pty.Setsize(ptmx, &pty.Winsize{Rows: msg.Rows, Cols: msg.Cols}); err != nil {
 		h.logger.Warn("pty resize failed", "error", err)
 	}
+}
+
+// isExpectedPTYClose returns true for errors that are normal when the shell exits.
+func isExpectedPTYClose(err error) bool {
+	return errors.Is(err, syscall.EIO) || errors.Is(err, os.ErrClosed)
+}
+
+// isExpectedWSClose returns true for normal client disconnections.
+func isExpectedWSClose(err error) bool {
+	status := websocket.CloseStatus(err)
+	return status == websocket.StatusNormalClosure || status == websocket.StatusGoingAway
 }
 
 func appendOrReplaceTERM(environ []string) []string {
