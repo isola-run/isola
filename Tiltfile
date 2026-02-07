@@ -84,6 +84,7 @@ helm_resource(
     ],
     deps=['charts/isola'],
     resource_deps=['localstack'],
+    port_forwards=[port_forward(8080, 8080, name='api-gateway')],
     labels=['isola'],
 )
 
