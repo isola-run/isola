@@ -10,6 +10,10 @@ nodes:
         nodeRegistration:
           kubeletExtraArgs:
             node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8080
+        protocol: TCP
 # Configure containerd to use local registry (setup.sh configures the registry)
 containerdConfigPatches:
   - |-
