@@ -97,6 +97,22 @@ func envVarsToMap(envVars []corev1.EnvVar) map[string]string {
 	return m
 }
 
+func mapToEnvVars(m map[string]string) []corev1.EnvVar {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	envVars := make([]corev1.EnvVar, 0, len(keys))
+	for _, k := range keys {
+		envVars = append(envVars, corev1.EnvVar{Name: k, Value: m[k]})
+	}
+	return envVars
+}
+
 func containerResourcesToSpec(r corev1.ResourceRequirements) *ResourcesSpec {
 	spec := &ResourcesSpec{}
 	hasContent := false
@@ -188,16 +204,7 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 		}
 	}
 
-	if len(c.Env) > 0 {
-		keys := make([]string, 0, len(c.Env))
-		for k := range c.Env {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			container.Env = append(container.Env, corev1.EnvVar{Name: k, Value: c.Env[k]})
-		}
-	}
+	container.Env = mapToEnvVars(c.Env)
 
 	sb := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
