@@ -84,7 +84,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Create and make pod ready (need to recreate with NodeName)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 			pod := recreatePodWithNodeName(ctx, podName, "test-node", &runtimeClassName)
-			makePodReady(ctx, pod, "containerd://abc")
+			makePodReady(ctx, pod, "containerd://abc", fakeClock)
 
 			// Drain PodCreated event
 			<-recorder.Events
@@ -119,7 +119,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Setup - recreate pod with NodeName
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 			pod := recreatePodWithNodeName(ctx, podName, "test-node", &runtimeClassName)
-			makePodReady(ctx, pod, "containerd://abc")
+			makePodReady(ctx, pod, "containerd://abc", fakeClock)
 
 			// Drain previous events
 		drainEvents:
@@ -175,7 +175,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Setup - recreate pod with NodeName
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 			pod := recreatePodWithNodeName(ctx, podName, "test-node", &runtimeClassName)
-			makePodReady(ctx, pod, "containerd://abc")
+			makePodReady(ctx, pod, "containerd://abc", fakeClock)
 
 			fakeClock.Advance(2 * time.Second)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})

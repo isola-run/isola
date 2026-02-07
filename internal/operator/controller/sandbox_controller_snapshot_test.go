@@ -32,10 +32,6 @@ import (
 )
 
 var _ = Describe("Sandbox Controller", func() {
-
-	// ============================================
-	// Snapshotting Tests
-	// ============================================
 	Context("Snapshotting", func() {
 		var (
 			reconciler *SandboxReconciler
@@ -70,20 +66,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
-			pod.Status.Phase = corev1.PodRunning
-			pod.Status.Conditions = append(pod.Status.Conditions, corev1.PodCondition{
-				Type:   corev1.PodReady,
-				Status: corev1.ConditionTrue,
-			})
-			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
-				{
-					Name:        "sandbox",
-					ContainerID: "containerd://abc123",
-					Ready:       true,
-					State:       corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
-				},
-			}
-			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
 
 			fakeClock.Advance(2 * time.Second)
 
@@ -127,20 +110,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
-			pod.Status.Phase = corev1.PodRunning
-			pod.Status.Conditions = append(pod.Status.Conditions, corev1.PodCondition{
-				Type:   corev1.PodReady,
-				Status: corev1.ConditionTrue,
-			})
-			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
-				{
-					Name:        "sandbox",
-					ContainerID: "containerd://abc123",
-					Ready:       true,
-					State:       corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
-				},
-			}
-			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
 
 			fakeClock.Advance(2 * time.Second)
 
