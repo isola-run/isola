@@ -100,6 +100,9 @@ func (h *SandboxHandlers) GetSandbox(ctx context.Context, input *GetSandboxInput
 
 func (h *SandboxHandlers) ListSandboxes(ctx context.Context, _ *struct{}) (*ListSandboxesOutput, error) {
 	list := &sandboxv1alpha1.SandboxList{}
+	// NOT PAGINATED! Be careful if the number of sandboxes gets large.
+	// controller-runtime's cached client supports Limit (stops reading early) but rejects
+	// Continue ("continue list option is not supported by the cache").
 	if err := h.k8sClient.List(ctx, list, client.InNamespace(h.sandboxNamespace)); err != nil {
 		h.logger.Error("failed to list sandboxes", "error", err)
 		return nil, k8sErrorToHuma(err, "failed to list sandboxes")

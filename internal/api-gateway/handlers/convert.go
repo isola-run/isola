@@ -37,17 +37,11 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 }
 
 func sandboxToSummary(sb *sandboxv1alpha1.Sandbox) SandboxSummary {
-	summary := SandboxSummary{
+	return SandboxSummary{
 		ID:                sb.Name,
 		Status:            conditionsToStatus(sb.Status.Conditions),
 		CreationTimestamp: sb.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
-
-	if len(sb.Spec.PodTemplate.Spec.Containers) > 0 {
-		summary.Image = sb.Spec.PodTemplate.Spec.Containers[0].Image
-	}
-
-	return summary
 }
 
 func conditionsToStatus(conditions []metav1.Condition) string {

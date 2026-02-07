@@ -85,7 +85,6 @@ type SandboxResponse struct {
 
 type SandboxSummary struct {
 	ID                string `json:"id" doc:"Sandbox identifier"`
-	Image             string `json:"image,omitempty" doc:"Container image"`
 	Status            string `json:"status" doc:"Sandbox status"`
 	CreationTimestamp string `json:"creationTimestamp" doc:"Creation timestamp"`
 }
