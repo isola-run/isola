@@ -218,4 +218,11 @@ bin/
 *.out
 cover.out
 go.work
-go.work.sumapi-gateway
+go.work.sum
+
+# Go binaries (go build ./cmd/<name>/ outputs to cwd)
+/operator
+/api-gateway
+/sandbox-sidecar
+/uploader
+/openapi-gen
