@@ -80,7 +80,7 @@ type SandboxResponse struct {
 	TimeoutSeconds    *int64       `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
 	Network           *NetworkSpec `json:"network,omitempty" doc:"Network isolation config"`
 	Status            string       `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
-	CreationTimestamp string       `json:"creationTimestamp" doc:"Creation timestamp"`
+	CreationTimestamp string       `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
 
 type SandboxSummary struct {

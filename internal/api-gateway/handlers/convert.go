@@ -22,6 +22,7 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 		CreationTimestamp: sb.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 
+	// todo benl: change to support multiple containers
 	if len(sb.Spec.PodTemplate.Spec.Containers) > 0 {
 		c := sb.Spec.PodTemplate.Spec.Containers[0]
 		resp.PodTemplate.Container.Image = c.Image
@@ -221,9 +222,7 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 		},
 	}
 
-	if req.Network != nil {
-		sb.Spec.Network = restNetworkToCRD(req.Network)
-	}
+	sb.Spec.Network = restNetworkToCRD(req.Network)
 
 	return sb, nil
 }
