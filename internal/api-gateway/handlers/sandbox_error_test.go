@@ -45,7 +45,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/sandboxes", strings.NewReader(`{"image":"python:3.12"}`))
+			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(409))
 		})
 
@@ -60,7 +60,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/sandboxes", strings.NewReader(`{"image":"python:3.12"}`))
+			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(400))
 		})
 
@@ -71,7 +71,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/sandboxes", strings.NewReader(`{"image":"python:3.12"}`))
+			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(500))
 		})
 	})
@@ -116,7 +116,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 
 		It("returns 404 when k8s Delete returns NotFound (race condition)", func() {
 			// Create a real sandbox so the pre-delete Get succeeds
-			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"image":"alpine:latest"}`))
+			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
 			Expect(createResp.Code).To(Equal(201))
 
 			var created SandboxResponse
@@ -143,7 +143,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 
 		It("returns 500 when k8s Delete returns a generic error", func() {
 			// Create a real sandbox so the pre-delete Get succeeds
-			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"image":"alpine:latest"}`))
+			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
 			Expect(createResp.Code).To(Equal(201))
 
 			var created SandboxResponse

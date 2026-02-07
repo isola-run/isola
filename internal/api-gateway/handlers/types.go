@@ -14,12 +14,20 @@ type CreateSandboxInput struct {
 	Body CreateSandboxRequest
 }
 
+type ContainerSpec struct {
+	Image     string            `json:"image" required:"true" doc:"Container image"`
+	Env       map[string]string `json:"env,omitempty" doc:"Environment variables"`
+	Resources *ResourcesSpec    `json:"resources,omitempty" doc:"Resource requests and limits"`
+}
+
+type PodTemplate struct {
+	Container ContainerSpec `json:"container" required:"true" doc:"Primary sandbox container"`
+}
+
 type CreateSandboxRequest struct {
-	Image          string            `json:"image" required:"true" doc:"Container image"`
-	Env            map[string]string `json:"env,omitempty" doc:"Environment variables"`
-	Resources      *ResourcesSpec    `json:"resources,omitempty" doc:"Resource requests and limits"`
-	TimeoutSeconds *int64            `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
-	Network        *NetworkSpec      `json:"network,omitempty" doc:"Network isolation config"`
+	PodTemplate    PodTemplate  `json:"podTemplate" required:"true" doc:"Pod template"`
+	TimeoutSeconds *int64       `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
+	Network        *NetworkSpec `json:"network,omitempty" doc:"Network isolation config"`
 }
 
 type ResourcesSpec struct {
@@ -67,16 +75,12 @@ type DeleteSandboxOutput struct {
 }
 
 type SandboxResponse struct {
-	ID string `json:"id" doc:"Sandbox identifier"`
-	// TODO: reconsider Image as a flat string when we support multiple containers
-	// (e.g. map container name → image, or a []Container object)
-	Image             string            `json:"image,omitempty" doc:"Container image"`
-	Env               map[string]string `json:"env,omitempty" doc:"Environment variables"`
-	Resources         *ResourcesSpec    `json:"resources,omitempty" doc:"Resource requests and limits"`
-	TimeoutSeconds    *int64            `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
-	Network           *NetworkSpec      `json:"network,omitempty" doc:"Network isolation config"`
-	Status            string            `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
-	CreationTimestamp string            `json:"creationTimestamp" doc:"Creation timestamp"`
+	ID                string       `json:"id" doc:"Sandbox identifier"`
+	PodTemplate       PodTemplate  `json:"podTemplate" doc:"Pod template"`
+	TimeoutSeconds    *int64       `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
+	Network           *NetworkSpec `json:"network,omitempty" doc:"Network isolation config"`
+	Status            string       `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
+	CreationTimestamp string       `json:"creationTimestamp" doc:"Creation timestamp"`
 }
 
 type SandboxSummary struct {

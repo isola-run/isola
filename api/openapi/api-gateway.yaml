@@ -1,5 +1,22 @@
 components:
   schemas:
+    ContainerSpec:
+      additionalProperties: false
+      properties:
+        env:
+          additionalProperties:
+            type: string
+          description: Environment variables
+          type: object
+        image:
+          description: Container image
+          type: string
+        resources:
+          $ref: "#/components/schemas/ResourcesSpec"
+          description: Resource requests and limits
+      required:
+        - image
+      type: object
     CreateSandboxRequest:
       additionalProperties: false
       properties:
@@ -10,27 +27,19 @@ components:
           format: uri
           readOnly: true
           type: string
-        env:
-          additionalProperties:
-            type: string
-          description: Environment variables
-          type: object
-        image:
-          description: Container image
-          type: string
         network:
           $ref: "#/components/schemas/NetworkSpec"
           description: Network isolation config
-        resources:
-          $ref: "#/components/schemas/ResourcesSpec"
-          description: Resource requests and limits
+        podTemplate:
+          $ref: "#/components/schemas/PodTemplate"
+          description: Pod template
         timeoutSeconds:
           description: Max lifetime in seconds. Omit for no timeout
           format: int64
           minimum: 1
           type: integer
       required:
-        - image
+        - podTemplate
       type: object
     DeleteSandboxResponse:
       additionalProperties: false
@@ -173,6 +182,15 @@ components:
             - array
             - "null"
       type: object
+    PodTemplate:
+      additionalProperties: false
+      properties:
+        container:
+          $ref: "#/components/schemas/ContainerSpec"
+          description: Primary sandbox container
+      required:
+        - container
+      type: object
     ResourceList:
       additionalProperties: false
       properties:
@@ -215,23 +233,15 @@ components:
         creationTimestamp:
           description: Creation timestamp
           type: string
-        env:
-          additionalProperties:
-            type: string
-          description: Environment variables
-          type: object
         id:
           description: Sandbox identifier
-          type: string
-        image:
-          description: Container image
           type: string
         network:
           $ref: "#/components/schemas/NetworkSpec"
           description: Network isolation config
-        resources:
-          $ref: "#/components/schemas/ResourcesSpec"
-          description: Resource requests and limits
+        podTemplate:
+          $ref: "#/components/schemas/PodTemplate"
+          description: Pod template
         status:
           description: Sandbox status
           enum:
@@ -248,6 +258,7 @@ components:
           type: integer
       required:
         - id
+        - podTemplate
         - status
         - creationTimestamp
       type: object

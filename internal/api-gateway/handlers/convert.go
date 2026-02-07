@@ -24,9 +24,9 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 
 	if len(sb.Spec.PodTemplate.Spec.Containers) > 0 {
 		c := sb.Spec.PodTemplate.Spec.Containers[0]
-		resp.Image = c.Image
-		resp.Env = envVarsToMap(c.Env)
-		resp.Resources = containerResourcesToSpec(c.Resources)
+		resp.PodTemplate.Container.Image = c.Image
+		resp.PodTemplate.Container.Env = envVarsToMap(c.Env)
+		resp.PodTemplate.Container.Resources = containerResourcesToSpec(c.Resources)
 	}
 
 	resp.TimeoutSeconds = sb.Spec.TimeoutSeconds
@@ -167,17 +167,18 @@ func crdNetworkToREST(n *sandboxv1alpha1.NetworkSpec) *NetworkSpec {
 }
 
 func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sandboxv1alpha1.Sandbox, error) {
+	c := req.PodTemplate.Container
 	container := corev1.Container{
 		Name:  containerName,
-		Image: req.Image,
+		Image: c.Image,
 	}
 
-	if req.Resources != nil {
-		limits, err := restResourceListToK8s(req.Resources.Limits)
+	if c.Resources != nil {
+		limits, err := restResourceListToK8s(c.Resources.Limits)
 		if err != nil {
 			return nil, fmt.Errorf("invalid resource limits: %w", err)
 		}
-		requests, err := restResourceListToK8s(req.Resources.Requests)
+		requests, err := restResourceListToK8s(c.Resources.Requests)
 		if err != nil {
 			return nil, fmt.Errorf("invalid resource requests: %w", err)
 		}
@@ -187,14 +188,14 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 		}
 	}
 
-	if len(req.Env) > 0 {
-		keys := make([]string, 0, len(req.Env))
-		for k := range req.Env {
+	if len(c.Env) > 0 {
+		keys := make([]string, 0, len(c.Env))
+		for k := range c.Env {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			container.Env = append(container.Env, corev1.EnvVar{Name: k, Value: req.Env[k]})
+			container.Env = append(container.Env, corev1.EnvVar{Name: k, Value: c.Env[k]})
 		}
 	}
 
