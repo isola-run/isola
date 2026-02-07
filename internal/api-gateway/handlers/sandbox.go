@@ -20,8 +20,8 @@ const (
 	fullAlphabet      = "abcdefghijklmnopqrstuvwxyz0123456789"
 )
 
-// GenerateSandboxName creates a unique sandbox name suitable for Kubernetes DNS-1123 labels.
-func GenerateSandboxName() (string, error) {
+// generateSandboxName creates a unique sandbox name suitable for Kubernetes DNS-1123 labels.
+func generateSandboxName() (string, error) {
 	first, err := gonanoid.Generate(letterAlphabet, 1)
 	if err != nil {
 		return "", fmt.Errorf("generate first char: %w", err)
@@ -60,7 +60,7 @@ func NewSandboxHandlers(logger *slog.Logger, sandboxNamespace string, k8sClient 
 func (h *SandboxHandlers) PostSandbox(ctx context.Context, input *CreateSandboxInput) (*CreateSandboxOutput, error) {
 	req := input.Body
 
-	name, err := GenerateSandboxName()
+	name, err := generateSandboxName()
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to generate sandbox name")
 	}

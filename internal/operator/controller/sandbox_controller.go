@@ -142,10 +142,9 @@ func markContainers(sandboxPod *corev1.Pod) {
 	}
 }
 
-func (r *SandboxReconciler) injectSandboxSidecar(sandboxPod *corev1.Pod) error {
+func (r *SandboxReconciler) injectSandboxSidecar(sandboxPod *corev1.Pod) {
 	sidecarContainer := r.buildSandboxSidecarContainer()
 	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, sidecarContainer)
-	return nil
 }
 
 func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandboxv1alpha1.Sandbox, newSandbox *sandboxv1alpha1.Sandbox, newConditions []metav1.Condition) error {
@@ -157,11 +156,7 @@ func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandbo
 		meta.SetStatusCondition(&newSandbox.Status.Conditions, cond)
 	}
 
-	if err := r.Status().Patch(ctx, newSandbox, client.MergeFrom(baseSandbox)); err != nil {
-		return err
-	}
-
-	return nil
+	return r.Status().Patch(ctx, newSandbox, client.MergeFrom(baseSandbox))
 }
 
 func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) error {
@@ -172,9 +167,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// Apply pod template labels first, then override with our labels.
 	// This prevents templates from overriding app.kubernetes.io/* etc.
 	labels := make(map[string]string)
-	if sandbox.Spec.PodTemplate.Labels != nil {
-		maps.Copy(labels, sandbox.Spec.PodTemplate.Labels)
-	}
+	maps.Copy(labels, sandbox.Spec.PodTemplate.Labels)
 
 	// Standard Kubernetes recommended labels (https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
 	labels["app.kubernetes.io/name"] = "isola-sandbox"
@@ -231,10 +224,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	markContainers(sandboxPod)
 
-	if err := r.injectSandboxSidecar(sandboxPod); err != nil {
-		log.Error(err, "Failed to inject sidecar")
-		return err
-	}
+	r.injectSandboxSidecar(sandboxPod)
 
 	if err := controllerutil.SetControllerReference(sandbox, sandboxPod, r.Scheme); err != nil {
 		log.Error(err, "Failed to set controller reference")
@@ -683,14 +673,14 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	sandboxDeleted := !sandbox.DeletionTimestamp.IsZero()
-	noFinalizer := !controllerutil.ContainsFinalizer(sandbox, SandboxFinalizer)
+	hasFinalizer := controllerutil.ContainsFinalizer(sandbox, SandboxFinalizer)
 
-	if sandboxDeleted && noFinalizer {
+	if sandboxDeleted && !hasFinalizer {
 		return ctrl.Result{}, nil
 	}
 
 	// Add finalizer first, before any other operations
-	if !sandboxDeleted && noFinalizer {
+	if !sandboxDeleted && !hasFinalizer {
 		log.Info("Adding finalizer to sandbox")
 		controllerutil.AddFinalizer(sandbox, SandboxFinalizer)
 		if err := r.Update(ctx, sandbox); err != nil {
@@ -701,7 +691,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		baseSandbox = sandbox.DeepCopy()
 	}
 
-	if sandboxDeleted && !noFinalizer { // run finalizer logic
+	if sandboxDeleted && hasFinalizer { // run finalizer logic
 		res, _, err := r.finalizeSandbox(ctx, sandbox, baseSandbox)
 		return res, err
 	}

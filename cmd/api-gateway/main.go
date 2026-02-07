@@ -48,7 +48,6 @@ type config struct {
 
 func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config) (ctrl.Manager, error) {
 	if cfg.sandboxNamespace == "" {
-		logger.Error("sandbox namespace is required")
 		return nil, errors.New("sandbox namespace is required")
 	}
 
@@ -66,8 +65,7 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 		},
 	})
 	if err != nil {
-		logger.Error("unable to create manager", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("create manager: %w", err)
 	}
 
 	go func() {
@@ -78,7 +76,6 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 	}()
 
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
-		logger.Error("cache sync failed")
 		return nil, errors.New("cache sync failed")
 	}
 	logger.Info("cache synced")

@@ -115,23 +115,11 @@ func mapToEnvVars(m map[string]string) []corev1.EnvVar {
 }
 
 func containerResourcesToSpec(r corev1.ResourceRequirements) *ResourcesSpec {
-	spec := &ResourcesSpec{}
-	hasContent := false
-
-	if len(r.Limits) > 0 {
-		spec.Limits = resourceListToREST(r.Limits)
-		if spec.Limits != nil {
-			hasContent = true
-		}
+	spec := &ResourcesSpec{
+		Limits:   resourceListToREST(r.Limits),
+		Requests: resourceListToREST(r.Requests),
 	}
-	if len(r.Requests) > 0 {
-		spec.Requests = resourceListToREST(r.Requests)
-		if spec.Requests != nil {
-			hasContent = true
-		}
-	}
-
-	if !hasContent {
+	if spec.Limits == nil && spec.Requests == nil {
 		return nil
 	}
 	return spec
@@ -169,18 +157,12 @@ func crdNetworkToREST(n *sandboxv1alpha1.NetworkSpec) *NetworkSpec {
 		return nil
 	}
 
-	rest := &NetworkSpec{
+	return &NetworkSpec{
 		AllowAllInternet:   n.AllowAllInternet,
 		AllowClusterDNS:    n.AllowClusterDNS,
 		AllowedEgressCIDRs: n.AllowedEgressCIDRs,
 		Nameservers:        n.Nameservers,
 	}
-
-	if rest.AllowAllInternet == nil && rest.AllowClusterDNS == nil &&
-		len(rest.AllowedEgressCIDRs) == 0 && len(rest.Nameservers) == 0 {
-		return nil
-	}
-	return rest
 }
 
 func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sandboxv1alpha1.Sandbox, error) {

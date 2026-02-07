@@ -65,7 +65,7 @@ var _ = Describe("Conversion functions", func() {
 				}
 			},
 			Entry("nil input", nil, true),
-			Entry("all-empty struct", &sandboxv1alpha1.NetworkSpec{}, true),
+			Entry("all-empty struct", &sandboxv1alpha1.NetworkSpec{}, false),
 			Entry("only nameservers", &sandboxv1alpha1.NetworkSpec{Nameservers: []string{"8.8.8.8"}}, false),
 			Entry("only allowClusterDNS", &sandboxv1alpha1.NetworkSpec{AllowClusterDNS: ptr.To(true)}, false),
 			Entry("only allowedEgressCIDRs", &sandboxv1alpha1.NetworkSpec{AllowedEgressCIDRs: []string{"10.0.0.0/8"}}, false),
