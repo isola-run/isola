@@ -71,14 +71,14 @@ type NetworkSpec struct {
 	// AllowAllInternet allows egress to 0.0.0.0/0 and ::/0 with blocked ranges
 	// (private IPs, cloud metadata, etc.) automatically excepted.
 	// Adds label isola.run/allow-internet=true to the pod.
-	// +kubebuilder:default=false
-	AllowAllInternet bool `json:"allowAllInternet,omitempty"`
+	// +optional
+	AllowAllInternet *bool `json:"allowAllInternet,omitempty"`
 
 	// AllowClusterDNS allows DNS queries to cluster DNS (kube-dns/CoreDNS).
 	// When true: DNSPolicy=ClusterFirst, adds label isola.run/allow-cluster-dns=true
 	// When false: DNSPolicy=None, uses nameservers field or sink (127.0.0.1)
-	// +kubebuilder:default=false
-	AllowClusterDNS bool `json:"allowClusterDNS,omitempty"`
+	// +optional
+	AllowClusterDNS *bool `json:"allowClusterDNS,omitempty"`
 
 	// AllowedEgressCIDRs specifies additional CIDRs the sandbox can reach.
 	// Blocked ranges are automatically excepted. Creates a custom NetworkPolicy.

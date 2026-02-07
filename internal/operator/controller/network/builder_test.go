@@ -23,6 +23,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	"k8s.io/utils/ptr"
 )
 
 func TestBuildCustomNetworkPolicy_NilNetwork(t *testing.T) {
@@ -124,7 +125,7 @@ func TestBuildCustomNetworkPolicy_WithNameservers(t *testing.T) {
 func TestBuildCustomNetworkPolicy_NameserversWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: true,
+		AllowAllInternet: ptr.To(true),
 		Nameservers:      []string{"8.8.8.8"},
 	}
 
@@ -137,7 +138,7 @@ func TestBuildCustomNetworkPolicy_NameserversWithInternetAccess(t *testing.T) {
 func TestBuildCustomNetworkPolicy_PrivateNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: true,
+		AllowAllInternet: ptr.To(true),
 		Nameservers:      []string{"10.0.0.53"},
 	}
 
@@ -154,7 +155,7 @@ func TestBuildCustomNetworkPolicy_PrivateNameserverWithInternetAccess(t *testing
 func TestBuildCustomNetworkPolicy_MixedNameserversWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: true,
+		AllowAllInternet: ptr.To(true),
 		Nameservers:      []string{"8.8.8.8", "10.0.0.53", "1.1.1.1"},
 	}
 
@@ -170,7 +171,7 @@ func TestBuildCustomNetworkPolicy_MixedNameserversWithInternetAccess(t *testing.
 func TestBuildCustomNetworkPolicy_IPv6PublicNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: true,
+		AllowAllInternet: ptr.To(true),
 		Nameservers:      []string{"2001:4860:4860::8888"},
 	}
 
@@ -183,7 +184,7 @@ func TestBuildCustomNetworkPolicy_IPv6PublicNameserverWithInternetAccess(t *test
 func TestBuildCustomNetworkPolicy_IPv6PrivateNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: true,
+		AllowAllInternet: ptr.To(true),
 		Nameservers:      []string{"fd00::53"},
 	}
 
@@ -199,7 +200,7 @@ func TestBuildCustomNetworkPolicy_IPv6PrivateNameserverWithInternetAccess(t *tes
 func TestBuildCustomNetworkPolicy_NameserversWithoutInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: false,
+		AllowAllInternet: ptr.To(false),
 		Nameservers:      []string{"8.8.8.8", "10.0.0.53"},
 	}
 
@@ -217,7 +218,7 @@ func TestBuildCustomNetworkPolicy_NameserversWithoutInternetAccess(t *testing.T)
 func TestBuildCustomNetworkPolicy_CIDRsAndPublicNameserversWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet:   true,
+		AllowAllInternet:   ptr.To(true),
 		Nameservers:        []string{"8.8.8.8"},
 		AllowedEgressCIDRs: []string{"1.1.1.0/24"},
 	}

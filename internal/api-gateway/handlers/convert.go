@@ -13,12 +13,7 @@ import (
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 )
 
-const (
-	defaultCPU              = "125m"
-	defaultMemory           = "512Mi"
-	defaultEphemeralStorage = "1Gi"
-	containerName           = "sandbox"
-)
+const containerName = "sandbox"
 
 func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 	resp := SandboxResponse{
@@ -157,53 +152,39 @@ func crdNetworkToREST(n *sandboxv1alpha1.NetworkSpec) *NetworkSpec {
 		return nil
 	}
 
-	rest := &NetworkSpec{}
-	hasContent := false
-
-	if n.AllowAllInternet {
-		rest.AllowAllInternet = &n.AllowAllInternet
-		hasContent = true
-	}
-	if n.AllowClusterDNS {
-		rest.AllowClusterDNS = &n.AllowClusterDNS
-		hasContent = true
-	}
-	if len(n.AllowedEgressCIDRs) > 0 {
-		rest.AllowedEgressCIDRs = n.AllowedEgressCIDRs
-		hasContent = true
-	}
-	if len(n.Nameservers) > 0 {
-		rest.Nameservers = n.Nameservers
-		hasContent = true
+	rest := &NetworkSpec{
+		AllowAllInternet:   n.AllowAllInternet,
+		AllowClusterDNS:    n.AllowClusterDNS,
+		AllowedEgressCIDRs: n.AllowedEgressCIDRs,
+		Nameservers:        n.Nameservers,
 	}
 
-	if !hasContent {
+	if rest.AllowAllInternet == nil && rest.AllowClusterDNS == nil &&
+		len(rest.AllowedEgressCIDRs) == 0 && len(rest.Nameservers) == 0 {
 		return nil
 	}
 	return rest
 }
 
 func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sandboxv1alpha1.Sandbox, error) {
-	limits, err := buildResourceList(req.Resources, true)
-	if err != nil {
-		return nil, fmt.Errorf("invalid resource limits: %w", err)
-	}
-
-	requests, err := buildResourceList(req.Resources, false)
-	if err != nil {
-		return nil, fmt.Errorf("invalid resource requests: %w", err)
-	}
-
-	// Default requests to limits for any field not explicitly set
-	defaultRequestsToLimits(requests, limits)
-
 	container := corev1.Container{
 		Name:  containerName,
 		Image: req.Image,
-		Resources: corev1.ResourceRequirements{
+	}
+
+	if req.Resources != nil {
+		limits, err := restResourceListToK8s(req.Resources.Limits)
+		if err != nil {
+			return nil, fmt.Errorf("invalid resource limits: %w", err)
+		}
+		requests, err := restResourceListToK8s(req.Resources.Requests)
+		if err != nil {
+			return nil, fmt.Errorf("invalid resource requests: %w", err)
+		}
+		container.Resources = corev1.ResourceRequirements{
 			Limits:   limits,
 			Requests: requests,
-		},
+		}
 	}
 
 	if len(req.Env) > 0 {
@@ -239,59 +220,14 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 	return sb, nil
 }
 
-func buildResourceList(spec *ResourcesSpec, isLimits bool) (corev1.ResourceList, error) {
-	rl := corev1.ResourceList{}
-
-	var src *ResourceList
-	if spec != nil {
-		if isLimits {
-			src = spec.Limits
-		} else {
-			src = spec.Requests
-		}
-	}
-
-	// For limits, apply defaults for any unset fields
-	if isLimits {
-		cpuStr := defaultCPU
-		memStr := defaultMemory
-		esStr := defaultEphemeralStorage
-
-		if src != nil {
-			if src.CPU != "" {
-				cpuStr = src.CPU
-			}
-			if src.Memory != "" {
-				memStr = src.Memory
-			}
-			if src.EphemeralStorage != "" {
-				esStr = src.EphemeralStorage
-			}
-		}
-
-		cpu, err := resource.ParseQuantity(cpuStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid cpu %q: %w", cpuStr, err)
-		}
-		mem, err := resource.ParseQuantity(memStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid memory %q: %w", memStr, err)
-		}
-		es, err := resource.ParseQuantity(esStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid ephemeralStorage %q: %w", esStr, err)
-		}
-
-		rl[corev1.ResourceCPU] = cpu
-		rl[corev1.ResourceMemory] = mem
-		rl[corev1.ResourceEphemeralStorage] = es
-		return rl, nil
-	}
-
-	// For requests, only parse explicitly set fields
+// restResourceListToK8s parses a REST ResourceList into a K8s ResourceList.
+// Returns nil if src is nil. Returns error on invalid quantities.
+func restResourceListToK8s(src *ResourceList) (corev1.ResourceList, error) {
 	if src == nil {
-		return rl, nil
+		return nil, nil
 	}
+
+	rl := corev1.ResourceList{}
 
 	if src.CPU != "" {
 		q, err := resource.ParseQuantity(src.CPU)
@@ -315,21 +251,10 @@ func buildResourceList(spec *ResourcesSpec, isLimits bool) (corev1.ResourceList,
 		rl[corev1.ResourceEphemeralStorage] = q
 	}
 
-	return rl, nil
-}
-
-func defaultRequestsToLimits(requests, limits corev1.ResourceList) {
-	for _, res := range []corev1.ResourceName{
-		corev1.ResourceCPU,
-		corev1.ResourceMemory,
-		corev1.ResourceEphemeralStorage,
-	} {
-		if _, ok := requests[res]; !ok {
-			if lim, ok := limits[res]; ok {
-				requests[res] = lim
-			}
-		}
+	if len(rl) == 0 {
+		return nil, nil
 	}
+	return rl, nil
 }
 
 func restNetworkToCRD(n *NetworkSpec) *sandboxv1alpha1.NetworkSpec {
@@ -337,20 +262,10 @@ func restNetworkToCRD(n *NetworkSpec) *sandboxv1alpha1.NetworkSpec {
 		return nil
 	}
 
-	crd := &sandboxv1alpha1.NetworkSpec{}
-
-	if n.AllowAllInternet != nil {
-		crd.AllowAllInternet = *n.AllowAllInternet
+	return &sandboxv1alpha1.NetworkSpec{
+		AllowAllInternet:   n.AllowAllInternet,
+		AllowClusterDNS:    n.AllowClusterDNS,
+		AllowedEgressCIDRs: n.AllowedEgressCIDRs,
+		Nameservers:        n.Nameservers,
 	}
-	if n.AllowClusterDNS != nil {
-		crd.AllowClusterDNS = *n.AllowClusterDNS
-	}
-	if len(n.AllowedEgressCIDRs) > 0 {
-		crd.AllowedEgressCIDRs = n.AllowedEgressCIDRs
-	}
-	if len(n.Nameservers) > 0 {
-		crd.Nameservers = n.Nameservers
-	}
-
-	return crd
 }

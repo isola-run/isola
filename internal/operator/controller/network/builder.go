@@ -92,7 +92,7 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 		if err != nil {
 			return nil, err
 		}
-		if network.AllowAllInternet && !cidr.IsBlocked(addr) {
+		if network.AllowAllInternet != nil && *network.AllowAllInternet && !cidr.IsBlocked(addr) {
 			continue
 		}
 		dnsAddrs = append(dnsAddrs, addr)

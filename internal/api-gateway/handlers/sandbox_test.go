@@ -26,17 +26,8 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(body.Status).To(Equal("unknown"))
 			Expect(body.CreationTimestamp).NotTo(BeEmpty())
 
-			// Defaults applied
-			Expect(body.Resources).NotTo(BeNil())
-			Expect(body.Resources.Limits).NotTo(BeNil())
-			Expect(body.Resources.Limits.CPU).To(Equal("125m"))
-			Expect(body.Resources.Limits.Memory).To(Equal("512Mi"))
-			Expect(body.Resources.Limits.EphemeralStorage).To(Equal("1Gi"))
-			// Requests default to limits
-			Expect(body.Resources.Requests).NotTo(BeNil())
-			Expect(body.Resources.Requests.CPU).To(Equal("125m"))
-			Expect(body.Resources.Requests.Memory).To(Equal("512Mi"))
-			Expect(body.Resources.Requests.EphemeralStorage).To(Equal("1Gi"))
+			// No defaults applied — gateway is a pure passthrough
+			Expect(body.Resources).To(BeNil())
 
 			// Omitted fields not in response
 			Expect(body.Env).To(BeNil())
@@ -145,7 +136,6 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
 			Expect(got.ID).To(Equal(created.ID))
 			Expect(got.Image).To(Equal("redis:7"))
-			Expect(got.Resources).NotTo(BeNil())
 		})
 
 		It("returns 404 for nonexistent sandbox", func() {

@@ -61,14 +61,12 @@ spec:
                   Network configuration is immutable after sandbox creation.
                 properties:
                   allowAllInternet:
-                    default: false
                     description: |-
                       AllowAllInternet allows egress to 0.0.0.0/0 and ::/0 with blocked ranges
                       (private IPs, cloud metadata, etc.) automatically excepted.
                       Adds label isola.run/allow-internet=true to the pod.
                     type: boolean
                   allowClusterDNS:
-                    default: false
                     description: |-
                       AllowClusterDNS allows DNS queries to cluster DNS (kube-dns/CoreDNS).
                       When true: DNSPolicy=ClusterFirst, adds label isola.run/allow-cluster-dns=true

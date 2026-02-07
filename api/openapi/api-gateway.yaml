@@ -200,7 +200,7 @@ components:
           description: Resource limits
         requests:
           $ref: "#/components/schemas/ResourceList"
-          description: Resource requests (defaults to limits)
+          description: Resource requests
       type: object
     SandboxResponse:
       additionalProperties: false

@@ -24,7 +24,7 @@ type CreateSandboxRequest struct {
 
 type ResourcesSpec struct {
 	Limits   *ResourceList `json:"limits,omitempty" doc:"Resource limits"`
-	Requests *ResourceList `json:"requests,omitempty" doc:"Resource requests (defaults to limits)"`
+	Requests *ResourceList `json:"requests,omitempty" doc:"Resource requests"`
 }
 
 type ResourceList struct {
