@@ -16,6 +16,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog/v2"
+	"github.com/go-logr/logr"
 	gonanoid "github.com/matoous/go-nanoid/v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -121,6 +122,7 @@ func main() {
 		Level:   cfg.logLevel,
 		DevMode: cfg.devMode,
 	})
+	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
