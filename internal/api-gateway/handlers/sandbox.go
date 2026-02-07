@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -32,6 +33,14 @@ func GenerateSandboxName() (string, error) {
 	}
 
 	return first + rest, nil
+}
+
+func k8sErrorToHuma(err error, fallbackMsg string) error {
+	var statusErr *apierrors.StatusError
+	if errors.As(err, &statusErr) && statusErr.ErrStatus.Code > 0 {
+		return huma.NewError(int(statusErr.ErrStatus.Code), statusErr.ErrStatus.Message)
+	}
+	return huma.Error500InternalServerError(fallbackMsg)
 }
 
 type SandboxHandlers struct {
@@ -65,11 +74,8 @@ func (h *SandboxHandlers) PostSandbox(ctx context.Context, input *CreateSandboxI
 		if apierrors.IsAlreadyExists(err) {
 			return nil, huma.Error409Conflict("sandbox already exists")
 		}
-		if statusErr, ok := err.(*apierrors.StatusError); ok {
-			return nil, huma.Error400BadRequest(statusErr.ErrStatus.Message)
-		}
 		h.logger.Error("failed to create sandbox", "error", err)
-		return nil, huma.Error500InternalServerError("failed to create sandbox")
+		return nil, k8sErrorToHuma(err, "failed to create sandbox")
 	}
 
 	resp := sandboxToResponse(sb)
@@ -85,7 +91,7 @@ func (h *SandboxHandlers) GetSandbox(ctx context.Context, input *GetSandboxInput
 			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
 		}
 		h.logger.Error("failed to get sandbox", "error", err, "id", input.ID)
-		return nil, huma.Error500InternalServerError("failed to get sandbox")
+		return nil, k8sErrorToHuma(err, "failed to get sandbox")
 	}
 
 	resp := sandboxToResponse(sb)
@@ -96,7 +102,7 @@ func (h *SandboxHandlers) ListSandboxes(ctx context.Context, _ *struct{}) (*List
 	list := &sandboxv1alpha1.SandboxList{}
 	if err := h.k8sClient.List(ctx, list, client.InNamespace(h.sandboxNamespace)); err != nil {
 		h.logger.Error("failed to list sandboxes", "error", err)
-		return nil, huma.Error500InternalServerError("failed to list sandboxes")
+		return nil, k8sErrorToHuma(err, "failed to list sandboxes")
 	}
 
 	summaries := make([]SandboxSummary, len(list.Items))
@@ -116,7 +122,7 @@ func (h *SandboxHandlers) DeleteSandbox(ctx context.Context, input *DeleteSandbo
 			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
 		}
 		h.logger.Error("failed to get sandbox for deletion", "error", err, "id", input.ID)
-		return nil, huma.Error500InternalServerError("failed to delete sandbox")
+		return nil, k8sErrorToHuma(err, "failed to delete sandbox")
 	}
 
 	if err := h.k8sClient.Delete(ctx, sb); err != nil {
@@ -124,7 +130,7 @@ func (h *SandboxHandlers) DeleteSandbox(ctx context.Context, input *DeleteSandbo
 			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
 		}
 		h.logger.Error("failed to delete sandbox", "error", err, "id", input.ID)
-		return nil, huma.Error500InternalServerError("failed to delete sandbox")
+		return nil, k8sErrorToHuma(err, "failed to delete sandbox")
 	}
 
 	return &DeleteSandboxOutput{Body: DeleteSandboxResponse{
