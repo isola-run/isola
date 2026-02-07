@@ -3,8 +3,6 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"io"
-	"log/slog"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -21,7 +19,6 @@ func newHealthErrorTestAPI(funcs interceptor.Funcs) humatest.TestAPI {
 	wrappedClient := interceptor.NewClient(baseClient, funcs)
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
 	h := NewHealthHandlers(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		wrappedClient,
 	)
 	RegisterHealthRoutes(api, h)

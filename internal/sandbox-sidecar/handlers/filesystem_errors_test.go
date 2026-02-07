@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"bytes"
-	"log/slog"
 	"net/http"
 	"os"
 
@@ -40,14 +39,12 @@ var _ = Describe("Filesystem error cases", func() {
 
 	Describe("container not found", func() {
 		BeforeEach(func() {
-			logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
-
 			mockProcFS := &errorMockProcFS{
 				findPIDError: proc.ErrContainerNotFound,
 			}
 
 			_, errorAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Error Test API", "1.0.0"))
-			handler := NewFilesystemHandlers(logger, mockProcFS)
+			handler := NewFilesystemHandlers(mockProcFS)
 			RegisterFilesystemRoutes(errorAPI, handler)
 		})
 

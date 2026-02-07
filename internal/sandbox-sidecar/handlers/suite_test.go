@@ -3,7 +3,6 @@ package handlers
 import (
 	"bytes"
 	"io"
-	"log/slog"
 	"net/http/httptest"
 	"os"
 	"testing"
@@ -50,8 +49,6 @@ func TestHandlers(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
-
 	// Create temp directories for testing
 	var err error
 	testRootDir, err = os.MkdirTemp("", "sidecar-test-root-*")
@@ -73,7 +70,7 @@ var _ = BeforeSuite(func() {
 	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
 
 	healthHandlers := NewHealthHandlers()
-	filesystemHandlers := NewFilesystemHandlers(logger, mockProcFS)
+	filesystemHandlers := NewFilesystemHandlers(mockProcFS)
 
 	RegisterHealthRoutes(testAPI, healthHandlers)
 	RegisterFilesystemRoutes(testAPI, filesystemHandlers)

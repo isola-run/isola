@@ -124,10 +124,10 @@ func main() {
 	humaConfig.Info.Description = "API for managing sandboxes"
 	api := humachi.New(r, humaConfig)
 
-	healthHandlers := handlers.NewHealthHandlers(logger, mgr.GetClient())
+	healthHandlers := handlers.NewHealthHandlers(mgr.GetClient())
 	handlers.RegisterHealthRoutes(api, healthHandlers)
 
-	sandboxHandlers := handlers.NewSandboxHandlers(logger, cfg.sandboxNamespace, mgr.GetClient())
+	sandboxHandlers := handlers.NewSandboxHandlers(cfg.sandboxNamespace, mgr.GetClient())
 	handlers.RegisterSandboxRoutes(api, sandboxHandlers)
 
 	srv := &http.Server{

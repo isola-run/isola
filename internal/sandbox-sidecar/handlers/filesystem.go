@@ -10,12 +10,12 @@ import (
 	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-chi/httplog/v2"
 
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 )
 
 type FilesystemHandlers struct {
-	logger *slog.Logger
 	procFS proc.ProcFS
 
 	// PID cache to avoid repeated /proc scans (containerName -> pid)
@@ -23,9 +23,8 @@ type FilesystemHandlers struct {
 	cachedPIDs map[string]int
 }
 
-func NewFilesystemHandlers(logger *slog.Logger, procFS proc.ProcFS) *FilesystemHandlers {
+func NewFilesystemHandlers(procFS proc.ProcFS) *FilesystemHandlers {
 	return &FilesystemHandlers{
-		logger:     logger,
 		procFS:     procFS,
 		cachedPIDs: make(map[string]int),
 	}
@@ -72,6 +71,9 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 	path := input.Path
 	container := input.Container
 
+	httplog.LogEntrySetField(ctx, "container", slog.StringValue(container))
+	httplog.LogEntrySetField(ctx, "path", slog.StringValue(path))
+
 	// Reject null bytes in path
 	if strings.ContainsRune(path, 0) {
 		return nil, huma.Error400BadRequest("path contains invalid characters")
@@ -79,18 +81,19 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 
 	pid, err := h.findCachedContainerPID(container)
 	if err != nil {
+		httplog.LogEntry(ctx).Error("container not found", "error", err, "container", container)
 		return nil, huma.Error400BadRequest("container not found")
 	}
 
 	uid, gid, err := h.procFS.GetUIDGID(pid)
 	if err != nil {
-		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
+		httplog.LogEntry(ctx).Error("failed to get container uid/gid", "error", err, "pid", pid)
 		return nil, huma.Error500InternalServerError("failed to get container uid/gid")
 	}
 
 	resolvedPath, err := resolveAbsolutePath(path, pid, h.procFS)
 	if err != nil {
-		h.logger.Error("failed to resolve path", "error", err, "pid", pid)
+		httplog.LogEntry(ctx).Error("failed to resolve path", "error", err, "pid", pid)
 		return nil, huma.Error500InternalServerError("failed to resolve path")
 	}
 
@@ -99,13 +102,13 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 
 	parentDir := filepath.Dir(targetPath)
 	if err := os.MkdirAll(parentDir, 0755); err != nil { //nolint:gosec // intentional permissions for container access
-		h.logger.Error("failed to create parent directories", "error", err, "path", parentDir)
+		httplog.LogEntry(ctx).Error("failed to create parent directories", "error", err, "path", parentDir)
 		return nil, huma.Error500InternalServerError("failed to create parent directories")
 	}
 
 	dst, err := os.Create(targetPath) //nolint:gosec
 	if err != nil {
-		h.logger.Error("failed to create file", "error", err, "path", targetPath)
+		httplog.LogEntry(ctx).Error("failed to create file", "error", err, "path", targetPath)
 		return nil, huma.Error500InternalServerError("failed to create file")
 	}
 	defer func() { _ = dst.Close() }()
@@ -113,15 +116,15 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 	// Stream the body to the file
 	written, err := io.Copy(dst, input.Stream)
 	if err != nil {
-		h.logger.Error("failed to write file", "error", err, "path", targetPath)
+		httplog.LogEntry(ctx).Error("failed to write file", "error", err, "path", targetPath)
 		return nil, huma.Error500InternalServerError("failed to write file")
 	}
 
 	if err := os.Chmod(targetPath, 0600); err != nil {
-		h.logger.Error("failed to set file permissions", "error", err, "path", targetPath)
+		httplog.LogEntry(ctx).Error("failed to set file permissions", "error", err, "path", targetPath)
 	}
 	if err := os.Chown(targetPath, uid, gid); err != nil {
-		h.logger.Error("failed to set file ownership", "error", err, "path", targetPath, "uid", uid, "gid", gid)
+		httplog.LogEntry(ctx).Error("failed to set file ownership", "error", err, "path", targetPath, "uid", uid, "gid", gid)
 	}
 
 	return &FilesystemWriteOutput{

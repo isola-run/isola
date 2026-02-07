@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log/slog"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -28,7 +26,6 @@ func newErrorTestAPI(funcs interceptor.Funcs) humatest.TestAPI {
 	wrappedClient := interceptor.NewClient(baseClient, funcs)
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
 	h := NewSandboxHandlers(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		testNamespace,
 		wrappedClient,
 	)

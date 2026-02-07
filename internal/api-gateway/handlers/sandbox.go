@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-chi/httplog/v2"
 	gonanoid "github.com/matoous/go-nanoid/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -35,14 +36,12 @@ func GenerateSandboxName() (string, error) {
 }
 
 type SandboxHandlers struct {
-	logger           *slog.Logger
 	k8sClient        client.Client
 	sandboxNamespace string
 }
 
-func NewSandboxHandlers(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client) *SandboxHandlers {
+func NewSandboxHandlers(sandboxNamespace string, k8sClient client.Client) *SandboxHandlers {
 	return &SandboxHandlers{
-		logger:           logger,
 		k8sClient:        k8sClient,
 		sandboxNamespace: sandboxNamespace,
 	}
@@ -68,15 +67,20 @@ func (h *SandboxHandlers) PostSandbox(ctx context.Context, input *CreateSandboxI
 		if statusErr, ok := err.(*apierrors.StatusError); ok {
 			return nil, huma.Error400BadRequest(statusErr.ErrStatus.Message)
 		}
-		h.logger.Error("failed to create sandbox", "error", err)
+		httplog.LogEntry(ctx).Error("failed to create sandbox", "error", err)
 		return nil, huma.Error500InternalServerError("failed to create sandbox")
 	}
+
+	httplog.LogEntrySetField(ctx, "sandbox", slog.StringValue(name))
+	httplog.LogEntry(ctx).Info("Sandbox created", "image", req.PodTemplate.Container.Image)
 
 	resp := sandboxToResponse(sb)
 	return &CreateSandboxOutput{Body: resp}, nil
 }
 
 func (h *SandboxHandlers) GetSandbox(ctx context.Context, input *GetSandboxInput) (*GetSandboxOutput, error) {
+	httplog.LogEntrySetField(ctx, "sandbox", slog.StringValue(input.ID))
+
 	sb := &sandboxv1alpha1.Sandbox{}
 	key := client.ObjectKey{Name: input.ID, Namespace: h.sandboxNamespace}
 
@@ -84,7 +88,7 @@ func (h *SandboxHandlers) GetSandbox(ctx context.Context, input *GetSandboxInput
 		if apierrors.IsNotFound(err) {
 			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
 		}
-		h.logger.Error("failed to get sandbox", "error", err, "id", input.ID)
+		httplog.LogEntry(ctx).Error("failed to get sandbox", "error", err)
 		return nil, huma.Error500InternalServerError("failed to get sandbox")
 	}
 
@@ -95,7 +99,7 @@ func (h *SandboxHandlers) GetSandbox(ctx context.Context, input *GetSandboxInput
 func (h *SandboxHandlers) ListSandboxes(ctx context.Context, _ *struct{}) (*ListSandboxesOutput, error) {
 	list := &sandboxv1alpha1.SandboxList{}
 	if err := h.k8sClient.List(ctx, list, client.InNamespace(h.sandboxNamespace)); err != nil {
-		h.logger.Error("failed to list sandboxes", "error", err)
+		httplog.LogEntry(ctx).Error("failed to list sandboxes", "error", err)
 		return nil, huma.Error500InternalServerError("failed to list sandboxes")
 	}
 
@@ -108,6 +112,8 @@ func (h *SandboxHandlers) ListSandboxes(ctx context.Context, _ *struct{}) (*List
 }
 
 func (h *SandboxHandlers) DeleteSandbox(ctx context.Context, input *DeleteSandboxInput) (*DeleteSandboxOutput, error) {
+	httplog.LogEntrySetField(ctx, "sandbox", slog.StringValue(input.ID))
+
 	sb := &sandboxv1alpha1.Sandbox{}
 	key := client.ObjectKey{Name: input.ID, Namespace: h.sandboxNamespace}
 
@@ -115,7 +121,7 @@ func (h *SandboxHandlers) DeleteSandbox(ctx context.Context, input *DeleteSandbo
 		if apierrors.IsNotFound(err) {
 			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
 		}
-		h.logger.Error("failed to get sandbox for deletion", "error", err, "id", input.ID)
+		httplog.LogEntry(ctx).Error("failed to get sandbox for deletion", "error", err)
 		return nil, huma.Error500InternalServerError("failed to delete sandbox")
 	}
 
@@ -123,9 +129,11 @@ func (h *SandboxHandlers) DeleteSandbox(ctx context.Context, input *DeleteSandbo
 		if apierrors.IsNotFound(err) {
 			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
 		}
-		h.logger.Error("failed to delete sandbox", "error", err, "id", input.ID)
+		httplog.LogEntry(ctx).Error("failed to delete sandbox", "error", err)
 		return nil, huma.Error500InternalServerError("failed to delete sandbox")
 	}
+
+	httplog.LogEntry(ctx).Info("Sandbox deletion initiated")
 
 	return &DeleteSandboxOutput{Body: DeleteSandboxResponse{
 		ID:     input.ID,

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"log/slog"
 	"path/filepath"
 	"testing"
 
@@ -86,14 +85,12 @@ var _ = BeforeSuite(func() {
 	}
 	Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 
-	logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
-
 	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
 
-	healthHandlers := NewHealthHandlers(logger, k8sClient)
+	healthHandlers := NewHealthHandlers(k8sClient)
 	RegisterHealthRoutes(testAPI, healthHandlers)
 
-	sandboxHandlers := NewSandboxHandlers(logger, testNamespace, k8sClient)
+	sandboxHandlers := NewSandboxHandlers(testNamespace, k8sClient)
 	RegisterSandboxRoutes(testAPI, sandboxHandlers)
 })
 

@@ -166,8 +166,7 @@ func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandbo
 
 func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) error {
 	log := logf.FromContext(ctx)
-	// todo benl reduce verbose logging
-	log.Info("Creating Pod")
+	log.Info("Creating sandbox Pod", "pod", podutil.GetSandboxPodName(sandbox.Name))
 
 	// Apply pod template labels first, then override with our labels.
 	// This prevents templates from overriding app.kubernetes.io/* etc.
@@ -266,7 +265,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		return err
 	}
 
-	log.Info("Pod created")
+	log.Info("Sandbox Pod created", "pod", sandboxPod.Name)
 
 	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "PodCreated", "Created", "Sandbox Pod created")
 
@@ -408,7 +407,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 		return err
 	}
 
-	log.Info("Creating custom NetworkPolicy", "policyName", policyName)
+	log.Info("Creating custom NetworkPolicy", "policy", policyName)
 	if err := controllerutil.SetControllerReference(sandbox, desiredNP, r.Scheme); err != nil {
 		log.Error(err, "Failed to set controller reference on custom NetworkPolicy")
 		return err
@@ -438,16 +437,16 @@ func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandb
 	if sandboxPod != nil && sandboxPod.Status.StartTime != nil {
 		// sandboxPod.Status.StartTime set once when the pod is first scheduled onto a node (survives pod restarts)
 		// it is probably closer to user intent, so if exists we use that time
-		log.Info("deduced start time from pod", "startTime", sandboxPod.Status.StartTime.Time)
+		log.V(1).Info("deduced start time from pod", "startTime", sandboxPod.Status.StartTime.Time)
 		startTime = sandboxPod.Status.StartTime.Time
 	} else {
-		log.Info("deduced start time from sandbox", "startTime", sandbox.CreationTimestamp.Time)
+		log.V(1).Info("deduced start time from sandbox", "startTime", sandbox.CreationTimestamp.Time)
 		startTime = sandbox.CreationTimestamp.Time
 	}
 
 	timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.TimeoutSeconds) * time.Second)
 
-	log.Info("calculated sandbox timeout", "timeoutAt", timeoutAt)
+	log.V(1).Info("calculated sandbox timeout", "timeoutAt", timeoutAt)
 	return &metav1.Time{Time: timeoutAt}
 }
 
@@ -661,7 +660,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// todo benl: add r.RecordEvent for events (observability)
 	log := logf.FromContext(ctx)
 
-	log.Info("Reconciling Sandbox")
+	log.V(1).Info("Reconciling Sandbox")
 
 	sandbox := &sandboxv1alpha1.Sandbox{}
 	if err := r.Get(ctx, req.NamespacedName, sandbox); err != nil {
@@ -672,8 +671,6 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		log.Error(err, "Failed to get Sandbox")
 		return ctrl.Result{}, err
 	}
-
-	log.Info("Sandbox found")
 
 	// DeepCopy to allow patching only the diff between the new sandbox and the old one
 	baseSandbox := sandbox.DeepCopy()
@@ -722,7 +719,10 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if optionalTimeoutAt != nil && r.clock().Now().After(optionalTimeoutAt.Time) {
-		log.Info("Sandbox timed out")
+		log.Info("Sandbox timed out",
+			"timeout", optionalTimeoutAt.Time,
+			"duration", r.clock().Since(sandbox.CreationTimestamp.Time),
+		)
 
 		res, cleanupDone, err := r.finalizeSandbox(ctx, sandbox, baseSandbox)
 		if err != nil {
@@ -779,7 +779,11 @@ func (r *SandboxReconciler) finalizeSandbox(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	log.Info("Executing shutdown policy for deletion")
+	policyName := "Delete"
+	if sandbox.Spec.ShutdownPolicy != nil {
+		policyName = string(sandbox.Spec.ShutdownPolicy.Policy)
+	}
+	log.Info("Finalizing sandbox", "policy", policyName)
 
 	sandboxPod, err := r.getSandboxPod(ctx, sandbox)
 	if err != nil {
@@ -804,6 +808,7 @@ func (r *SandboxReconciler) finalizeSandbox(
 		return ctrl.Result{}, false, err
 	}
 
+	log.Info("Sandbox finalized")
 	return ctrl.Result{}, true, nil
 }
 
