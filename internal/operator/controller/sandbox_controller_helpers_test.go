@@ -144,21 +144,25 @@ func setRootfsSnapshotReady(ctx context.Context, name string, ready bool, reason
 	if snap == nil {
 		return
 	}
-	status := metav1.ConditionTrue
-	if !ready {
-		status = metav1.ConditionFalse
+	if ready {
+		meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
+			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
+			Status:             metav1.ConditionTrue,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: snap.Generation,
+		})
+	} else {
+		meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
+			Type:               string(sandboxv1alpha1.RootfsSnapshotFailed),
+			Status:             metav1.ConditionTrue,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: snap.Generation,
+		})
 	}
-	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-		Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: snap.Generation,
-	})
-	if ready || reason == sandboxv1alpha1.ReasonRootfsSnapshotFailed {
-		now := metav1.Now()
-		snap.Status.CompletedAt = &now
-	}
+	now := metav1.Now()
+	snap.Status.CompletionTime = &now
 	ExpectWithOffset(1, k8sClient.Status().Update(ctx, snap)).To(Succeed())
 }
 
@@ -224,8 +228,9 @@ func recreatePodWithNodeName(ctx context.Context, podName, nodeName string, runt
 }
 
 // makePodReady updates pod status to make it appear ready
-func makePodReady(ctx context.Context, pod *corev1.Pod, containerID string) {
+func makePodReady(ctx context.Context, pod *corev1.Pod, containerID string, clock Clock) {
 	pod.Status.Phase = corev1.PodRunning
+	pod.Status.StartTime = &metav1.Time{Time: clock.Now()}
 	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
 	pod.Status.ContainerStatuses = []corev1.ContainerStatus{
 		{Name: "sandbox", ContainerID: containerID, Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},

@@ -16,7 +16,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog/v2"
-	gonanoid "github.com/matoous/go-nanoid/v2"
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -32,27 +32,6 @@ import (
 )
 
 const shutdownTimeout = 30 * time.Second
-
-const (
-	sandboxNameLength = 22
-	letterAlphabet    = "abcdefghijklmnopqrstuvwxyz"
-	fullAlphabet      = "abcdefghijklmnopqrstuvwxyz0123456789"
-)
-
-// GenerateSandboxName creates a unique sandbox name suitable for Kubernetes DNS-1123 labels.
-func GenerateSandboxName() (string, error) {
-	first, err := gonanoid.Generate(letterAlphabet, 1)
-	if err != nil {
-		return "", fmt.Errorf("generate first char: %w", err)
-	}
-
-	rest, err := gonanoid.Generate(fullAlphabet, sandboxNameLength-1)
-	if err != nil {
-		return "", fmt.Errorf("generate remaining chars: %w", err)
-	}
-
-	return first + rest, nil
-}
 
 var scheme = runtime.NewScheme()
 
@@ -70,7 +49,6 @@ type config struct {
 
 func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config) (ctrl.Manager, error) {
 	if cfg.sandboxNamespace == "" {
-		logger.Error("sandbox namespace is required")
 		return nil, errors.New("sandbox namespace is required")
 	}
 
@@ -88,8 +66,7 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 		},
 	})
 	if err != nil {
-		logger.Error("unable to create manager", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("create manager: %w", err)
 	}
 
 	go func() {
@@ -100,7 +77,6 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 	}()
 
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
-		logger.Error("cache sync failed")
 		return nil, errors.New("cache sync failed")
 	}
 	logger.Info("cache synced")
@@ -121,6 +97,7 @@ func main() {
 		Level:   cfg.logLevel,
 		DevMode: cfg.devMode,
 	})
+	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -151,6 +128,9 @@ func main() {
 
 	handlers.RegisterHealthRoutes(api, healthHandlers)
 	handlers.RegisterExecRoutes(api, execHandlers)
+
+	sandboxHandlers := handlers.NewSandboxHandlers(logger, cfg.sandboxNamespace, mgr.GetClient())
+	handlers.RegisterSandboxRoutes(api, sandboxHandlers)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.httpPort),

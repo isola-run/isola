@@ -69,12 +69,12 @@ components:
           format: uri
           readOnly: true
           type: string
-        absolute_path:
+        absolutePath:
           description: Absolute path where file was written
           examples:
             - /workspace/file.txt
           type: string
-        bytes_written:
+        bytesWritten:
           description: Number of bytes written
           examples:
             - 1024
@@ -86,8 +86,8 @@ components:
             - main
           type: string
       required:
-        - absolute_path
-        - bytes_written
+        - absolutePath
+        - bytesWritten
       type: object
     HealthResponse:
       additionalProperties: false

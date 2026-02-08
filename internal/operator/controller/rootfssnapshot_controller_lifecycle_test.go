@@ -105,7 +105,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			// Verify completion
 			snap = getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
-			Expect(snap.Status.CompletedAt).NotTo(BeNil())
+			Expect(snap.Status.CompletionTime).NotTo(BeNil())
 
 			// Advance clock past TTL
 			fakeClock.Advance(11 * time.Second)

@@ -79,7 +79,7 @@ fix-all: fmt lint-fix ## Fix all auto-fixable issues
 
 ##@ Testing
 
-ENVTEST_K8S_VERSION ?= 1.34
+ENVTEST_K8S_VERSION ?= 1.35
 FOCUS ?=
 SKIP ?=
 GO_TEST_FLAGS ?=

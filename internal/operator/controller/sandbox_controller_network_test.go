@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	"k8s.io/utils/ptr"
 )
 
 var _ = Describe("Sandbox Controller", func() {
@@ -93,7 +94,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-internet-only"
 
 			network := &sandboxv1alpha1.NetworkSpec{
-				AllowAllInternet: true,
+				AllowAllInternet: ptr.To(true),
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
@@ -214,7 +215,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-internet-labels"
 
 			network := &sandboxv1alpha1.NetworkSpec{
-				AllowAllInternet: true,
+				AllowAllInternet: ptr.To(true),
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
@@ -232,7 +233,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-dns-labels"
 
 			network := &sandboxv1alpha1.NetworkSpec{
-				AllowClusterDNS: true,
+				AllowClusterDNS: ptr.To(true),
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
@@ -250,7 +251,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-dns-cluster"
 
 			network := &sandboxv1alpha1.NetworkSpec{
-				AllowClusterDNS: true,
+				AllowClusterDNS: ptr.To(true),
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
@@ -349,7 +350,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-internet-dns"
 
 			network := &sandboxv1alpha1.NetworkSpec{
-				AllowAllInternet: true,
+				AllowAllInternet: ptr.To(true),
 				Nameservers:      []string{"8.8.8.8"},
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
@@ -370,28 +371,42 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.DNSConfig.Nameservers).To(ContainElement("8.8.8.8"))
 		})
 
-		It("should create custom NetworkPolicy for private nameservers with internet access", func() {
-			// Private nameservers (10.0.0.53) are in blocked ranges — need custom NP
+		It("should not create custom NetworkPolicy for CIDRs with internet access", func() {
+			sandboxName := "sandbox-internet-cidrs"
+
+			network := &sandboxv1alpha1.NetworkSpec{
+				AllowAllInternet:   ptr.To(true),
+				AllowedEgressCIDRs: []string{"1.1.1.0/24"},
+			}
+			createSandboxWithNetwork(ctx, sandboxName, network)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// CIDRs already reachable via static internet policy — no custom NP
+			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
+			Expect(np).To(BeNil())
+		})
+
+		It("should not create custom NetworkPolicy for private nameservers with internet access", func() {
+			// All nameservers skipped when internet is allowed — no custom NP
 			sandboxName := "sandbox-internet-private-dns"
 
 			network := &sandboxv1alpha1.NetworkSpec{
-				AllowAllInternet: true,
+				AllowAllInternet: ptr.To(true),
 				Nameservers:      []string{"10.0.0.53"},
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
-			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
-			Expect(np).NotTo(BeNil())
-			Expect(np.Spec.Egress).To(HaveLen(1))
-			Expect(np.Spec.Egress[0].To).To(HaveLen(1))
-			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("10.0.0.53/32"))
-			Expect(np.Spec.Egress[0].Ports).To(HaveLen(2))
+			Expect(np).To(BeNil())
 		})
 	})
 
@@ -422,7 +437,7 @@ var _ = Describe("configureDNS function", func() {
 		}
 
 		network := &sandboxv1alpha1.NetworkSpec{
-			AllowClusterDNS: true,
+			AllowClusterDNS: ptr.To(true),
 		}
 
 		configureDNS(pod, network)
@@ -457,7 +472,7 @@ var _ = Describe("configureDNS function", func() {
 		}
 
 		network := &sandboxv1alpha1.NetworkSpec{
-			AllowClusterDNS: true,
+			AllowClusterDNS: ptr.To(true),
 			Nameservers:     []string{"8.8.8.8"},
 		}
 

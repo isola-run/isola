@@ -20,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	nodev1 "k8s.io/api/node/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 )
@@ -82,7 +83,7 @@ func WithInternetAccess() SandboxOption {
 		if s.Spec.Network == nil {
 			s.Spec.Network = &sandboxv1alpha1.NetworkSpec{}
 		}
-		s.Spec.Network.AllowAllInternet = true
+		s.Spec.Network.AllowAllInternet = ptr.To(true)
 	}
 }
 
@@ -92,7 +93,7 @@ func WithClusterDNS() SandboxOption {
 		if s.Spec.Network == nil {
 			s.Spec.Network = &sandboxv1alpha1.NetworkSpec{}
 		}
-		s.Spec.Network.AllowClusterDNS = true
+		s.Spec.Network.AllowClusterDNS = ptr.To(true)
 	}
 }
 
