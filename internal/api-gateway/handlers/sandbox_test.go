@@ -30,7 +30,6 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(body.PodTemplate.Container.Resources).To(BeNil())
 
 			// Omitted fields not in response
-			Expect(body.PodTemplate.Container.Env).To(BeNil())
 			Expect(body.TimeoutSeconds).To(BeNil())
 			Expect(body.Network).To(BeNil())
 		})
@@ -60,8 +59,6 @@ var _ = Describe("Sandbox Endpoints", func() {
 			var body SandboxResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
 			Expect(body.PodTemplate.Container.Image).To(Equal("node:20"))
-			Expect(body.PodTemplate.Container.Env).To(HaveKeyWithValue("NODE_ENV", "production"))
-			Expect(body.PodTemplate.Container.Env).To(HaveKeyWithValue("PORT", "3000"))
 			Expect(body.PodTemplate.Container.Resources.Limits.CPU).To(Equal("2"))
 			Expect(body.PodTemplate.Container.Resources.Limits.Memory).To(Equal("1Gi"))
 			Expect(body.PodTemplate.Container.Resources.Requests.CPU).To(Equal("500m"))

@@ -13,32 +13,6 @@ import (
 
 var _ = Describe("Conversion functions", func() {
 
-	Describe("envVarsToMap", func() {
-		It("filters out ValueFrom entries, keeps plain values", func() {
-			envVars := []corev1.EnvVar{
-				{Name: "PLAIN", Value: "val"},
-				{Name: "FROM_SECRET", ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "s"},
-						Key:                  "k",
-					},
-				}},
-				{Name: "ALSO_PLAIN", Value: "val2"},
-			}
-			m := envVarsToMap(envVars)
-			Expect(m).To(Equal(map[string]string{"PLAIN": "val", "ALSO_PLAIN": "val2"}))
-		})
-
-		It("returns nil when all entries are ValueFrom", func() {
-			envVars := []corev1.EnvVar{
-				{Name: "FROM_FIELD", ValueFrom: &corev1.EnvVarSource{
-					FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"},
-				}},
-			}
-			Expect(envVarsToMap(envVars)).To(BeNil())
-		})
-	})
-
 	Describe("containerResourcesToSpec", func() {
 		It("returns nil for empty ResourceRequirements", func() {
 			Expect(containerResourcesToSpec(corev1.ResourceRequirements{})).To(BeNil())
@@ -92,18 +66,22 @@ var _ = Describe("Conversion functions", func() {
 		})
 	})
 
-	Describe("mapToEnvVars + envVarsToMap round-trip", func() {
-		It("round-trips plain env vars", func() {
-			m := map[string]string{"A": "1", "B": "2", "Z": "26"}
-			Expect(envVarsToMap(mapToEnvVars(m))).To(Equal(m))
-		})
-
+	Describe("mapToEnvVars", func() {
 		It("returns nil for empty map", func() {
 			Expect(mapToEnvVars(map[string]string{})).To(BeNil())
 		})
 
 		It("returns nil for nil map", func() {
 			Expect(mapToEnvVars(nil)).To(BeNil())
+		})
+
+		It("sorts keys deterministically", func() {
+			m := map[string]string{"Z": "26", "A": "1", "B": "2"}
+			result := mapToEnvVars(m)
+			Expect(result).To(HaveLen(3))
+			Expect(result[0].Name).To(Equal("A"))
+			Expect(result[1].Name).To(Equal("B"))
+			Expect(result[2].Name).To(Equal("Z"))
 		})
 	})
 

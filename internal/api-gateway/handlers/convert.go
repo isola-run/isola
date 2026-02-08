@@ -26,7 +26,6 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 	if len(sb.Spec.PodTemplate.Spec.Containers) > 0 {
 		c := sb.Spec.PodTemplate.Spec.Containers[0]
 		resp.PodTemplate.Container.Image = c.Image
-		resp.PodTemplate.Container.Env = envVarsToMap(c.Env)
 		resp.PodTemplate.Container.Resources = containerResourcesToSpec(c.Resources)
 	}
 
@@ -56,6 +55,7 @@ func conditionsToStatus(conditions []metav1.Condition) string {
 
 	// TODO: remove snapshot-related reasons from Sandbox CRD — they should be
 	// encapsulated in the RootfsSnapshot CRD only.
+	// TODO benl: make them as constants and share them with routes.go openapi enum generation
 	switch ready.Reason {
 	case "PodPending", "PodCreating", "Reconciling", "NetworkPolicyApplied":
 		return "creating"
@@ -71,25 +71,6 @@ func conditionsToStatus(conditions []metav1.Condition) string {
 	default:
 		return "unknown"
 	}
-}
-
-func envVarsToMap(envVars []corev1.EnvVar) map[string]string {
-	if len(envVars) == 0 {
-		return nil
-	}
-
-	m := make(map[string]string, len(envVars))
-	for _, e := range envVars {
-		if e.ValueFrom != nil {
-			continue
-		}
-		m[e.Name] = e.Value
-	}
-
-	if len(m) == 0 {
-		return nil
-	}
-	return m
 }
 
 func mapToEnvVars(m map[string]string) []corev1.EnvVar {

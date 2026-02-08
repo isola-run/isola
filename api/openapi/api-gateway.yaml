@@ -1,5 +1,17 @@
 components:
   schemas:
+    ContainerInfo:
+      additionalProperties: false
+      properties:
+        image:
+          description: Container image
+          type: string
+        resources:
+          $ref: "#/components/schemas/ResourcesSpec"
+          description: Resource requests and limits
+      required:
+        - image
+      type: object
     ContainerSpec:
       additionalProperties: false
       properties:
@@ -40,26 +52,6 @@ components:
           type: integer
       required:
         - podTemplate
-      type: object
-    DeleteSandboxResponse:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/schemas/DeleteSandboxResponse.json
-          format: uri
-          readOnly: true
-          type: string
-        id:
-          description: Sandbox identifier
-          type: string
-        status:
-          description: Sandbox status
-          type: string
-      required:
-        - id
-        - status
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -191,6 +183,15 @@ components:
       required:
         - container
       type: object
+    PodTemplateInfo:
+      additionalProperties: false
+      properties:
+        container:
+          $ref: "#/components/schemas/ContainerInfo"
+          description: Primary sandbox container
+      required:
+        - container
+      type: object
     ResourceList:
       additionalProperties: false
       properties:
@@ -231,7 +232,7 @@ components:
           readOnly: true
           type: string
         creationTimestamp:
-          description: Creation timestamp
+          description: Creation UTC timestamp in RFC3339 format
           type: string
         id:
           description: Sandbox identifier
@@ -240,7 +241,7 @@ components:
           $ref: "#/components/schemas/NetworkSpec"
           description: Network isolation config
         podTemplate:
-          $ref: "#/components/schemas/PodTemplate"
+          $ref: "#/components/schemas/PodTemplateInfo"
           description: Pod template
         status:
           description: Sandbox status
@@ -270,9 +271,6 @@ components:
           type: string
         id:
           description: Sandbox identifier
-          type: string
-        image:
-          description: Container image
           type: string
         status:
           description: Sandbox status
@@ -453,30 +451,14 @@ paths:
             description: Sandbox identifier
             type: string
       responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeleteSandboxResponse"
-          description: OK
-        "404":
+        "204":
+          description: No Content
+        default:
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
-          description: Not Found
-        "422":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Unprocessable Entity
-        "500":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Internal Server Error
+          description: Error
       summary: Delete a sandbox
       tags:
         - sandboxes
