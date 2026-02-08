@@ -65,11 +65,10 @@ func setupAPIGateway() huma.API {
 	// nil dependencies - handlers won't be called, only their signatures are inspected
 	healthHandlers := apigateway.NewHealthHandlers(nil, nil)
 	execHandlers := apigateway.NewExecHandlers(nil, nil, "")
+	sandboxHandlers := apigateway.NewSandboxHandlers(nil, "", nil)
 
 	apigateway.RegisterHealthRoutes(api, healthHandlers)
 	apigateway.RegisterExecRoutes(api, execHandlers)
-
-	sandboxHandlers := apigateway.NewSandboxHandlers(nil, "", nil)
 	apigateway.RegisterSandboxRoutes(api, sandboxHandlers)
 
 	return api

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
+	"time"
 
+	"github.com/coder/websocket"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -73,20 +73,59 @@ func (h *ExecHandlers) ExecProxy(ctx context.Context, input *ExecProxyInput) (*h
 		Body: func(humaCtx huma.Context) {
 			r, w := humachi.Unwrap(humaCtx)
 
-			target := &url.URL{
-				Scheme: "http",
-				Host:   fmt.Sprintf("%s:%d", podIP, sidecarPort),
+			clientConn, err := websocket.Accept(w, r, nil)
+			if err != nil {
+				h.logger.Error("websocket accept failed", "error", err)
+				return
 			}
-			proxy := &httputil.ReverseProxy{
-				Rewrite: func(pr *httputil.ProxyRequest) {
-					pr.SetURL(target)
-					pr.Out.URL.Path = "/ws/exec"
-					pr.Out.URL.RawQuery = r.URL.RawQuery
-				},
+			defer clientConn.CloseNow() //nolint:errcheck // best-effort cleanup
+
+			sidecarURL := fmt.Sprintf("ws://%s:%d/ws/exec", podIP, sidecarPort)
+			if r.URL.RawQuery != "" {
+				sidecarURL += "?" + r.URL.RawQuery
 			}
-			proxy.ServeHTTP(w, r)
+
+			// Timeout covers only the TCP+HTTP handshake; once Dial returns, the
+			// context is no longer tied to the connection's lifetime.
+			dialCtx, dialCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer dialCancel()
+			sidecarConn, resp, err := websocket.Dial(dialCtx, sidecarURL, nil)
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
+			if err != nil {
+				h.logger.Error("sidecar dial failed", "error", err, "url", sidecarURL)
+				_ = clientConn.Close(websocket.StatusInternalError, "failed to connect to sandbox")
+				return
+			}
+			defer sidecarConn.CloseNow() //nolint:errcheck // best-effort cleanup
+
+			h.logger.Info("exec proxy established", "sandbox", input.SandboxID, "sidecar", sidecarURL)
+
+			errc := make(chan error, 2)
+			go func() { errc <- proxyMessages(sidecarConn, clientConn) }()
+			go func() { errc <- proxyMessages(clientConn, sidecarConn) }()
+
+			// When either direction breaks, tear down both sides.
+			err = <-errc
+			h.logger.Info("exec proxy closed", "sandbox", input.SandboxID, "cause", err)
+			_ = clientConn.Close(websocket.StatusNormalClosure, "")
+			_ = sidecarConn.Close(websocket.StatusNormalClosure, "")
 		},
 	}, nil
+}
+
+// proxyMessages reads messages from src and writes them to dst until an error occurs.
+func proxyMessages(dst, src *websocket.Conn) error {
+	for {
+		typ, data, err := src.Read(context.Background())
+		if err != nil {
+			return err
+		}
+		if err := dst.Write(context.Background(), typ, data); err != nil {
+			return err
+		}
+	}
 }
 
 func isSandboxReady(sandbox *sandboxv1alpha1.Sandbox) bool {

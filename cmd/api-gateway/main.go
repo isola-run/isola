@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -27,6 +28,7 @@ import (
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 	"github.com/isola-ai/isola-sb/internal/api-gateway/handlers"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/web"
 	"github.com/isola-ai/isola-sb/internal/env"
 	"github.com/isola-ai/isola-sb/internal/logging"
 )
@@ -125,12 +127,18 @@ func main() {
 
 	healthHandlers := handlers.NewHealthHandlers(logger, mgr.GetClient())
 	execHandlers := handlers.NewExecHandlers(logger, mgr.GetClient(), cfg.sandboxNamespace)
+	sandboxHandlers := handlers.NewSandboxHandlers(logger, cfg.sandboxNamespace, mgr.GetClient())
 
 	handlers.RegisterHealthRoutes(api, healthHandlers)
 	handlers.RegisterExecRoutes(api, execHandlers)
-
-	sandboxHandlers := handlers.NewSandboxHandlers(logger, cfg.sandboxNamespace, mgr.GetClient())
 	handlers.RegisterSandboxRoutes(api, sandboxHandlers)
+
+	// Serve embedded web UI
+	staticContent, _ := fs.Sub(web.StaticFS, "static")
+	r.Handle("/static/*", http.StripPrefix("/static", http.FileServer(http.FS(staticContent))))
+	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+		http.ServeFileFS(w, req, staticContent, "index.html")
+	})
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.httpPort),
