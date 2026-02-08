@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -21,10 +22,12 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			var body SandboxResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body.ID).NotTo(BeEmpty())
+			Expect(body.ID).To(HaveLen(22))
+			Expect(body.ID).To(MatchRegexp(`^[a-z][a-z0-9]{21}$`))
 			Expect(body.PodTemplate.Container.Image).To(Equal("python:3.12"))
 			Expect(body.Status).To(Equal("unknown"))
-			Expect(body.CreationTimestamp).NotTo(BeEmpty())
+			_, err := time.Parse(time.RFC3339, body.CreationTimestamp)
+			Expect(err).NotTo(HaveOccurred())
 
 			// No defaults applied — gateway is a pure passthrough
 			Expect(body.PodTemplate.Container.Resources).To(BeNil())
@@ -49,24 +52,55 @@ var _ = Describe("Sandbox Endpoints", func() {
 				"timeoutSeconds": 600,
 				"network": {
 					"allowAllInternet": true,
-					"allowedEgressCIDRs": ["10.0.0.0/8"]
+					"allowClusterDNS": true,
+					"allowedEgressCIDRs": ["10.0.0.0/8"],
+					"nameservers": ["8.8.8.8"]
 				}
 			}`
 
 			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(201))
 
+			// Capture raw bytes before decoding (resp.Body is a *bytes.Buffer)
+			rawBytes := resp.Body.Bytes()
+
 			var body SandboxResponse
-			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(json.Unmarshal(rawBytes, &body)).To(Succeed())
 			Expect(body.PodTemplate.Container.Image).To(Equal("node:20"))
 			Expect(body.PodTemplate.Container.Resources.Limits.CPU).To(Equal("2"))
 			Expect(body.PodTemplate.Container.Resources.Limits.Memory).To(Equal("1Gi"))
+			Expect(body.PodTemplate.Container.Resources.Limits.EphemeralStorage).To(Equal("5Gi"))
 			Expect(body.PodTemplate.Container.Resources.Requests.CPU).To(Equal("500m"))
 			Expect(body.PodTemplate.Container.Resources.Requests.Memory).To(Equal("512Mi"))
+			Expect(body.PodTemplate.Container.Resources.Requests.EphemeralStorage).To(Equal("1Gi"))
 			Expect(*body.TimeoutSeconds).To(Equal(int64(600)))
 			Expect(body.Network).NotTo(BeNil())
 			Expect(*body.Network.AllowAllInternet).To(BeTrue())
+			Expect(*body.Network.AllowClusterDNS).To(BeTrue())
 			Expect(body.Network.AllowedEgressCIDRs).To(ConsistOf("10.0.0.0/8"))
+			Expect(body.Network.Nameservers).To(ConsistOf("8.8.8.8"))
+
+			// Env vars are write-only — response must not leak them
+			var raw map[string]json.RawMessage
+			Expect(json.Unmarshal(rawBytes, &raw)).To(Succeed())
+			var podTpl map[string]json.RawMessage
+			Expect(json.Unmarshal(raw["podTemplate"], &podTpl)).To(Succeed())
+			var container map[string]json.RawMessage
+			Expect(json.Unmarshal(podTpl["container"], &container)).To(Succeed())
+			Expect(container).NotTo(HaveKey("env"))
+
+			// Also verify via GET read-back (covers sandboxToResponse on the GET path)
+			Eventually(func() int {
+				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
+			}).Should(Equal(200))
+			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
+			var getRaw map[string]json.RawMessage
+			Expect(json.Unmarshal(getResp.Body.Bytes(), &getRaw)).To(Succeed())
+			var getPodTpl map[string]json.RawMessage
+			Expect(json.Unmarshal(getRaw["podTemplate"], &getPodTpl)).To(Succeed())
+			var getContainer map[string]json.RawMessage
+			Expect(json.Unmarshal(getPodTpl["container"], &getContainer)).To(Succeed())
+			Expect(getContainer).NotTo(HaveKey("env"))
 		})
 
 		It("rejects missing podTemplate with 422", func() {
@@ -193,11 +227,13 @@ var _ = Describe("Sandbox Endpoints", func() {
 	})
 
 	Describe("Status mapping", func() {
-		It("maps Ready=True to running", func() {
-			conditions := []metav1.Condition{
+		It("maps Ready=True to running regardless of reason", func() {
+			Expect(conditionsToStatus([]metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionTrue, Reason: "PodRunning"},
-			}
-			Expect(conditionsToStatus(conditions)).To(Equal("running"))
+			})).To(Equal("running"))
+			Expect(conditionsToStatus([]metav1.Condition{
+				{Type: "Ready", Status: metav1.ConditionTrue, Reason: "AnythingElse"},
+			})).To(Equal("running"))
 		})
 
 		It("maps PodPending to creating", func() {
@@ -207,6 +243,8 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(conditionsToStatus(conditions)).To(Equal("creating"))
 		})
 
+		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
+		// and encapsulated in the RootfsSnapshot CRD only (see convert.go TODO).
 		It("maps RootfsSnapshottingInProgress to running", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshottingInProgress"},
@@ -238,6 +276,15 @@ var _ = Describe("Sandbox Endpoints", func() {
 		It("maps PodSucceeded to stopped", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodSucceeded"},
+			}
+			Expect(conditionsToStatus(conditions)).To(Equal("stopped"))
+		})
+
+		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
+		// and encapsulated in the RootfsSnapshot CRD only (see convert.go TODO).
+		It("maps RootfsSnapshotComplete to stopped", func() {
+			conditions := []metav1.Condition{
+				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshotComplete"},
 			}
 			Expect(conditionsToStatus(conditions)).To(Equal("stopped"))
 		})

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -168,6 +169,19 @@ var _ = Describe("Sandbox Error Handling", func() {
 
 			resp := api.Get("/sandboxes")
 			Expect(resp.Code).To(Equal(500))
+		})
+
+		// Happy-path test using newErrorTestAPI for a clean fake client with no data.
+		It("returns empty array (not null) when no sandboxes exist", func() {
+			api := newErrorTestAPI(interceptor.Funcs{})
+
+			resp := api.Get("/sandboxes")
+			Expect(resp.Code).To(Equal(200))
+
+			var list ListSandboxesResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&list)).To(Succeed())
+			Expect(list.Sandboxes).NotTo(BeNil())
+			Expect(list.Sandboxes).To(HaveLen(0))
 		})
 	})
 

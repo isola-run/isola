@@ -109,6 +109,7 @@ func (h *SandboxHandlers) ListSandboxes(ctx context.Context, _ *struct{}) (*List
 		return nil, k8sErrorToHuma(err, "failed to list sandboxes")
 	}
 
+	// make (not var) ensures non-nil slice so JSON serializes as [] not null
 	summaries := make([]SandboxSummary, len(list.Items))
 	for i := range list.Items {
 		summaries[i] = sandboxToSummary(&list.Items[i])
