@@ -31,7 +31,7 @@ import (
 	"github.com/isola-ai/isola-sb/internal/logging"
 )
 
-const shutdownTimeout = 30 * time.Second
+const shutdownGracePeriod = 30 * time.Second
 
 var scheme = runtime.NewScheme()
 
@@ -145,7 +145,7 @@ func main() {
 	<-ctx.Done()
 	logger.Info("shutting down server")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGracePeriod)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
