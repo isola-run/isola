@@ -184,7 +184,6 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	maps.Copy(labels, buildNetworkLabels(sandbox.Spec.Network))
 
-	sandbox.Spec.PodTemplate.Spec.Containers[0].Command = []string{"sleep", "infinity"}
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podutil.GetSandboxPodName(sandbox.Name),
