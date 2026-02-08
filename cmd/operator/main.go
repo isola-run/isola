@@ -130,6 +130,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	if sandboxSidecarImage == "" {
+		setupLog.Error(nil, "sidecar-image is required (set ISOLA_SIDECAR_IMAGE or --sidecar-image)")
+		os.Exit(1)
+	}
+	if rootfssnapshotEnabled {
+		if rootfssnapshotUploaderImage == "" {
+			setupLog.Error(nil, "rootfssnapshot-uploader-image is required when rootfssnapshot is enabled (set ISOLA_UPLOADER_IMAGE or --rootfssnapshot-uploader-image)")
+			os.Exit(1)
+		}
+		if rootfssnapshotBucketURL == "" {
+			setupLog.Error(nil, "rootfssnapshot-bucket-url is required when rootfssnapshot is enabled (set ISOLA_ROOTFSSNAPSHOT_BUCKET_URL or --rootfssnapshot-bucket-url)")
+			os.Exit(1)
+		}
+	}
+
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
 	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
