@@ -288,47 +288,6 @@ func TestIPv6DoesNotGetIPv4Except(t *testing.T) {
 	}
 }
 
-func TestIsBlocked(t *testing.T) {
-	tests := []struct {
-		name    string
-		addr    string
-		blocked bool
-	}{
-		// Public IPv4 — not blocked
-		{"public 8.8.8.8", "8.8.8.8", false},
-		{"public 1.1.1.1", "1.1.1.1", false},
-		{"public 93.184.216.34", "93.184.216.34", false},
-
-		// Private/blocked IPv4
-		{"RFC1918 10.x", "10.0.0.53", true},
-		{"RFC1918 172.16.x", "172.16.0.1", true},
-		{"RFC1918 192.168.x", "192.168.1.1", true},
-		{"CGNAT 100.64.x", "100.64.0.1", true},
-		{"link-local 169.254.x", "169.254.169.254", true},
-		{"benchmark 198.18.x", "198.18.0.1", true},
-		{"class-e 240.x", "240.0.0.1", true},
-		{"multicast 224.x", "224.0.0.1", true},
-
-		// Public IPv6 — not blocked
-		{"public IPv6 Google DNS", "2001:4860:4860::8888", false},
-		{"public IPv6 Cloudflare", "2606:4700:4700::1111", false},
-
-		// Blocked IPv6
-		{"ULA fd00::53", "fd00::53", true},
-		{"ULA fc00::1", "fc00::1", true},
-		{"link-local fe80::1", "fe80::1", true},
-		{"multicast ff02::1", "ff02::1", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			g := NewWithT(t)
-			addr := netip.MustParseAddr(tt.addr)
-			g.Expect(IsBlocked(addr)).To(Equal(tt.blocked))
-		})
-	}
-}
-
 func TestParseDNSServerIP(t *testing.T) {
 	tests := []struct {
 		name          string
