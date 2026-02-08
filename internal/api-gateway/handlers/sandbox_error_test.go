@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,8 +19,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
-
-	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 )
 
 func newErrorTestAPI(funcs interceptor.Funcs) humatest.TestAPI {
@@ -175,9 +172,9 @@ var _ = Describe("Sandbox Error Handling", func() {
 	})
 
 	Describe("DELETE /sandboxes/{id}", func() {
-		It("returns 403 when pre-delete Get returns Forbidden", func() {
+		It("returns 403 when k8s Delete returns Forbidden", func() {
 			api := newErrorTestAPI(interceptor.Funcs{
-				Get: func(_ context.Context, _ client.WithWatch, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
+				Delete: func(_ context.Context, _ client.WithWatch, _ client.Object, _ ...client.DeleteOption) error {
 					return apierrors.NewForbidden(schema.GroupResource{Group: "sandbox.isola.run", Resource: "sandboxes"}, "some-id", fmt.Errorf("not allowed"))
 				},
 			})
@@ -186,9 +183,9 @@ var _ = Describe("Sandbox Error Handling", func() {
 			Expect(resp.Code).To(Equal(403))
 		})
 
-		It("returns 500 when pre-delete Get returns a non-NotFound error", func() {
+		It("returns 500 when k8s Delete returns a generic error", func() {
 			api := newErrorTestAPI(interceptor.Funcs{
-				Get: func(_ context.Context, _ client.WithWatch, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
+				Delete: func(_ context.Context, _ client.WithWatch, _ client.Object, _ ...client.DeleteOption) error {
 					return fmt.Errorf("etcd unavailable")
 				},
 			})
@@ -197,58 +194,15 @@ var _ = Describe("Sandbox Error Handling", func() {
 			Expect(resp.Code).To(Equal(500))
 		})
 
-		It("returns 404 when k8s Delete returns NotFound (race condition)", func() {
-			// Create a real sandbox so the pre-delete Get succeeds
-			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
-			Expect(createResp.Code).To(Equal(201))
-
-			var created SandboxResponse
-			Expect(json.NewDecoder(createResp.Body).Decode(&created)).To(Succeed())
-
-			// Wait for it to appear in the cache
-			Eventually(func() error {
-				return k8sClient.Get(ctx, keyFor(created.ID), &sandboxv1alpha1.Sandbox{})
-			}).Should(Succeed())
-
-			// Interceptor delegates Get to shared envtest client, but Delete returns NotFound
+		It("returns 204 when k8s Delete returns NotFound (idempotent)", func() {
 			api := newErrorTestAPI(interceptor.Funcs{
-				Get: func(c context.Context, _ client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-					return k8sClient.Get(c, key, obj, opts...)
-				},
 				Delete: func(_ context.Context, _ client.WithWatch, _ client.Object, _ ...client.DeleteOption) error {
-					return apierrors.NewNotFound(schema.GroupResource{Group: "sandbox.isola.run", Resource: "sandboxes"}, created.ID)
+					return apierrors.NewNotFound(schema.GroupResource{Group: "sandbox.isola.run", Resource: "sandboxes"}, "some-id")
 				},
 			})
 
-			resp := api.Delete(fmt.Sprintf("/sandboxes/%s", created.ID))
-			Expect(resp.Code).To(Equal(404))
-		})
-
-		It("returns 500 when k8s Delete returns a generic error", func() {
-			// Create a real sandbox so the pre-delete Get succeeds
-			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
-			Expect(createResp.Code).To(Equal(201))
-
-			var created SandboxResponse
-			Expect(json.NewDecoder(createResp.Body).Decode(&created)).To(Succeed())
-
-			// Wait for it to appear in the cache
-			Eventually(func() error {
-				return k8sClient.Get(ctx, keyFor(created.ID), &sandboxv1alpha1.Sandbox{})
-			}).Should(Succeed())
-
-			// Interceptor delegates Get to shared envtest client, but Delete returns generic error
-			api := newErrorTestAPI(interceptor.Funcs{
-				Get: func(c context.Context, _ client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-					return k8sClient.Get(c, key, obj, opts...)
-				},
-				Delete: func(_ context.Context, _ client.WithWatch, _ client.Object, _ ...client.DeleteOption) error {
-					return fmt.Errorf("storage backend unavailable")
-				},
-			})
-
-			resp := api.Delete(fmt.Sprintf("/sandboxes/%s", created.ID))
-			Expect(resp.Code).To(Equal(500))
+			resp := api.Delete("/sandboxes/some-id")
+			Expect(resp.Code).To(Equal(204))
 		})
 	})
 })

@@ -70,10 +70,6 @@ type ListSandboxesOutput struct {
 	Body ListSandboxesResponse
 }
 
-type DeleteSandboxOutput struct {
-	Body DeleteSandboxResponse
-}
-
 type SandboxResponse struct {
 	ID                string       `json:"id" doc:"Sandbox identifier"`
 	PodTemplate       PodTemplate  `json:"podTemplate" doc:"Pod template"`
@@ -93,7 +89,3 @@ type ListSandboxesResponse struct {
 	Sandboxes []SandboxSummary `json:"sandboxes" doc:"List of sandboxes"`
 }
 
-type DeleteSandboxResponse struct {
-	ID     string `json:"id" doc:"Sandbox identifier"`
-	Status string `json:"status" doc:"Sandbox status"`
-}

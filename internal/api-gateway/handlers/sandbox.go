@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	gonanoid "github.com/matoous/go-nanoid/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
@@ -116,28 +117,18 @@ func (h *SandboxHandlers) ListSandboxes(ctx context.Context, _ *struct{}) (*List
 	return &ListSandboxesOutput{Body: ListSandboxesResponse{Sandboxes: summaries}}, nil
 }
 
-func (h *SandboxHandlers) DeleteSandbox(ctx context.Context, input *DeleteSandboxInput) (*DeleteSandboxOutput, error) {
-	sb := &sandboxv1alpha1.Sandbox{}
-	key := client.ObjectKey{Name: input.ID, Namespace: h.sandboxNamespace}
-
-	if err := h.k8sClient.Get(ctx, key, sb); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
-		}
-		h.logger.Error("failed to get sandbox for deletion", "error", err, "id", input.ID)
-		return nil, k8sErrorToHuma(err, "failed to delete sandbox")
+func (h *SandboxHandlers) DeleteSandbox(ctx context.Context, input *DeleteSandboxInput) (*struct{}, error) {
+	sb := &sandboxv1alpha1.Sandbox{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      input.ID,
+			Namespace: h.sandboxNamespace,
+		},
 	}
 
-	if err := h.k8sClient.Delete(ctx, sb); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
-		}
+	if err := client.IgnoreNotFound(h.k8sClient.Delete(ctx, sb)); err != nil {
 		h.logger.Error("failed to delete sandbox", "error", err, "id", input.ID)
 		return nil, k8sErrorToHuma(err, "failed to delete sandbox")
 	}
 
-	return &DeleteSandboxOutput{Body: DeleteSandboxResponse{
-		ID:     input.ID,
-		Status: "shuttingDown",
-	}}, nil
+	return nil, nil
 }

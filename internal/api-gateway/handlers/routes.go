@@ -82,6 +82,5 @@ func RegisterSandboxRoutes(api huma.API, h *SandboxHandlers) {
 		Path:        "/sandboxes/{id}",
 		Summary:     "Delete a sandbox",
 		Tags:        []string{"sandboxes"},
-		Errors:      []int{http.StatusNotFound},
 	}, h.DeleteSandbox)
 }

@@ -178,40 +178,20 @@ var _ = Describe("Sandbox Endpoints", func() {
 	})
 
 	Describe("DELETE /sandboxes/{id}", func() {
-		It("deletes a sandbox and returns shuttingDown", func() {
-			// Create first
+		It("deletes a sandbox and returns 204", func() {
 			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"busybox:latest"}}}`))
 			Expect(createResp.Code).To(Equal(201))
 
 			var created SandboxResponse
 			Expect(json.NewDecoder(createResp.Body).Decode(&created)).To(Succeed())
 
-			// Wait for cache to sync, then delete
-			Eventually(func() int {
-				return testAPI.Delete(fmt.Sprintf("/sandboxes/%s", created.ID)).Code
-			}).Should(Equal(200))
-
-			// Re-create to verify response shape (previous delete consumed the sandbox)
-			createResp = testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"busybox:latest"}}}`))
-			Expect(createResp.Code).To(Equal(201))
-			Expect(json.NewDecoder(createResp.Body).Decode(&created)).To(Succeed())
-
-			Eventually(func() int {
-				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", created.ID)).Code
-			}).Should(Equal(200))
-
 			delResp := testAPI.Delete(fmt.Sprintf("/sandboxes/%s", created.ID))
-			Expect(delResp.Code).To(Equal(200))
-
-			var deleted DeleteSandboxResponse
-			Expect(json.NewDecoder(delResp.Body).Decode(&deleted)).To(Succeed())
-			Expect(deleted.ID).To(Equal(created.ID))
-			Expect(deleted.Status).To(Equal("shuttingDown"))
+			Expect(delResp.Code).To(Equal(204))
 		})
 
-		It("returns 404 for nonexistent sandbox", func() {
+		It("returns 204 for nonexistent sandbox (idempotent)", func() {
 			resp := testAPI.Delete("/sandboxes/nonexistent")
-			Expect(resp.Code).To(Equal(404))
+			Expect(resp.Code).To(Equal(204))
 		})
 	})
 
