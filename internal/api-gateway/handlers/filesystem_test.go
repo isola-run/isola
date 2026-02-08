@@ -126,6 +126,7 @@ var _ = Describe("Filesystem Proxy", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusCreated)
 				_ = json.NewEncoder(w).Encode(sidecarapi.FilesystemWriteResponse{
 					AbsolutePath: "/workspace/hello.txt",
 					BytesWritten: int64(len(capturedBody)),
@@ -170,6 +171,7 @@ var _ = Describe("Filesystem Proxy", func() {
 				hasContainer = r.URL.Query().Has("container")
 
 				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusCreated)
 				_ = json.NewEncoder(w).Encode(sidecarapi.FilesystemWriteResponse{
 					AbsolutePath: "/tmp/test.txt",
 					BytesWritten: 4,
@@ -251,6 +253,26 @@ var _ = Describe("Filesystem Proxy", func() {
 				strings.NewReader("data"),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("returns 502 when sidecar returns invalid JSON on success", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte("not json"))
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
+				"Content-Type: application/octet-stream",
+				strings.NewReader("data"),
+			)
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 
 		It("falls back to status text when sidecar error body is unreadable", func() {
