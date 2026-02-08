@@ -128,7 +128,6 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 		Body: FilesystemWriteResponse{
 			AbsolutePath: resolvedPath,
 			BytesWritten: written,
-			Container:    container,
 		},
 	}, nil
 }

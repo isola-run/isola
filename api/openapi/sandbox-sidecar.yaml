@@ -80,11 +80,6 @@ components:
             - 1024
           format: int64
           type: integer
-        container:
-          description: Container name
-          examples:
-            - main
-          type: string
       required:
         - absolutePath
         - bytesWritten
@@ -126,12 +121,12 @@ paths:
           schema:
             description: Destination path (absolute or relative to container cwd)
             type: string
-        - description: Container name (defaults to main container)
+        - description: Container name. Defaults to the only container if there is one, otherwise it's required.
           explode: false
           in: query
           name: container
           schema:
-            description: Container name (defaults to main container)
+            description: Container name. Defaults to the only container if there is one, otherwise it's required.
             type: string
       requestBody:
         content:
