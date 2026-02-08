@@ -17,7 +17,7 @@ import (
 	"github.com/isola-ai/isola-sb/internal/constants"
 )
 
-// HTTPDoer abstracts HTTP request execution (satisfied by *http.Client).
+// HTTPDoer abstracts HTTP request execution (satisfied by *http.Client), for faking it in tests.
 type HTTPDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
