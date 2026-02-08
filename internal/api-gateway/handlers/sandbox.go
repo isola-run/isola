@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
 	gonanoid "github.com/matoous/go-nanoid/v2"
@@ -13,7 +14,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	"github.com/isola-ai/isola-sb/internal/constants"
 )
+
+// HTTPDoer abstracts HTTP request execution (satisfied by *http.Client).
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
 
 const (
 	sandboxNameLength = 22
@@ -48,13 +55,17 @@ type SandboxHandlers struct {
 	logger           *slog.Logger
 	k8sClient        client.Client
 	sandboxNamespace string
+	httpClient       HTTPDoer
+	sidecarPort      int
 }
 
-func NewSandboxHandlers(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client) *SandboxHandlers {
+func NewSandboxHandlers(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client, httpClient HTTPDoer) *SandboxHandlers {
 	return &SandboxHandlers{
 		logger:           logger,
 		k8sClient:        k8sClient,
 		sandboxNamespace: sandboxNamespace,
+		httpClient:       httpClient,
+		sidecarPort:      constants.SidecarPort,
 	}
 }
 

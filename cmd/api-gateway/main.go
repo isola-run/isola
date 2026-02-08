@@ -84,6 +84,16 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 	return mgr, nil
 }
 
+func initSandboxClient() *http.Client {
+	// currently no Timeout set as it's hard to expect the size of the files
+	// for different usecases, and no demand for making it configurable atm
+	return &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse // sidecar should never redirect
+		},
+	}
+}
+
 func main() {
 	cfg := config{}
 
@@ -126,7 +136,7 @@ func main() {
 	healthHandlers := handlers.NewHealthHandlers(logger, mgr.GetClient())
 	handlers.RegisterHealthRoutes(api, healthHandlers)
 
-	sandboxHandlers := handlers.NewSandboxHandlers(logger, cfg.sandboxNamespace, mgr.GetClient())
+	sandboxHandlers := handlers.NewSandboxHandlers(logger, cfg.sandboxNamespace, mgr.GetClient(), initSandboxClient())
 	handlers.RegisterSandboxRoutes(api, sandboxHandlers)
 
 	srv := &http.Server{

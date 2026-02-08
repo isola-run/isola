@@ -83,4 +83,22 @@ func RegisterSandboxRoutes(api huma.API, h *SandboxHandlers) {
 		Summary:     "Delete a sandbox",
 		Tags:        []string{"sandboxes"},
 	}, h.DeleteSandbox)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "write-sandbox-filesystem",
+		Method:      http.MethodPost,
+		Path:        "/sandboxes/{id}/filesystem",
+		Summary:     "Write a file to sandbox filesystem",
+		Description: "Streams a file upload to the specified path in the sandbox container",
+		Tags:        []string{"sandboxes"},
+		RequestBody: &huma.RequestBody{
+			Content: map[string]*huma.MediaType{
+				"application/octet-stream": {
+					Schema: &huma.Schema{Type: "string", Format: "binary"},
+				},
+			},
+		},
+		DefaultStatus: http.StatusOK,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.PostFilesystem)
 }

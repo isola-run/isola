@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"path/filepath"
 	"testing"
 
@@ -93,7 +94,7 @@ var _ = BeforeSuite(func() {
 	healthHandlers := NewHealthHandlers(logger, k8sClient)
 	RegisterHealthRoutes(testAPI, healthHandlers)
 
-	sandboxHandlers := NewSandboxHandlers(logger, testNamespace, k8sClient)
+	sandboxHandlers := NewSandboxHandlers(logger, testNamespace, k8sClient, &http.Client{})
 	RegisterSandboxRoutes(testAPI, sandboxHandlers)
 })
 

@@ -1,5 +1,11 @@
 package handlers
 
+import (
+	"io"
+
+	"github.com/danielgtaylor/huma/v2"
+)
+
 type HealthResponse struct {
 	Status string `json:"status" example:"ok" doc:"Health status"`
 }
@@ -99,4 +105,33 @@ type SandboxSummary struct {
 
 type ListSandboxesResponse struct {
 	Sandboxes []SandboxSummary `json:"sandboxes" doc:"List of sandboxes"`
+}
+
+// --- Filesystem types ---
+
+// BodyStream provides streaming access to request body via Huma's Resolver pattern.
+// See https://github.com/danielgtaylor/huma/issues/749
+type BodyStream struct {
+	Stream io.Reader
+}
+
+func (b *BodyStream) Resolve(ctx huma.Context) []error {
+	b.Stream = ctx.BodyReader()
+	return nil
+}
+
+type FilesystemWriteInput struct {
+	ID        string `path:"id" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" doc:"Destination path (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+	BodyStream
+}
+
+type FilesystemWriteResponse struct {
+	AbsolutePath string `json:"absolutePath" example:"/workspace/file.txt" doc:"Absolute path where file was written"`
+	BytesWritten int64  `json:"bytesWritten" example:"1024" doc:"Number of bytes written"`
+}
+
+type FilesystemWriteOutput struct {
+	Body FilesystemWriteResponse
 }

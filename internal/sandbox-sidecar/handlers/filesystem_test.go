@@ -74,7 +74,7 @@ var _ = Describe("Filesystem", func() {
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 
-		It("includes container in response when specified", func() {
+		It("succeeds when container is specified", func() {
 			content := []byte("container test")
 			resp := doPost("/filesystem?path=/tmp/container-test.txt&container=main", content)
 
@@ -83,7 +83,7 @@ var _ = Describe("Filesystem", func() {
 			var body FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(body.Container).To(Equal("main"))
+			Expect(body.AbsolutePath).To(Equal("/tmp/container-test.txt"))
 		})
 
 		It("writes empty file", func() {
@@ -124,7 +124,7 @@ var _ = Describe("Filesystem", func() {
 			var body FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(body.Container).To(BeEmpty())
+			Expect(body.AbsolutePath).To(Equal("/tmp/no-container.txt"))
 		})
 
 		It("rejects path with null bytes", func() {
