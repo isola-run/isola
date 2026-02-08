@@ -99,7 +99,7 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&sandboxSidecarImage, "sidecar-image", "sandbox-sidecar:latest", "Container image for the sandbox-sidecar")
+	flag.StringVar(&sandboxSidecarImage, "sidecar-image", os.Getenv("ISOLA_SIDECAR_IMAGE"), "Container image for the sandbox-sidecar")
 	flag.StringVar(&runtimeClassName, "runtime-class", "gvisor", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
 	flag.StringVar(&priorityClassName, "priority-class", "", "PriorityClassName to use for sandbox pods. Empty means use cluster default.")
 	flag.StringVar(&isolaAPINamespace, "api-namespace", "isola-system", "Namespace where api-gateway runs (for NetworkPolicy ingress rules)")
@@ -128,6 +128,21 @@ func main() {
 	if runtimeType != "" && runtimeType != "gvisor" && runtimeType != "clusterDefault" {
 		setupLog.Error(nil, "Invalid runtime type", "runtimeType", runtimeType, "allowed", []string{"gvisor", "clusterDefault"})
 		os.Exit(1)
+	}
+
+	if sandboxSidecarImage == "" {
+		setupLog.Error(nil, "sidecar-image is required (set ISOLA_SIDECAR_IMAGE or --sidecar-image)")
+		os.Exit(1)
+	}
+	if rootfssnapshotEnabled {
+		if rootfssnapshotUploaderImage == "" {
+			setupLog.Error(nil, "rootfssnapshot-uploader-image is required when rootfssnapshot is enabled (set ISOLA_UPLOADER_IMAGE or --rootfssnapshot-uploader-image)")
+			os.Exit(1)
+		}
+		if rootfssnapshotBucketURL == "" {
+			setupLog.Error(nil, "rootfssnapshot-bucket-url is required when rootfssnapshot is enabled (set ISOLA_ROOTFSSNAPSHOT_BUCKET_URL or --rootfssnapshot-bucket-url)")
+			os.Exit(1)
+		}
 	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled

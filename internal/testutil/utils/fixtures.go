@@ -28,18 +28,18 @@ import (
 // SandboxOption is a functional option for configuring Sandbox
 type SandboxOption func(*sandboxv1alpha1.Sandbox)
 
-// WithSandboxTimeout sets the timeout for the sandbox
-func WithSandboxTimeout(seconds int64) SandboxOption {
+// WithSandboxActiveDeadline sets the active deadline for the sandbox
+func WithSandboxActiveDeadline(seconds int64) SandboxOption {
 	return func(s *sandboxv1alpha1.Sandbox) {
-		s.Spec.TimeoutSeconds = &seconds
+		s.Spec.ActiveDeadlineSeconds = &seconds
 	}
 }
 
-// WithSandboxShutdownPolicy sets the shutdown policy for the sandbox
-func WithSandboxShutdownPolicy(policy sandboxv1alpha1.SandboxShutdownPolicy) SandboxOption {
+// WithSandboxShutdownStrategy sets the shutdown strategy for the sandbox
+func WithSandboxShutdownStrategy(strategy sandboxv1alpha1.SandboxShutdownStrategy) SandboxOption {
 	return func(s *sandboxv1alpha1.Sandbox) {
 		s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-			Policy: policy,
+			Strategy: strategy,
 		}
 	}
 }
@@ -49,7 +49,7 @@ func WithSandboxActiveDeadlineSeconds(seconds int64) SandboxOption {
 	return func(s *sandboxv1alpha1.Sandbox) {
 		if s.Spec.ShutdownPolicy == nil {
 			s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-				Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
+				Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 			}
 		}
 		s.Spec.ShutdownPolicy.ActiveDeadlineSeconds = &seconds

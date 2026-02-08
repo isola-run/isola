@@ -1,6 +1,7 @@
 # Start with: tilt up
 
 load('ext://helm_resource', 'helm_resource', 'helm_repo')
+load('ext://namespace', 'namespace_create')
 
 # ==============================================================================
 # Configuration
@@ -11,11 +12,6 @@ allow_k8s_contexts('kind-isola-dev')
 
 # Local registry (created by hack/setup.sh)
 default_registry('localhost:5001')
-
-# Suppress warning for images that are built but deployed indirectly
-# - sandbox-sidecar: injected by operator into sandbox pods
-# - isola-uploader: used by triggered rootfs snapshot jobs
-update_settings(suppress_unused_image_warnings=["sandbox-sidecar", "isola-uploader"])
 
 # ==============================================================================
 # LocalStack (S3 storage backend)
@@ -58,6 +54,7 @@ docker_build(
     context='.',
     dockerfile='cmd/uploader/Dockerfile',
     only=['cmd/uploader/', 'internal/', 'go.mod', 'go.sum'],
+    match_in_env_vars=True,
 )
 
 docker_build(
@@ -65,28 +62,20 @@ docker_build(
     context='.',
     dockerfile='cmd/sandbox-sidecar/Dockerfile',
     only=['cmd/sandbox-sidecar/', 'internal/', 'go.mod', 'go.sum'],
+    match_in_env_vars=True,
 )
 
-helm_resource(
+namespace_create('isola-system')
+
+k8s_yaml(helm(
+    'charts/isola',
     name='isola',
-    chart='charts/isola',
     namespace='isola-system',
-    flags=[
-        '--create-namespace',
-        '-f', 'charts/isola/values-dev.yaml',
-    ],
-    image_deps=['isola-operator', 'sandbox-sidecar', 'isola-uploader', 'api-gateway'],
-    image_keys=[
-        ('operator.image.repository', 'operator.image.tag'),
-        ('operator.sidecar.image.repository', 'operator.sidecar.image.tag'),
-        ('operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.repository', 'operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.tag'),
-        ('apiGateway.image.repository', 'apiGateway.image.tag'),
-    ],
-    deps=['charts/isola'],
-    resource_deps=['localstack'],
-    port_forwards=[port_forward(8080, 8080, name='api-gateway')],
-    labels=['isola'],
-)
+    values=['charts/isola/values-dev.yaml'],
+))
+
+k8s_resource('isola-operator', resource_deps=['localstack'], labels=['isola'])
+k8s_resource('isola-api-gateway', port_forwards=[port_forward(8080, 8080, name='api-gateway')], resource_deps=['isola-operator'], labels=['isola'])
 
 # ==============================================================================
 # E2E Tests (manual trigger)

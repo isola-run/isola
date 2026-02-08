@@ -25,9 +25,9 @@ type PodTemplate struct {
 }
 
 type CreateSandboxRequest struct {
-	PodTemplate    PodTemplate  `json:"podTemplate" required:"true" doc:"Pod template"`
-	TimeoutSeconds *int64       `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
-	Network        *NetworkSpec `json:"network,omitempty" doc:"Network isolation config"`
+	PodTemplate           PodTemplate  `json:"podTemplate" required:"true" doc:"Pod template"`
+	ActiveDeadlineSeconds *int64       `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
+	Network               *NetworkSpec `json:"network,omitempty" doc:"Network isolation config"`
 }
 
 type ResourcesSpec struct {
@@ -81,12 +81,12 @@ type ListSandboxesOutput struct {
 }
 
 type SandboxResponse struct {
-	ID                string          `json:"id" doc:"Sandbox identifier"`
-	PodTemplate       PodTemplateInfo `json:"podTemplate" doc:"Pod template"`
-	TimeoutSeconds    *int64          `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
-	Network           *NetworkSpec    `json:"network,omitempty" doc:"Network isolation config"`
-	Status            string          `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
-	CreationTimestamp string          `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
+	ID                    string          `json:"id" doc:"Sandbox identifier"`
+	PodTemplate           PodTemplateInfo `json:"podTemplate" doc:"Pod template"`
+	ActiveDeadlineSeconds *int64          `json:"activeDeadlineSeconds,omitempty" doc:"Max lifetime in seconds"`
+	Network               *NetworkSpec    `json:"network,omitempty" doc:"Network isolation config"`
+	Status                string          `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
+	CreationTimestamp     string          `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
 
 type SandboxSummary struct {
