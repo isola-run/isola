@@ -54,7 +54,7 @@ type ShutdownPolicy struct {
 	// +optional
 	// +kubebuilder:default=Delete
 	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
-	Policy SandboxShutdownPolicy `json:"policy"`
+	Policy SandboxShutdownPolicy `json:"policy,omitempty"`
 
 	// ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
 	// that the snapshot job may be active before the system tries to terminate it.
