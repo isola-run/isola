@@ -100,8 +100,8 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **Sandbox** - A running sandbox instance. Key spec fields:
 - `podTemplate` (required) - Inlined pod template with containers, volumes, etc.
-- `timeoutSeconds` - Max lifetime; operator calculates `status.timeoutAt` from pod start time
-- `shutdownPolicy` - `Delete` (default) or `SnapshotRootfs` (triggers rootfs snapshot before deletion)
+- `activeDeadlineSeconds` - Max lifetime; operator calculates `status.timeoutAt` from pod start time
+- `shutdownPolicy` - ShutdownPolicy struct with `strategy` (`Delete` default, or `SnapshotRootfs`) and optional `activeDeadlineSeconds` for the snapshot job
 - `network` - NetworkSpec for isolation rules (immutable after creation)
 
 **RootfsSnapshot** - Triggers a snapshot of a sandbox's filesystem. Creates an uploader Job that tarballs the container rootfs and uploads to cloud storage. Supports TTL-based auto-deletion.
@@ -174,7 +174,7 @@ make test GO_TEST_FLAGS="-race"      # With race detector
 - `SKIP` - Ginkgo skip pattern
 - `GO_TEST_FLAGS` - Additional go test flags
 
-**Operator tests** use a `FakeClock` (internal `Clock` interface) for deterministic timeout and snapshot testing — no flaky time.Sleep waits. Test fixtures in `internal/testutil/utils/fixtures.go` use functional options (`WithSandboxTimeout`, `WithNetworkSpec`, `WithInternetAccess`, etc.).
+**Operator tests** use a `FakeClock` (internal `Clock` interface) for deterministic timeout and snapshot testing — no flaky time.Sleep waits. Test fixtures in `internal/testutil/utils/fixtures.go` use functional options (`WithSandboxActiveDeadline`, `WithNetworkSpec`, `WithInternetAccess`, etc.).
 
 **API gateway tests** use `humatest.TestAPI` for HTTP request/response testing against a real envtest K8s backend. Tests use `Eventually()` for cache eventual consistency. Error injection tests use controller-runtime's `interceptor.Funcs` to inject fake K8s API errors.
 
@@ -184,6 +184,7 @@ Tool versions are pinned and must be kept in sync:
 
 | Tool | Location | Also sync with |
 |------|----------|----------------|
+| Go | `Makefile` (`GO_VERSION`), `go.mod` | Dockerfile `FROM golang:` tags |
 | golangci-lint | `hack/setup.sh` | `.github/workflows/lint.yml` |
 | govulncheck | `hack/setup.sh` | - |
 | setup-envtest | `hack/setup.sh`, `.github/workflows/test.yml` | - |
