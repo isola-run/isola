@@ -23,6 +23,22 @@ tilt up                 # Start dev environment (http://localhost:10350)
 # Make sure to keep the Tiltfile updated on changes to the cluster
 ```
 
+## Critical Rules
+
+**NEVER GUESS technical details.** This includes but is not limited to:
+- Version numbers or version tags (e.g., package versions, tool versions, API versions)
+- Package import paths or module names
+- API endpoints, URLs, or connection strings
+- Configuration file formats or schema details
+- Command-line flags or arguments
+
+If you don't know something:
+1. **Search/verify first** - Use WebSearch, WebFetch, or Read to find accurate information
+2. **Ask the user** - If you can't verify, ask rather than assume
+3. **Test it** - When possible, try the command/code to verify it works
+
+Never make assumptions about version compatibility, release tag formats, or tool behavior. Always verify.
+
 ## CRD Workflow
 
 After modifying `api/v1alpha1/*_types.go`:
@@ -70,8 +86,8 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 - `cmd/uploader/` - Snapshot uploader job (uploads tarballs to S3/GCS/Azure)
 - `cmd/openapi-gen/` - CLI tool to generate OpenAPI specs from Huma types
 - `internal/operator/controller/` - Reconciler implementations
-- `internal/api-gateway/` - api-gateway handlers and route registrations
-- `internal/sandbox-sidecar/` - Sidecar handlers and route registrations
+- `internal/api-gateway/handlers/` - REST handlers, Huma route registrations, REST↔CRD conversion
+- `internal/sandbox-sidecar/handlers/` - Sidecar handlers and route registrations
 - `internal/snapshot/` - Shared snapshot types (used by operator and uploader)
 - `charts/` - Helm charts (source of truth for deployment)
 - `charts/isola/generated/` - Auto-generated RBAC from kubebuilder annotations (do not edit)
@@ -82,13 +98,37 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 ## CRDs
 
-**Sandbox** - A running sandbox instance. Contains an inlined PodTemplate, optional TimeoutSeconds, ShutdownPolicy, and NetworkSpec.
+**Sandbox** - A running sandbox instance. Key spec fields:
+- `podTemplate` (required) - Inlined pod template with containers, volumes, etc.
+- `timeoutSeconds` - Max lifetime; operator calculates `status.timeoutAt` from pod start time
+- `shutdownPolicy` - `Delete` (default) or `SnapshotRootfs` (triggers rootfs snapshot before deletion)
+- `network` - NetworkSpec for isolation rules (immutable after creation)
 
 **RootfsSnapshot** - Triggers a snapshot of a sandbox's filesystem. Creates an uploader Job that tarballs the container rootfs and uploads to cloud storage. Supports TTL-based auto-deletion.
 
+## REST API (api-gateway)
+
+The api-gateway is a thin passthrough to K8s — it validates input structure but does not apply domain defaults (that's the operator's job). Uses Huma framework on chi router.
+
+**Endpoints:**
+- `POST /sandboxes` → 201 (created), 409 (conflict), 400/422 (validation)
+- `GET /sandboxes` → 200 (list of summaries — not paginated)
+- `GET /sandboxes/{id}` → 200, 404
+- `DELETE /sandboxes/{id}` → 204 (idempotent: both success and not-found)
+
+**REST ↔ CRD conversion (`convert.go`):**
+REST types are separate from CRD types with explicit conversion in `convert.go`. Key behaviors:
+- `requestToSandboxCR` generates a 22-char alphanumeric name (starts with letter, DNS-1123 safe)
+- Resource quantity strings (e.g. "125m", "512Mi") are parsed via K8s `resource.ParseQuantity` — failures return 400 with the field name
+- Env var map keys are sorted for deterministic CRD output
+- `sandboxToResponse` reads only the first container (single-container model for now)
+- `conditionsToStatus` maps K8s condition Reasons to user-facing status enum: `creating`, `running`, `shuttingDown`, `failed`, `stopped`, `unknown`
+
+**Env vars are write-only:** Request types accept env vars but response types intentionally omit them to avoid leaking secrets. `ContainerSpec` (request) has `Env`; `ContainerInfo` (response) does not.
+
 ## Sharp Edges
 
-**Two-client pattern in tests:** `suite_test.go` uses both `k8sClient` (direct, no cache delay for test writes) and `k8sCache` (cached, required for field index queries). Use the direct client for test assertions.
+**Two-client pattern in operator tests:** `suite_test.go` uses both `k8sClient` (direct, no cache delay for test writes) and `k8sCache` (cached, required for field index queries). Use the direct client for test assertions. The api-gateway tests use a single cached client from the manager.
 
 **Conditions, not phases:** Sandbox status uses K8s conditions (`Ready`, `PodReady`, `NetworkConfigured`), not the deprecated phase pattern.
 
@@ -97,11 +137,11 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 - Custom rules via `Sandbox.spec.network` (NetworkSpec):
   - `allowAllInternet: true` - allows 0.0.0.0/0 egress (private ranges auto-blocked)
   - `allowedEgressCIDRs` - specific CIDR allowlist
-  - `allowedEgressPods` - allow egress to pods matching labels
   - `nameservers` - custom DNS servers (default: sink or 8.8.8.8/1.1.1.1 for internet)
 - Network config is **immutable** after sandbox creation
 - Static NetworkPolicies deployed via Helm handle base isolation
 - Custom per-sandbox NetworkPolicies created by operator when NetworkSpec is set
+- `allowAllInternet` and `allowClusterDNS` are `*bool` (pointer) — custom policy only created when CIDRs or private nameservers are specified
 
 **Finalizers:** `sandbox.isola.run/cleanup` ensures cleanup before sandbox deletion.
 
@@ -124,7 +164,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 make test                            # Run all tests
 make test-verbose                    # All tests with verbose output
 make test-operator                   # Operator tests only
-make test-gateway                        # api-gateway tests only
+make test-gateway                    # api-gateway tests only
 make test-operator FOCUS="Reconcile" # Focused by Ginkgo pattern
 make test GO_TEST_FLAGS="-race"      # With race detector
 ```
@@ -133,6 +173,10 @@ make test GO_TEST_FLAGS="-race"      # With race detector
 - `FOCUS` - Ginkgo focus pattern for component targets
 - `SKIP` - Ginkgo skip pattern
 - `GO_TEST_FLAGS` - Additional go test flags
+
+**Operator tests** use a `FakeClock` (internal `Clock` interface) for deterministic timeout and snapshot testing — no flaky time.Sleep waits. Test fixtures in `internal/testutil/utils/fixtures.go` use functional options (`WithSandboxTimeout`, `WithNetworkSpec`, `WithInternetAccess`, etc.).
+
+**API gateway tests** use `humatest.TestAPI` for HTTP request/response testing against a real envtest K8s backend. Tests use `Eventually()` for cache eventual consistency. Error injection tests use controller-runtime's `interceptor.Funcs` to inject fake K8s API errors.
 
 ## Tooling Versions
 

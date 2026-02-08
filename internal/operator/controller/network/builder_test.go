@@ -23,6 +23,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	"k8s.io/utils/ptr"
 )
 
 func TestBuildCustomNetworkPolicy_NilNetwork(t *testing.T) {
@@ -124,7 +125,7 @@ func TestBuildCustomNetworkPolicy_WithNameservers(t *testing.T) {
 func TestBuildCustomNetworkPolicy_NameserversWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: true,
+		AllowAllInternet: ptr.To(true),
 		Nameservers:      []string{"8.8.8.8"},
 	}
 
@@ -137,40 +138,33 @@ func TestBuildCustomNetworkPolicy_NameserversWithInternetAccess(t *testing.T) {
 func TestBuildCustomNetworkPolicy_PrivateNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: true,
+		AllowAllInternet: ptr.To(true),
 		Nameservers:      []string{"10.0.0.53"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
 	g.Expect(err).ToNot(HaveOccurred())
-	// Private nameserver is in a blocked range — custom NP still needed
-	g.Expect(np).ToNot(BeNil())
-	g.Expect(np.Spec.Egress).To(HaveLen(1))
-	g.Expect(np.Spec.Egress[0].To).To(HaveLen(1))
-	g.Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("10.0.0.53/32"))
-	g.Expect(np.Spec.Egress[0].Ports).To(HaveLen(2))
+	// All nameservers skipped when internet is allowed — no custom NP
+	g.Expect(np).To(BeNil())
 }
 
 func TestBuildCustomNetworkPolicy_MixedNameserversWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: true,
+		AllowAllInternet: ptr.To(true),
 		Nameservers:      []string{"8.8.8.8", "10.0.0.53", "1.1.1.1"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
 	g.Expect(err).ToNot(HaveOccurred())
-	// Only the private nameserver needs a rule — public ones already reachable
-	g.Expect(np).ToNot(BeNil())
-	g.Expect(np.Spec.Egress).To(HaveLen(1))
-	g.Expect(np.Spec.Egress[0].To).To(HaveLen(1))
-	g.Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("10.0.0.53/32"))
+	// All nameservers skipped when internet is allowed — no custom NP
+	g.Expect(np).To(BeNil())
 }
 
 func TestBuildCustomNetworkPolicy_IPv6PublicNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: true,
+		AllowAllInternet: ptr.To(true),
 		Nameservers:      []string{"2001:4860:4860::8888"},
 	}
 
@@ -183,23 +177,20 @@ func TestBuildCustomNetworkPolicy_IPv6PublicNameserverWithInternetAccess(t *test
 func TestBuildCustomNetworkPolicy_IPv6PrivateNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: true,
+		AllowAllInternet: ptr.To(true),
 		Nameservers:      []string{"fd00::53"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
 	g.Expect(err).ToNot(HaveOccurred())
-	// ULA address is in blocked IPv6 range — custom NP needed
-	g.Expect(np).ToNot(BeNil())
-	g.Expect(np.Spec.Egress).To(HaveLen(1))
-	g.Expect(np.Spec.Egress[0].To).To(HaveLen(1))
-	g.Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("fd00::53/128"))
+	// All nameservers skipped when internet is allowed — no custom NP
+	g.Expect(np).To(BeNil())
 }
 
 func TestBuildCustomNetworkPolicy_NameserversWithoutInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: false,
+		AllowAllInternet: ptr.To(false),
 		Nameservers:      []string{"8.8.8.8", "10.0.0.53"},
 	}
 
@@ -217,17 +208,42 @@ func TestBuildCustomNetworkPolicy_NameserversWithoutInternetAccess(t *testing.T)
 func TestBuildCustomNetworkPolicy_CIDRsAndPublicNameserversWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet:   true,
+		AllowAllInternet:   ptr.To(true),
 		Nameservers:        []string{"8.8.8.8"},
 		AllowedEgressCIDRs: []string{"1.1.1.0/24"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
 	g.Expect(err).ToNot(HaveOccurred())
-	// Public NS filtered out, but CIDR rule is independent and still creates a policy
-	g.Expect(np).ToNot(BeNil())
-	g.Expect(np.Spec.Egress).To(HaveLen(1))
-	g.Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("1.1.1.0/24"))
+	// Both public NS and public CIDR already reachable via static internet policy
+	g.Expect(np).To(BeNil())
+}
+
+func TestBuildCustomNetworkPolicy_CIDRsOnlyWithInternetAccess(t *testing.T) {
+	g := NewWithT(t)
+	network := &sandboxv1alpha1.NetworkSpec{
+		AllowAllInternet:   ptr.To(true),
+		AllowedEgressCIDRs: []string{"8.8.8.0/24", "1.1.1.0/24"},
+	}
+
+	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
+	g.Expect(err).ToNot(HaveOccurred())
+	// All CIDRs already reachable via static internet policy
+	g.Expect(np).To(BeNil())
+}
+
+func TestBuildCustomNetworkPolicy_CIDRsAndPrivateNameserverWithInternetAccess(t *testing.T) {
+	g := NewWithT(t)
+	network := &sandboxv1alpha1.NetworkSpec{
+		AllowAllInternet:   ptr.To(true),
+		Nameservers:        []string{"10.0.0.53"},
+		AllowedEgressCIDRs: []string{"1.1.1.0/24"},
+	}
+
+	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
+	g.Expect(err).ToNot(HaveOccurred())
+	// Both CIDRs and nameservers skipped when internet is allowed
+	g.Expect(np).To(BeNil())
 }
 
 func TestBuildCustomNetworkPolicy_InvalidNameserver(t *testing.T) {

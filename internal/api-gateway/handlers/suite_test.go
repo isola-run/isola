@@ -92,6 +92,9 @@ var _ = BeforeSuite(func() {
 
 	healthHandlers := NewHealthHandlers(logger, k8sClient)
 	RegisterHealthRoutes(testAPI, healthHandlers)
+
+	sandboxHandlers := NewSandboxHandlers(logger, testNamespace, k8sClient)
+	RegisterSandboxRoutes(testAPI, sandboxHandlers)
 })
 
 var _ = AfterSuite(func() {

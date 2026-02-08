@@ -25,9 +25,9 @@ Most sandboxes use static Helm-installed NetworkPolicies based on pod labels:
   - sandbox-allow-internet: Allows internet egress for pods with isola.run/allow-internet=true
   - sandbox-allow-cluster-dns: Allows cluster DNS for pods with isola.run/allow-cluster-dns=true
 
-This package builds custom NetworkPolicies only when needed:
+This package builds custom NetworkPolicies only when needed (and allowAllInternet is not true):
   - Custom egress CIDRs are specified
-  - Custom nameservers are specified (may be private IPs)
+  - Custom nameservers are specified
 */
 package network
 
@@ -62,40 +62,44 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 		return nil, nil
 	}
 
-	// Parse and validate egress CIDRs, collecting canonical prefixes.
-	// Deduplicate to avoid redundant rules (uses canonical string as key).
-	egressCIDRs := make([]egressCIDR, 0, len(network.AllowedEgressCIDRs))
-	seenEgress := make(map[string]bool)
-	for _, cidrStr := range network.AllowedEgressCIDRs {
-		prefix, err := cidr.ParsePrefix(cidrStr)
-		if err != nil {
-			return nil, err
+	internetAllowed := network.AllowAllInternet != nil && *network.AllowAllInternet
+	// Skip egress CIDRs when internet is already allowed, the static allow-internet
+	// policy covers all valid CIDRs.
+	var egressCIDRs []egressCIDR
+	if !internetAllowed {
+		egressCIDRs = make([]egressCIDR, 0, len(network.AllowedEgressCIDRs))
+		seenEgress := make(map[string]bool)
+		for _, cidrStr := range network.AllowedEgressCIDRs {
+			prefix, err := cidr.ParsePrefix(cidrStr)
+			if err != nil {
+				return nil, err
+			}
+			key := prefix.String()
+			if seenEgress[key] {
+				continue
+			}
+			seenEgress[key] = true
+			except, err := cidr.ComputeExcept(prefix)
+			if err != nil {
+				return nil, err
+			}
+			egressCIDRs = append(egressCIDRs, egressCIDR{Prefix: prefix, Except: except})
 		}
-		key := prefix.String()
-		if seenEgress[key] {
-			continue
-		}
-		seenEgress[key] = true
-		except, err := cidr.ComputeExcept(prefix)
-		if err != nil {
-			return nil, err
-		}
-		egressCIDRs = append(egressCIDRs, egressCIDR{Prefix: prefix, Except: except})
 	}
 
-	// Parse nameserver IPs - egress to these IPs is automatically allowed on port 53.
-	// When AllowAllInternet is true, skip public nameservers (already reachable via
-	// static allow-internet policy) — only private IPs in blocked ranges need rules.
+	// Skip nameserver rules when internet is already allowed.
+	// Public nameservers like 1.1.1.1 are reachable via the static allow-internet policy.
+	// ClusterDNS is handled by AllowClusterDNS.
+	// Custom static-IP nameservers could be templated in allow-dns if and when need arise.
 	var dnsAddrs []netip.Addr
-	for _, ipStr := range network.Nameservers {
-		addr, err := cidr.ParseDNSServerIP(ipStr)
-		if err != nil {
-			return nil, err
+	if !internetAllowed {
+		for _, ipStr := range network.Nameservers {
+			addr, err := cidr.ParseDNSServerIP(ipStr)
+			if err != nil {
+				return nil, err
+			}
+			dnsAddrs = append(dnsAddrs, addr)
 		}
-		if network.AllowAllInternet && !cidr.IsBlocked(addr) {
-			continue
-		}
-		dnsAddrs = append(dnsAddrs, addr)
 	}
 
 	// Check if we actually need a custom policy
