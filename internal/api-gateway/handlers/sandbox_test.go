@@ -33,7 +33,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(body.PodTemplate.Container.Resources).To(BeNil())
 
 			// Omitted fields not in response
-			Expect(body.TimeoutSeconds).To(BeNil())
+			Expect(body.ActiveDeadlineSeconds).To(BeNil())
 			Expect(body.Network).To(BeNil())
 		})
 
@@ -49,7 +49,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 						}
 					}
 				},
-				"timeoutSeconds": 600,
+				"activeDeadlineSeconds": 600,
 				"network": {
 					"allowAllInternet": true,
 					"allowClusterDNS": true,
@@ -73,7 +73,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(body.PodTemplate.Container.Resources.Requests.CPU).To(Equal("500m"))
 			Expect(body.PodTemplate.Container.Resources.Requests.Memory).To(Equal("512Mi"))
 			Expect(body.PodTemplate.Container.Resources.Requests.EphemeralStorage).To(Equal("1Gi"))
-			Expect(*body.TimeoutSeconds).To(Equal(int64(600)))
+			Expect(*body.ActiveDeadlineSeconds).To(Equal(int64(600)))
 			Expect(body.Network).NotTo(BeNil())
 			Expect(*body.Network.AllowAllInternet).To(BeTrue())
 			Expect(*body.Network.AllowClusterDNS).To(BeTrue())
@@ -103,6 +103,43 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(getContainer).NotTo(HaveKey("env"))
 		})
 
+		It("round-trips command through create and get", func() {
+			reqBody := `{"podTemplate":{"container":{"image":"python:3.12","command":["python","-c","print('hello')"]}}}`
+			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(201))
+
+			var body SandboxResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.PodTemplate.Container.Command).To(Equal([]string{"python", "-c", "print('hello')"}))
+
+			// Verify via GET read-back
+			Eventually(func() int {
+				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
+			}).Should(Equal(200))
+			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
+			var got SandboxResponse
+			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
+			Expect(got.PodTemplate.Container.Command).To(Equal([]string{"python", "-c", "print('hello')"}))
+		})
+
+		It("omits command from response when not specified", func() {
+			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
+			Expect(resp.Code).To(Equal(201))
+
+			var body SandboxResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.PodTemplate.Container.Command).To(BeNil())
+
+			// Verify via GET read-back
+			Eventually(func() int {
+				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
+			}).Should(Equal(200))
+			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
+			var got SandboxResponse
+			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
+			Expect(got.PodTemplate.Container.Command).To(BeNil())
+		})
+
 		It("rejects missing podTemplate with 422", func() {
 			resp := testAPI.Post("/sandboxes", strings.NewReader(`{}`))
 			Expect(resp.Code).To(Equal(422))
@@ -114,26 +151,26 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(resp.Code).To(Equal(400))
 		})
 
-		It("rejects timeoutSeconds of 0", func() {
-			reqBody := `{"podTemplate":{"container":{"image":"x"}},"timeoutSeconds":0}`
+		It("rejects activeDeadlineSeconds of 0", func() {
+			reqBody := `{"podTemplate":{"container":{"image":"x"}},"activeDeadlineSeconds":0}`
 			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})
 
-		It("accepts omitted timeoutSeconds as no timeout", func() {
+		It("accepts omitted activeDeadlineSeconds as no timeout", func() {
 			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var body SandboxResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body.TimeoutSeconds).To(BeNil())
+			Expect(body.ActiveDeadlineSeconds).To(BeNil())
 
-			// Verify the CR also has nil timeoutSeconds (wait for cache sync)
+			// Verify the CR also has nil activeDeadlineSeconds (wait for cache sync)
 			sb := &sandboxv1alpha1.Sandbox{}
 			Eventually(func() error {
 				return k8sClient.Get(ctx, keyFor(body.ID), sb)
 			}).Should(Succeed())
-			Expect(sb.Spec.TimeoutSeconds).To(BeNil())
+			Expect(sb.Spec.ActiveDeadlineSeconds).To(BeNil())
 		})
 
 		It("omits network from response when not specified", func() {

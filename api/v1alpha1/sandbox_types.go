@@ -39,26 +39,26 @@ const (
 	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
 )
 
-// SandboxShutdownPolicy defines the policy for handling sandbox termination
+// SandboxShutdownStrategy defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotRootfs
-type SandboxShutdownPolicy string
+type SandboxShutdownStrategy string
 
 const (
-	ShutdownPolicyDelete         SandboxShutdownPolicy = "Delete"
-	ShutdownPolicySnapshotRootfs SandboxShutdownPolicy = "SnapshotRootfs"
+	ShutdownStrategyDelete         SandboxShutdownStrategy = "Delete"
+	ShutdownStrategySnapshotRootfs SandboxShutdownStrategy = "SnapshotRootfs"
 )
 
 // ShutdownPolicy controls how the sandbox is handled when it ends
 type ShutdownPolicy struct {
-	// Policy determines the action taken when the sandbox shuts down
+	// Strategy determines the action taken when the sandbox shuts down
 	// +optional
 	// +kubebuilder:default=Delete
 	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
-	Policy SandboxShutdownPolicy `json:"policy"`
+	Strategy SandboxShutdownStrategy `json:"strategy,omitempty"`
 
 	// ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
 	// that the snapshot job may be active before the system tries to terminate it.
-	// Only used when Policy is SnapshotRootfs.
+	// Only used when Strategy is SnapshotRootfs.
 	// +optional
 	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=1
@@ -112,10 +112,10 @@ type SandboxSpec struct {
 	// +required
 	PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
 
-	// TimeoutSeconds defines how long the sandbox runs before being shut down
+	// ActiveDeadlineSeconds defines how long the sandbox runs before being shut down
 	// +kubebuilder:validation:Minimum=1
 	// +optional
-	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
+	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
 
 	// ShutdownPolicy defines what to do when the sandbox ends (defaults to Delete if unspecified)
 	// +optional

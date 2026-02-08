@@ -26,10 +26,11 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 	if len(sb.Spec.PodTemplate.Spec.Containers) > 0 {
 		c := sb.Spec.PodTemplate.Spec.Containers[0]
 		resp.PodTemplate.Container.Image = c.Image
+		resp.PodTemplate.Container.Command = c.Command
 		resp.PodTemplate.Container.Resources = containerResourcesToSpec(c.Resources)
 	}
 
-	resp.TimeoutSeconds = sb.Spec.TimeoutSeconds
+	resp.ActiveDeadlineSeconds = sb.Spec.ActiveDeadlineSeconds
 	resp.Network = crdNetworkToREST(sb.Spec.Network)
 
 	return resp
@@ -143,8 +144,9 @@ func crdNetworkToREST(n *sandboxv1alpha1.NetworkSpec) *NetworkSpec {
 func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sandboxv1alpha1.Sandbox, error) {
 	c := req.PodTemplate.Container
 	container := corev1.Container{
-		Name:  containerName,
-		Image: c.Image,
+		Name:    containerName,
+		Image:   c.Image,
+		Command: c.Command,
 	}
 
 	if c.Resources != nil {
@@ -175,7 +177,7 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 					Containers: []corev1.Container{container},
 				},
 			},
-			TimeoutSeconds: req.TimeoutSeconds,
+			ActiveDeadlineSeconds: req.ActiveDeadlineSeconds,
 		},
 	}
 

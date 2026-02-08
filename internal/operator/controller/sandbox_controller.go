@@ -225,6 +225,13 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		sandboxPod.Spec.PriorityClassName = r.PriorityClassName
 	}
 
+	// Default to sleep infinity so sandbox containers stay alive
+	for i := range sandboxPod.Spec.Containers {
+		if len(sandboxPod.Spec.Containers[i].Command) == 0 {
+			sandboxPod.Spec.Containers[i].Command = []string{"sleep", "infinity"}
+		}
+	}
+
 	configureDNS(sandboxPod, sandbox.Spec.Network)
 
 	markContainers(sandboxPod)
@@ -425,7 +432,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
 	log := logf.FromContext(ctx)
 	// todo benl: update sandbox condition(s) here?
-	if sandbox.Spec.TimeoutSeconds == nil {
+	if sandbox.Spec.ActiveDeadlineSeconds == nil {
 		return nil
 	}
 
@@ -440,7 +447,7 @@ func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandb
 		startTime = sandbox.CreationTimestamp.Time
 	}
 
-	timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.TimeoutSeconds) * time.Second)
+	timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.ActiveDeadlineSeconds) * time.Second)
 
 	log.Info("calculated sandbox timeout", "timeoutAt", timeoutAt)
 	return &metav1.Time{Time: timeoutAt}
@@ -814,7 +821,7 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	if sandbox.Spec.ShutdownPolicy == nil || sandbox.Spec.ShutdownPolicy.Policy == sandboxv1alpha1.ShutdownPolicyDelete {
+	if sandbox.Spec.ShutdownPolicy == nil || sandbox.Spec.ShutdownPolicy.Strategy == sandboxv1alpha1.ShutdownStrategyDelete {
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxReadyCondition,
@@ -841,11 +848,11 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 		return ctrl.Result{}, false, err
 	}
 
-	switch sandbox.Spec.ShutdownPolicy.Policy {
-	case sandboxv1alpha1.ShutdownPolicySnapshotRootfs:
+	switch sandbox.Spec.ShutdownPolicy.Strategy {
+	case sandboxv1alpha1.ShutdownStrategySnapshotRootfs:
 		return r.handleRootfsSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, r.getActiveDeadlineSeconds(sandbox))
 	default:
-		log.Info("Unknown shutdown policy; proceeding with deletion", "policy", sandbox.Spec.ShutdownPolicy.Policy)
+		log.Info("Unknown shutdown policy; proceeding with deletion", "strategy", sandbox.Spec.ShutdownPolicy.Strategy)
 		return ctrl.Result{}, true, nil
 	}
 }

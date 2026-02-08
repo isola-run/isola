@@ -54,6 +54,12 @@ spec:
           spec:
             description: spec defines the desired state of Sandbox
             properties:
+              activeDeadlineSeconds:
+                description: ActiveDeadlineSeconds defines how long the sandbox runs
+                  before being shut down
+                format: int64
+                minimum: 1
+                type: integer
               network:
                 description: |-
                   Network specifies the network isolation configuration for this sandbox.
@@ -113,11 +119,11 @@ spec:
                     description: |-
                       ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
                       that the snapshot job may be active before the system tries to terminate it.
-                      Only used when Policy is SnapshotRootfs.
+                      Only used when Strategy is SnapshotRootfs.
                     format: int64
                     minimum: 1
                     type: integer
-                  policy:
+                  strategy:
                     allOf:
                     - enum:
                       - Delete
@@ -126,16 +132,10 @@ spec:
                       - Delete
                       - SnapshotRootfs
                     default: Delete
-                    description: Policy determines the action taken when the sandbox
+                    description: Strategy determines the action taken when the sandbox
                       shuts down
                     type: string
                 type: object
-              timeoutSeconds:
-                description: TimeoutSeconds defines how long the sandbox runs before
-                  being shut down
-                format: int64
-                minimum: 1
-                type: integer
             required:
             - podTemplate
             type: object

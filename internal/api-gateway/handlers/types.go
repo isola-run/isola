@@ -16,6 +16,7 @@ type CreateSandboxInput struct {
 
 type ContainerSpec struct {
 	Image     string            `json:"image" required:"true" doc:"Container image"`
+	Command   []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
 	Env       map[string]string `json:"env,omitempty" doc:"Environment variables"`
 	Resources *ResourcesSpec    `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
@@ -25,9 +26,9 @@ type PodTemplate struct {
 }
 
 type CreateSandboxRequest struct {
-	PodTemplate    PodTemplate  `json:"podTemplate" required:"true" doc:"Pod template"`
-	TimeoutSeconds *int64       `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
-	Network        *NetworkSpec `json:"network,omitempty" doc:"Network isolation config"`
+	PodTemplate           PodTemplate  `json:"podTemplate" required:"true" doc:"Pod template"`
+	ActiveDeadlineSeconds *int64       `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
+	Network               *NetworkSpec `json:"network,omitempty" doc:"Network isolation config"`
 }
 
 type ResourcesSpec struct {
@@ -61,6 +62,7 @@ type DeleteSandboxInput struct {
 
 type ContainerInfo struct {
 	Image     string         `json:"image" doc:"Container image"`
+	Command   []string       `json:"command,omitempty" doc:"Container entrypoint override"`
 	Resources *ResourcesSpec `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
 
@@ -81,12 +83,12 @@ type ListSandboxesOutput struct {
 }
 
 type SandboxResponse struct {
-	ID                string          `json:"id" doc:"Sandbox identifier"`
-	PodTemplate       PodTemplateInfo `json:"podTemplate" doc:"Pod template"`
-	TimeoutSeconds    *int64          `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
-	Network           *NetworkSpec    `json:"network,omitempty" doc:"Network isolation config"`
-	Status            string          `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
-	CreationTimestamp string          `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
+	ID                    string          `json:"id" doc:"Sandbox identifier"`
+	PodTemplate           PodTemplateInfo `json:"podTemplate" doc:"Pod template"`
+	ActiveDeadlineSeconds *int64          `json:"activeDeadlineSeconds,omitempty" doc:"Max lifetime in seconds"`
+	Network               *NetworkSpec    `json:"network,omitempty" doc:"Network isolation config"`
+	Status                string          `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
+	CreationTimestamp     string          `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
 
 type SandboxSummary struct {

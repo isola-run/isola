@@ -3,6 +3,13 @@ components:
     ContainerInfo:
       additionalProperties: false
       properties:
+        command:
+          description: Container entrypoint override
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         image:
           description: Container image
           type: string
@@ -15,6 +22,13 @@ components:
     ContainerSpec:
       additionalProperties: false
       properties:
+        command:
+          description: Override the container entrypoint. Defaults to sleep infinity if omitted.
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         env:
           additionalProperties:
             type: string
@@ -39,17 +53,17 @@ components:
           format: uri
           readOnly: true
           type: string
+        activeDeadlineSeconds:
+          description: Max lifetime in seconds. Omit for no timeout
+          format: int64
+          minimum: 1
+          type: integer
         network:
           $ref: "#/components/schemas/NetworkSpec"
           description: Network isolation config
         podTemplate:
           $ref: "#/components/schemas/PodTemplate"
           description: Pod template
-        timeoutSeconds:
-          description: Max lifetime in seconds. Omit for no timeout
-          format: int64
-          minimum: 1
-          type: integer
       required:
         - podTemplate
       type: object
@@ -231,6 +245,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        activeDeadlineSeconds:
+          description: Max lifetime in seconds
+          format: int64
+          type: integer
         creationTimestamp:
           description: Creation UTC timestamp in RFC3339 format
           type: string
@@ -253,10 +271,6 @@ components:
             - stopped
             - unknown
           type: string
-        timeoutSeconds:
-          description: Max lifetime in seconds
-          format: int64
-          type: integer
       required:
         - id
         - podTemplate

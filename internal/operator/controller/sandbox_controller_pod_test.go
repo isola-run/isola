@@ -179,6 +179,56 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.overlay2"))
 		})
 
+		It("should inject sleep infinity when no command is specified", func() {
+			sandboxName := "sandbox-default-cmd"
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.PodTemplate.Spec.Containers = []corev1.Container{
+					{
+						Name:  "sandbox",
+						Image: "ubuntu:22.04",
+					},
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.Containers).To(HaveLen(1))
+			Expect(pod.Spec.Containers[0].Command).To(Equal([]string{"sleep", "infinity"}))
+		})
+
+		It("should preserve explicit command and not inject sleep infinity", func() {
+			sandboxName := "sandbox-explicit-cmd"
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.PodTemplate.Spec.Containers = []corev1.Container{
+					{
+						Name:    "sandbox",
+						Image:   "python:3.11",
+						Command: []string{"python", "-c", "import time; time.sleep(3600)"},
+					},
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.Containers[0].Command).To(Equal([]string{"python", "-c", "import time; time.sleep(3600)"}))
+		})
+
 		It("should preserve sandbox init containers when injecting sidecar", func() {
 			sandboxName := "sandbox-preserve-init"
 
