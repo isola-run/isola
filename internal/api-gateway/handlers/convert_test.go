@@ -13,6 +13,76 @@ import (
 
 var _ = Describe("Conversion functions", func() {
 
+	Describe("requestToSandboxCR", func() {
+		It("passes command through to the container", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Container: ContainerSpec{
+						Image:   "python:3.12",
+						Command: []string{"python", "-c", "print('hello')"},
+					},
+				},
+			}
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Command).To(Equal([]string{"python", "-c", "print('hello')"}))
+		})
+
+		It("leaves command nil when not specified", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Container: ContainerSpec{
+						Image: "alpine:latest",
+					},
+				},
+			}
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Command).To(BeNil())
+		})
+	})
+
+	Describe("sandboxToResponse", func() {
+		It("returns command from the CRD container", func() {
+			sb := &sandboxv1alpha1.Sandbox{
+				Spec: sandboxv1alpha1.SandboxSpec{
+					PodTemplate: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:    "sandbox",
+									Image:   "python:3.12",
+									Command: []string{"python", "-c", "print('hello')"},
+								},
+							},
+						},
+					},
+				},
+			}
+			resp := sandboxToResponse(sb)
+			Expect(resp.PodTemplate.Container.Command).To(Equal([]string{"python", "-c", "print('hello')"}))
+		})
+
+		It("returns nil command when not set on container", func() {
+			sb := &sandboxv1alpha1.Sandbox{
+				Spec: sandboxv1alpha1.SandboxSpec{
+					PodTemplate: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "sandbox",
+									Image: "alpine:latest",
+								},
+							},
+						},
+					},
+				},
+			}
+			resp := sandboxToResponse(sb)
+			Expect(resp.PodTemplate.Container.Command).To(BeNil())
+		})
+	})
+
 	Describe("containerResourcesToSpec", func() {
 		It("returns nil for empty ResourceRequirements", func() {
 			Expect(containerResourcesToSpec(corev1.ResourceRequirements{})).To(BeNil())

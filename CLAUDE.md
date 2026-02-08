@@ -126,6 +126,8 @@ REST types are separate from CRD types with explicit conversion in `convert.go`.
 
 **Env vars are write-only:** Request types accept env vars but response types intentionally omit them to avoid leaking secrets. `ContainerSpec` (request) has `Env`; `ContainerInfo` (response) does not.
 
+**Default command:** Containers with no `command` get `["sleep", "infinity"]` injected by the operator so sandboxes stay alive by default. The gateway passes `command` through as-is (nil when omitted); the operator applies the default at pod creation time.
+
 ## Sharp Edges
 
 **Two-client pattern in operator tests:** `suite_test.go` uses both `k8sClient` (direct, no cache delay for test writes) and `k8sCache` (cached, required for field index queries). Use the direct client for test assertions. The api-gateway tests use a single cached client from the manager.

@@ -103,6 +103,43 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(getContainer).NotTo(HaveKey("env"))
 		})
 
+		It("round-trips command through create and get", func() {
+			reqBody := `{"podTemplate":{"container":{"image":"python:3.12","command":["python","-c","print('hello')"]}}}`
+			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(201))
+
+			var body SandboxResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.PodTemplate.Container.Command).To(Equal([]string{"python", "-c", "print('hello')"}))
+
+			// Verify via GET read-back
+			Eventually(func() int {
+				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
+			}).Should(Equal(200))
+			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
+			var got SandboxResponse
+			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
+			Expect(got.PodTemplate.Container.Command).To(Equal([]string{"python", "-c", "print('hello')"}))
+		})
+
+		It("omits command from response when not specified", func() {
+			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
+			Expect(resp.Code).To(Equal(201))
+
+			var body SandboxResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.PodTemplate.Container.Command).To(BeNil())
+
+			// Verify via GET read-back
+			Eventually(func() int {
+				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
+			}).Should(Equal(200))
+			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
+			var got SandboxResponse
+			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
+			Expect(got.PodTemplate.Container.Command).To(BeNil())
+		})
+
 		It("rejects missing podTemplate with 422", func() {
 			resp := testAPI.Post("/sandboxes", strings.NewReader(`{}`))
 			Expect(resp.Code).To(Equal(422))
