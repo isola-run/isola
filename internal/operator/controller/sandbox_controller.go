@@ -220,6 +220,13 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		sandboxPod.Spec.PriorityClassName = r.PriorityClassName
 	}
 
+	// Default to sleep infinity so sandbox containers stay alive
+	for i := range sandboxPod.Spec.Containers {
+		if len(sandboxPod.Spec.Containers[i].Command) == 0 {
+			sandboxPod.Spec.Containers[i].Command = []string{"sleep", "infinity"}
+		}
+	}
+
 	configureDNS(sandboxPod, sandbox.Spec.Network)
 
 	markContainers(sandboxPod)

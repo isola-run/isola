@@ -16,6 +16,7 @@ type CreateSandboxInput struct {
 
 type ContainerSpec struct {
 	Image     string            `json:"image" required:"true" doc:"Container image"`
+	Command   []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
 	Env       map[string]string `json:"env,omitempty" doc:"Environment variables"`
 	Resources *ResourcesSpec    `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
@@ -61,6 +62,7 @@ type DeleteSandboxInput struct {
 
 type ContainerInfo struct {
 	Image     string         `json:"image" doc:"Container image"`
+	Command   []string       `json:"command,omitempty" doc:"Container entrypoint override"`
 	Resources *ResourcesSpec `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
 
