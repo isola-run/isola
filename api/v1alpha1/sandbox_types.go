@@ -39,22 +39,22 @@ const (
 	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
 )
 
-// SandboxShutdownPolicy defines the policy for handling sandbox termination
+// SandboxShutdownStrategy defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotRootfs
-type SandboxShutdownPolicy string
+type SandboxShutdownStrategy string
 
 const (
-	ShutdownPolicyDelete         SandboxShutdownPolicy = "Delete"
-	ShutdownPolicySnapshotRootfs SandboxShutdownPolicy = "SnapshotRootfs"
+	ShutdownStrategyDelete         SandboxShutdownStrategy = "Delete"
+	ShutdownStrategySnapshotRootfs SandboxShutdownStrategy = "SnapshotRootfs"
 )
 
 // ShutdownPolicy controls how the sandbox is handled when it ends
 type ShutdownPolicy struct {
-	// Policy determines the action taken when the sandbox shuts down
+	// Strategy determines the action taken when the sandbox shuts down
 	// +optional
 	// +kubebuilder:default=Delete
 	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
-	Policy SandboxShutdownPolicy `json:"policy,omitempty"`
+	Strategy SandboxShutdownStrategy `json:"strategy,omitempty"`
 
 	// ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
 	// that the snapshot job may be active before the system tries to terminate it.

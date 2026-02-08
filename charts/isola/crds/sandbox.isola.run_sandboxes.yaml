@@ -117,7 +117,7 @@ spec:
                     format: int64
                     minimum: 1
                     type: integer
-                  policy:
+                  strategy:
                     allOf:
                     - enum:
                       - Delete
@@ -126,7 +126,7 @@ spec:
                       - Delete
                       - SnapshotRootfs
                     default: Delete
-                    description: Policy determines the action taken when the sandbox
+                    description: Strategy determines the action taken when the sandbox
                       shuts down
                     type: string
                 type: object

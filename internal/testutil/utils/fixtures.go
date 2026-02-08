@@ -35,11 +35,11 @@ func WithSandboxTimeout(seconds int64) SandboxOption {
 	}
 }
 
-// WithSandboxShutdownPolicy sets the shutdown policy for the sandbox
-func WithSandboxShutdownPolicy(policy sandboxv1alpha1.SandboxShutdownPolicy) SandboxOption {
+// WithSandboxShutdownStrategy sets the shutdown policy for the sandbox
+func WithSandboxShutdownStrategy(policy sandboxv1alpha1.SandboxShutdownStrategy) SandboxOption {
 	return func(s *sandboxv1alpha1.Sandbox) {
 		s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-			Policy: policy,
+			Strategy: policy,
 		}
 	}
 }
@@ -49,7 +49,7 @@ func WithSandboxActiveDeadlineSeconds(seconds int64) SandboxOption {
 	return func(s *sandboxv1alpha1.Sandbox) {
 		if s.Spec.ShutdownPolicy == nil {
 			s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-				Policy: sandboxv1alpha1.ShutdownPolicySnapshotRootfs,
+				Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 			}
 		}
 		s.Spec.ShutdownPolicy.ActiveDeadlineSeconds = &seconds

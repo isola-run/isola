@@ -125,7 +125,7 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Policy: sandboxv1alpha1.ShutdownPolicyDelete,
+					Strategy: sandboxv1alpha1.ShutdownStrategyDelete,
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)

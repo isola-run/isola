@@ -809,7 +809,7 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	if sandbox.Spec.ShutdownPolicy == nil || sandbox.Spec.ShutdownPolicy.Policy == sandboxv1alpha1.ShutdownPolicyDelete {
+	if sandbox.Spec.ShutdownPolicy == nil || sandbox.Spec.ShutdownPolicy.Strategy == sandboxv1alpha1.ShutdownStrategyDelete {
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxReadyCondition,
@@ -836,11 +836,11 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 		return ctrl.Result{}, false, err
 	}
 
-	switch sandbox.Spec.ShutdownPolicy.Policy {
-	case sandboxv1alpha1.ShutdownPolicySnapshotRootfs:
+	switch sandbox.Spec.ShutdownPolicy.Strategy {
+	case sandboxv1alpha1.ShutdownStrategySnapshotRootfs:
 		return r.handleRootfsSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, r.getActiveDeadlineSeconds(sandbox))
 	default:
-		log.Info("Unknown shutdown policy; proceeding with deletion", "policy", sandbox.Spec.ShutdownPolicy.Policy)
+		log.Info("Unknown shutdown policy; proceeding with deletion", "strategy", sandbox.Spec.ShutdownPolicy.Strategy)
 		return ctrl.Result{}, true, nil
 	}
 }
