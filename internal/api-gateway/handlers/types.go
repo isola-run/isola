@@ -98,4 +98,3 @@ type SandboxSummary struct {
 type ListSandboxesResponse struct {
 	Sandboxes []SandboxSummary `json:"sandboxes" doc:"List of sandboxes"`
 }
-

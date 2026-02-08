@@ -181,7 +181,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 			var list ListSandboxesResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&list)).To(Succeed())
 			Expect(list.Sandboxes).NotTo(BeNil())
-			Expect(list.Sandboxes).To(HaveLen(0))
+			Expect(list.Sandboxes).To(BeEmpty())
 		})
 	})
 
