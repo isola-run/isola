@@ -4,13 +4,14 @@
 
 ```bash
 # Lint/format (from repo root)
-make check-all          # vet + lint + vulncheck (CI-safe)
+make check-all          # vet + lint + vulncheck + check-openapi + check-manifests (CI-safe)
 make fix-all            # Auto-fix formatting and lint issues
 
 # Testing
 make test               # Unit tests with coverage
 make test-operator FOCUS="TestName"  # Run focused operator test
 make test-gateway           # Run api-gateway tests
+make test-sidecar           # Run sandbox-sidecar tests
 make generate           # Regenerate DeepCopy methods after CRD changes
 make manifests          # Regenerate CRD YAML after CRD changes
 
@@ -86,9 +87,14 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 - `cmd/uploader/` - Snapshot uploader job (uploads tarballs to S3/GCS/Azure)
 - `cmd/openapi-gen/` - CLI tool to generate OpenAPI specs from Huma types
 - `internal/operator/controller/` - Reconciler implementations
+- `internal/operator/controller/network/` - Custom per-sandbox NetworkPolicy builder
+- `internal/operator/controller/podutil/` - Pod utility functions (naming, status checks)
 - `internal/api-gateway/handlers/` - REST handlers, Huma route registrations, REST↔CRD conversion
 - `internal/sandbox-sidecar/handlers/` - Sidecar handlers and route registrations
+- `internal/sandbox-sidecar/proc/` - Procfs abstraction for container PID discovery and filesystem access
 - `internal/snapshot/` - Shared snapshot types (used by operator and uploader)
+- `internal/logging/` - Shared slog-based logging configuration (used by all services)
+- `internal/testutil/` - Test utilities and fixtures
 - `charts/` - Helm charts (source of truth for deployment)
 - `charts/isola/generated/` - Auto-generated RBAC from kubebuilder annotations (do not edit)
 
@@ -118,7 +124,7 @@ The api-gateway is a thin passthrough to K8s — it validates input structure bu
 
 **REST ↔ CRD conversion (`convert.go`):**
 REST types are separate from CRD types with explicit conversion in `convert.go`. Key behaviors:
-- `requestToSandboxCR` generates a 22-char alphanumeric name (starts with letter, DNS-1123 safe)
+- `requestToSandboxCR` generates a 22-char lowercase alphanumeric nanoid (a-z0-9, starts with letter, DNS-1123 safe)
 - Resource quantity strings (e.g. "125m", "512Mi") are parsed via K8s `resource.ParseQuantity` — failures return 400 with the field name
 - Env var map keys are sorted for deterministic CRD output
 - `sandboxToResponse` reads only the first container (single-container model for now)
@@ -143,7 +149,7 @@ REST types are separate from CRD types with explicit conversion in `convert.go`.
 - Network config is **immutable** after sandbox creation
 - Static NetworkPolicies deployed via Helm handle base isolation
 - Custom per-sandbox NetworkPolicies created by operator when NetworkSpec is set
-- `allowAllInternet` and `allowClusterDNS` are `*bool` (pointer) — custom policy only created when CIDRs or private nameservers are specified
+- `allowAllInternet` and `allowClusterDNS` are `*bool` (pointer) — custom policy only created when CIDRs or custom nameservers are specified (and `allowAllInternet` is not true)
 
 **Finalizers:** `sandbox.isola.run/cleanup` ensures cleanup before sandbox deletion.
 
@@ -154,7 +160,7 @@ REST types are separate from CRD types with explicit conversion in `convert.go`.
 3. Uploader tarballs the sandbox container's rootfs via `/proc/<pid>/root`
 4. Uploads to cloud storage (S3/GCS/Azure via gocloud.dev)
 5. Writes result to termination log, operator reads and updates status
-6. TTL controller deletes snapshot after `ttlSecondsAfterCompletion`
+6. TTL controller deletes snapshot after `ttlSecondsAfterFinished`
 
 **Dockerfiles copy all of internal/:** Each binary's Dockerfile copies the entire `internal/` directory rather than individual packages. This avoids needing to update Dockerfiles and Tiltfile when adding new `internal/` packages.
 
@@ -167,6 +173,7 @@ make test                            # Run all tests
 make test-verbose                    # All tests with verbose output
 make test-operator                   # Operator tests only
 make test-gateway                    # api-gateway tests only
+make test-sidecar                    # sandbox-sidecar tests only
 make test-operator FOCUS="Reconcile" # Focused by Ginkgo pattern
 make test GO_TEST_FLAGS="-race"      # With race detector
 ```
@@ -192,6 +199,7 @@ Tool versions are pinned and must be kept in sync:
 | setup-envtest | `hack/setup.sh`, `.github/workflows/test.yml` | - |
 | envtest K8s | `Makefile` | k8s.io/api in go.mod |
 | lefthook | `hack/setup.sh` | - |
+| controller-gen | `hack/setup.sh` | `.github/workflows/codegen.yml` |
 | gVisor | `hack/setup.sh` | `.github/workflows/e2e.yml` |
 
 ## Comment Policy
