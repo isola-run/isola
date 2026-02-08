@@ -90,7 +90,9 @@ func RegisterSandboxRoutes(api huma.API, h *SandboxHandlers) {
 		Path:        "/sandboxes/{id}/filesystem",
 		Summary:     "Write a file to sandbox filesystem",
 		Description: "Streams a file upload to the specified path in the sandbox container",
-		Tags:        []string{"sandboxes"},
+		Tags:        []string{"sandboxes", "filesystem"},
+		// Since we use BodyStream resolver (no Body/RawBody field),
+		// we need to manually specify the request body in OpenAPI
 		RequestBody: &huma.RequestBody{
 			Content: map[string]*huma.MediaType{
 				"application/octet-stream": {
@@ -98,7 +100,7 @@ func RegisterSandboxRoutes(api huma.API, h *SandboxHandlers) {
 				},
 			},
 		},
-		DefaultStatus: http.StatusOK,
+		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.PostFilesystem)
 }

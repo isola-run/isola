@@ -43,7 +43,7 @@ func RegisterFilesystemRoutes(api huma.API, h *FilesystemHandlers) {
 				},
 			},
 		},
-		DefaultStatus: http.StatusOK,
+		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusBadRequest, http.StatusInternalServerError},
 	}, h.PostFilesystem)
 }

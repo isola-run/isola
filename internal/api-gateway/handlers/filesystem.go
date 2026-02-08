@@ -27,7 +27,12 @@ func (h *SandboxHandlers) PostFilesystem(ctx context.Context, input *FilesystemW
 		return nil, k8sErrorToHuma(err, "failed to get sandbox")
 	}
 
-	if sb.Status.PodIP == "" {
+	// todo benl: stop using raw strings for sandbox status
+	if conditionsToStatus(sb.Status.Conditions) != "running" {
+		return nil, huma.Error409Conflict("sandbox is not ready")
+	}
+
+	if sb.Status.PodIP == "" { // should not happen if sandbox is ready ^
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}
 
@@ -42,7 +47,7 @@ func (h *SandboxHandlers) PostFilesystem(ctx context.Context, input *FilesystemW
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, input.Stream)
 	if err != nil {
 		h.logger.Error("failed to build sidecar request", "error", err)
-		return nil, huma.Error502BadGateway("failed to reach sidecar")
+		return nil, huma.Error500InternalServerError("failed to build sidecar request")
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
@@ -67,7 +72,7 @@ func (h *SandboxHandlers) PostFilesystem(ctx context.Context, input *FilesystemW
 }
 
 func (h *SandboxHandlers) handleSidecarError(resp *http.Response, sandboxID string) error {
-	// Read limited error body to avoid unbounded reads
+	// Read limited error body to avoid unbounded reads to memory from untrusted sandbox
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
 		h.logger.Warn("failed to read sidecar error body", "error", err, "id", sandboxID, "status", resp.StatusCode)
