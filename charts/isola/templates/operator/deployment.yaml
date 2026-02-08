@@ -35,7 +35,6 @@ spec:
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081
-        - --sidecar-image={{ include "isola.operator.sidecarImage" . }}
         {{- if .Values.operator.sandboxPriorityClassName }}
         - --priority-class={{ .Values.operator.sandboxPriorityClassName }}
         {{- end }}
@@ -64,6 +63,8 @@ spec:
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
         env:
+        - name: ISOLA_SIDECAR_IMAGE
+          value: {{ include "isola.operator.sidecarImage" . | quote }}
         - name: ISOLA_RUNTIME_TYPE
           value: {{ include "isola.operator.runtimeType" . | quote }}
         - name: ISOLA_ROOTFSSNAPSHOT_ENABLED

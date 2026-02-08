@@ -99,7 +99,7 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&sandboxSidecarImage, "sidecar-image", "sandbox-sidecar:latest", "Container image for the sandbox-sidecar")
+	flag.StringVar(&sandboxSidecarImage, "sidecar-image", os.Getenv("ISOLA_SIDECAR_IMAGE"), "Container image for the sandbox-sidecar")
 	flag.StringVar(&runtimeClassName, "runtime-class", "gvisor", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
 	flag.StringVar(&priorityClassName, "priority-class", "", "PriorityClassName to use for sandbox pods. Empty means use cluster default.")
 	flag.StringVar(&isolaAPINamespace, "api-namespace", "isola-system", "Namespace where api-gateway runs (for NetworkPolicy ingress rules)")
