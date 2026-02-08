@@ -90,7 +90,7 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 
 	var writeResp sidecarapi.FilesystemWriteResponse
 	if err := json.NewDecoder(resp.Body).Decode(&writeResp); err != nil {
-		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.ID)
+		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.ID, "status", resp.StatusCode)
 		return nil, huma.Error502BadGateway("invalid sidecar response")
 	}
 
@@ -98,26 +98,23 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 }
 
 func (h *FilesystemHandlers) handleSidecarError(resp *http.Response, sandboxID string) error {
+	if resp.StatusCode >= 500 {
+		h.logger.Error("sidecar returned server error", "id", sandboxID, "status", resp.StatusCode)
+		return huma.Error502BadGateway("sidecar internal error")
+	}
+
 	// Read limited error body to avoid unbounded reads to memory from untrusted sandbox
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
 		h.logger.Warn("failed to read sidecar error body", "error", err, "id", sandboxID, "status", resp.StatusCode)
 	}
 
-	if resp.StatusCode >= 500 {
-		h.logger.Error("sidecar returned server error", "id", sandboxID, "status", resp.StatusCode)
-		return huma.Error502BadGateway("sidecar internal error")
+	detail := http.StatusText(resp.StatusCode)
+	var sidecarErr huma.ErrorModel
+	if json.Unmarshal(body, &sidecarErr) == nil && sidecarErr.Detail != "" {
+		detail = sidecarErr.Detail
 	}
 
-	// Forward 4xx errors — try to extract detail from Huma error format
-	var humaErr struct {
-		Detail string `json:"detail"`
-	}
-	if json.Unmarshal(body, &humaErr) == nil && humaErr.Detail != "" {
-		h.logger.Debug("forwarding sidecar client error", "id", sandboxID, "status", resp.StatusCode, "detail", humaErr.Detail)
-		return huma.NewError(resp.StatusCode, humaErr.Detail)
-	}
-
-	h.logger.Debug("forwarding sidecar client error", "id", sandboxID, "status", resp.StatusCode)
-	return huma.NewError(resp.StatusCode, http.StatusText(resp.StatusCode))
+	h.logger.Debug("forwarding sidecar client error", "id", sandboxID, "status", resp.StatusCode, "detail", detail)
+	return huma.NewError(resp.StatusCode, detail)
 }
