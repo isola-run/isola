@@ -82,6 +82,21 @@ func createRunningSandboxCR() string {
 	return name
 }
 
+// errReader is an io.Reader whose Read always fails.
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+
+// brokenBodyDoer is an HTTPDoer that returns a response with an unreadable body.
+type brokenBodyDoer struct{ statusCode int }
+
+func (d *brokenBodyDoer) Do(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: d.statusCode,
+		Body:       io.NopCloser(errReader{}),
+	}, nil
+}
+
 // newFilesystemTestAPI creates a test API wired to the real envtest k8s client
 // and a custom HTTP client / sidecar port.
 func newFilesystemTestAPI(httpClient HTTPDoer, sidecarPort int) humatest.TestAPI {
@@ -228,6 +243,18 @@ var _ = Describe("Filesystem Proxy", func() {
 
 			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
 			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
+				"Content-Type: application/octet-stream",
+				strings.NewReader("data"),
+			)
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("falls back to status text when sidecar error body is unreadable", func() {
+			api := newFilesystemTestAPI(&brokenBodyDoer{statusCode: http.StatusBadRequest}, 0)
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
