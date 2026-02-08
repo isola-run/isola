@@ -29,7 +29,7 @@ func (b *BodyStream) Resolve(ctx huma.Context) []error {
 
 type FilesystemWriteInput struct {
 	Path      string `query:"path" required:"true" doc:"Destination path (absolute or relative to container cwd)"`
-	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required." `
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 	BodyStream
 }
 
