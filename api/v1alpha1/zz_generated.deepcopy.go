@@ -188,12 +188,12 @@ func (in *RootfsSnapshotStatus) DeepCopyInto(out *RootfsSnapshotStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	if in.StartedAt != nil {
-		in, out := &in.StartedAt, &out.StartedAt
+	if in.StartTime != nil {
+		in, out := &in.StartTime, &out.StartTime
 		*out = (*in).DeepCopy()
 	}
-	if in.CompletedAt != nil {
-		in, out := &in.CompletedAt, &out.CompletedAt
+	if in.CompletionTime != nil {
+		in, out := &in.CompletionTime, &out.CompletionTime
 		*out = (*in).DeepCopy()
 	}
 }
