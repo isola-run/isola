@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
+	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
 type FilesystemHandlers struct {
@@ -125,7 +126,7 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 	}
 
 	return &FilesystemWriteOutput{
-		Body: FilesystemWriteResponse{
+		Body: sidecarapi.FilesystemWriteResponse{
 			AbsolutePath: resolvedPath,
 			BytesWritten: written,
 		},

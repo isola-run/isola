@@ -8,7 +8,7 @@ import (
 
 func RegisterHealthRoutes(api huma.API, h *HealthHandlers) {
 	huma.Register(api, huma.Operation{
-		OperationID: "get-health",
+		OperationID: "getHealth",
 		Method:      http.MethodGet,
 		Path:        "/health",
 		Summary:     "Health check",
@@ -17,7 +17,7 @@ func RegisterHealthRoutes(api huma.API, h *HealthHandlers) {
 	}, h.GetHealth)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "get-healthz",
+		OperationID: "getHealthz",
 		Method:      http.MethodGet,
 		Path:        "/healthz",
 		Summary:     "Health check (alias)",
@@ -26,7 +26,7 @@ func RegisterHealthRoutes(api huma.API, h *HealthHandlers) {
 	}, h.GetHealth)
 
 	huma.Register(api, huma.Operation{
-		OperationID:   "get-ready",
+		OperationID:   "getReady",
 		Method:        http.MethodGet,
 		Path:          "/ready",
 		Summary:       "Readiness check",
@@ -37,7 +37,7 @@ func RegisterHealthRoutes(api huma.API, h *HealthHandlers) {
 	}, h.GetReady)
 
 	huma.Register(api, huma.Operation{
-		OperationID:   "get-readyz",
+		OperationID:   "getReadyz",
 		Method:        http.MethodGet,
 		Path:          "/readyz",
 		Summary:       "Readiness check (alias)",
@@ -50,7 +50,7 @@ func RegisterHealthRoutes(api huma.API, h *HealthHandlers) {
 
 func RegisterSandboxRoutes(api huma.API, h *SandboxHandlers) {
 	huma.Register(api, huma.Operation{
-		OperationID:   "create-sandbox",
+		OperationID:   "createSandbox",
 		Method:        http.MethodPost,
 		Path:          "/sandboxes",
 		Summary:       "Create a sandbox",
@@ -60,7 +60,7 @@ func RegisterSandboxRoutes(api huma.API, h *SandboxHandlers) {
 	}, h.PostSandbox)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "list-sandboxes",
+		OperationID: "listSandboxes",
 		Method:      http.MethodGet,
 		Path:        "/sandboxes",
 		Summary:     "List sandboxes",
@@ -68,7 +68,7 @@ func RegisterSandboxRoutes(api huma.API, h *SandboxHandlers) {
 	}, h.ListSandboxes)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "get-sandbox",
+		OperationID: "getSandbox",
 		Method:      http.MethodGet,
 		Path:        "/sandboxes/{id}",
 		Summary:     "Get sandbox details",
@@ -77,15 +77,17 @@ func RegisterSandboxRoutes(api huma.API, h *SandboxHandlers) {
 	}, h.GetSandbox)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "delete-sandbox",
+		OperationID: "deleteSandbox",
 		Method:      http.MethodDelete,
 		Path:        "/sandboxes/{id}",
 		Summary:     "Delete a sandbox",
 		Tags:        []string{"sandboxes"},
 	}, h.DeleteSandbox)
+}
 
+func RegisterFilesystemRoutes(api huma.API, h *FilesystemHandlers) {
 	huma.Register(api, huma.Operation{
-		OperationID: "write-sandbox-filesystem",
+		OperationID: "writeSandboxFilesystem",
 		Method:      http.MethodPost,
 		Path:        "/sandboxes/{id}/filesystem",
 		Summary:     "Write a file to sandbox filesystem",

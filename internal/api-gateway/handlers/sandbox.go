@@ -2,10 +2,8 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
 	gonanoid "github.com/matoous/go-nanoid/v2"
@@ -14,13 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
-	"github.com/isola-ai/isola-sb/internal/constants"
 )
-
-// HTTPDoer abstracts HTTP request execution (satisfied by *http.Client), for faking it in tests.
-type HTTPDoer interface {
-	Do(req *http.Request) (*http.Response, error)
-}
 
 const (
 	sandboxNameLength = 22
@@ -43,29 +35,17 @@ func generateSandboxName() (string, error) {
 	return first + rest, nil
 }
 
-func k8sErrorToHuma(err error, fallbackMsg string) error {
-	var statusErr *apierrors.StatusError
-	if errors.As(err, &statusErr) && statusErr.ErrStatus.Code > 0 {
-		return huma.NewError(int(statusErr.ErrStatus.Code), statusErr.ErrStatus.Message)
-	}
-	return huma.Error500InternalServerError(fallbackMsg)
-}
-
 type SandboxHandlers struct {
 	logger           *slog.Logger
 	k8sClient        client.Client
 	sandboxNamespace string
-	httpClient       HTTPDoer
-	sidecarPort      int
 }
 
-func NewSandboxHandlers(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client, httpClient HTTPDoer) *SandboxHandlers {
+func NewSandboxHandlers(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client) *SandboxHandlers {
 	return &SandboxHandlers{
 		logger:           logger,
 		k8sClient:        k8sClient,
 		sandboxNamespace: sandboxNamespace,
-		httpClient:       httpClient,
-		sidecarPort:      constants.SidecarPort,
 	}
 }
 

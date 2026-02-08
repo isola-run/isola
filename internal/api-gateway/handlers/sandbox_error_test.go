@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -31,7 +30,6 @@ func newErrorTestAPI(funcs interceptor.Funcs) humatest.TestAPI {
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		testNamespace,
 		wrappedClient,
-		&http.Client{},
 	)
 	RegisterSandboxRoutes(api, h)
 	return api

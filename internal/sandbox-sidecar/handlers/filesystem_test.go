@@ -8,6 +8,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
 var _ = Describe("Filesystem", func() {
@@ -16,9 +18,9 @@ var _ = Describe("Filesystem", func() {
 			content := []byte("hello world")
 			resp := doPost("/filesystem?path=/tmp/test.txt", content)
 
-			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Code).To(Equal(http.StatusCreated))
 
-			var body FilesystemWriteResponse
+			var body sidecarapi.FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(body.AbsolutePath).To(Equal("/tmp/test.txt"))
@@ -35,9 +37,9 @@ var _ = Describe("Filesystem", func() {
 			content := []byte("relative file content")
 			resp := doPost("/filesystem?path=myfile.txt", content)
 
-			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Code).To(Equal(http.StatusCreated))
 
-			var body FilesystemWriteResponse
+			var body sidecarapi.FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(body.AbsolutePath).To(Equal("/workspace/myfile.txt"))
@@ -54,9 +56,9 @@ var _ = Describe("Filesystem", func() {
 			content := []byte("nested file")
 			resp := doPost("/filesystem?path=/deep/nested/dir/file.txt", content)
 
-			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Code).To(Equal(http.StatusCreated))
 
-			var body FilesystemWriteResponse
+			var body sidecarapi.FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(body.AbsolutePath).To(Equal("/deep/nested/dir/file.txt"))
@@ -78,9 +80,9 @@ var _ = Describe("Filesystem", func() {
 			content := []byte("container test")
 			resp := doPost("/filesystem?path=/tmp/container-test.txt&container=main", content)
 
-			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Code).To(Equal(http.StatusCreated))
 
-			var body FilesystemWriteResponse
+			var body sidecarapi.FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(body.AbsolutePath).To(Equal("/tmp/container-test.txt"))
@@ -89,9 +91,9 @@ var _ = Describe("Filesystem", func() {
 		It("writes empty file", func() {
 			resp := doPost("/filesystem?path=/tmp/empty.txt", []byte{})
 
-			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Code).To(Equal(http.StatusCreated))
 
-			var body FilesystemWriteResponse
+			var body sidecarapi.FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(body.BytesWritten).To(Equal(int64(0)))
@@ -107,9 +109,9 @@ var _ = Describe("Filesystem", func() {
 			content := []byte("normalized")
 			resp := doPost("/filesystem?path=/tmp/../tmp/./normalized.txt", content)
 
-			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Code).To(Equal(http.StatusCreated))
 
-			var body FilesystemWriteResponse
+			var body sidecarapi.FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(body.AbsolutePath).To(Equal("/tmp/normalized.txt"))
@@ -119,9 +121,9 @@ var _ = Describe("Filesystem", func() {
 			content := []byte("no container specified")
 			resp := doPost("/filesystem?path=/tmp/no-container.txt", content)
 
-			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Code).To(Equal(http.StatusCreated))
 
-			var body FilesystemWriteResponse
+			var body sidecarapi.FilesystemWriteResponse
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(body.AbsolutePath).To(Equal("/tmp/no-container.txt"))

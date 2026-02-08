@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -234,4 +237,12 @@ func restNetworkToCRD(n *NetworkSpec) *sandboxv1alpha1.NetworkSpec {
 		AllowedEgressCIDRs: n.AllowedEgressCIDRs,
 		Nameservers:        n.Nameservers,
 	}
+}
+
+func k8sErrorToHuma(err error, fallbackMsg string) error {
+	var statusErr *apierrors.StatusError
+	if errors.As(err, &statusErr) && statusErr.ErrStatus.Code > 0 {
+		return huma.NewError(int(statusErr.ErrStatus.Code), statusErr.ErrStatus.Message)
+	}
+	return huma.Error500InternalServerError(fallbackMsg)
 }

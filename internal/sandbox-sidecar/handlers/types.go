@@ -4,6 +4,8 @@ import (
 	"io"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
 type HealthResponse struct {
@@ -31,11 +33,6 @@ type FilesystemWriteInput struct {
 	BodyStream
 }
 
-type FilesystemWriteResponse struct {
-	AbsolutePath string `json:"absolutePath" example:"/workspace/file.txt" doc:"Absolute path where file was written"`
-	BytesWritten int64  `json:"bytesWritten" example:"1024" doc:"Number of bytes written"`
-}
-
 type FilesystemWriteOutput struct {
-	Body FilesystemWriteResponse
+	Body sidecarapi.FilesystemWriteResponse
 }

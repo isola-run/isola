@@ -66,8 +66,11 @@ func setupAPIGateway() huma.API {
 	healthHandlers := apigateway.NewHealthHandlers(nil, nil)
 	apigateway.RegisterHealthRoutes(api, healthHandlers)
 
-	sandboxHandlers := apigateway.NewSandboxHandlers(nil, "", nil, nil)
+	sandboxHandlers := apigateway.NewSandboxHandlers(nil, "", nil)
 	apigateway.RegisterSandboxRoutes(api, sandboxHandlers)
+
+	filesystemHandlers := apigateway.NewFilesystemHandlers(nil, "", nil, nil)
+	apigateway.RegisterFilesystemRoutes(api, filesystemHandlers)
 
 	return api
 }

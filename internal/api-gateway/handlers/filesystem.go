@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 
@@ -13,9 +14,34 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	"github.com/isola-ai/isola-sb/internal/constants"
+	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
-func (h *SandboxHandlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
+// HTTPDoer abstracts HTTP request execution (satisfied by *http.Client), for faking it in tests.
+type HTTPDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+type FilesystemHandlers struct {
+	logger           *slog.Logger
+	k8sClient        client.Client
+	sandboxNamespace string
+	httpClient       HTTPDoer
+	sidecarPort      int
+}
+
+func NewFilesystemHandlers(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client, httpClient HTTPDoer) *FilesystemHandlers {
+	return &FilesystemHandlers{
+		logger:           logger,
+		k8sClient:        k8sClient,
+		sandboxNamespace: sandboxNamespace,
+		httpClient:       httpClient,
+		sidecarPort:      constants.SidecarPort,
+	}
+}
+
+func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
 	sb := &sandboxv1alpha1.Sandbox{}
 	key := client.ObjectKey{Name: input.ID, Namespace: h.sandboxNamespace}
 
@@ -62,7 +88,7 @@ func (h *SandboxHandlers) PostFilesystem(ctx context.Context, input *FilesystemW
 		return nil, h.handleSidecarError(resp, input.ID)
 	}
 
-	var writeResp FilesystemWriteResponse
+	var writeResp sidecarapi.FilesystemWriteResponse
 	if err := json.NewDecoder(resp.Body).Decode(&writeResp); err != nil {
 		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.ID)
 		return nil, huma.Error502BadGateway("invalid sidecar response")
@@ -71,7 +97,7 @@ func (h *SandboxHandlers) PostFilesystem(ctx context.Context, input *FilesystemW
 	return &FilesystemWriteOutput{Body: writeResp}, nil
 }
 
-func (h *SandboxHandlers) handleSidecarError(resp *http.Response, sandboxID string) error {
+func (h *FilesystemHandlers) handleSidecarError(resp *http.Response, sandboxID string) error {
 	// Read limited error body to avoid unbounded reads to memory from untrusted sandbox
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {

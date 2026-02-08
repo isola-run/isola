@@ -19,11 +19,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
-// createSandboxCR creates a Sandbox CR directly via the k8s client and returns its name.
-// When podIP is non-empty, it patches the status and waits for the cache to reflect it.
-func createSandboxCR(podIP string) string {
+// createSandboxCR creates a Sandbox CR and waits for it to appear in the cache.
+func createSandboxCR() string {
 	name, err := generateSandboxName()
 	Expect(err).NotTo(HaveOccurred())
 
@@ -44,24 +44,40 @@ func createSandboxCR(podIP string) string {
 	}
 	Expect(k8sClient.Create(ctx, sb)).To(Succeed())
 
-	// Wait for the sandbox to be visible in cache
 	Eventually(func() error {
 		return k8sClient.Get(ctx, client.ObjectKeyFromObject(sb), &sandboxv1alpha1.Sandbox{})
 	}).Should(Succeed())
 
-	if podIP != "" {
-		sb.Status.PodIP = podIP
-		Expect(k8sClient.Status().Update(ctx, sb)).To(Succeed())
+	return name
+}
 
-		// Wait for cache to reflect the status update
-		Eventually(func() string {
-			got := &sandboxv1alpha1.Sandbox{}
-			if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(sb), got); err != nil {
-				return ""
-			}
-			return got.Status.PodIP
-		}).Should(Equal(podIP))
+// createRunningSandboxCR creates a Sandbox CR with Ready=True status and PodIP=127.0.0.1,
+// simulating a sandbox that the operator has fully reconciled.
+func createRunningSandboxCR() string {
+	name := createSandboxCR()
+	podIP := "127.0.0.1"
+
+	sb := &sandboxv1alpha1.Sandbox{}
+	Expect(k8sClient.Get(ctx, client.ObjectKey{Name: name, Namespace: testNamespace}, sb)).To(Succeed())
+
+	sb.Status.PodIP = podIP
+	sb.Status.Conditions = []metav1.Condition{
+		{
+			Type:               "Ready",
+			Status:             metav1.ConditionTrue,
+			Reason:             "PodRunning",
+			LastTransitionTime: metav1.Now(),
+		},
 	}
+	Expect(k8sClient.Status().Update(ctx, sb)).To(Succeed())
+
+	Eventually(func() string {
+		got := &sandboxv1alpha1.Sandbox{}
+		if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(sb), got); err != nil {
+			return ""
+		}
+		return got.Status.PodIP
+	}).Should(Equal(podIP))
 
 	return name
 }
@@ -70,14 +86,14 @@ func createSandboxCR(podIP string) string {
 // and a custom HTTP client / sidecar port.
 func newFilesystemTestAPI(httpClient HTTPDoer, sidecarPort int) humatest.TestAPI {
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
-	h := NewSandboxHandlers(
+	h := NewFilesystemHandlers(
 		slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
 		testNamespace,
 		k8sClient,
 		httpClient,
 	)
 	h.sidecarPort = sidecarPort
-	RegisterSandboxRoutes(api, h)
+	RegisterFilesystemRoutes(api, h)
 	return api
 }
 
@@ -95,7 +111,7 @@ var _ = Describe("Filesystem Proxy", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(FilesystemWriteResponse{
+				_ = json.NewEncoder(w).Encode(sidecarapi.FilesystemWriteResponse{
 					AbsolutePath: "/workspace/hello.txt",
 					BytesWritten: int64(len(capturedBody)),
 				})
@@ -106,16 +122,16 @@ var _ = Describe("Filesystem Proxy", func() {
 			api := newFilesystemTestAPI(&http.Client{}, port)
 
 			// Use 127.0.0.1 as PodIP since mock sidecar is local
-			sbName := createSandboxCR("127.0.0.1")
+			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/filesystem?path=/workspace/hello.txt&container=main", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("file content here"),
 			)
-			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Code).To(Equal(http.StatusCreated))
 
-			var body FilesystemWriteResponse
+			var body sidecarapi.FilesystemWriteResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
 			Expect(body.AbsolutePath).To(Equal("/workspace/hello.txt"))
 			Expect(body.BytesWritten).To(Equal(int64(len("file content here"))))
@@ -139,7 +155,7 @@ var _ = Describe("Filesystem Proxy", func() {
 				hasContainer = r.URL.Query().Has("container")
 
 				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(FilesystemWriteResponse{
+				_ = json.NewEncoder(w).Encode(sidecarapi.FilesystemWriteResponse{
 					AbsolutePath: "/tmp/test.txt",
 					BytesWritten: 4,
 				})
@@ -148,14 +164,14 @@ var _ = Describe("Filesystem Proxy", func() {
 
 			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
 			api := newFilesystemTestAPI(&http.Client{}, port)
-			sbName := createSandboxCR("127.0.0.1")
+			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
-			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Code).To(Equal(http.StatusCreated))
 			Expect(hasContainer).To(BeFalse())
 			Expect(capturedContainer).To(BeEmpty())
 		})
@@ -173,7 +189,7 @@ var _ = Describe("Filesystem Proxy", func() {
 
 		It("returns 409 when sandbox has no PodIP", func() {
 			api := newFilesystemTestAPI(&http.Client{}, 0)
-			sbName := createSandboxCR("") // no PodIP
+			sbName := createSandboxCR() // no PodIP or Ready condition
 
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
@@ -190,7 +206,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			mockSidecar.Close()
 
 			api := newFilesystemTestAPI(&http.Client{}, port)
-			sbName := createSandboxCR("127.0.0.1")
+			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
@@ -212,7 +228,7 @@ var _ = Describe("Filesystem Proxy", func() {
 
 			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
 			api := newFilesystemTestAPI(&http.Client{}, port)
-			sbName := createSandboxCR("127.0.0.1")
+			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
@@ -230,7 +246,7 @@ var _ = Describe("Filesystem Proxy", func() {
 
 			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
 			api := newFilesystemTestAPI(&http.Client{}, port)
-			sbName := createSandboxCR("127.0.0.1")
+			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),

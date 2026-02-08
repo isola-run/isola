@@ -136,8 +136,11 @@ func main() {
 	healthHandlers := handlers.NewHealthHandlers(logger, mgr.GetClient())
 	handlers.RegisterHealthRoutes(api, healthHandlers)
 
-	sandboxHandlers := handlers.NewSandboxHandlers(logger, cfg.sandboxNamespace, mgr.GetClient(), initSandboxClient())
+	sandboxHandlers := handlers.NewSandboxHandlers(logger, cfg.sandboxNamespace, mgr.GetClient())
 	handlers.RegisterSandboxRoutes(api, sandboxHandlers)
+
+	filesystemHandlers := handlers.NewFilesystemHandlers(logger, cfg.sandboxNamespace, mgr.GetClient(), initSandboxClient())
+	handlers.RegisterFilesystemRoutes(api, filesystemHandlers)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.httpPort),
