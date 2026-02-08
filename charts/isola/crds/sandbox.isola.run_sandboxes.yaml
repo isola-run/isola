@@ -54,6 +54,12 @@ spec:
           spec:
             description: spec defines the desired state of Sandbox
             properties:
+              activeDeadlineSeconds:
+                description: ActiveDeadlineSeconds defines how long the sandbox runs
+                  before being shut down
+                format: int64
+                minimum: 1
+                type: integer
               network:
                 description: |-
                   Network specifies the network isolation configuration for this sandbox.
@@ -130,12 +136,6 @@ spec:
                       shuts down
                     type: string
                 type: object
-              timeoutSeconds:
-                description: TimeoutSeconds defines how long the sandbox runs before
-                  being shut down
-                format: int64
-                minimum: 1
-                type: integer
             required:
             - podTemplate
             type: object

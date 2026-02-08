@@ -420,7 +420,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
 	log := logf.FromContext(ctx)
 	// todo benl: update sandbox condition(s) here?
-	if sandbox.Spec.TimeoutSeconds == nil {
+	if sandbox.Spec.ActiveDeadlineSeconds == nil {
 		return nil
 	}
 
@@ -435,7 +435,7 @@ func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandb
 		startTime = sandbox.CreationTimestamp.Time
 	}
 
-	timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.TimeoutSeconds) * time.Second)
+	timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.ActiveDeadlineSeconds) * time.Second)
 
 	log.Info("calculated sandbox timeout", "timeoutAt", timeoutAt)
 	return &metav1.Time{Time: timeoutAt}

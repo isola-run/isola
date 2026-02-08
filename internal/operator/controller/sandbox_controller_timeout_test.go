@@ -65,7 +65,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(60)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ActiveDeadlineSeconds = &timeout
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
@@ -103,7 +103,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(60)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ActiveDeadlineSeconds = &timeout
 			})
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
@@ -123,7 +123,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1) // 1 second timeout
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ActiveDeadlineSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategyDelete,
 				}
@@ -152,7 +152,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ActiveDeadlineSeconds = &timeout
 				// Default policy is Delete when nil
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -181,7 +181,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(60)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ActiveDeadlineSeconds = &timeout
 			})
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")

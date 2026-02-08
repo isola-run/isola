@@ -28,10 +28,10 @@ import (
 // SandboxOption is a functional option for configuring Sandbox
 type SandboxOption func(*sandboxv1alpha1.Sandbox)
 
-// WithSandboxTimeout sets the timeout for the sandbox
-func WithSandboxTimeout(seconds int64) SandboxOption {
+// WithSandboxActiveDeadline sets the active deadline for the sandbox
+func WithSandboxActiveDeadline(seconds int64) SandboxOption {
 	return func(s *sandboxv1alpha1.Sandbox) {
-		s.Spec.TimeoutSeconds = &seconds
+		s.Spec.ActiveDeadlineSeconds = &seconds
 	}
 }
 

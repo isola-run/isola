@@ -271,8 +271,8 @@ func (in *SandboxList) DeepCopyObject() runtime.Object {
 func (in *SandboxSpec) DeepCopyInto(out *SandboxSpec) {
 	*out = *in
 	in.PodTemplate.DeepCopyInto(&out.PodTemplate)
-	if in.TimeoutSeconds != nil {
-		in, out := &in.TimeoutSeconds, &out.TimeoutSeconds
+	if in.ActiveDeadlineSeconds != nil {
+		in, out := &in.ActiveDeadlineSeconds, &out.ActiveDeadlineSeconds
 		*out = new(int64)
 		**out = **in
 	}

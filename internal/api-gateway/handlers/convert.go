@@ -29,7 +29,7 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 		resp.PodTemplate.Container.Resources = containerResourcesToSpec(c.Resources)
 	}
 
-	resp.TimeoutSeconds = sb.Spec.TimeoutSeconds
+	resp.ActiveDeadlineSeconds = sb.Spec.ActiveDeadlineSeconds
 	resp.Network = crdNetworkToREST(sb.Spec.Network)
 
 	return resp
@@ -175,7 +175,7 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 					Containers: []corev1.Container{container},
 				},
 			},
-			TimeoutSeconds: req.TimeoutSeconds,
+			ActiveDeadlineSeconds: req.ActiveDeadlineSeconds,
 		},
 	}
 

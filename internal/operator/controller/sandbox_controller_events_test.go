@@ -71,7 +71,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ActiveDeadlineSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs}
 				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
@@ -106,7 +106,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ActiveDeadlineSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs}
 				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
@@ -162,7 +162,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ActiveDeadlineSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs}
 				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
