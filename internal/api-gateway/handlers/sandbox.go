@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -34,14 +33,6 @@ func generateSandboxName() (string, error) {
 	}
 
 	return first + rest, nil
-}
-
-func k8sErrorToHuma(err error, fallbackMsg string) error {
-	var statusErr *apierrors.StatusError
-	if errors.As(err, &statusErr) && statusErr.ErrStatus.Code > 0 {
-		return huma.NewError(int(statusErr.ErrStatus.Code), statusErr.ErrStatus.Message)
-	}
-	return huma.Error500InternalServerError(fallbackMsg)
 }
 
 type SandboxHandlers struct {

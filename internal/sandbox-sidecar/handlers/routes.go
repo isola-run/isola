@@ -8,7 +8,7 @@ import (
 
 func RegisterHealthRoutes(api huma.API, h *HealthHandlers) {
 	huma.Register(api, huma.Operation{
-		OperationID: "get-health",
+		OperationID: "getHealth",
 		Method:      http.MethodGet,
 		Path:        "/health",
 		Summary:     "Health check",
@@ -17,7 +17,7 @@ func RegisterHealthRoutes(api huma.API, h *HealthHandlers) {
 	}, h.GetHealth)
 
 	huma.Register(api, huma.Operation{
-		OperationID: "get-healthz",
+		OperationID: "getHealthz",
 		Method:      http.MethodGet,
 		Path:        "/healthz",
 		Summary:     "Health check (alias)",
@@ -28,7 +28,7 @@ func RegisterHealthRoutes(api huma.API, h *HealthHandlers) {
 
 func RegisterFilesystemRoutes(api huma.API, h *FilesystemHandlers) {
 	huma.Register(api, huma.Operation{
-		OperationID: "post-filesystem",
+		OperationID: "postFilesystem",
 		Method:      http.MethodPost,
 		Path:        "/filesystem",
 		Summary:     "Write a file to the sandbox filesystem",
@@ -43,7 +43,7 @@ func RegisterFilesystemRoutes(api huma.API, h *FilesystemHandlers) {
 				},
 			},
 		},
-		DefaultStatus: http.StatusOK,
+		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusBadRequest, http.StatusInternalServerError},
 	}, h.PostFilesystem)
 }

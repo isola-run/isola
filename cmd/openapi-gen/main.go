@@ -69,6 +69,9 @@ func setupAPIGateway() huma.API {
 	sandboxHandlers := apigateway.NewSandboxHandlers(nil, "", nil)
 	apigateway.RegisterSandboxRoutes(api, sandboxHandlers)
 
+	filesystemHandlers := apigateway.NewFilesystemHandlers(nil, "", nil, nil)
+	apigateway.RegisterFilesystemRoutes(api, filesystemHandlers)
+
 	return api
 }
 

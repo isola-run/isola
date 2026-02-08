@@ -13,13 +13,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog/v2"
 
+	"github.com/isola-ai/isola-sb/internal/constants"
 	"github.com/isola-ai/isola-sb/internal/env"
 	"github.com/isola-ai/isola-sb/internal/logging"
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/handlers"
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 )
-
-const port = 10032
 
 type config struct {
 	logLevel string
@@ -60,13 +59,13 @@ func main() {
 	handlers.RegisterFilesystemRoutes(api, filesystemHandlers)
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr:    fmt.Sprintf(":%d", constants.SidecarPort),
 		Handler: r,
 	}
 
 	// currently no graceful shutdown, but it might make sense to have a short grace period
 	// to allow completing retrieval of sandbox app stdout for example (if in progress)
-	logger.Info("starting sandbox-sidecar server", "port", port)
+	logger.Info("starting sandbox-sidecar server", "port", constants.SidecarPort)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error("server error", "error", err)
 		os.Exit(1)

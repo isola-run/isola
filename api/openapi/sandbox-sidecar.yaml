@@ -80,11 +80,6 @@ components:
             - 1024
           format: int64
           type: integer
-        container:
-          description: Container name
-          examples:
-            - main
-          type: string
       required:
         - absolutePath
         - bytesWritten
@@ -116,7 +111,7 @@ paths:
   /filesystem:
     post:
       description: Writes a file to the specified path in the sandbox container
-      operationId: post-filesystem
+      operationId: postFilesystem
       parameters:
         - description: Destination path (absolute or relative to container cwd)
           explode: false
@@ -126,12 +121,12 @@ paths:
           schema:
             description: Destination path (absolute or relative to container cwd)
             type: string
-        - description: Container name (defaults to main container)
+        - description: Container name. Defaults to the only container if there is one, otherwise it's required.
           explode: false
           in: query
           name: container
           schema:
-            description: Container name (defaults to main container)
+            description: Container name. Defaults to the only container if there is one, otherwise it's required.
             type: string
       requestBody:
         content:
@@ -141,12 +136,12 @@ paths:
               format: binary
               type: string
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/FilesystemWriteResponse"
-          description: OK
+          description: Created
         "400":
           content:
             application/problem+json:
@@ -171,7 +166,7 @@ paths:
   /health:
     get:
       description: Returns the health status of the sidecar
-      operationId: get-health
+      operationId: getHealth
       responses:
         "200":
           content:
@@ -191,7 +186,7 @@ paths:
   /healthz:
     get:
       description: Returns the health status of the sidecar
-      operationId: get-healthz
+      operationId: getHealthz
       responses:
         "200":
           content:
