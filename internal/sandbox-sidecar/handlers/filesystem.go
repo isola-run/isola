@@ -2,10 +2,13 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -129,6 +132,63 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 		Body: sidecarapi.FilesystemWriteResponse{
 			AbsolutePath: resolvedPath,
 			BytesWritten: written,
+		},
+	}, nil
+}
+
+func (h *FilesystemHandlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {
+	path := input.Path
+	container := input.Container
+
+	if strings.ContainsRune(path, 0) {
+		return nil, huma.Error400BadRequest("path contains invalid characters")
+	}
+
+	pid, err := h.findCachedContainerPID(container)
+	if err != nil {
+		return nil, huma.Error400BadRequest("container not found")
+	}
+
+	resolvedPath, err := resolveAbsolutePath(path, pid, h.procFS)
+	if err != nil {
+		h.logger.Error("failed to resolve path", "error", err, "pid", pid)
+		return nil, huma.Error500InternalServerError("failed to resolve path")
+	}
+
+	targetPath := filepath.Join(h.procFS.GetRoot(pid), resolvedPath)
+
+	f, err := os.Open(targetPath) //nolint:gosec // path is within container root via /proc/<pid>/root
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, huma.Error404NotFound(fmt.Sprintf("file not found: %s", path))
+		}
+		h.logger.Error("failed to open file", "error", err, "path", targetPath)
+		return nil, huma.Error500InternalServerError("failed to open file")
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		h.logger.Error("failed to stat file", "error", err, "path", targetPath)
+		return nil, huma.Error500InternalServerError("failed to stat file")
+	}
+
+	if !info.Mode().IsRegular() {
+		_ = f.Close()
+		return nil, huma.Error400BadRequest(fmt.Sprintf("not a regular file: %s", path))
+	}
+
+	return &huma.StreamResponse{
+		Body: func(ctx huma.Context) {
+			defer func() { _ = f.Close() }()
+
+			ctx.SetHeader("Content-Type", "application/octet-stream")
+			ctx.SetHeader("Content-Length", strconv.FormatInt(info.Size(), 10))
+			ctx.SetStatus(http.StatusOK)
+
+			if _, err := io.Copy(ctx.BodyWriter(), f); err != nil {
+				h.logger.Error("failed to stream file", "error", err, "path", targetPath)
+			}
 		},
 	}, nil
 }

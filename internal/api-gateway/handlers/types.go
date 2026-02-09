@@ -132,3 +132,9 @@ type FilesystemWriteInput struct {
 type FilesystemWriteOutput struct {
 	Body sidecarapi.FilesystemWriteResponse
 }
+
+type FilesystemReadInput struct {
+	ID        string `path:"id" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" doc:"Source path (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}

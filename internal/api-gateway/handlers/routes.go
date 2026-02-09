@@ -105,4 +105,24 @@ func RegisterFilesystemRoutes(api huma.API, h *FilesystemHandlers) {
 		DefaultStatus: http.StatusCreated,
 		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.PostFilesystem)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "readSandboxFilesystem",
+		Method:      http.MethodGet,
+		Path:        "/sandboxes/{id}/filesystem",
+		Summary:     "Read a file from sandbox filesystem",
+		Description: "Streams a file download from the specified path in the sandbox container",
+		Tags:        []string{"sandboxes", "filesystem"},
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "File content",
+				Content: map[string]*huma.MediaType{
+					"application/octet-stream": {
+						Schema: &huma.Schema{Type: "string", Format: "binary"},
+					},
+				},
+			},
+		},
+		Errors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.GetFilesystem)
 }

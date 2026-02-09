@@ -97,6 +97,69 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 	return &FilesystemWriteOutput{Body: writeResp}, nil
 }
 
+func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {
+	sb := &sandboxv1alpha1.Sandbox{}
+	key := client.ObjectKey{Name: input.ID, Namespace: h.sandboxNamespace}
+
+	if err := h.k8sClient.Get(ctx, key, sb); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
+		}
+		h.logger.Error("failed to get sandbox", "error", err, "id", input.ID)
+		return nil, k8sErrorToHuma(err, "failed to get sandbox")
+	}
+
+	if conditionsToStatus(sb.Status.Conditions) != "running" {
+		return nil, huma.Error409Conflict("sandbox is not ready")
+	}
+
+	if sb.Status.PodIP == "" {
+		return nil, huma.Error409Conflict("sandbox is not ready")
+	}
+
+	params := url.Values{}
+	params.Set("path", input.Path)
+	if input.Container != "" {
+		params.Set("container", input.Container)
+	}
+	sidecarURL := fmt.Sprintf("http://%s:%d/filesystem?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarURL, nil)
+	if err != nil {
+		h.logger.Error("failed to build sidecar request", "error", err)
+		return nil, huma.Error500InternalServerError("failed to build sidecar request")
+	}
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
+		return nil, huma.Error502BadGateway("failed to reach sidecar")
+	}
+
+	if resp.StatusCode >= 400 {
+		defer func() { _ = resp.Body.Close() }()
+		return nil, h.handleSidecarError(resp, input.ID)
+	}
+
+	return &huma.StreamResponse{
+		Body: func(ctx huma.Context) {
+			defer func() { _ = resp.Body.Close() }()
+
+			if ct := resp.Header.Get("Content-Type"); ct != "" {
+				ctx.SetHeader("Content-Type", ct)
+			}
+			if cl := resp.Header.Get("Content-Length"); cl != "" {
+				ctx.SetHeader("Content-Length", cl)
+			}
+			ctx.SetStatus(http.StatusOK)
+
+			if _, err := io.Copy(ctx.BodyWriter(), resp.Body); err != nil {
+				h.logger.Error("failed to stream file from sidecar", "error", err, "id", input.ID)
+			}
+		},
+	}, nil
+}
+
 func (h *FilesystemHandlers) handleSidecarError(resp *http.Response, sandboxID string) error {
 	if resp.StatusCode >= 500 {
 		h.logger.Error("sidecar returned server error", "id", sandboxID, "status", resp.StatusCode)

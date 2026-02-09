@@ -86,3 +86,7 @@ func doPost(path string, body []byte) *httptest.ResponseRecorder {
 	}
 	return testAPI.Post(path, "Content-Type: application/octet-stream", bodyReader)
 }
+
+func doGet(path string) *httptest.ResponseRecorder {
+	return testAPI.Get(path)
+}
