@@ -97,6 +97,18 @@ var _ = Describe("Filesystem", func() {
 			Expect(resp.Body.Bytes()).To(Equal(content))
 		})
 
+		It("reads empty file", func() {
+			hostPath := filepath.Join(testRootDir, "/tmp/empty-read.txt")
+			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(hostPath, []byte{}, 0600)).To(Succeed())
+
+			resp := doGet("/filesystem?path=/tmp/empty-read.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Body.Len()).To(Equal(0))
+			Expect(resp.Header().Get("Content-Length")).To(Equal("0"))
+		})
+
 		It("sets Content-Type and Content-Length headers", func() {
 			content := []byte("header check content")
 			hostPath := filepath.Join(testRootDir, "/tmp/headers.txt")
