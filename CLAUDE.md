@@ -117,10 +117,11 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 The api-gateway is a thin passthrough to K8s — it validates input structure but does not apply domain defaults (that's the operator's job). Uses Huma framework on chi router.
 
 **Endpoints:**
-- `POST /sandboxes` → 201 (created), 409 (conflict), 400/422 (validation)
-- `GET /sandboxes` → 200 (list of summaries — not paginated)
-- `GET /sandboxes/{id}` → 200, 404
-- `DELETE /sandboxes/{id}` → 204 (idempotent: both success and not-found)
+- `POST /sandboxes` — create
+- `GET /sandboxes` — list (not paginated)
+- `GET /sandboxes/{id}` — get details
+- `DELETE /sandboxes/{id}` — delete (idempotent)
+- `POST /sandboxes/{id}/filesystem` — file upload (proxied to sidecar)
 
 **REST ↔ CRD conversion (`convert.go`):**
 REST types are separate from CRD types with explicit conversion in `convert.go`. Key behaviors:
