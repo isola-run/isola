@@ -121,6 +121,7 @@ The api-gateway is a thin passthrough to K8s — it validates input structure bu
 - `GET /sandboxes` → 200 (list of summaries — not paginated)
 - `GET /sandboxes/{id}` → 200, 404
 - `DELETE /sandboxes/{id}` → 204 (idempotent: both success and not-found)
+- `POST /sandboxes/{id}/filesystem` → 201, 400, 404, 409, 502 (proxied to sidecar)
 
 **REST ↔ CRD conversion (`convert.go`):**
 REST types are separate from CRD types with explicit conversion in `convert.go`. Key behaviors:
