@@ -122,6 +122,7 @@ The api-gateway is a thin passthrough to K8s — it validates input structure bu
 - `GET /sandboxes/{id}` — get details
 - `DELETE /sandboxes/{id}` — delete (idempotent)
 - `POST /sandboxes/{id}/filesystem` — file upload (proxied to sidecar)
+- `GET /sandboxes/{id}/filesystem` — file download (proxied to sidecar)
 
 **REST ↔ CRD conversion (`convert.go`):**
 REST types are separate from CRD types with explicit conversion in `convert.go`. Key behaviors:

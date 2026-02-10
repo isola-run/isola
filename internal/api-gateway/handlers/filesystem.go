@@ -41,28 +41,39 @@ func NewFilesystemHandlers(logger *slog.Logger, sandboxNamespace string, k8sClie
 	}
 }
 
-func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
+func (h *FilesystemHandlers) getReadySandbox(ctx context.Context, id string) (*sandboxv1alpha1.Sandbox, error) {
 	sb := &sandboxv1alpha1.Sandbox{}
-	key := client.ObjectKey{Name: input.ID, Namespace: h.sandboxNamespace}
+	key := client.ObjectKey{Name: id, Namespace: h.sandboxNamespace}
 
 	if err := h.k8sClient.Get(ctx, key, sb); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
+			h.logger.Warn("sandbox not found", "id", id)
+			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", id))
 		}
-		h.logger.Error("failed to get sandbox", "error", err, "id", input.ID)
+		h.logger.Error("failed to get sandbox", "error", err, "id", id)
 		return nil, k8sErrorToHuma(err, "failed to get sandbox")
 	}
 
 	// todo benl: stop using raw strings for sandbox status
 	if conditionsToStatus(sb.Status.Conditions) != "running" {
+		h.logger.Warn("sandbox is not ready", "id", id, "status", conditionsToStatus(sb.Status.Conditions))
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}
 
 	if sb.Status.PodIP == "" { // should not happen if sandbox is ready ^
+		h.logger.Warn("sandbox is not ready", "id", id)
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}
 
-	// Build sidecar URL
+	return sb, nil
+}
+
+func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
+	sb, err := h.getReadySandbox(ctx, input.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	params := url.Values{}
 	params.Set("path", input.Path)
 	if input.Container != "" {
@@ -95,6 +106,60 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 	}
 
 	return &FilesystemWriteOutput{Body: writeResp}, nil
+}
+
+func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {
+	sb, err := h.getReadySandbox(ctx, input.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	params := url.Values{}
+	params.Set("path", input.Path)
+	if input.Container != "" {
+		params.Set("container", input.Container)
+	}
+	sidecarURL := fmt.Sprintf("http://%s:%d/filesystem?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarURL, nil)
+	if err != nil {
+		h.logger.Error("failed to build sidecar request", "error", err)
+		return nil, huma.Error500InternalServerError("failed to build sidecar request")
+	}
+
+	resp, err := h.httpClient.Do(req) //nolint:bodyclose // closed in both error and streaming paths below
+	if err != nil {
+		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
+		return nil, huma.Error502BadGateway("failed to reach sidecar")
+	}
+
+	if resp.StatusCode >= 400 {
+		defer func() { _ = resp.Body.Close() }()
+		return nil, h.handleSidecarError(resp, input.ID)
+	}
+
+	return &huma.StreamResponse{
+		Body: func(ctx huma.Context) {
+			defer func() { _ = resp.Body.Close() }()
+
+			if ct := resp.Header.Get("Content-Type"); ct != "" {
+				ctx.SetHeader("Content-Type", ct)
+			}
+			if cl := resp.Header.Get("Content-Length"); cl != "" {
+				ctx.SetHeader("Content-Length", cl)
+			}
+
+			// The sandbox is untrusted and thus its sidecar is untrusted.
+			// If we ever add a limitation to the size of files that can be read from a sandbox,
+			// and for example require a bucket store for files > maxBytes, we should do something like:
+			// limitedReader := io.LimitReader(resp.Body, maxBytes+1)
+			// io.Copy(ctx.BodyWriter(), limitedReader)
+
+			if _, err := io.Copy(ctx.BodyWriter(), resp.Body); err != nil {
+				h.logger.Error("failed to stream file from sidecar", "error", err, "id", input.ID)
+			}
+		},
+	}, nil
 }
 
 func (h *FilesystemHandlers) handleSidecarError(resp *http.Response, sandboxID string) error {

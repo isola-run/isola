@@ -113,6 +113,137 @@ func newFilesystemTestAPI(httpClient HTTPDoer, sidecarPort int) humatest.TestAPI
 }
 
 var _ = Describe("Filesystem Proxy", func() {
+	Describe("GET /sandboxes/{id}/filesystem", func() {
+		It("proxies file read and returns body", func() {
+			fileContent := []byte{0xDE, 0xAD, 0xBE, 0xEF}
+			var capturedPath, capturedContainer string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedPath = r.URL.Query().Get("path")
+				capturedContainer = r.URL.Query().Get("container")
+
+				w.Header().Set("Content-Type", "application/octet-stream")
+				w.Header().Set("Content-Length", fmt.Sprintf("%d", len(fileContent)))
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(fileContent)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/workspace/hello.bin&container=main", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Body.Bytes()).To(Equal(fileContent))
+			Expect(capturedPath).To(Equal("/workspace/hello.bin"))
+			Expect(capturedContainer).To(Equal("main"))
+		})
+
+		It("forwards Content-Type and Content-Length headers", func() {
+			content := []byte("some file content")
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/octet-stream")
+				w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(content)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Header().Get("Content-Type")).To(Equal("application/octet-stream"))
+			Expect(resp.Header().Get("Content-Length")).To(Equal(fmt.Sprintf("%d", len(content))))
+		})
+
+		It("omits container param when not specified", func() {
+			var hasContainer bool
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hasContainer = r.URL.Query().Has("container")
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(hasContainer).To(BeFalse())
+		})
+
+		It("returns 404 for nonexistent sandbox", func() {
+			api := newFilesystemTestAPI(&http.Client{}, 0)
+
+			resp := api.Get("/sandboxes/nonexistent/filesystem?path=/tmp/test.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("returns 409 for not-running sandbox", func() {
+			api := newFilesystemTestAPI(&http.Client{}, 0)
+			sbName := createSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+
+		It("returns 502 when sidecar unreachable", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			mockSidecar.Close()
+
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+
+		It("forwards sidecar 404 errors", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"detail": "file not found: /tmp/missing.txt",
+				})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/missing.txt", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("returns 502 for sidecar 500 errors", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+	})
+
 	Describe("POST /sandboxes/{id}/filesystem", func() {
 		It("proxies file write to sidecar and returns response", func() {
 			var capturedBody []byte
