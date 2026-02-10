@@ -152,20 +152,13 @@ Sidecar image
 {{- end }}
 
 {{/*
-Runtime type selector
-*/}}
-{{- define "isola.operator.runtimeType" -}}
-{{- .Values.operator.sandboxRuntime.type -}}
-{{- end }}
-
-{{/*
-RuntimeClassName for sandbox pods (conditional on runtime type)
+RuntimeClassName for sandbox pods (pod.spec.runtimeClassName).
+Returns the gVisor runtimeClassName when type is "gvisor".
+Empty for "clusterDefault" (pods use cluster default runtime).
 */}}
 {{- define "isola.operator.runtimeClassName" -}}
 {{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
 {{- .Values.operator.sandboxRuntime.gvisor.runtimeClassName -}}
-{{- else -}}
-{{- "" -}}
 {{- end -}}
 {{- end }}
 

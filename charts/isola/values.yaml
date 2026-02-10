@@ -67,16 +67,16 @@ operator:
   # Sandbox runtime configuration
   # Selects which runtime to use for sandbox pods and configures runtime-specific features.
   sandboxRuntime:
-    # Runtime type selector (mutually exclusive)
-    # - "gvisor": Use gVisor runtime with optional snapshot capability
-    # - "clusterDefault": Use cluster default runtime (typically runc, no snapshot support)
+    # Runtime type selector. Controls feature availability:
+    # - "gvisor": enables rootfs snapshot capability, gVisor-specific pod annotations
+    # - "clusterDefault": Use cluster default runtime (typically runc, no rootfs snapshot support)
     type: gvisor
 
     # gVisor runtime configuration
     # Only used when type: gvisor
     gvisor:
-      # Kubernetes RuntimeClassName for gVisor
-      # Must match a RuntimeClass resource in your cluster (e.g., created by hack/setup.sh)
+      # Kubernetes RuntimeClass name set on sandbox pods (pod.spec.runtimeClassName).
+      # Must match a RuntimeClass CRD in your cluster (kubectl get runtimeclass).
       runtimeClassName: gvisor
 
       # Rootfs snapshot capability for gVisor sandboxes

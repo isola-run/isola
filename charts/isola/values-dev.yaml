@@ -22,7 +22,6 @@ operator:
 
     gvisor:
       runtimeClassName: gvisor
-
       rootfssnapshot:
         enabled: true
         runsc:
