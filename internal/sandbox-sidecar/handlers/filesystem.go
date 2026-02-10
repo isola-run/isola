@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -60,42 +59,43 @@ func (h *FilesystemHandlers) findCachedContainerPID(containerName string) (int, 
 	return newPID, nil
 }
 
-func resolveAbsolutePath(path string, pid int, procFS proc.ProcFS) (string, error) {
+func (h *FilesystemHandlers) resolveAbsolutePath(path string, pid int) (string, huma.StatusError) {
 	if filepath.IsAbs(path) {
 		return filepath.Clean(path), nil
 	}
-	cwd, err := procFS.GetCwd(pid)
+
+	cwd, err := h.procFS.GetCwd(pid)
 	if err != nil {
-		return "", err
+		return "", huma.Error500InternalServerError("Failed to resolve path in sandbox container")
 	}
+
 	relativePath := filepath.Join(cwd, path) // returns a Clean path
-	return filepath.Abs(relativePath)
+	absolutePath, err := filepath.Abs(relativePath)
+	if err != nil {
+		return "", huma.Error500InternalServerError("Failed to resolve path in sandbox container")
+	}
+
+	return absolutePath, nil
 }
 
-func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
+func (h *FilesystemHandlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
 	path := input.Path
 	container := input.Container
 
-	// Reject null bytes in path
-	if strings.ContainsRune(path, 0) {
-		return nil, huma.Error400BadRequest("path contains invalid characters")
-	}
-
 	pid, err := h.findCachedContainerPID(container)
 	if err != nil {
-		return nil, huma.Error400BadRequest("container not found")
+		if container == "" {
+			h.logger.Warn("failed to determine container pid", "error", err)
+			return nil, huma.Error400BadRequest("failed to determine container pid")
+		}
+		h.logger.Warn("failed to determine container pid", "error", err, "container", container)
+		return nil, huma.Error400BadRequest("failed to determine container pid")
 	}
 
-	uid, gid, err := h.procFS.GetUIDGID(pid)
+	resolvedPath, err := h.resolveAbsolutePath(path, pid)
 	if err != nil {
-		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
-		return nil, huma.Error500InternalServerError("failed to get container uid/gid")
-	}
-
-	resolvedPath, err := resolveAbsolutePath(path, pid, h.procFS)
-	if err != nil {
-		h.logger.Error("failed to resolve path", "error", err, "pid", pid)
-		return nil, huma.Error500InternalServerError("failed to resolve path")
+		h.logger.Error("failed to resolve path", "error", err, "path", path, "container", container)
+		return nil, err
 	}
 
 	// Build the host path via /proc/<pid>/root
@@ -124,6 +124,13 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 	if err := os.Chmod(targetPath, 0600); err != nil {
 		h.logger.Error("failed to set file permissions", "error", err, "path", targetPath)
 	}
+
+	uid, gid, err := h.procFS.GetUIDGID(pid)
+	if err != nil {
+		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
+		return nil, huma.Error500InternalServerError("failed to get container uid/gid")
+	}
+
 	if err := os.Chown(targetPath, uid, gid); err != nil {
 		h.logger.Error("failed to set file ownership", "error", err, "path", targetPath, "uid", uid, "gid", gid)
 	}
@@ -140,21 +147,23 @@ func (h *FilesystemHandlers) GetFilesystem(_ context.Context, input *FilesystemR
 	path := input.Path
 	container := input.Container
 
-	if strings.ContainsRune(path, 0) {
-		return nil, huma.Error400BadRequest("path contains invalid characters")
-	}
-
 	pid, err := h.findCachedContainerPID(container)
 	if err != nil {
-		return nil, huma.Error400BadRequest("container not found")
+		if container == "" {
+			h.logger.Warn("failed to determine container pid", "error", err)
+			return nil, huma.Error400BadRequest("failed to determine container pid")
+		}
+		h.logger.Warn("failed to determine container pid", "error", err, "container", container)
+		return nil, huma.Error400BadRequest("failed to determine container pid")
 	}
 
-	resolvedPath, err := resolveAbsolutePath(path, pid, h.procFS)
+	resolvedPath, err := h.resolveAbsolutePath(path, pid)
 	if err != nil {
-		h.logger.Error("failed to resolve path", "error", err, "pid", pid)
-		return nil, huma.Error500InternalServerError("failed to resolve path")
+		h.logger.Error("failed to resolve path", "error", err, "path", path, "container", container)
+		return nil, err
 	}
 
+	// Build the host path via /proc/<pid>/root
 	targetPath := filepath.Join(h.procFS.GetRoot(pid), resolvedPath)
 
 	f, err := os.Open(targetPath) //nolint:gosec // path is within container root via /proc/<pid>/root

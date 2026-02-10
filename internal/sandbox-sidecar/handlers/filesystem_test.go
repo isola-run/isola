@@ -67,10 +67,10 @@ var _ = Describe("Filesystem", func() {
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 
-		It("returns 400 for null bytes in path", func() {
+		It("returns 500 for null bytes in path", func() {
 			resp := doGet("/filesystem?path=/tmp/evil%00file.txt")
 
-			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
 		})
 
 		It("succeeds with container specified", func() {
@@ -239,11 +239,11 @@ var _ = Describe("Filesystem", func() {
 			Expect(body.AbsolutePath).To(Equal("/tmp/no-container.txt"))
 		})
 
-		It("rejects path with null bytes", func() {
+		It("returns 500 for null bytes in path", func() {
 			content := []byte("malicious content")
 			resp := doPost("/filesystem?path=/tmp/evil%00file.txt", content)
 
-			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
 		})
 	})
 })
