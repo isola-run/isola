@@ -99,20 +99,20 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&sandboxSidecarImage, "sidecar-image", os.Getenv("ISOLA_SIDECAR_IMAGE"), "Container image for the sandbox-sidecar")
+	flag.StringVar(&sandboxSidecarImage, "sidecar-image", "", "Container image for the sandbox-sidecar (required)")
 	flag.StringVar(&runtimeClassName, "runtime-class", "gvisor", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
 	flag.StringVar(&priorityClassName, "priority-class", "", "PriorityClassName to use for sandbox pods. Empty means use cluster default.")
 	flag.StringVar(&isolaAPINamespace, "api-namespace", "isola-system", "Namespace where api-gateway runs (for NetworkPolicy ingress rules)")
 	flag.StringVar(&isolaAPILabelName, "api-label-name", "api-gateway", "Value of app.kubernetes.io/name label for api-gateway pods")
-	flag.StringVar(&rootfssnapshotBucketURL, "rootfssnapshot-bucket-url", os.Getenv("ISOLA_ROOTFSSNAPSHOT_BUCKET_URL"), "Bucket URL for rootfs snapshot storage (e.g., s3://bucket?region=us-east-1)")
-	flag.StringVar(&rootfssnapshotCredentialSecret, "rootfssnapshot-credential-secret", os.Getenv("ISOLA_ROOTFSSNAPSHOT_CREDENTIAL_SECRET"), "Secret name for bucket credentials (optional, uses pod identity if not set)")
-	flag.StringVar(&rootfssnapshotUploaderImage, "rootfssnapshot-uploader-image", os.Getenv("ISOLA_UPLOADER_IMAGE"), "Container image for the rootfs snapshot uploader")
-	flag.StringVar(&rootfssnapshotServiceAccount, "rootfssnapshot-service-account", os.Getenv("ISOLA_ROOTFSSNAPSHOT_SERVICE_ACCOUNT"), "ServiceAccount for rootfs snapshot jobs")
-	flag.StringVar(&imagePullSecretsStr, "image-pull-secrets", os.Getenv("ISOLA_IMAGE_PULL_SECRETS"), "Comma-separated list of imagePullSecret names for sandbox pods and rootfs snapshot jobs")
-	flag.StringVar(&runtimeType, "runtime-type", os.Getenv("ISOLA_RUNTIME_TYPE"), "Runtime type: 'gvisor' or 'clusterDefault'")
-	flag.BoolVar(&rootfssnapshotEnabled, "rootfssnapshot-enabled", os.Getenv("ISOLA_ROOTFSSNAPSHOT_ENABLED") == "true", "Enable rootfs snapshot capability (requires gVisor runtime and privileged operations)")
-	flag.StringVar(&gvisorRunscPath, "gvisor-runsc-path", os.Getenv("ISOLA_GVISOR_RUNSC_PATH"), "Path to the runsc binary on cluster nodes (for gVisor snapshot support)")
-	flag.StringVar(&gvisorRunscRoot, "gvisor-runsc-root", os.Getenv("ISOLA_GVISOR_RUNSC_ROOT"), "Root directory where runsc stores runtime state (for gVisor snapshot support)")
+	flag.StringVar(&rootfssnapshotBucketURL, "rootfssnapshot-bucket-url", "", "Bucket URL for rootfs snapshot storage (e.g., s3://bucket?region=us-east-1)")
+	flag.StringVar(&rootfssnapshotCredentialSecret, "rootfssnapshot-credential-secret", "", "Secret name for bucket credentials (optional, uses pod identity if not set)")
+	flag.StringVar(&rootfssnapshotUploaderImage, "rootfssnapshot-uploader-image", "", "Container image for the rootfs snapshot uploader")
+	flag.StringVar(&rootfssnapshotServiceAccount, "rootfssnapshot-service-account", "", "ServiceAccount for rootfs snapshot jobs")
+	flag.StringVar(&imagePullSecretsStr, "image-pull-secrets", "", "Comma-separated list of imagePullSecret names for sandbox pods and rootfs snapshot jobs")
+	flag.StringVar(&runtimeType, "runtime-type", "", "Runtime type: 'gvisor' or 'clusterDefault'")
+	flag.BoolVar(&rootfssnapshotEnabled, "rootfssnapshot-enabled", false, "Enable rootfs snapshot capability (requires gVisor runtime and privileged operations)")
+	flag.StringVar(&gvisorRunscPath, "gvisor-runsc-path", "", "Path to the runsc binary on cluster nodes (for gVisor snapshot support)")
+	flag.StringVar(&gvisorRunscRoot, "gvisor-runsc-root", "", "Root directory where runsc stores runtime state (for gVisor snapshot support)")
 	flag.StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode (text logging)")
 	flag.Parse()
@@ -131,16 +131,16 @@ func main() {
 	}
 
 	if sandboxSidecarImage == "" {
-		setupLog.Error(nil, "sidecar-image is required (set ISOLA_SIDECAR_IMAGE or --sidecar-image)")
+		setupLog.Error(nil, "--sidecar-image is required")
 		os.Exit(1)
 	}
 	if rootfssnapshotEnabled {
 		if rootfssnapshotUploaderImage == "" {
-			setupLog.Error(nil, "rootfssnapshot-uploader-image is required when rootfssnapshot is enabled (set ISOLA_UPLOADER_IMAGE or --rootfssnapshot-uploader-image)")
+			setupLog.Error(nil, "--rootfssnapshot-uploader-image is required when --rootfssnapshot-enabled is set")
 			os.Exit(1)
 		}
 		if rootfssnapshotBucketURL == "" {
-			setupLog.Error(nil, "rootfssnapshot-bucket-url is required when rootfssnapshot is enabled (set ISOLA_ROOTFSSNAPSHOT_BUCKET_URL or --rootfssnapshot-bucket-url)")
+			setupLog.Error(nil, "--rootfssnapshot-bucket-url is required when --rootfssnapshot-enabled is set")
 			os.Exit(1)
 		}
 	}
