@@ -16,11 +16,12 @@ COPY internal/ internal/
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o sandbox-sidecar ./cmd/sandbox-sidecar/main.go
 
 # Use distroless as minimal base image
-FROM gcr.io/distroless/static:nonroot
+# Sidecar runs as root (set by operator SecurityContext) to access /proc/<pid>/environ
+# and /proc/<pid>/root of sandbox containers via shared PID namespace
+FROM gcr.io/distroless/static
 
 WORKDIR /
 COPY --from=builder /workspace/sandbox-sidecar .
-USER 65532:65532
 
 EXPOSE 10032
 
