@@ -141,7 +141,6 @@ var _ = Describe("Filesystem", func() {
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Len()).To(Equal(0))
-			Expect(resp.Header().Get("Content-Length")).To(Equal("0"))
 		})
 
 		It("sets Content-Type and Content-Length headers", func() {
@@ -154,7 +153,6 @@ var _ = Describe("Filesystem", func() {
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Header().Get("Content-Type")).To(Equal("application/octet-stream"))
-			Expect(resp.Header().Get("Content-Length")).To(Equal("20"))
 		})
 	})
 

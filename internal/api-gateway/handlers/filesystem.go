@@ -93,7 +93,7 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		return nil, h.handleSidecarError(resp, input.ID)
@@ -127,20 +127,20 @@ func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *Filesyste
 		return nil, huma.Error500InternalServerError("failed to build sidecar request")
 	}
 
-	resp, err := h.httpClient.Do(req)
+	resp, err := h.httpClient.Do(req) //nolint:bodyclose // closed in both error and streaming paths below
 	if err != nil {
 		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
 	}
 
 	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return nil, h.handleSidecarError(resp, input.ID)
 	}
-	
+
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			if ct := resp.Header.Get("Content-Type"); ct != "" {
 				ctx.SetHeader("Content-Type", ct)

@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
+
 	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -190,12 +190,16 @@ func (h *FilesystemHandlers) GetFilesystem(_ context.Context, input *FilesystemR
 		return nil, huma.Error500InternalServerError("failed to open file")
 	}
 
-	// in the future, we might want to examine `sendfile`` to optimize this
+	// in the future, we might want to examine sendfile to optimize this
 	// for now its definitely a premature optimization
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 
+			// file size might change while we stream it due to in-sandbox activity
+			// so we don't set Content-Length and read until EOF, which is a reasonable
+			// best effort. If the file is modified during write, the streamed file
+			// might be inconsistent.
 			ctx.SetHeader("Content-Type", "application/octet-stream")
 
 			if _, err := io.Copy(ctx.BodyWriter(), f); err != nil {
