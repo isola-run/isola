@@ -9,7 +9,7 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/onsi/ginkgo/v2 v2.28.1
-	github.com/onsi/gomega v1.39.0
+	github.com/onsi/gomega v1.39.1
 	gocloud.dev v0.44.0
 	golang.org/x/sys v0.40.0
 	k8s.io/api v0.35.0
