@@ -82,7 +82,7 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		return nil, h.handleSidecarError(resp, input.ID)
@@ -137,13 +137,13 @@ func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *Filesyste
 	}
 
 	if resp.StatusCode >= 400 {
-		defer func() { _ = resp.Body.Close() }()
+		defer resp.Body.Close()
 		return nil, h.handleSidecarError(resp, input.ID)
 	}
 
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
-			defer func() { _ = resp.Body.Close() }()
+			defer resp.Body.Close()
 
 			if ct := resp.Header.Get("Content-Type"); ct != "" {
 				ctx.SetHeader("Content-Type", ct)
@@ -151,7 +151,12 @@ func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *Filesyste
 			if cl := resp.Header.Get("Content-Length"); cl != "" {
 				ctx.SetHeader("Content-Length", cl)
 			}
-			ctx.SetStatus(http.StatusOK)
+
+			// The sandbox is untrusted and thus its sidecar is untrusted.
+			// If we ever add a limitation to the size of files that can be read from a sandbox,
+			// and for example require a bucket store for files > maxBytes, we should do something like:
+			// limitedReader := io.LimitReader(resp.Body, maxBytes+1)
+			// io.Copy(ctx.BodyWriter(), limitedReader)
 
 			if _, err := io.Copy(ctx.BodyWriter(), resp.Body); err != nil {
 				h.logger.Error("failed to stream file from sidecar", "error", err, "id", input.ID)

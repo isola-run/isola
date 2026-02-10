@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -112,7 +111,11 @@ func (h *FilesystemHandlers) PostFilesystem(_ context.Context, input *Filesystem
 		h.logger.Error("failed to create file", "error", err, "path", targetPath)
 		return nil, huma.Error500InternalServerError("failed to create file")
 	}
-	defer func() { _ = dst.Close() }()
+	defer func() {
+		if err := dst.Close(); err != nil {
+			h.logger.Error("failed to close written file", "error", err, "path", targetPath)
+		}
+	}()
 
 	// Stream the body to the file
 	written, err := io.Copy(dst, input.Stream)
@@ -166,34 +169,34 @@ func (h *FilesystemHandlers) GetFilesystem(_ context.Context, input *FilesystemR
 	// Build the host path via /proc/<pid>/root
 	targetPath := filepath.Join(h.procFS.GetRoot(pid), resolvedPath)
 
-	f, err := os.Open(targetPath) //nolint:gosec // path is within container root via /proc/<pid>/root
+	// Stat before Open to reject non-regular files (FIFOs, devices, sockets)
+	// without blocking — os.Open on a FIFO blocks until a writer connects.
+	info, err := os.Stat(targetPath) //nolint:gosec // path is within container root via /proc/<pid>/root
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, huma.Error404NotFound(fmt.Sprintf("file not found: %s", path))
 		}
-		h.logger.Error("failed to open file", "error", err, "path", targetPath)
-		return nil, huma.Error500InternalServerError("failed to open file")
-	}
-
-	info, err := f.Stat()
-	if err != nil {
-		_ = f.Close()
 		h.logger.Error("failed to stat file", "error", err, "path", targetPath)
 		return nil, huma.Error500InternalServerError("failed to stat file")
 	}
 
 	if !info.Mode().IsRegular() {
-		_ = f.Close()
 		return nil, huma.Error400BadRequest(fmt.Sprintf("not a regular file: %s", path))
 	}
 
+	f, err := os.Open(targetPath) //nolint:gosec // path is within container root via /proc/<pid>/root
+	if err != nil {
+		h.logger.Error("failed to open file", "error", err, "path", targetPath)
+		return nil, huma.Error500InternalServerError("failed to open file")
+	}
+
+	// in the future, we might want to examine `sendfile`` to optimize this
+	// for now its definitely a premature optimization
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
-			defer func() { _ = f.Close() }()
+			defer f.Close()
 
 			ctx.SetHeader("Content-Type", "application/octet-stream")
-			ctx.SetHeader("Content-Length", strconv.FormatInt(info.Size(), 10))
-			ctx.SetStatus(http.StatusOK)
 
 			if _, err := io.Copy(ctx.BodyWriter(), f); err != nil {
 				h.logger.Error("failed to stream file", "error", err, "path", targetPath)

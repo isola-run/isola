@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -59,6 +60,40 @@ var _ = Describe("Filesystem", func() {
 			resp := doGet("/filesystem?path=/workspace")
 
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("returns 400 for FIFO (named pipe)", func() {
+			fifoPath := filepath.Join(testRootDir, "/tmp/test.fifo")
+			Expect(os.MkdirAll(filepath.Dir(fifoPath), 0750)).To(Succeed())
+			Expect(syscall.Mkfifo(fifoPath, 0600)).To(Succeed())
+
+			resp := doGet("/filesystem?path=/tmp/test.fifo")
+
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("follows symlink to regular file", func() {
+			content := []byte("symlink target content")
+			targetPath := filepath.Join(testRootDir, "/tmp/symlink-target.txt")
+			linkPath := filepath.Join(testRootDir, "/tmp/symlink.txt")
+			Expect(os.MkdirAll(filepath.Dir(targetPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(targetPath, content, 0600)).To(Succeed())
+			Expect(os.Symlink(targetPath, linkPath)).To(Succeed())
+
+			resp := doGet("/filesystem?path=/tmp/symlink.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Body.Bytes()).To(Equal(content))
+		})
+
+		It("returns 404 for dangling symlink", func() {
+			linkPath := filepath.Join(testRootDir, "/tmp/dangling.txt")
+			Expect(os.MkdirAll(filepath.Dir(linkPath), 0750)).To(Succeed())
+			Expect(os.Symlink("/nonexistent/target", linkPath)).To(Succeed())
+
+			resp := doGet("/filesystem?path=/tmp/dangling.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 
 		It("returns 422 when path is missing", func() {

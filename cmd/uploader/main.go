@@ -127,7 +127,7 @@ func run(logger *slog.Logger) error {
 		logger.Error("failed to open bucket", "error", err)
 		return err
 	}
-	defer func() { _ = bucket.Close() }()
+	defer bucket.Close()
 
 	revision, err := getNextRevision(ctx, logger, bucket, namespace, sandboxName)
 	if err != nil {
@@ -149,7 +149,7 @@ func run(logger *slog.Logger) error {
 		logger.Error("failed to open snapshot file", "file", snapshotFile, "error", err)
 		return err
 	}
-	defer func() { _ = f.Close() }()
+	defer f.Close()
 
 	stat, err := f.Stat()
 	if err != nil {

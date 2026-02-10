@@ -93,7 +93,7 @@ func GetContainerName(pid int) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	defer func() { _ = f.Close() }()
+	defer f.Close()
 
 	// environ is null-byte separated
 	scanner := bufio.NewScanner(f)
