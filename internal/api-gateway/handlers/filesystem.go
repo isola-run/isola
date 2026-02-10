@@ -41,28 +41,39 @@ func NewFilesystemHandlers(logger *slog.Logger, sandboxNamespace string, k8sClie
 	}
 }
 
-func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
+func (h *FilesystemHandlers) getReadySandbox(ctx context.Context, id string) (*sandboxv1alpha1.Sandbox, error) {
 	sb := &sandboxv1alpha1.Sandbox{}
-	key := client.ObjectKey{Name: input.ID, Namespace: h.sandboxNamespace}
+	key := client.ObjectKey{Name: id, Namespace: h.sandboxNamespace}
 
 	if err := h.k8sClient.Get(ctx, key, sb); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
+			h.logger.Warn("sandbox not found", "id", id)
+			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", id))
 		}
-		h.logger.Error("failed to get sandbox", "error", err, "id", input.ID)
+		h.logger.Error("failed to get sandbox", "error", err, "id", id)
 		return nil, k8sErrorToHuma(err, "failed to get sandbox")
 	}
 
 	// todo benl: stop using raw strings for sandbox status
 	if conditionsToStatus(sb.Status.Conditions) != "running" {
+		h.logger.Warn("sandbox is not ready", "id", id, "status", conditionsToStatus(sb.Status.Conditions))
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}
 
 	if sb.Status.PodIP == "" { // should not happen if sandbox is ready ^
+		h.logger.Warn("sandbox is not ready", "id", id)
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}
 
-	// Build sidecar URL
+	return sb, nil
+}
+
+func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
+	sb, err := h.getReadySandbox(ctx, input.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	params := url.Values{}
 	params.Set("path", input.Path)
 	if input.Container != "" {
@@ -98,23 +109,9 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 }
 
 func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {
-	sb := &sandboxv1alpha1.Sandbox{}
-	key := client.ObjectKey{Name: input.ID, Namespace: h.sandboxNamespace}
-
-	if err := h.k8sClient.Get(ctx, key, sb); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
-		}
-		h.logger.Error("failed to get sandbox", "error", err, "id", input.ID)
-		return nil, k8sErrorToHuma(err, "failed to get sandbox")
-	}
-
-	if conditionsToStatus(sb.Status.Conditions) != "running" {
-		return nil, huma.Error409Conflict("sandbox is not ready")
-	}
-
-	if sb.Status.PodIP == "" {
-		return nil, huma.Error409Conflict("sandbox is not ready")
+	sb, err := h.getReadySandbox(ctx, input.ID)
+	if err != nil {
+		return nil, err
 	}
 
 	params := url.Values{}
@@ -140,7 +137,7 @@ func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *Filesyste
 		defer resp.Body.Close()
 		return nil, h.handleSidecarError(resp, input.ID)
 	}
-
+	
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
 			defer resp.Body.Close()
