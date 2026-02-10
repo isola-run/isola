@@ -143,8 +143,8 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	if r.BucketURL == "" {
-		log.Info("RootfsSnapshot storage not configured: ISOLA_ROOTFSSNAPSHOT_BUCKET_URL is required")
-		return r.setFailed(ctx, baseSnap, snap, "RootfsSnapshot storage not configured: ISOLA_ROOTFSSNAPSHOT_BUCKET_URL is required")
+		log.Info("RootfsSnapshot storage not configured: --rootfssnapshot-bucket-url is required")
+		return r.setFailed(ctx, baseSnap, snap, "RootfsSnapshot storage not configured: --rootfssnapshot-bucket-url is required")
 	}
 
 	sandboxPodName := podutil.GetSandboxPodName(snap.Spec.SandboxName)

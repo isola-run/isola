@@ -35,8 +35,35 @@ spec:
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081
+        - "--sidecar-image={{ include "isola.operator.sidecarImage" . }}"
+        - "--runtime-type={{ include "isola.operator.runtimeType" . }}"
+        - "--log-level={{ .Values.operator.logging.level }}"
+        {{- if .Values.operator.logging.devMode }}
+        - --dev-mode
+        {{- end }}
         {{- if .Values.operator.sandboxPriorityClassName }}
-        - --priority-class={{ .Values.operator.sandboxPriorityClassName }}
+        - "--priority-class={{ .Values.operator.sandboxPriorityClassName }}"
+        {{- end }}
+        {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" }}
+        - --rootfssnapshot-enabled
+        {{- end }}
+        {{- if eq .Values.operator.sandboxRuntime.type "gvisor" }}
+        {{- $bucketUrl := include "isola.operator.storageBucketUrl" . }}
+        {{- if $bucketUrl }}
+        - "--rootfssnapshot-bucket-url={{ $bucketUrl }}"
+        {{- $credentialSecretName := include "isola.operator.rootfssnapshotCredentialSecretName" . }}
+        {{- if $credentialSecretName }}
+        - "--rootfssnapshot-credential-secret={{ $credentialSecretName }}"
+        {{- end }}
+        {{- end }}
+        - "--rootfssnapshot-uploader-image={{ include "isola.operator.uploaderImage" . }}"
+        - "--rootfssnapshot-service-account={{ include "isola.operator.rootfssnapshotServiceAccountName" . }}"
+        - "--gvisor-runsc-path={{ include "isola.operator.gvisorRunscPath" . }}"
+        - "--gvisor-runsc-root={{ include "isola.operator.gvisorRunscRoot" . }}"
+        {{- end }}
+        {{- $imagePullSecretNames := include "isola.imagePullSecretNames" . }}
+        {{- if $imagePullSecretNames }}
+        - "--image-pull-secrets={{ $imagePullSecretNames }}"
         {{- end }}
         ports:
         - name: health
@@ -62,38 +89,6 @@ spec:
             - ALL
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
-        env:
-        - name: ISOLA_SIDECAR_IMAGE
-          value: {{ include "isola.operator.sidecarImage" . | quote }}
-        - name: ISOLA_RUNTIME_TYPE
-          value: {{ include "isola.operator.runtimeType" . | quote }}
-        - name: ISOLA_ROOTFSSNAPSHOT_ENABLED
-          value: {{ include "isola.operator.rootfssnapshotEnabled" . | quote }}
-        {{- if eq .Values.operator.sandboxRuntime.type "gvisor" }}
-        {{- $bucketUrl := include "isola.operator.storageBucketUrl" . }}
-        {{- if $bucketUrl }}
-        - name: ISOLA_ROOTFSSNAPSHOT_BUCKET_URL
-          value: {{ $bucketUrl | quote }}
-        {{- $credentialSecretName := include "isola.operator.rootfssnapshotCredentialSecretName" . }}
-        {{- if $credentialSecretName }}
-        - name: ISOLA_ROOTFSSNAPSHOT_CREDENTIAL_SECRET
-          value: {{ $credentialSecretName | quote }}
-        {{- end }}
-        {{- end }}
-        - name: ISOLA_UPLOADER_IMAGE
-          value: {{ include "isola.operator.uploaderImage" . | quote }}
-        - name: ISOLA_ROOTFSSNAPSHOT_SERVICE_ACCOUNT
-          value: {{ include "isola.operator.rootfssnapshotServiceAccountName" . | quote }}
-        - name: ISOLA_GVISOR_RUNSC_PATH
-          value: {{ include "isola.operator.gvisorRunscPath" . | quote }}
-        - name: ISOLA_GVISOR_RUNSC_ROOT
-          value: {{ include "isola.operator.gvisorRunscRoot" . | quote }}
-        {{- end }}
-        {{- $imagePullSecretNames := include "isola.imagePullSecretNames" . }}
-        {{- if $imagePullSecretNames }}
-        - name: ISOLA_IMAGE_PULL_SECRETS
-          value: {{ $imagePullSecretNames | quote }}
-        {{- end }}
       {{- with .Values.operator.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

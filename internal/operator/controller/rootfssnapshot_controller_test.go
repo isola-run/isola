@@ -95,7 +95,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
-			Expect(readyCond.Message).To(ContainSubstring("ISOLA_ROOTFSSNAPSHOT_BUCKET_URL"))
+			Expect(readyCond.Message).To(ContainSubstring("--rootfssnapshot-bucket-url"))
 		})
 
 		It("should create job on first reconcile", func() {
