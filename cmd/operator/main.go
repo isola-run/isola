@@ -69,14 +69,11 @@ func main() {
 	var sandboxSidecarImage string
 	var runtimeClassName string
 	var priorityClassName string
-	var isolaAPINamespace string
-	var isolaAPILabelName string
 	var rootfssnapshotBucketURL string
 	var rootfssnapshotCredentialSecret string
 	var rootfssnapshotUploaderImage string
 	var rootfssnapshotServiceAccount string
 	var imagePullSecretsStr string
-	var runtimeType string
 	var rootfssnapshotEnabled bool
 	var gvisorRunscPath string
 	var gvisorRunscRoot string
@@ -100,16 +97,13 @@ func main() {
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&sandboxSidecarImage, "sidecar-image", "", "Container image for the sandbox-sidecar (required)")
-	flag.StringVar(&runtimeClassName, "runtime-class", "gvisor", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
+	flag.StringVar(&runtimeClassName, "runtime-class", "", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
 	flag.StringVar(&priorityClassName, "priority-class", "", "PriorityClassName to use for sandbox pods. Empty means use cluster default.")
-	flag.StringVar(&isolaAPINamespace, "api-namespace", "isola-system", "Namespace where api-gateway runs (for NetworkPolicy ingress rules)")
-	flag.StringVar(&isolaAPILabelName, "api-label-name", "api-gateway", "Value of app.kubernetes.io/name label for api-gateway pods")
 	flag.StringVar(&rootfssnapshotBucketURL, "rootfssnapshot-bucket-url", "", "Bucket URL for rootfs snapshot storage (e.g., s3://bucket?region=us-east-1)")
 	flag.StringVar(&rootfssnapshotCredentialSecret, "rootfssnapshot-credential-secret", "", "Secret name for bucket credentials (optional, uses pod identity if not set)")
 	flag.StringVar(&rootfssnapshotUploaderImage, "rootfssnapshot-uploader-image", "", "Container image for the rootfs snapshot uploader")
 	flag.StringVar(&rootfssnapshotServiceAccount, "rootfssnapshot-service-account", "", "ServiceAccount for rootfs snapshot jobs")
 	flag.StringVar(&imagePullSecretsStr, "image-pull-secrets", "", "Comma-separated list of imagePullSecret names for sandbox pods and rootfs snapshot jobs")
-	flag.StringVar(&runtimeType, "runtime-type", "", "Runtime type: 'gvisor' or 'clusterDefault'")
 	flag.BoolVar(&rootfssnapshotEnabled, "rootfssnapshot-enabled", false, "Enable rootfs snapshot capability (requires gVisor runtime and privileged operations)")
 	flag.StringVar(&gvisorRunscPath, "gvisor-runsc-path", "", "Path to the runsc binary on cluster nodes (for gVisor snapshot support)")
 	flag.StringVar(&gvisorRunscRoot, "gvisor-runsc-root", "", "Root directory where runsc stores runtime state (for gVisor snapshot support)")
@@ -124,11 +118,6 @@ func main() {
 	logrLogger := logr.FromSlogHandler(logger.Handler())
 	ctrl.SetLogger(logrLogger)
 	klog.SetLogger(logrLogger)
-
-	if runtimeType != "" && runtimeType != "gvisor" && runtimeType != "clusterDefault" {
-		setupLog.Error(nil, "Invalid runtime type", "runtimeType", runtimeType, "allowed", []string{"gvisor", "clusterDefault"})
-		os.Exit(1)
-	}
 
 	if sandboxSidecarImage == "" {
 		setupLog.Error(nil, "--sidecar-image is required")
