@@ -45,6 +45,10 @@ operator:
     name: ""
     annotations: {}
 
+  logging:
+    level: info
+    devMode: false
+
   nodeSelector: {}
   tolerations: []
   affinity: {}

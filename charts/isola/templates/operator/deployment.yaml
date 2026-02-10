@@ -35,10 +35,14 @@ spec:
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081
-        - --sidecar-image={{ include "isola.operator.sidecarImage" . }}
-        - --runtime-type={{ include "isola.operator.runtimeType" . }}
+        - "--sidecar-image={{ include "isola.operator.sidecarImage" . }}"
+        - "--runtime-type={{ include "isola.operator.runtimeType" . }}"
+        - "--log-level={{ .Values.operator.logging.level }}"
+        {{- if .Values.operator.logging.devMode }}
+        - --dev-mode
+        {{- end }}
         {{- if .Values.operator.sandboxPriorityClassName }}
-        - --priority-class={{ .Values.operator.sandboxPriorityClassName }}
+        - "--priority-class={{ .Values.operator.sandboxPriorityClassName }}"
         {{- end }}
         {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" }}
         - --rootfssnapshot-enabled
@@ -46,20 +50,20 @@ spec:
         {{- if eq .Values.operator.sandboxRuntime.type "gvisor" }}
         {{- $bucketUrl := include "isola.operator.storageBucketUrl" . }}
         {{- if $bucketUrl }}
-        - --rootfssnapshot-bucket-url={{ $bucketUrl }}
+        - "--rootfssnapshot-bucket-url={{ $bucketUrl }}"
         {{- $credentialSecretName := include "isola.operator.rootfssnapshotCredentialSecretName" . }}
         {{- if $credentialSecretName }}
-        - --rootfssnapshot-credential-secret={{ $credentialSecretName }}
+        - "--rootfssnapshot-credential-secret={{ $credentialSecretName }}"
         {{- end }}
         {{- end }}
-        - --rootfssnapshot-uploader-image={{ include "isola.operator.uploaderImage" . }}
-        - --rootfssnapshot-service-account={{ include "isola.operator.rootfssnapshotServiceAccountName" . }}
-        - --gvisor-runsc-path={{ include "isola.operator.gvisorRunscPath" . }}
-        - --gvisor-runsc-root={{ include "isola.operator.gvisorRunscRoot" . }}
+        - "--rootfssnapshot-uploader-image={{ include "isola.operator.uploaderImage" . }}"
+        - "--rootfssnapshot-service-account={{ include "isola.operator.rootfssnapshotServiceAccountName" . }}"
+        - "--gvisor-runsc-path={{ include "isola.operator.gvisorRunscPath" . }}"
+        - "--gvisor-runsc-root={{ include "isola.operator.gvisorRunscRoot" . }}"
         {{- end }}
         {{- $imagePullSecretNames := include "isola.imagePullSecretNames" . }}
         {{- if $imagePullSecretNames }}
-        - --image-pull-secrets={{ $imagePullSecretNames }}
+        - "--image-pull-secrets={{ $imagePullSecretNames }}"
         {{- end }}
         ports:
         - name: health
