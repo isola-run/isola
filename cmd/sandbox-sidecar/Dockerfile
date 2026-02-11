@@ -15,6 +15,7 @@ COPY internal/ internal/
 # Build
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o sandbox-sidecar ./cmd/sandbox-sidecar/main.go
 
+# TODO benl: not all nsenter deps seem to be copied (ldd nsenter)
 # Install nsenter for entering container namespaces during command execution
 FROM debian:bookworm-slim AS tools
 RUN apt-get update && apt-get install -y --no-install-recommends util-linux \
