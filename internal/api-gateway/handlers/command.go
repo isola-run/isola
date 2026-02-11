@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/isola-ai/isola-sb/internal/constants"
+	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
 type CommandHandlers struct {
@@ -45,6 +46,7 @@ func (h *CommandHandlers) PostCommand(ctx context.Context, input *CreateSandboxC
 	}
 	sidecarURL := fmt.Sprintf("http://%s:%d/commands?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
 
+	_ = sidecarapi.CreateCommandRequest(CreateCommandRequest{}) // assert field compatibility
 	body, err := json.Marshal(input.Body)
 	if err != nil {
 		h.logger.Error("failed to marshal command request", "error", err)
@@ -69,13 +71,16 @@ func (h *CommandHandlers) PostCommand(ctx context.Context, input *CreateSandboxC
 		return nil, handleSidecarError(resp, input.ID, h.logger)
 	}
 
-	var cmdResp CreateCommandResponse
-	if err := json.NewDecoder(resp.Body).Decode(&cmdResp); err != nil {
+	_ = sidecarapi.CreateCommandResponse(CreateCommandResponse{}) // assert field compatibility
+	var sidecarResp sidecarapi.CreateCommandResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sidecarResp); err != nil {
 		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.ID)
 		return nil, huma.Error502BadGateway("invalid sidecar response")
 	}
 
-	return &CreateSandboxCommandOutput{Body: cmdResp}, nil
+	return &CreateSandboxCommandOutput{
+		Body: CreateCommandResponse{CommandID: sidecarResp.CommandID},
+	}, nil
 }
 
 func (h *CommandHandlers) GetCommandStatus(ctx context.Context, input *GetSandboxCommandStatusInput) (*GetSandboxCommandStatusOutput, error) {
@@ -103,13 +108,16 @@ func (h *CommandHandlers) GetCommandStatus(ctx context.Context, input *GetSandbo
 		return nil, handleSidecarError(resp, input.ID, h.logger)
 	}
 
-	var statusResp CommandStatusResponse
-	if err := json.NewDecoder(resp.Body).Decode(&statusResp); err != nil {
+	_ = sidecarapi.CommandStatusResponse(CommandStatusResponse{}) // assert field compatibility
+	var sidecarResp sidecarapi.CommandStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sidecarResp); err != nil {
 		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.ID)
 		return nil, huma.Error502BadGateway("invalid sidecar response")
 	}
 
-	return &GetSandboxCommandStatusOutput{Body: statusResp}, nil
+	return &GetSandboxCommandStatusOutput{
+		Body: CommandStatusResponse{ExitCode: sidecarResp.ExitCode},
+	}, nil
 }
 
 func (h *CommandHandlers) GetCommandStdout(ctx context.Context, input *GetSandboxCommandStreamInput) (*huma.StreamResponse, error) {

@@ -278,7 +278,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			)
 			Expect(resp.Code).To(Equal(http.StatusCreated))
 
-			var body sidecarapi.FilesystemWriteResponse
+			var body FilesystemWriteResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
 			Expect(body.AbsolutePath).To(Equal("/workspace/hello.txt"))
 			Expect(body.BytesWritten).To(Equal(int64(len("file content here"))))

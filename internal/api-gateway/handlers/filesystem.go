@@ -70,13 +70,19 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 		return nil, handleSidecarError(resp, input.ID, h.logger)
 	}
 
-	var writeResp sidecarapi.FilesystemWriteResponse
-	if err := json.NewDecoder(resp.Body).Decode(&writeResp); err != nil {
+	_ = sidecarapi.FilesystemWriteResponse(FilesystemWriteResponse{}) // assert field compatibility
+	var sidecarResp sidecarapi.FilesystemWriteResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sidecarResp); err != nil {
 		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.ID, "status", resp.StatusCode)
 		return nil, huma.Error502BadGateway("invalid sidecar response")
 	}
 
-	return &FilesystemWriteOutput{Body: writeResp}, nil
+	return &FilesystemWriteOutput{
+		Body: FilesystemWriteResponse{
+			AbsolutePath: sidecarResp.AbsolutePath,
+			BytesWritten: sidecarResp.BytesWritten,
+		},
+	}, nil
 }
 
 func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {

@@ -139,6 +139,9 @@ func RegisterCommandRoutes(api huma.API, h *CommandHandlers) {
 		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.PostCommand)
 
+	// todo benl: should we rename it to exitCode instead of Status?
+	// alternatively, return more info (what could be useful?)
+	// todo benl: add long polling wait param (or just default to long poll)
 	huma.Register(api, huma.Operation{
 		OperationID: "getSandboxCommandStatus",
 		Method:      http.MethodGet,
