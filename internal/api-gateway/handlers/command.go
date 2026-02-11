@@ -43,10 +43,7 @@ func (h *CommandHandlers) PostCommand(ctx context.Context, input *CreateSandboxC
 	if input.Container != "" {
 		params.Set("container", input.Container)
 	}
-	sidecarURL := fmt.Sprintf("http://%s:%d/commands", sb.Status.PodIP, h.sidecarPort)
-	if len(params) > 0 {
-		sidecarURL += "?" + params.Encode()
-	}
+	sidecarURL := fmt.Sprintf("http://%s:%d/commands?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
 
 	body, err := json.Marshal(input.Body)
 	if err != nil {
