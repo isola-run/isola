@@ -5,6 +5,10 @@ metadata:
   name: {{ include "isola.apiGateway.fullname" . }}
   labels:
     {{- include "isola.apiGateway.labels" . | nindent 4 }}
+  {{- with .Values.apiGateway.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.apiGateway.service.type }}
   ports:
