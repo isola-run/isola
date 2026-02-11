@@ -15,8 +15,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
-)
+	)
 
 func newCommandTestAPI(httpClient HTTPDoer, sidecarPort int) humatest.TestAPI {
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
@@ -44,7 +43,7 @@ var _ = Describe("Command Proxy", func() {
 
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusAccepted)
-				_ = json.NewEncoder(w).Encode(sidecarapi.CreateCommandResponse{
+				_ = json.NewEncoder(w).Encode(CreateCommandResponse{
 					CommandID: "test-cmd-id",
 				})
 			}))
@@ -61,13 +60,13 @@ var _ = Describe("Command Proxy", func() {
 			)
 			Expect(resp.Code).To(Equal(http.StatusAccepted))
 
-			var body sidecarapi.CreateCommandResponse
+			var body CreateCommandResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
 			Expect(body.CommandID).To(Equal("test-cmd-id"))
 
 			Expect(capturedContentType).To(Equal("application/json"))
 
-			var capturedReq sidecarapi.CreateCommandRequest
+			var capturedReq CreateCommandRequest
 			Expect(json.Unmarshal(capturedBody, &capturedReq)).To(Succeed())
 			Expect(capturedReq.Cmd).To(Equal("echo"))
 			Expect(capturedReq.Args).To(Equal([]string{"hello"}))
@@ -79,7 +78,7 @@ var _ = Describe("Command Proxy", func() {
 				capturedContainer = r.URL.Query().Get("container")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusAccepted)
-				_ = json.NewEncoder(w).Encode(sidecarapi.CreateCommandResponse{CommandID: "id"})
+				_ = json.NewEncoder(w).Encode(CreateCommandResponse{CommandID: "id"})
 			}))
 			defer mockSidecar.Close()
 
@@ -136,7 +135,7 @@ var _ = Describe("Command Proxy", func() {
 			exitCode := 0
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(sidecarapi.CommandStatusResponse{ExitCode: &exitCode})
+				_ = json.NewEncoder(w).Encode(CommandStatusResponse{ExitCode: &exitCode})
 			}))
 			defer mockSidecar.Close()
 
@@ -147,7 +146,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/status", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 
-			var status sidecarapi.CommandStatusResponse
+			var status CommandStatusResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 			Expect(status.ExitCode).To(HaveValue(Equal(0)))
 		})

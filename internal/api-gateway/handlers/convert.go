@@ -266,12 +266,13 @@ func getReadySandbox(ctx context.Context, k8sClient client.Client, namespace, id
 		return nil, k8sErrorToHuma(err, "failed to get sandbox")
 	}
 
+	// todo benl: stop using raw strings for sandbox status
 	if conditionsToStatus(sb.Status.Conditions) != "running" {
 		logger.Warn("sandbox is not ready", "id", id, "status", conditionsToStatus(sb.Status.Conditions))
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}
 
-	if sb.Status.PodIP == "" {
+	if sb.Status.PodIP == "" { // should not happen if sandbox is ready ^
 		logger.Warn("sandbox is not ready", "id", id)
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}
@@ -285,6 +286,7 @@ func handleSidecarError(resp *http.Response, sandboxID string, logger *slog.Logg
 		return huma.Error502BadGateway("sidecar internal error")
 	}
 
+	// Read limited error body to avoid unbounded reads to memory from untrusted sandbox
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
 		logger.Warn("failed to read sidecar error body", "error", err, "id", sandboxID, "status", resp.StatusCode)

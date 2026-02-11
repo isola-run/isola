@@ -13,7 +13,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/isola-ai/isola-sb/internal/constants"
-	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
 type CommandHandlers struct {
@@ -73,7 +72,7 @@ func (h *CommandHandlers) PostCommand(ctx context.Context, input *CreateSandboxC
 		return nil, handleSidecarError(resp, input.ID, h.logger)
 	}
 
-	var cmdResp sidecarapi.CreateCommandResponse
+	var cmdResp CreateCommandResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cmdResp); err != nil {
 		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.ID)
 		return nil, huma.Error502BadGateway("invalid sidecar response")
@@ -107,7 +106,7 @@ func (h *CommandHandlers) GetCommandStatus(ctx context.Context, input *GetSandbo
 		return nil, handleSidecarError(resp, input.ID, h.logger)
 	}
 
-	var statusResp sidecarapi.CommandStatusResponse
+	var statusResp CommandStatusResponse
 	if err := json.NewDecoder(resp.Body).Decode(&statusResp); err != nil {
 		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.ID)
 		return nil, huma.Error502BadGateway("invalid sidecar response")

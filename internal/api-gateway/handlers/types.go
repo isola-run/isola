@@ -141,14 +141,30 @@ type FilesystemReadInput struct {
 
 // --- Command types ---
 
+type CreateCommandRequest struct {
+	Cmd     string            `json:"cmd" required:"true" minLength:"1" doc:"Executable path"`
+	Args    []string          `json:"args,omitempty" doc:"Arguments to the executable"`
+	Env     map[string]string `json:"env,omitempty" doc:"Environment variable overrides"`
+	Cwd     string            `json:"cwd,omitempty" doc:"Working directory inside the sandbox"`
+	Timeout *int              `json:"timeout,omitempty" minimum:"1" doc:"Max execution time in seconds"`
+}
+
+type CreateCommandResponse struct {
+	CommandID string `json:"commandId" doc:"Unique command identifier"`
+}
+
+type CommandStatusResponse struct {
+	ExitCode *int `json:"exitCode" doc:"Process exit code, null if still running"`
+}
+
 type CreateSandboxCommandInput struct {
 	ID        string `path:"id" doc:"Sandbox identifier"`
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
-	Body      sidecarapi.CreateCommandRequest
+	Body      CreateCommandRequest
 }
 
 type CreateSandboxCommandOutput struct {
-	Body sidecarapi.CreateCommandResponse
+	Body CreateCommandResponse
 }
 
 type GetSandboxCommandStatusInput struct {
@@ -157,7 +173,7 @@ type GetSandboxCommandStatusInput struct {
 }
 
 type GetSandboxCommandStatusOutput struct {
-	Body sidecarapi.CommandStatusResponse
+	Body CommandStatusResponse
 }
 
 type GetSandboxCommandStreamInput struct {
