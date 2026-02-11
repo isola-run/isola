@@ -15,12 +15,18 @@ COPY internal/ internal/
 # Build
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o sandbox-sidecar ./cmd/sandbox-sidecar/main.go
 
-# Use distroless as minimal base image
+# Install nsenter for entering container namespaces during command execution
+FROM debian:bookworm-slim AS tools
+RUN apt-get update && apt-get install -y --no-install-recommends util-linux \
+    && rm -rf /var/lib/apt/lists/*
+
 # Sidecar runs as root (set by operator SecurityContext) to access /proc/<pid>/environ
-# and /proc/<pid>/root of sandbox containers via shared PID namespace
-FROM gcr.io/distroless/static
+# and /proc/<pid>/root of sandbox containers via shared PID namespace.
+# Uses distroless/base (not /static) because nsenter requires glibc.
+FROM gcr.io/distroless/base
 
 WORKDIR /
+COPY --from=tools /usr/bin/nsenter /usr/bin/nsenter
 COPY --from=builder /workspace/sandbox-sidecar .
 
 EXPOSE 10032

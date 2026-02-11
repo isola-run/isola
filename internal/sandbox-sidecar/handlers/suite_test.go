@@ -44,6 +44,10 @@ func (m *MockProcFS) GetUIDGID(pid int) (int, int, error) {
 	return m.uid, m.gid, nil
 }
 
+func (m *MockProcFS) GetEnviron(pid int) ([]string, error) {
+	return []string{"PATH=/usr/bin:/bin", "HOME=/root"}, nil
+}
+
 func TestHandlers(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Sidecar Handlers Suite")

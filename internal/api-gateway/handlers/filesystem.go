@@ -10,10 +10,8 @@ import (
 	"net/url"
 
 	"github.com/danielgtaylor/huma/v2"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 	"github.com/isola-ai/isola-sb/internal/constants"
 	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
@@ -41,35 +39,8 @@ func NewFilesystemHandlers(logger *slog.Logger, sandboxNamespace string, k8sClie
 	}
 }
 
-func (h *FilesystemHandlers) getReadySandbox(ctx context.Context, id string) (*sandboxv1alpha1.Sandbox, error) {
-	sb := &sandboxv1alpha1.Sandbox{}
-	key := client.ObjectKey{Name: id, Namespace: h.sandboxNamespace}
-
-	if err := h.k8sClient.Get(ctx, key, sb); err != nil {
-		if apierrors.IsNotFound(err) {
-			h.logger.Warn("sandbox not found", "id", id)
-			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", id))
-		}
-		h.logger.Error("failed to get sandbox", "error", err, "id", id)
-		return nil, k8sErrorToHuma(err, "failed to get sandbox")
-	}
-
-	// todo benl: stop using raw strings for sandbox status
-	if conditionsToStatus(sb.Status.Conditions) != "running" {
-		h.logger.Warn("sandbox is not ready", "id", id, "status", conditionsToStatus(sb.Status.Conditions))
-		return nil, huma.Error409Conflict("sandbox is not ready")
-	}
-
-	if sb.Status.PodIP == "" { // should not happen if sandbox is ready ^
-		h.logger.Warn("sandbox is not ready", "id", id)
-		return nil, huma.Error409Conflict("sandbox is not ready")
-	}
-
-	return sb, nil
-}
-
 func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
-	sb, err := h.getReadySandbox(ctx, input.ID)
+	sb, err := getReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +67,7 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return nil, h.handleSidecarError(resp, input.ID)
+		return nil, handleSidecarError(resp, input.ID, h.logger)
 	}
 
 	var writeResp sidecarapi.FilesystemWriteResponse
@@ -109,7 +80,7 @@ func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *Filesyst
 }
 
 func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {
-	sb, err := h.getReadySandbox(ctx, input.ID)
+	sb, err := getReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +106,7 @@ func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *Filesyste
 
 	if resp.StatusCode >= 400 {
 		defer func() { _ = resp.Body.Close() }()
-		return nil, h.handleSidecarError(resp, input.ID)
+		return nil, handleSidecarError(resp, input.ID, h.logger)
 	}
 
 	return &huma.StreamResponse{
@@ -160,26 +131,4 @@ func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *Filesyste
 			}
 		},
 	}, nil
-}
-
-func (h *FilesystemHandlers) handleSidecarError(resp *http.Response, sandboxID string) error {
-	if resp.StatusCode >= 500 {
-		h.logger.Error("sidecar returned server error", "id", sandboxID, "status", resp.StatusCode)
-		return huma.Error502BadGateway("sidecar internal error")
-	}
-
-	// Read limited error body to avoid unbounded reads to memory from untrusted sandbox
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	if err != nil {
-		h.logger.Warn("failed to read sidecar error body", "error", err, "id", sandboxID, "status", resp.StatusCode)
-	}
-
-	detail := http.StatusText(resp.StatusCode)
-	var sidecarErr huma.ErrorModel
-	if json.Unmarshal(body, &sidecarErr) == nil && sidecarErr.Detail != "" {
-		detail = sidecarErr.Detail
-	}
-
-	h.logger.Debug("forwarding sidecar client error", "id", sandboxID, "status", resp.StatusCode, "detail", detail)
-	return huma.NewError(resp.StatusCode, detail)
 }

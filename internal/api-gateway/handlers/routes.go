@@ -126,3 +126,95 @@ func RegisterFilesystemRoutes(api huma.API, h *FilesystemHandlers) {
 		Errors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.GetFilesystem)
 }
+
+func RegisterCommandRoutes(api huma.API, h *CommandHandlers) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "createSandboxCommand",
+		Method:        http.MethodPost,
+		Path:          "/sandboxes/{id}/commands",
+		Summary:       "Start a command in a sandbox",
+		Description:   "Starts a new command in the sandbox container and returns a command ID for tracking",
+		Tags:          []string{"sandboxes", "commands"},
+		DefaultStatus: http.StatusAccepted,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.PostCommand)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "getSandboxCommandStatus",
+		Method:      http.MethodGet,
+		Path:        "/sandboxes/{id}/commands/{cmdId}/status",
+		Summary:     "Get command status",
+		Description: "Returns the exit code of the command, or null if still running",
+		Tags:        []string{"sandboxes", "commands"},
+		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.GetCommandStatus)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "getSandboxCommandStdout",
+		Method:      http.MethodGet,
+		Path:        "/sandboxes/{id}/commands/{cmdId}/stdout",
+		Summary:     "Stream command stdout",
+		Description: "Streams the command's stdout as raw bytes. Supports resuming via ?offset=N query parameter.",
+		Tags:        []string{"sandboxes", "commands"},
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Command stdout stream",
+				Content: map[string]*huma.MediaType{
+					"application/octet-stream": {
+						Schema: &huma.Schema{Type: "string", Format: "binary"},
+					},
+				},
+			},
+		},
+		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.GetCommandStdout)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "getSandboxCommandStderr",
+		Method:      http.MethodGet,
+		Path:        "/sandboxes/{id}/commands/{cmdId}/stderr",
+		Summary:     "Stream command stderr",
+		Description: "Streams the command's stderr as raw bytes. Supports resuming via ?offset=N query parameter.",
+		Tags:        []string{"sandboxes", "commands"},
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Command stderr stream",
+				Content: map[string]*huma.MediaType{
+					"application/octet-stream": {
+						Schema: &huma.Schema{Type: "string", Format: "binary"},
+					},
+				},
+			},
+		},
+		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.GetCommandStderr)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "postSandboxCommandStdin",
+		Method:      http.MethodPost,
+		Path:        "/sandboxes/{id}/commands/{cmdId}/stdin",
+		Summary:     "Write to command stdin",
+		Description: "Writes raw bytes to the command's stdin",
+		Tags:        []string{"sandboxes", "commands"},
+		RequestBody: &huma.RequestBody{
+			Content: map[string]*huma.MediaType{
+				"application/octet-stream": {
+					Schema: &huma.Schema{Type: "string", Format: "binary"},
+				},
+			},
+		},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.PostCommandStdin)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteSandboxCommand",
+		Method:        http.MethodDelete,
+		Path:          "/sandboxes/{id}/commands/{cmdId}",
+		Summary:       "Kill a command",
+		Description:   "Kills the command process. Idempotent for already-exited commands.",
+		Tags:          []string{"sandboxes", "commands"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.DeleteCommand)
+}

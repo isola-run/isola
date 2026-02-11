@@ -138,3 +138,41 @@ type FilesystemReadInput struct {
 	Path      string `query:"path" required:"true" doc:"Source path (absolute or relative to container cwd)"`
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 }
+
+// --- Command types ---
+
+type CreateSandboxCommandInput struct {
+	ID        string `path:"id" doc:"Sandbox identifier"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+	Body      sidecarapi.CreateCommandRequest
+}
+
+type CreateSandboxCommandOutput struct {
+	Body sidecarapi.CreateCommandResponse
+}
+
+type GetSandboxCommandStatusInput struct {
+	ID    string `path:"id" doc:"Sandbox identifier"`
+	CmdID string `path:"cmdId" doc:"Command identifier"`
+}
+
+type GetSandboxCommandStatusOutput struct {
+	Body sidecarapi.CommandStatusResponse
+}
+
+type GetSandboxCommandStreamInput struct {
+	ID     string `path:"id" doc:"Sandbox identifier"`
+	CmdID  string `path:"cmdId" doc:"Command identifier"`
+	Offset int64  `query:"offset,omitempty" doc:"Byte offset to resume from (default 0)"`
+}
+
+type PostSandboxCommandStdinInput struct {
+	ID    string `path:"id" doc:"Sandbox identifier"`
+	CmdID string `path:"cmdId" doc:"Command identifier"`
+	BodyStream
+}
+
+type DeleteSandboxCommandInput struct {
+	ID    string `path:"id" doc:"Sandbox identifier"`
+	CmdID string `path:"cmdId" doc:"Command identifier"`
+}

@@ -35,6 +35,10 @@ func (m *errorMockProcFS) GetUIDGID(pid int) (int, int, error) {
 	return os.Getuid(), os.Getgid(), nil
 }
 
+func (m *errorMockProcFS) GetEnviron(pid int) ([]string, error) {
+	return []string{"PATH=/usr/bin:/bin", "HOME=/root"}, nil
+}
+
 var _ = Describe("Filesystem error cases", func() {
 	var errorAPI humatest.TestAPI
 
