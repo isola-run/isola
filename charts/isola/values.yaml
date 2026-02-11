@@ -164,6 +164,7 @@ apiGateway:
   service:
     type: ClusterIP
     nodePort: null
+    annotations: {}
 
   logging:
     level: info
