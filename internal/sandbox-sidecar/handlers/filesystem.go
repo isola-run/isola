@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -203,7 +204,11 @@ func (h *FilesystemHandlers) GetFilesystem(_ context.Context, input *FilesystemR
 			ctx.SetHeader("Content-Type", "application/octet-stream")
 
 			if _, err := io.Copy(ctx.BodyWriter(), f); err != nil {
-				h.logger.Error("failed to stream file", "error", err, "path", targetPath)
+				if errors.Is(err, context.Canceled) {
+					h.logger.Warn("client disconnected during file stream", "path", targetPath)
+				} else {
+					h.logger.Error("failed to stream file", "error", err, "path", targetPath)
+				}
 			}
 		},
 	}, nil

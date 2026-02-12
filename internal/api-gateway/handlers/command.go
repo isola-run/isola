@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -183,6 +185,11 @@ func (h *CommandHandlers) proxyStream(ctx context.Context, sandboxID, cmdID, str
 					}
 				}
 				if readErr != nil {
+					if errors.Is(readErr, context.Canceled) {
+						h.logger.Warn("client disconnected during command stream", "id", sandboxID)
+					} else if !errors.Is(readErr, io.EOF) {
+						h.logger.Error("unexpected error streaming command output", "error", readErr, "id", sandboxID)
+					}
 					return
 				}
 			}
