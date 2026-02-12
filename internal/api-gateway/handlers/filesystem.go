@@ -118,6 +118,9 @@ func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *Filesyste
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
 			defer func() { _ = resp.Body.Close() }()
+			// no-cache, since the file content change over time
+			// private, since the file is of a specific sandbox
+			ctx.SetHeader("Cache-Control", "no-cache, private")
 
 			if ct := resp.Header.Get("Content-Type"); ct != "" {
 				ctx.SetHeader("Content-Type", ct)

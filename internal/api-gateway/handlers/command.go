@@ -145,6 +145,7 @@ func (h *CommandHandlers) proxyStream(ctx context.Context, sandboxID, cmdID, str
 		return nil, huma.Error500InternalServerError("failed to build sidecar request")
 	}
 
+	// todo benl: can probably refactor the code around here to something like doSidecarRequest
 	resp, err := h.httpClient.Do(req) //nolint:bodyclose // closed in both error and streaming paths below
 	if err != nil {
 		h.logger.Error("sidecar request failed", "error", err, "id", sandboxID)
@@ -161,7 +162,10 @@ func (h *CommandHandlers) proxyStream(ctx context.Context, sandboxID, cmdID, str
 			defer func() { _ = resp.Body.Close() }()
 
 			ctx.SetHeader("Content-Type", "application/octet-stream")
-			ctx.SetHeader("Cache-Control", "no-cache")
+			// no-cache, since the stream change over time
+			// private, since the stream is of a specific sandbox
+			ctx.SetHeader("Cache-Control", "no-cache, private")
+			// X-Accel-Buffering: no, disable nginx buffering (serve immediately)
 			ctx.SetHeader("X-Accel-Buffering", "no")
 
 			w := ctx.BodyWriter()
