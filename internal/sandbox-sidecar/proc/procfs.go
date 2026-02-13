@@ -164,7 +164,7 @@ func (r *RealProcFS) GetEnviron(pid int) ([]string, error) {
 	}
 
 	var env []string
-	for _, entry := range bytes.Split(data, []byte{0}) {
+	for entry := range bytes.SplitSeq(data, []byte{0}) {
 		if len(entry) > 0 {
 			env = append(env, string(entry))
 		}

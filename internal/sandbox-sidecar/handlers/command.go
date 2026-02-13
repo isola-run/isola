@@ -70,7 +70,7 @@ func (b *directCommandBuilder) Build(_ int, req sidecarapi.CreateCommandRequest,
 }
 
 type commandEntry struct {
-	id         string
+	cmdId      string
 	cmd        *exec.Cmd
 	stdinPipe  io.WriteCloser
 	timer      *time.Timer
@@ -145,11 +145,11 @@ func (h *CommandHandlers) PostCommand(_ context.Context, input *CreateCommandInp
 		return nil, huma.Error400BadRequest("failed to determine container pid")
 	}
 
-	id := uuid.New().String()
+	cmdId := uuid.New().String()
 
-	// Create output directory on the container rootfs
-	outputDir := filepath.Join(h.procFS.GetRoot(pid), "var", "run", "isola", "commands", id)
-	if err := os.MkdirAll(outputDir, 0755); err != nil { //nolint:gosec // intentional permissions for container access
+	// Create output directory on the target container rootfs, so the logs count against its ephemeral storage calculation.
+	outputDir := filepath.Join(h.procFS.GetRoot(pid), "var", "run", "isola", "commands", cmdId)
+	if err := os.MkdirAll(outputDir, 0755); err != nil { //nolint:gosec
 		h.logger.Error("failed to create command output directory", "error", err, "path", outputDir)
 		return nil, huma.Error500InternalServerError("failed to create command output directory")
 	}
@@ -170,13 +170,12 @@ func (h *CommandHandlers) PostCommand(_ context.Context, input *CreateCommandInp
 		return nil, huma.Error500InternalServerError("failed to create stderr file")
 	}
 
-	// Build environment: container env + per-command overrides
 	containerEnv, envErr := h.procFS.GetEnviron(pid)
 	if envErr != nil {
 		h.logger.Warn("failed to read container environment", "error", envErr, "pid", pid)
 		containerEnv = nil
 	}
-	cmdEnv := buildEnv(containerEnv, input.Body.Env)
+	cmdEnv := buildCmdEnv(containerEnv, input.Body.Env)
 
 	cmd, err := h.cmdBuilder.Build(pid, input.Body, cmdEnv, stdoutFile, stderrFile)
 	if err != nil {
@@ -203,7 +202,7 @@ func (h *CommandHandlers) PostCommand(_ context.Context, input *CreateCommandInp
 	}
 
 	entry := &commandEntry{
-		id:         id,
+		cmdId:      cmdId,
 		cmd:        cmd,
 		stdinPipe:  stdinPipe,
 		done:       make(chan struct{}),
@@ -211,7 +210,6 @@ func (h *CommandHandlers) PostCommand(_ context.Context, input *CreateCommandInp
 		stderrPath: stderrPath,
 	}
 
-	// Timeout enforcement
 	if input.Body.Timeout != nil && *input.Body.Timeout > 0 {
 		duration := time.Duration(*input.Body.Timeout) * time.Second
 		entry.timer = time.AfterFunc(duration, func() {
@@ -225,7 +223,7 @@ func (h *CommandHandlers) PostCommand(_ context.Context, input *CreateCommandInp
 	}
 
 	h.cmdMu.Lock()
-	h.commands[id] = entry
+	h.commands[cmdId] = entry
 	h.cmdMu.Unlock()
 
 	// Wait goroutine: owns writer file handles, closes them on exit
@@ -248,7 +246,7 @@ func (h *CommandHandlers) PostCommand(_ context.Context, input *CreateCommandInp
 		}
 	}()
 
-	return &CreateCommandOutput{Body: sidecarapi.CreateCommandResponse{CommandID: id}}, nil
+	return &CreateCommandOutput{Body: sidecarapi.CreateCommandResponse{CommandID: cmdId}}, nil
 }
 
 func (h *CommandHandlers) GetCommandStatus(_ context.Context, input *GetCommandStatusInput) (*GetCommandStatusOutput, error) {
@@ -431,9 +429,7 @@ func isClientDisconnect(err error) bool {
 		errors.Is(err, context.Canceled)
 }
 
-// buildEnv merges container env with per-command overrides and strips
-// ISOLA_CONTAINER_NAME so child processes aren't mistaken for container markers.
-func buildEnv(containerEnv []string, overrides map[string]string) []string {
+func buildCmdEnv(containerEnv []string, overrides map[string]string) []string {
 	envMap := make(map[string]string, len(containerEnv)+len(overrides))
 	for _, kv := range containerEnv {
 		if k, v, ok := strings.Cut(kv, "="); ok {
@@ -443,6 +439,9 @@ func buildEnv(containerEnv []string, overrides map[string]string) []string {
 	for k, v := range overrides {
 		envMap[k] = v
 	}
+	// delete IsolaContainerNameEnv marker to avoid detecting child process as the container process
+	// since child process may feely change the configured cwd etc that were configured in the OCI image
+	// or during pod creating, which may be suprising
 	delete(envMap, constants.IsolaContainerNameEnv)
 
 	result := make([]string, 0, len(envMap))

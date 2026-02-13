@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -13,6 +15,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/isola-ai/isola-sb/internal/constants"
 	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
@@ -286,6 +289,28 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
+	Describe("output directory creation failure", func() {
+		It("returns 500 when MkdirAll fails", func() {
+			// Create a separate mock whose rootDir has a file blocking the path.
+			// MkdirAll will fail because "var" is a regular file, not a directory.
+			blockedRoot, err := os.MkdirTemp("", "sidecar-test-blocked-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(blockedRoot) })
+
+			// Place a regular file at <root>/var so MkdirAll(<root>/var/run/isola/...) fails
+			Expect(os.WriteFile(filepath.Join(blockedRoot, "var"), []byte("blocker"), 0644)).To(Succeed())
+
+			_, blockedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Blocked Test API", "1.0.0"))
+			blockedMock := &MockProcFS{rootDir: blockedRoot, cwd: testCwd}
+			blockedHandlers := NewCommandHandlersForTest(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), blockedMock)
+			RegisterCommandRoutes(blockedAPI, blockedHandlers)
+
+			resp := blockedAPI.Post("/commands", "Content-Type: application/json",
+				strings.NewReader(`{"cmd": "echo", "args": ["hello"]}`))
+			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
+		})
+	})
+
 	Describe("streaming file read errors", func() {
 		It("aborts streaming on file read error instead of spinning", func() {
 			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
@@ -318,5 +343,64 @@ var _ = Describe("Command Handlers", func() {
 			// Without the fix, it loops forever (sleep 100ms between retries).
 			Eventually(done, "2s").Should(BeClosed())
 		})
+	})
+})
+
+var _ = Describe("buildCmdEnv", func() {
+	sorted := func(env []string) []string {
+		sort.Strings(env)
+		return env
+	}
+
+	It("merges container env with overrides", func() {
+		containerEnv := []string{"PATH=/usr/bin", "HOME=/root"}
+		overrides := map[string]string{"FOO": "bar"}
+
+		result := sorted(buildCmdEnv(containerEnv, overrides))
+		Expect(result).To(Equal([]string{"FOO=bar", "HOME=/root", "PATH=/usr/bin"}))
+	})
+
+	It("overrides take precedence over container env", func() {
+		containerEnv := []string{"PATH=/usr/bin", "HOME=/root"}
+		overrides := map[string]string{"PATH": "/custom/bin"}
+
+		result := sorted(buildCmdEnv(containerEnv, overrides))
+		Expect(result).To(Equal([]string{"HOME=/root", "PATH=/custom/bin"}))
+	})
+
+	It("strips ISOLA_CONTAINER_NAME from output", func() {
+		containerEnv := []string{
+			"PATH=/usr/bin",
+			constants.IsolaContainerNameEnv + "=mycontainer",
+		}
+
+		result := sorted(buildCmdEnv(containerEnv, nil))
+		Expect(result).To(Equal([]string{"PATH=/usr/bin"}))
+	})
+
+	It("strips ISOLA_CONTAINER_NAME even if set via overrides", func() {
+		containerEnv := []string{"PATH=/usr/bin"}
+		overrides := map[string]string{constants.IsolaContainerNameEnv: "sneaky"}
+
+		result := sorted(buildCmdEnv(containerEnv, overrides))
+		Expect(result).To(Equal([]string{"PATH=/usr/bin"}))
+	})
+
+	It("handles nil containerEnv", func() {
+		overrides := map[string]string{"FOO": "bar"}
+		result := buildCmdEnv(nil, overrides)
+		Expect(result).To(Equal([]string{"FOO=bar"}))
+	})
+
+	It("handles nil overrides", func() {
+		containerEnv := []string{"PATH=/usr/bin"}
+		result := buildCmdEnv(containerEnv, nil)
+		Expect(result).To(Equal([]string{"PATH=/usr/bin"}))
+	})
+
+	It("skips malformed env entries without '='", func() {
+		containerEnv := []string{"GOOD=value", "MALFORMED"}
+		result := sorted(buildCmdEnv(containerEnv, nil))
+		Expect(result).To(Equal([]string{"GOOD=value"}))
 	})
 })
