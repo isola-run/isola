@@ -205,7 +205,7 @@ func (h *FilesystemHandlers) GetFilesystem(_ context.Context, input *FilesystemR
 
 			if _, err := io.Copy(ctx.BodyWriter(), f); err != nil {
 				if errors.Is(err, context.Canceled) {
-					h.logger.Warn("client disconnected during file stream", "path", targetPath)
+					h.logger.Warn("client disconnected during file stream", "error", err, "path", targetPath)
 				} else {
 					h.logger.Error("failed to stream file", "error", err, "path", targetPath)
 				}

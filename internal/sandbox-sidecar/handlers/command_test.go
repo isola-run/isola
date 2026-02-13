@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -16,7 +17,10 @@ import (
 )
 
 var _ = Describe("Command Handlers", func() {
-	var commandAPI humatest.TestAPI
+	var (
+		commandAPI      humatest.TestAPI
+		commandHandlers *CommandHandlers
+	)
 
 	BeforeEach(func() {
 		_, commandAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Command Test API", "1.0.0"))
@@ -27,7 +31,7 @@ var _ = Describe("Command Handlers", func() {
 			uid:     0,
 			gid:     0,
 		}
-		commandHandlers := NewCommandHandlersForTest(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), mockProcFS)
+		commandHandlers = NewCommandHandlersForTest(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), mockProcFS)
 		RegisterCommandRoutes(commandAPI, commandHandlers)
 	})
 
@@ -279,6 +283,40 @@ var _ = Describe("Command Handlers", func() {
 			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.String()).To(Equal("fast"))
+		})
+	})
+
+	Describe("streaming file read errors", func() {
+		It("aborts streaming on file read error instead of spinning", func() {
+			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+			DeferCleanup(func() {
+				commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
+			})
+
+			// Get the stdout path from the command entry
+			commandHandlers.cmdMu.RLock()
+			entry := commandHandlers.commands[result.CommandID]
+			commandHandlers.cmdMu.RUnlock()
+
+			// Replace the stdout file with a directory.
+			// os.Open on a directory succeeds, but f.Read returns EISDIR.
+			Expect(os.Remove(entry.stdoutPath)).To(Succeed())
+			Expect(os.Mkdir(entry.stdoutPath, 0755)).To(Succeed())
+			DeferCleanup(func() { _ = os.Remove(entry.stdoutPath) })
+
+			// Run the streaming request in a goroutine since with the bug
+			// it spins forever retrying the failing read.
+			done := make(chan struct{})
+			go func() {
+				defer GinkgoRecover()
+				commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+				close(done)
+			}()
+
+			// With the fix, streamOutput detects the non-EOF read error and returns.
+			// Without the fix, it loops forever (sleep 100ms between retries).
+			Eventually(done, "2s").Should(BeClosed())
 		})
 	})
 })

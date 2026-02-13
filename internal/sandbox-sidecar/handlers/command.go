@@ -19,6 +19,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 
+	"github.com/isola-ai/isola-sb/internal/constants"
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
@@ -39,6 +40,9 @@ func (b *nsenterCommandBuilder) Build(pid int, req sidecarapi.CreateCommandReque
 	}
 	if req.Cwd != "" {
 		args = append(args, "--wd="+req.Cwd)
+	} else {
+		// --wd with no argument sets CWD to the target process's working directory
+		args = append(args, "--wd")
 	}
 	args = append(args, "--")
 	args = append(args, req.Cmd)
@@ -318,7 +322,7 @@ func (h *CommandHandlers) streamOutput(cmdID string, offset int64, isStdout bool
 					if n > 0 {
 						if _, writeErr := w.Write(buf[:n]); writeErr != nil {
 							if isClientDisconnect(writeErr) {
-								h.logger.Warn("client disconnected during command stream", "cmdId", cmdID)
+								h.logger.Warn("client disconnected during command stream", "error", writeErr, "cmdId", cmdID)
 							} else {
 								h.logger.Error("unexpected error streaming command output", "error", writeErr, "cmdId", cmdID)
 							}
@@ -330,6 +334,10 @@ func (h *CommandHandlers) streamOutput(cmdID string, offset int64, isStdout bool
 						}
 					}
 					if readErr != nil {
+						if readErr != io.EOF {
+							h.logger.Error("failed to read command output file", "error", readErr, "cmdId", cmdID)
+							return
+						}
 						drained = true
 					}
 				}
@@ -343,7 +351,7 @@ func (h *CommandHandlers) streamOutput(cmdID string, offset int64, isStdout bool
 						if n > 0 {
 							if _, writeErr := w.Write(buf[:n]); writeErr != nil {
 								if isClientDisconnect(writeErr) {
-									h.logger.Warn("client disconnected during command stream", "cmdId", cmdID)
+									h.logger.Warn("client disconnected during command stream", "error", writeErr, "cmdId", cmdID)
 								} else {
 									h.logger.Error("unexpected error streaming command output", "error", writeErr, "cmdId", cmdID)
 								}
@@ -354,6 +362,9 @@ func (h *CommandHandlers) streamOutput(cmdID string, offset int64, isStdout bool
 							}
 						}
 						if readErr != nil {
+							if readErr != io.EOF {
+								h.logger.Error("failed to read command output file", "error", readErr, "cmdId", cmdID)
+							}
 							return
 						}
 					}
@@ -420,12 +431,9 @@ func isClientDisconnect(err error) bool {
 		errors.Is(err, context.Canceled)
 }
 
-// buildEnv merges container env with per-command overrides.
+// buildEnv merges container env with per-command overrides and strips
+// ISOLA_CONTAINER_NAME so child processes aren't mistaken for container markers.
 func buildEnv(containerEnv []string, overrides map[string]string) []string {
-	if len(overrides) == 0 {
-		return containerEnv
-	}
-
 	envMap := make(map[string]string, len(containerEnv)+len(overrides))
 	for _, kv := range containerEnv {
 		if k, v, ok := strings.Cut(kv, "="); ok {
@@ -435,6 +443,7 @@ func buildEnv(containerEnv []string, overrides map[string]string) []string {
 	for k, v := range overrides {
 		envMap[k] = v
 	}
+	delete(envMap, constants.IsolaContainerNameEnv)
 
 	result := make([]string, 0, len(envMap))
 	for k, v := range envMap {
