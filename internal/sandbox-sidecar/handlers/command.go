@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -315,7 +317,12 @@ func (h *CommandHandlers) streamOutput(cmdID string, offset int64, isStdout bool
 					n, readErr := f.Read(buf)
 					if n > 0 {
 						if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-							return // client disconnected
+							if isClientDisconnect(writeErr) {
+								h.logger.Warn("client disconnected during command stream", "cmdId", cmdID)
+							} else {
+								h.logger.Error("unexpected error streaming command output", "error", writeErr, "cmdId", cmdID)
+							}
+							return
 						}
 						pos += int64(n)
 						if canFlush {
@@ -335,6 +342,11 @@ func (h *CommandHandlers) streamOutput(cmdID string, offset int64, isStdout bool
 						n, readErr := f.Read(buf)
 						if n > 0 {
 							if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+								if isClientDisconnect(writeErr) {
+									h.logger.Warn("client disconnected during command stream", "cmdId", cmdID)
+								} else {
+									h.logger.Error("unexpected error streaming command output", "error", writeErr, "cmdId", cmdID)
+								}
 								return
 							}
 							if canFlush {
@@ -381,7 +393,7 @@ func (h *CommandHandlers) PostCommandStdin(_ context.Context, input *PostCommand
 
 	return nil, nil
 }
-
+// todo benl: delete from commands map (eventually?) to constraint memory?
 func (h *CommandHandlers) DeleteCommand(_ context.Context, input *DeleteCommandInput) (*struct{}, error) {
 	h.cmdMu.RLock()
 	entry, ok := h.commands[input.CmdID]
@@ -400,6 +412,12 @@ func (h *CommandHandlers) DeleteCommand(_ context.Context, input *DeleteCommandI
 	}
 
 	return nil, nil
+}
+
+func isClientDisconnect(err error) bool {
+	return errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, context.Canceled)
 }
 
 // buildEnv merges container env with per-command overrides.

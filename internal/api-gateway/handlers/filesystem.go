@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"syscall"
 
 	"github.com/danielgtaylor/huma/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -137,10 +138,10 @@ func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *Filesyste
 			// io.Copy(ctx.BodyWriter(), limitedReader)
 
 			if _, err := io.Copy(ctx.BodyWriter(), resp.Body); err != nil {
-				if errors.Is(err, context.Canceled) {
-					h.logger.Warn("client disconnected during file stream", "id", input.ID)
+				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) {
+					h.logger.Warn("client disconnected during file stream", "error", err, "id", input.ID)
 				} else {
-					h.logger.Error("failed to stream file from sidecar", "error", err, "id", input.ID)
+					h.logger.Error("sidecar error streaming file", "error", err, "id", input.ID)
 				}
 			}
 		},

@@ -54,6 +54,7 @@ func (h *SandboxHandlers) PostSandbox(ctx context.Context, input *CreateSandboxI
 
 	name, err := generateSandboxName()
 	if err != nil {
+		h.logger.Error("failed to generate sandbox name", "error", err)
 		return nil, huma.Error500InternalServerError("failed to generate sandbox name")
 	}
 

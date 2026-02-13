@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"syscall"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -170,27 +172,14 @@ func (h *CommandHandlers) proxyStream(ctx context.Context, sandboxID, cmdID, str
 			// X-Accel-Buffering: no, disable nginx buffering (serve immediately)
 			ctx.SetHeader("X-Accel-Buffering", "no")
 
-			w := ctx.BodyWriter()
-			flusher, canFlush := w.(http.Flusher)
-			buf := make([]byte, 4096)
+			fw := newTimedFlushWriter(ctx.BodyWriter(), 100*time.Millisecond)
+			defer fw.stop()
 
-			for {
-				n, readErr := resp.Body.Read(buf)
-				if n > 0 {
-					if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-						return
-					}
-					if canFlush {
-						flusher.Flush()
-					}
-				}
-				if readErr != nil {
-					if errors.Is(readErr, context.Canceled) {
-						h.logger.Warn("client disconnected during command stream", "id", sandboxID)
-					} else if !errors.Is(readErr, io.EOF) {
-						h.logger.Error("unexpected error streaming command output", "error", readErr, "id", sandboxID)
-					}
-					return
+			if _, err := io.Copy(fw, resp.Body); err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) {
+					h.logger.Warn("client disconnected during command stream", "error", err, "id", sandboxID)
+				} else {
+					h.logger.Error("sidecar error streaming command output", "error", err, "id", sandboxID)
 				}
 			}
 		},
