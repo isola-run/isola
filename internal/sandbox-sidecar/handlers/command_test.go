@@ -103,8 +103,13 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("returns 404 for unknown command", func() {
-			resp := commandAPI.Get("/commands/nonexistent/status")
+			resp := commandAPI.Get("/commands/00000000-0000-0000-0000-000000000000/status")
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("returns 422 for invalid cmdId format", func() {
+			resp := commandAPI.Get("/commands/not-a-uuid/status")
+			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 	})
 
@@ -158,7 +163,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("returns 404 for unknown command", func() {
-			resp := commandAPI.Get("/commands/nonexistent/stdout")
+			resp := commandAPI.Get("/commands/00000000-0000-0000-0000-000000000000/stdout")
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 	})
@@ -197,7 +202,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("returns 404 for unknown command", func() {
-			resp := commandAPI.Post("/commands/nonexistent/stdin", "Content-Type: application/octet-stream",
+			resp := commandAPI.Post("/commands/00000000-0000-0000-0000-000000000000/stdin", "Content-Type: application/octet-stream",
 				strings.NewReader("data"))
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
@@ -254,7 +259,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("returns 404 for unknown command", func() {
-			resp := commandAPI.Delete("/commands/nonexistent")
+			resp := commandAPI.Delete("/commands/00000000-0000-0000-0000-000000000000")
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 	})

@@ -54,7 +54,7 @@ type CreateCommandOutput struct {
 }
 
 type GetCommandStatusInput struct {
-	CmdID string `path:"cmdId" doc:"Command identifier"`
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier (UUID)"`
 }
 
 type GetCommandStatusOutput struct {
@@ -67,10 +67,10 @@ type GetCommandStreamInput struct {
 }
 
 type PostCommandStdinInput struct {
-	CmdID string `path:"cmdId" doc:"Command identifier"`
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier (UUID)"`
 	BodyStream
 }
 
 type DeleteCommandInput struct {
-	CmdID string `path:"cmdId" doc:"Command identifier"`
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier (UUID)"`
 }

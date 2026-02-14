@@ -231,12 +231,13 @@ paths:
       description: Kills the command process. Idempotent for already-exited commands.
       operationId: deleteCommand
       parameters:
-        - description: Command identifier
+        - description: Command identifier (UUID)
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier
+            description: Command identifier (UUID)
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
       responses:
         "204":
@@ -267,12 +268,13 @@ paths:
       description: Returns the exit code of the command, or null if still running
       operationId: getCommandStatus
       parameters:
-        - description: Command identifier
+        - description: Command identifier (UUID)
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier
+            description: Command identifier (UUID)
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
       responses:
         "200":
@@ -358,12 +360,13 @@ paths:
       description: Writes raw bytes to the command's stdin
       operationId: postCommandStdin
       parameters:
-        - description: Command identifier
+        - description: Command identifier (UUID)
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier
+            description: Command identifier (UUID)
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
       requestBody:
         content:

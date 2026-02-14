@@ -695,12 +695,13 @@ paths:
           schema:
             description: Sandbox identifier
             type: string
-        - description: Command identifier
+        - description: Command identifier (UUID)
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier
+            description: Command identifier (UUID)
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
       responses:
         "204":
@@ -751,12 +752,13 @@ paths:
           schema:
             description: Sandbox identifier
             type: string
-        - description: Command identifier
+        - description: Command identifier (UUID)
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier
+            description: Command identifier (UUID)
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
       responses:
         "200":
@@ -882,12 +884,13 @@ paths:
           schema:
             description: Sandbox identifier
             type: string
-        - description: Command identifier
+        - description: Command identifier (UUID)
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier
+            description: Command identifier (UUID)
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
       requestBody:
         content:
