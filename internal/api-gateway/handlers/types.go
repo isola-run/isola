@@ -181,7 +181,7 @@ type GetSandboxCommandStatusOutput struct {
 
 type GetSandboxCommandStreamInput struct {
 	ID     string `path:"id" doc:"Sandbox identifier"`
-	CmdID  string `path:"cmdId" doc:"Command identifier"`
+	CmdID  string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier (UUID)"`
 	Offset int64  `query:"offset,omitempty" minimum:"0" doc:"Byte offset to resume from (default 0)"`
 }
 
