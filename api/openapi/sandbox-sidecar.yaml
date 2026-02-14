@@ -309,12 +309,13 @@ paths:
       description: Streams the command's stderr as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.
       operationId: getCommandStderr
       parameters:
-        - description: Command identifier
+        - description: Command identifier (UUID)
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier
+            description: Command identifier (UUID)
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
         - description: Byte offset to resume from (default 0)
           explode: false
@@ -411,12 +412,13 @@ paths:
       description: Streams the command's stdout as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.
       operationId: getCommandStdout
       parameters:
-        - description: Command identifier
+        - description: Command identifier (UUID)
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier
+            description: Command identifier (UUID)
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
         - description: Byte offset to resume from (default 0)
           explode: false
@@ -469,6 +471,7 @@ paths:
           required: true
           schema:
             description: Source path (absolute or relative to container cwd)
+            minLength: 1
             type: string
         - description: Container name. Defaults to the only container if there is one, otherwise it's required.
           explode: false
@@ -524,6 +527,7 @@ paths:
           required: true
           schema:
             description: Destination path (absolute or relative to container cwd)
+            minLength: 1
             type: string
         - description: Container name. Defaults to the only container if there is one, otherwise it's required.
           explode: false

@@ -55,6 +55,7 @@ components:
           type: object
         image:
           description: Container image
+          minLength: 1
           type: string
         resources:
           $ref: "#/components/schemas/ResourcesSpec"
@@ -281,6 +282,7 @@ components:
           description: Custom DNS servers (max 3)
           items:
             type: string
+          maxItems: 3
           type:
             - array
             - "null"
@@ -813,12 +815,13 @@ paths:
           schema:
             description: Sandbox identifier
             type: string
-        - description: Command identifier
+        - description: Command identifier (UUID)
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier
+            description: Command identifier (UUID)
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
         - description: Byte offset to resume from (default 0)
           explode: false
@@ -949,12 +952,13 @@ paths:
           schema:
             description: Sandbox identifier
             type: string
-        - description: Command identifier
+        - description: Command identifier (UUID)
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier
+            description: Command identifier (UUID)
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
         - description: Byte offset to resume from (default 0)
           explode: false
@@ -1027,6 +1031,7 @@ paths:
           required: true
           schema:
             description: Source path (absolute or relative to container cwd)
+            minLength: 1
             type: string
         - description: Container name. Defaults to the only container if there is one, otherwise it's required.
           explode: false
@@ -1102,6 +1107,7 @@ paths:
           required: true
           schema:
             description: Destination path (absolute or relative to container cwd)
+            minLength: 1
             type: string
         - description: Container name. Defaults to the only container if there is one, otherwise it's required.
           explode: false

@@ -21,7 +21,7 @@ type CreateSandboxInput struct {
 }
 
 type ContainerSpec struct {
-	Image     string            `json:"image" required:"true" doc:"Container image"`
+	Image     string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
 	Command   []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
 	Env       map[string]string `json:"env,omitempty" doc:"Environment variables"`
 	Resources *ResourcesSpec    `json:"resources,omitempty" doc:"Resource requests and limits"`
@@ -52,7 +52,7 @@ type NetworkSpec struct {
 	AllowAllInternet   *bool    `json:"allowAllInternet,omitempty" doc:"Allow public internet egress"`
 	AllowClusterDNS    *bool    `json:"allowClusterDNS,omitempty" doc:"Allow cluster DNS queries"`
 	AllowedEgressCIDRs []string `json:"allowedEgressCIDRs,omitempty" doc:"Allowed egress CIDRs"`
-	Nameservers        []string `json:"nameservers,omitempty" doc:"Custom DNS servers (max 3)"`
+	Nameservers        []string `json:"nameservers,omitempty" maxItems:"3" doc:"Custom DNS servers (max 3)"`
 }
 
 type GetSandboxInput struct {
@@ -122,7 +122,7 @@ func (b *BodyStream) Resolve(ctx huma.Context) []error {
 
 type FilesystemWriteInput struct {
 	ID        string `path:"id" doc:"Sandbox identifier"`
-	Path      string `query:"path" required:"true" doc:"Destination path (absolute or relative to container cwd)"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Destination path (absolute or relative to container cwd)"`
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 	BodyStream
 }
@@ -138,7 +138,7 @@ type FilesystemWriteOutput struct {
 
 type FilesystemReadInput struct {
 	ID        string `path:"id" doc:"Sandbox identifier"`
-	Path      string `query:"path" required:"true" doc:"Source path (absolute or relative to container cwd)"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Source path (absolute or relative to container cwd)"`
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 }
 
