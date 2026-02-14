@@ -2,6 +2,7 @@ package proc
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -29,6 +30,8 @@ type ProcFS interface {
 	GetRoot(pid int) string
 	// GetUIDGID reads the real UID and GID from /proc/<pid>/status.
 	GetUIDGID(pid int) (uid, gid int, err error)
+	// GetEnviron reads /proc/<pid>/environ and returns all environment variables as "KEY=VALUE" strings.
+	GetEnviron(pid int) ([]string, error)
 }
 
 // RealProcFS implements ProcFS using the actual /proc filesystem.
@@ -150,4 +153,21 @@ func (r *RealProcFS) GetUIDGID(pid int) (uid, gid int, err error) {
 		return 0, 0, fmt.Errorf("stat %s: %w", procPath, err)
 	}
 	return int(stat.Uid), int(stat.Gid), nil
+}
+
+// GetEnviron reads all environment variables from /proc/<pid>/environ.
+func (r *RealProcFS) GetEnviron(pid int) ([]string, error) {
+	environPath := fmt.Sprintf("/proc/%d/environ", pid)
+	data, err := os.ReadFile(environPath) //nolint:gosec // path is constructed from trusted PID
+	if err != nil {
+		return nil, fmt.Errorf("read environ: %w", err)
+	}
+
+	var env []string
+	for entry := range bytes.SplitSeq(data, []byte{0}) {
+		if len(entry) > 0 {
+			env = append(env, string(entry))
+		}
+	}
+	return env, nil
 }

@@ -139,8 +139,13 @@ func main() {
 	sandboxHandlers := handlers.NewSandboxHandlers(logger, cfg.sandboxNamespace, mgr.GetClient())
 	handlers.RegisterSandboxRoutes(api, sandboxHandlers)
 
-	filesystemHandlers := handlers.NewFilesystemHandlers(logger, cfg.sandboxNamespace, mgr.GetClient(), initSandboxClient())
+	sandboxClient := initSandboxClient()
+
+	filesystemHandlers := handlers.NewFilesystemHandlers(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient)
 	handlers.RegisterFilesystemRoutes(api, filesystemHandlers)
+
+	commandHandlers := handlers.NewCommandHandlers(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient)
+	handlers.RegisterCommandRoutes(api, commandHandlers)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.httpPort),

@@ -41,3 +41,36 @@ type FilesystemReadInput struct {
 	Path      string `query:"path" required:"true" doc:"Source path (absolute or relative to container cwd)"`
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 }
+
+// --- Command types ---
+
+type CreateCommandInput struct {
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+	Body      sidecarapi.CreateCommandRequest
+}
+
+type CreateCommandOutput struct {
+	Body sidecarapi.CreateCommandResponse
+}
+
+type GetCommandStatusInput struct {
+	CmdID string `path:"cmdId" doc:"Command identifier"`
+}
+
+type GetCommandStatusOutput struct {
+	Body sidecarapi.CommandStatusResponse
+}
+
+type GetCommandStreamInput struct {
+	CmdID  string `path:"cmdId" doc:"Command identifier"`
+	Offset int64  `query:"offset,omitempty" minimum:"0" doc:"Byte offset to resume from (default 0)"`
+}
+
+type PostCommandStdinInput struct {
+	CmdID string `path:"cmdId" doc:"Command identifier"`
+	BodyStream
+}
+
+type DeleteCommandInput struct {
+	CmdID string `path:"cmdId" doc:"Command identifier"`
+}

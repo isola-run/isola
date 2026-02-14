@@ -2,13 +2,12 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
-
-	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -17,45 +16,17 @@ import (
 )
 
 type FilesystemHandlers struct {
-	logger *slog.Logger
-	procFS proc.ProcFS
-
-	// PID cache to avoid repeated /proc scans (containerName -> pid)
-	pidMu      sync.RWMutex
-	cachedPIDs map[string]int
+	logger      *slog.Logger
+	procFS      proc.ProcFS
+	pidResolver *PIDResolver
 }
 
-func NewFilesystemHandlers(logger *slog.Logger, procFS proc.ProcFS) *FilesystemHandlers {
+func NewFilesystemHandlers(logger *slog.Logger, procFS proc.ProcFS, pidResolver *PIDResolver) *FilesystemHandlers {
 	return &FilesystemHandlers{
-		logger:     logger,
-		procFS:     procFS,
-		cachedPIDs: make(map[string]int),
+		logger:      logger,
+		procFS:      procFS,
+		pidResolver: pidResolver,
 	}
-}
-
-func (h *FilesystemHandlers) findCachedContainerPID(containerName string) (int, error) {
-	h.pidMu.RLock()
-	pid, ok := h.cachedPIDs[containerName]
-	h.pidMu.RUnlock()
-
-	// Validate cached PID still has the expected marker
-	if ok {
-		if name, found := proc.GetContainerName(pid); found && (containerName == "" || name == containerName) {
-			return pid, nil
-		}
-	}
-
-	// Cache miss or stale - rescan
-	newPID, err := h.procFS.FindMarkedPID(containerName)
-	if err != nil {
-		return 0, err
-	}
-
-	h.pidMu.Lock()
-	h.cachedPIDs[containerName] = newPID
-	h.pidMu.Unlock()
-
-	return newPID, nil
 }
 
 func (h *FilesystemHandlers) resolveAbsolutePath(path string, pid int) (string, huma.StatusError) {
@@ -77,11 +48,40 @@ func (h *FilesystemHandlers) resolveAbsolutePath(path string, pid int) (string, 
 	return absolutePath, nil
 }
 
+// mkdirAllChown is like os.MkdirAll but chowns each newly created directory.
+// Existing directories are left untouched.
+func mkdirAllChown(path string, uid, gid int) error {
+	parent := filepath.Dir(path)
+	if parent == path {
+		return nil
+	}
+	fi, err := os.Stat(path)
+	if err == nil {
+		if !fi.IsDir() {
+			return fmt.Errorf("%s exists and is not a directory", path)
+		}
+		return nil
+	}
+	if !os.IsNotExist(err) {
+		return err
+	}
+	if err := mkdirAllChown(parent, uid, gid); err != nil {
+		return err
+	}
+	if err := os.Mkdir(path, 0755); err != nil { //nolint:gosec
+		if os.IsExist(err) {
+			return nil
+		}
+		return err
+	}
+	return os.Chown(path, uid, gid)
+}
+
 func (h *FilesystemHandlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
 	path := input.Path
 	container := input.Container
 
-	pid, err := h.findCachedContainerPID(container)
+	pid, err := h.pidResolver.FindCachedContainerPID(container)
 	if err != nil {
 		if container == "" {
 			h.logger.Warn("failed to determine container pid", "error", err)
@@ -97,11 +97,17 @@ func (h *FilesystemHandlers) PostFilesystem(_ context.Context, input *Filesystem
 		return nil, err
 	}
 
+	uid, gid, err := h.procFS.GetUIDGID(pid)
+	if err != nil {
+		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
+		return nil, huma.Error500InternalServerError("failed to get container uid/gid")
+	}
+
 	// Build the host path via /proc/<pid>/root
 	targetPath := filepath.Join(h.procFS.GetRoot(pid), resolvedPath)
 
 	parentDir := filepath.Dir(targetPath)
-	if err := os.MkdirAll(parentDir, 0755); err != nil { //nolint:gosec // intentional permissions for container access
+	if err := mkdirAllChown(parentDir, uid, gid); err != nil {
 		h.logger.Error("failed to create parent directories", "error", err, "path", parentDir)
 		return nil, huma.Error500InternalServerError("failed to create parent directories")
 	}
@@ -117,21 +123,14 @@ func (h *FilesystemHandlers) PostFilesystem(_ context.Context, input *Filesystem
 		}
 	}()
 
-	// Stream the body to the file
 	written, err := io.Copy(dst, input.Stream)
 	if err != nil {
 		h.logger.Error("failed to write file", "error", err, "path", targetPath)
 		return nil, huma.Error500InternalServerError("failed to write file")
 	}
 
-	if err := os.Chmod(targetPath, 0600); err != nil {
+	if err := os.Chmod(targetPath, 0666); err != nil { //nolint:gosec
 		h.logger.Error("failed to set file permissions", "error", err, "path", targetPath)
-	}
-
-	uid, gid, err := h.procFS.GetUIDGID(pid)
-	if err != nil {
-		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
-		return nil, huma.Error500InternalServerError("failed to get container uid/gid")
 	}
 
 	if err := os.Chown(targetPath, uid, gid); err != nil {
@@ -150,7 +149,7 @@ func (h *FilesystemHandlers) GetFilesystem(_ context.Context, input *FilesystemR
 	path := input.Path
 	container := input.Container
 
-	pid, err := h.findCachedContainerPID(container)
+	pid, err := h.pidResolver.FindCachedContainerPID(container)
 	if err != nil {
 		if container == "" {
 			h.logger.Warn("failed to determine container pid", "error", err)
@@ -203,7 +202,11 @@ func (h *FilesystemHandlers) GetFilesystem(_ context.Context, input *FilesystemR
 			ctx.SetHeader("Content-Type", "application/octet-stream")
 
 			if _, err := io.Copy(ctx.BodyWriter(), f); err != nil {
-				h.logger.Error("failed to stream file", "error", err, "path", targetPath)
+				if errors.Is(err, context.Canceled) {
+					h.logger.Warn("client disconnected during file stream", "error", err, "path", targetPath)
+				} else {
+					h.logger.Error("failed to stream file", "error", err, "path", targetPath)
+				}
 			}
 		},
 	}, nil

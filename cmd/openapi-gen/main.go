@@ -72,6 +72,9 @@ func setupAPIGateway() huma.API {
 	filesystemHandlers := apigateway.NewFilesystemHandlers(nil, "", nil, nil)
 	apigateway.RegisterFilesystemRoutes(api, filesystemHandlers)
 
+	commandHandlers := apigateway.NewCommandHandlers(nil, "", nil, nil)
+	apigateway.RegisterCommandRoutes(api, commandHandlers)
+
 	return api
 }
 
@@ -83,10 +86,12 @@ func setupSandboxSidecar() huma.API {
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected
 	healthHandlers := sidecar.NewHealthHandlers()
-	filesystemHandlers := sidecar.NewFilesystemHandlers(nil, nil)
+	filesystemHandlers := sidecar.NewFilesystemHandlers(nil, nil, nil)
+	commandHandlers := sidecar.NewCommandHandlers(nil, nil, nil, nil)
 
 	sidecar.RegisterHealthRoutes(api, healthHandlers)
 	sidecar.RegisterFilesystemRoutes(api, filesystemHandlers)
+	sidecar.RegisterCommandRoutes(api, commandHandlers)
 
 	return api
 }

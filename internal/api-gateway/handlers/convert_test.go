@@ -1,6 +1,11 @@
 package handlers
 
 import (
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -161,6 +166,36 @@ var _ = Describe("Conversion functions", func() {
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "SomethingNew"},
 			}
 			Expect(conditionsToStatus(conditions)).To(Equal("unknown"))
+		})
+	})
+
+	Describe("handleSidecarError", func() {
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+		It("returns 502 for 5xx and reads the body", func() {
+			body := `{"status":500,"title":"Internal Server Error","detail":"failed to start command: exec: not found"}`
+			resp := &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}
+			err := handleSidecarError(resp, "sb-123", logger)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("sidecar internal error"))
+
+			// Body should be fully consumed
+			remaining, _ := io.ReadAll(resp.Body)
+			Expect(remaining).To(BeEmpty())
+		})
+
+		It("forwards 4xx status and detail from sidecar", func() {
+			body := `{"status":404,"title":"Not Found","detail":"command \"abc\" not found"}`
+			resp := &http.Response{
+				StatusCode: http.StatusNotFound,
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}
+			err := handleSidecarError(resp, "sb-123", logger)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(`command "abc" not found`))
 		})
 	})
 })

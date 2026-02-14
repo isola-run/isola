@@ -37,6 +37,7 @@ func RegisterFilesystemRoutes(api huma.API, h *FilesystemHandlers) {
 		// Since we use BodyStream resolver (no Body/RawBody field),
 		// we need to manually specify the request body in OpenAPI
 		RequestBody: &huma.RequestBody{
+			Required: true,
 			Content: map[string]*huma.MediaType{
 				"application/octet-stream": {
 					Schema: &huma.Schema{Type: "string", Format: "binary"},
@@ -66,4 +67,97 @@ func RegisterFilesystemRoutes(api huma.API, h *FilesystemHandlers) {
 		},
 		Errors: []int{http.StatusBadRequest, http.StatusNotFound},
 	}, h.GetFilesystem)
+}
+
+func RegisterCommandRoutes(api huma.API, h *CommandHandlers) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "createCommand",
+		Method:        http.MethodPost,
+		Path:          "/commands",
+		Summary:       "Start a command in the sandbox",
+		Description:   "Starts a new command in the sandbox container and returns a command ID for tracking. Commands always run as root (UID 0, GID 0).",
+		Tags:          []string{"commands"},
+		DefaultStatus: http.StatusAccepted,
+		Errors:        []int{http.StatusBadRequest},
+	}, h.PostCommand)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "getCommandStatus",
+		Method:      http.MethodGet,
+		Path:        "/commands/{cmdId}/status",
+		Summary:     "Get command status",
+		Description: "Returns the exit code of the command, or null if still running",
+		Tags:        []string{"commands"},
+		Errors:      []int{http.StatusNotFound},
+	}, h.GetCommandStatus)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "getCommandStdout",
+		Method:      http.MethodGet,
+		Path:        "/commands/{cmdId}/stdout",
+		Summary:     "Stream command stdout",
+		Description: "Streams the command's stdout as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.",
+		Tags:        []string{"commands"},
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Command stdout stream",
+				Content: map[string]*huma.MediaType{
+					"application/octet-stream": {
+						Schema: &huma.Schema{Type: "string", Format: "binary"},
+					},
+				},
+			},
+		},
+		Errors: []int{http.StatusNotFound},
+	}, h.GetCommandStdout)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "getCommandStderr",
+		Method:      http.MethodGet,
+		Path:        "/commands/{cmdId}/stderr",
+		Summary:     "Stream command stderr",
+		Description: "Streams the command's stderr as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.",
+		Tags:        []string{"commands"},
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Command stderr stream",
+				Content: map[string]*huma.MediaType{
+					"application/octet-stream": {
+						Schema: &huma.Schema{Type: "string", Format: "binary"},
+					},
+				},
+			},
+		},
+		Errors: []int{http.StatusNotFound},
+	}, h.GetCommandStderr)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "postCommandStdin",
+		Method:      http.MethodPost,
+		Path:        "/commands/{cmdId}/stdin",
+		Summary:     "Write to command stdin",
+		Description: "Writes raw bytes to the command's stdin",
+		Tags:        []string{"commands"},
+		RequestBody: &huma.RequestBody{
+			Required: true,
+			Content: map[string]*huma.MediaType{
+				"application/octet-stream": {
+					Schema: &huma.Schema{Type: "string", Format: "binary"},
+				},
+			},
+		},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusNotFound, http.StatusConflict},
+	}, h.PostCommandStdin)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteCommand",
+		Method:        http.MethodDelete,
+		Path:          "/commands/{cmdId}",
+		Summary:       "Kill a command",
+		Description:   "Kills the command process. Idempotent for already-exited commands.",
+		Tags:          []string{"commands"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusNotFound},
+	}, h.DeleteCommand)
 }

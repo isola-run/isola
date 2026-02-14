@@ -1,5 +1,24 @@
 components:
   schemas:
+    CommandStatusResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/CommandStatusResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        exitCode:
+          description: Process exit code, null if still running
+          format: int64
+          type:
+            - integer
+            - "null"
+      required:
+        - exitCode
+      type: object
     ContainerInfo:
       additionalProperties: false
       properties:
@@ -42,6 +61,59 @@ components:
           description: Resource requests and limits
       required:
         - image
+      type: object
+    CreateCommandRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/CreateCommandRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        args:
+          description: Arguments to the executable
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        cmd:
+          description: Executable path
+          minLength: 1
+          type: string
+        cwd:
+          description: Working directory inside the sandbox. Defaults to the target container process's working directory if omitted.
+          type: string
+        env:
+          additionalProperties:
+            type: string
+          description: Environment variable overrides
+          type: object
+        timeout:
+          description: Max execution time in seconds
+          format: int64
+          minimum: 1
+          type: integer
+      required:
+        - cmd
+      type: object
+    CreateCommandResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/CreateCommandResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        commandId:
+          description: Unique command identifier
+          type: string
+      required:
+        - commandId
       type: object
     CreateSandboxRequest:
       additionalProperties: false
@@ -539,6 +611,400 @@ paths:
       summary: Get sandbox details
       tags:
         - sandboxes
+  /sandboxes/{id}/commands:
+    post:
+      description: Starts a new command in the sandbox container and returns a command ID for tracking. Commands always run as root (UID 0, GID 0).
+      operationId: createSandboxCommand
+      parameters:
+        - description: Sandbox identifier
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Sandbox identifier
+            type: string
+        - description: Container name. Defaults to the only container if there is one, otherwise it's required.
+          explode: false
+          in: query
+          name: container
+          schema:
+            description: Container name. Defaults to the only container if there is one, otherwise it's required.
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCommandRequest"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCommandResponse"
+          description: Accepted
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Bad Request
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+        "502":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Bad Gateway
+      summary: Start a command in a sandbox
+      tags:
+        - sandboxes
+        - commands
+  /sandboxes/{id}/commands/{cmdId}:
+    delete:
+      description: Kills the command process. Idempotent for already-exited commands.
+      operationId: deleteSandboxCommand
+      parameters:
+        - description: Sandbox identifier
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Sandbox identifier
+            type: string
+        - description: Command identifier
+          in: path
+          name: cmdId
+          required: true
+          schema:
+            description: Command identifier
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+        "502":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Bad Gateway
+      summary: Kill a command
+      tags:
+        - sandboxes
+        - commands
+  /sandboxes/{id}/commands/{cmdId}/status:
+    get:
+      description: Returns the exit code of the command, or null if still running
+      operationId: getSandboxCommandStatus
+      parameters:
+        - description: Sandbox identifier
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Sandbox identifier
+            type: string
+        - description: Command identifier
+          in: path
+          name: cmdId
+          required: true
+          schema:
+            description: Command identifier
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandStatusResponse"
+          description: OK
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+        "502":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Bad Gateway
+      summary: Get command status
+      tags:
+        - sandboxes
+        - commands
+  /sandboxes/{id}/commands/{cmdId}/stderr:
+    get:
+      description: Streams the command's stderr as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.
+      operationId: getSandboxCommandStderr
+      parameters:
+        - description: Sandbox identifier
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Sandbox identifier
+            type: string
+        - description: Command identifier
+          in: path
+          name: cmdId
+          required: true
+          schema:
+            description: Command identifier
+            type: string
+        - description: Byte offset to resume from (default 0)
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: Byte offset to resume from (default 0)
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: Command stderr stream
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+        "502":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Bad Gateway
+      summary: Stream command stderr
+      tags:
+        - sandboxes
+        - commands
+  /sandboxes/{id}/commands/{cmdId}/stdin:
+    post:
+      description: Writes raw bytes to the command's stdin
+      operationId: postSandboxCommandStdin
+      parameters:
+        - description: Sandbox identifier
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Sandbox identifier
+            type: string
+        - description: Command identifier
+          in: path
+          name: cmdId
+          required: true
+          schema:
+            description: Command identifier
+            type: string
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              contentMediaType: application/octet-stream
+              format: binary
+              type: string
+        required: true
+      responses:
+        "204":
+          description: No Content
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+        "502":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Bad Gateway
+      summary: Write to command stdin
+      tags:
+        - sandboxes
+        - commands
+  /sandboxes/{id}/commands/{cmdId}/stdout:
+    get:
+      description: Streams the command's stdout as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.
+      operationId: getSandboxCommandStdout
+      parameters:
+        - description: Sandbox identifier
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Sandbox identifier
+            type: string
+        - description: Command identifier
+          in: path
+          name: cmdId
+          required: true
+          schema:
+            description: Command identifier
+            type: string
+        - description: Byte offset to resume from (default 0)
+          explode: false
+          in: query
+          name: offset
+          schema:
+            description: Byte offset to resume from (default 0)
+            format: int64
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: Command stdout stream
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+        "502":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Bad Gateway
+      summary: Stream command stdout
+      tags:
+        - sandboxes
+        - commands
   /sandboxes/{id}/filesystem:
     get:
       description: Streams a file download from the specified path in the sandbox container
@@ -648,6 +1114,7 @@ paths:
               contentMediaType: application/octet-stream
               format: binary
               type: string
+        required: true
       responses:
         "201":
           content:
