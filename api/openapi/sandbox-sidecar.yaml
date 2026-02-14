@@ -182,7 +182,7 @@ openapi: 3.1.0
 paths:
   /commands:
     post:
-      description: Starts a new command in the sandbox container and returns a command ID for tracking
+      description: Starts a new command in the sandbox container and returns a command ID for tracking. Commands always run as root (UID 0, GID 0).
       operationId: createCommand
       parameters:
         - description: Container name. Defaults to the only container if there is one, otherwise it's required.

@@ -45,7 +45,7 @@ func (b *NsenterCommandBuilder) Build(ctx context.Context, pid int, req sidecara
 		"--all",     // enter all usable namespaces (see nsenter.c is_usable_namespace())
 		"--no-fork", // prevent nsenter's implicit fork when entering PID namespace (execvp directly)
 		"--root",    // chroot to /proc/<pid>/root
-		// execute as root:
+		// Execute as root:
 		"--setuid=0",
 		"--setgid=0",
 		// --no-fork is critical: without it, nsenter forks when entering a PID namespace,

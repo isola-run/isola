@@ -75,7 +75,7 @@ func RegisterCommandRoutes(api huma.API, h *CommandHandlers) {
 		Method:        http.MethodPost,
 		Path:          "/commands",
 		Summary:       "Start a command in the sandbox",
-		Description:   "Starts a new command in the sandbox container and returns a command ID for tracking",
+		Description:   "Starts a new command in the sandbox container and returns a command ID for tracking. Commands always run as root (UID 0, GID 0).",
 		Tags:          []string{"commands"},
 		DefaultStatus: http.StatusAccepted,
 		Errors:        []int{http.StatusBadRequest},

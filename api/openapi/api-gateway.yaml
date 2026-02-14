@@ -613,7 +613,7 @@ paths:
         - sandboxes
   /sandboxes/{id}/commands:
     post:
-      description: Starts a new command in the sandbox container and returns a command ID for tracking
+      description: Starts a new command in the sandbox container and returns a command ID for tracking. Commands always run as root (UID 0, GID 0).
       operationId: createSandboxCommand
       parameters:
         - description: Sandbox identifier
