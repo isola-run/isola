@@ -825,6 +825,7 @@ paths:
           schema:
             description: Byte offset to resume from (default 0)
             format: int64
+            minimum: 0
             type: integer
       responses:
         "200":
@@ -895,6 +896,7 @@ paths:
               contentMediaType: application/octet-stream
               format: binary
               type: string
+        required: true
       responses:
         "204":
           description: No Content
@@ -958,6 +960,7 @@ paths:
           schema:
             description: Byte offset to resume from (default 0)
             format: int64
+            minimum: 0
             type: integer
       responses:
         "200":
@@ -1111,6 +1114,7 @@ paths:
               contentMediaType: application/octet-stream
               format: binary
               type: string
+        required: true
       responses:
         "201":
           content:
