@@ -281,11 +281,6 @@ func getReadySandbox(ctx context.Context, k8sClient client.Client, namespace, id
 }
 
 func handleSidecarError(resp *http.Response, sandboxID string, logger *slog.Logger) error {
-	if resp.StatusCode >= 500 {
-		logger.Error("sidecar returned server error", "id", sandboxID, "status", resp.StatusCode)
-		return huma.Error502BadGateway("sidecar internal error")
-	}
-
 	// Read limited error body to avoid unbounded reads to memory from untrusted sandbox
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
@@ -296,6 +291,11 @@ func handleSidecarError(resp *http.Response, sandboxID string, logger *slog.Logg
 	var sidecarErr huma.ErrorModel
 	if json.Unmarshal(body, &sidecarErr) == nil && sidecarErr.Detail != "" {
 		detail = sidecarErr.Detail
+	}
+
+	if resp.StatusCode >= 500 {
+		logger.Error("sidecar returned server error", "id", sandboxID, "status", resp.StatusCode, "detail", detail)
+		return huma.Error502BadGateway("sidecar internal error")
 	}
 
 	logger.Debug("forwarding sidecar client error", "id", sandboxID, "status", resp.StatusCode, "detail", detail)
