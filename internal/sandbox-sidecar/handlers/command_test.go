@@ -474,6 +474,190 @@ var _ = Describe("Command Handlers", func() {
 			Eventually(done, "1s").Should(BeClosed())
 		})
 	})
+
+	Describe("working directory", func() {
+		It("runs command in specified cwd", func() {
+			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "pwd"], "cwd": "/tmp"}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() string {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+				return strings.TrimSpace(resp.Body.String())
+			}).Should(Equal("/tmp"))
+		})
+	})
+
+	Describe("environment variables", func() {
+		It("makes user-specified env vars available to the process", func() {
+			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "echo -n $MY_VAR"], "env": {"MY_VAR": "hello"}}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() string {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+				return resp.Body.String()
+			}).Should(Equal("hello"))
+		})
+
+		It("inherits container environment variables", func() {
+			// MockProcFS.GetEnviron returns PATH=/usr/bin:/bin and HOME=/root
+			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "echo -n $HOME"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() string {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+				return resp.Body.String()
+			}).Should(Equal("/root"))
+		})
+	})
+
+	Describe("concurrent commands", func() {
+		It("runs multiple commands independently", func() {
+			const n = 5
+			type cmdResult struct {
+				id   string
+				want string
+			}
+			cmds := make([]cmdResult, n)
+
+			for i := range n {
+				body := fmt.Sprintf(`{"cmd": "echo", "args": ["-n", "cmd-%d"]}`, i)
+				code, result := postCommand(body)
+				Expect(code).To(Equal(http.StatusAccepted))
+				cmds[i] = cmdResult{id: result.CommandID, want: fmt.Sprintf("cmd-%d", i)}
+			}
+
+			for _, c := range cmds {
+				Eventually(func() string {
+					resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", c.id))
+					return resp.Body.String()
+				}).Should(Equal(c.want))
+			}
+		})
+	})
+
+	Describe("PID resolution failure", func() {
+		It("returns 400 when container PID cannot be found", func() {
+			_, failingAPI := humatest.New(GinkgoT(), huma.DefaultConfig("PID Fail Test API", "1.0.0"))
+			failingMock := &MockProcFS{
+				rootDir:       testRootDir,
+				cwd:           testCwd,
+				findMarkedErr: fmt.Errorf("container not found"),
+			}
+			failingHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), failingMock, &DirectCommandBuilder{})
+			RegisterCommandRoutes(failingAPI, failingHandlers)
+
+			resp := failingAPI.Post("/commands", "Content-Type: application/json",
+				strings.NewReader(`{"cmd": "echo"}`))
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+	})
+
+	Describe("stderr offset", func() {
+		It("supports resume via offset on stderr", func() {
+			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "echo -n 'hello world' >&2"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() string {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stderr", result.CommandID))
+				return resp.Body.String()
+			}).Should(Equal("hello world"))
+
+			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stderr?offset=6", result.CommandID))
+			Expect(resp.Body.String()).To(Equal("world"))
+		})
+	})
+
+	Describe("kill exit code", func() {
+		It("reports signal kill exit code as -1", func() {
+			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			resp := commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+
+			var exitCode *int
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status", result.CommandID))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				exitCode = status.ExitCode
+				return exitCode
+			}).ShouldNot(BeNil())
+
+			Expect(*exitCode).To(Equal(-1))
+		})
+	})
+
+	Describe("large output", func() {
+		It("streams large output without data loss", func() {
+			// Generate 1MB of output via dd
+			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "dd if=/dev/zero bs=1024 count=1024 2>/dev/null"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status", result.CommandID))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				return status.ExitCode
+			}, "5s").ShouldNot(BeNil())
+
+			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+			Expect(resp.Body.Len()).To(Equal(1024 * 1024))
+		})
+	})
+
+	Describe("command start failure cleanup", func() {
+		It("cleans up output directory when command builder fails", func() {
+			isolatedRoot, err := os.MkdirTemp("", "sidecar-test-builder-fail-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(isolatedRoot) })
+
+			_, isolatedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Builder Fail API", "1.0.0"))
+			isolatedMock := &MockProcFS{rootDir: isolatedRoot, cwd: testCwd}
+			failBuilder := &FailingCommandBuilder{err: fmt.Errorf("build error")}
+			isolatedHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, failBuilder)
+			RegisterCommandRoutes(isolatedAPI, isolatedHandlers)
+
+			resp := isolatedAPI.Post("/commands", "Content-Type: application/json",
+				strings.NewReader(`{"cmd": "echo"}`))
+			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
+
+			// Verify cleanup happened
+			commandsDir := filepath.Join(isolatedRoot, "var", "run", "isola", "commands")
+			entries, err := os.ReadDir(commandsDir)
+			if err != nil && !os.IsNotExist(err) {
+				Fail(fmt.Sprintf("unexpected error reading commands dir: %v", err))
+			}
+			if err == nil {
+				Expect(entries).To(BeEmpty(), "orphaned command output directory after build failure")
+			}
+		})
+	})
+
+	Describe("GetEnviron failure", func() {
+		It("proceeds with empty env when container environ is unreadable", func() {
+			_, envFailAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Env Fail API", "1.0.0"))
+			envFailMock := &MockProcFS{
+				rootDir:       testRootDir,
+				cwd:           testCwd,
+				getEnvironErr: fmt.Errorf("permission denied"),
+			}
+			envFailHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), envFailMock, &DirectCommandBuilder{})
+			RegisterCommandRoutes(envFailAPI, envFailHandlers)
+
+			resp := envFailAPI.Post("/commands", "Content-Type: application/json",
+				strings.NewReader(`{"cmd": "echo", "args": ["-n", "ok"]}`))
+			Expect(resp.Code).To(Equal(http.StatusAccepted))
+
+			var result sidecarapi.CreateCommandResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&result)).To(Succeed())
+
+			Eventually(func() string {
+				resp := envFailAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+				return resp.Body.String()
+			}).Should(Equal("ok"))
+		})
+	})
 })
 
 var _ = Describe("buildCmdEnv", func() {
@@ -532,5 +716,11 @@ var _ = Describe("buildCmdEnv", func() {
 		containerEnv := []string{"GOOD=value", "MALFORMED"}
 		result := sorted(buildCmdEnv(containerEnv, nil))
 		Expect(result).To(Equal([]string{"GOOD=value"}))
+	})
+
+	It("handles env values containing '='", func() {
+		containerEnv := []string{"CONFIG=key=value"}
+		result := buildCmdEnv(containerEnv, nil)
+		Expect(result).To(Equal([]string{"CONFIG=key=value"}))
 	})
 })

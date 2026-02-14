@@ -255,5 +255,257 @@ var _ = Describe("Command Proxy", func() {
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 			Expect(capturedMethod).To(Equal(http.MethodDelete))
 		})
+
+		It("returns 502 when sidecar is unreachable", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			mockSidecar.Close()
+
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/cmd-123", sbName))
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+
+		It("returns 502 for sidecar 500 errors", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/cmd-123", sbName))
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+
+		It("forwards sidecar 404", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]string{"detail": "command not found"})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/cmd-123", sbName))
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+	})
+
+	Describe("GET /sandboxes/{id}/commands/{cmdId}/stderr", func() {
+		It("proxies stderr byte stream", func() {
+			content := []byte("error output here")
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				Expect(r.URL.Path).To(ContainSubstring("/stderr"))
+				w.Header().Set("Content-Type", "application/octet-stream")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(content)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stderr", sbName))
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Body.Bytes()).To(Equal(content))
+		})
+
+		It("forwards offset query param to sidecar", func() {
+			var capturedOffset string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedOffset = r.URL.Query().Get("offset")
+				w.Header().Set("Content-Type", "application/octet-stream")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("partial"))
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stderr?offset=10", sbName))
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(capturedOffset).To(Equal("10"))
+		})
+	})
+
+	Describe("sidecar error handling", func() {
+		It("returns 502 when sidecar returns invalid JSON on status success", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("not json"))
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/status", sbName))
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+
+		It("returns 502 when sidecar returns invalid JSON on command creation", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusAccepted)
+				_, _ = w.Write([]byte("not json"))
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/commands", sbName),
+				"Content-Type: application/json",
+				strings.NewReader(`{"cmd":"echo"}`),
+			)
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+
+		It("forwards sidecar 400 errors with detail", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"detail": "failed to determine container pid",
+				})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/commands", sbName),
+				"Content-Type: application/json",
+				strings.NewReader(`{"cmd":"echo"}`),
+			)
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("returns 502 for sidecar 500 errors on command creation", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/commands", sbName),
+				"Content-Type: application/json",
+				strings.NewReader(`{"cmd":"echo"}`),
+			)
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+
+		It("falls back to status text when sidecar error body is unreadable", func() {
+			api := newCommandTestAPI(&brokenBodyDoer{statusCode: http.StatusBadRequest}, 0)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/commands", sbName),
+				"Content-Type: application/json",
+				strings.NewReader(`{"cmd":"echo"}`),
+			)
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("returns 502 when sidecar is unreachable for status", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			mockSidecar.Close()
+
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/status", sbName))
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+
+		It("returns 502 when sidecar is unreachable for stdin", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			mockSidecar.Close()
+
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stdin", sbName),
+				"Content-Type: application/octet-stream",
+				strings.NewReader("data"),
+			)
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+
+		It("returns 502 when sidecar is unreachable for stdout stream", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			mockSidecar.Close()
+
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stdout", sbName))
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+
+		It("forwards sidecar 409 conflict for stdin", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"detail": "command has already exited",
+				})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stdin", sbName),
+				"Content-Type: application/octet-stream",
+				strings.NewReader("data"),
+			)
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+
+		It("forwards sidecar 404 for stream endpoints", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"detail": "command not found",
+				})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/nonexistent/stdout", sbName))
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
 	})
 })

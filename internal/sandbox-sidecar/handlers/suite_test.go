@@ -40,13 +40,18 @@ func (b *DirectCommandBuilder) Build(ctx context.Context, _ int, req sidecarapi.
 
 // MockProcFS implements proc.ProcFS for testing.
 type MockProcFS struct {
-	rootDir string
-	cwd     string
-	uid     int
-	gid     int
+	rootDir       string
+	cwd           string
+	uid           int
+	gid           int
+	findMarkedErr error
+	getEnvironErr error
 }
 
 func (m *MockProcFS) FindMarkedPID(containerName string) (int, error) {
+	if m.findMarkedErr != nil {
+		return 0, m.findMarkedErr
+	}
 	return 1, nil
 }
 
@@ -63,7 +68,19 @@ func (m *MockProcFS) GetUIDGID(pid int) (int, int, error) {
 }
 
 func (m *MockProcFS) GetEnviron(pid int) ([]string, error) {
+	if m.getEnvironErr != nil {
+		return nil, m.getEnvironErr
+	}
 	return []string{"PATH=/usr/bin:/bin", "HOME=/root"}, nil
+}
+
+// FailingCommandBuilder is a CommandBuilder that always returns an error.
+type FailingCommandBuilder struct {
+	err error
+}
+
+func (b *FailingCommandBuilder) Build(_ context.Context, _ int, _ sidecarapi.CreateCommandRequest, _ []string, _ *os.File, _ *os.File) (*exec.Cmd, error) {
+	return nil, b.err
 }
 
 func TestHandlers(t *testing.T) {
