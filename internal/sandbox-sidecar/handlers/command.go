@@ -90,52 +90,27 @@ type commandEntry struct {
 }
 
 type CommandHandlers struct {
-	logger     *slog.Logger
-	procFS     proc.ProcFS
-	cmdBuilder CommandBuilder
-
-	pidMu      sync.RWMutex
-	cachedPIDs map[string]int
+	logger      *slog.Logger
+	procFS      proc.ProcFS
+	pidResolver *PIDResolver
+	cmdBuilder  CommandBuilder
 
 	cmdMu    sync.RWMutex
 	commands map[string]*commandEntry
 }
 
-func NewCommandHandlers(logger *slog.Logger, procFS proc.ProcFS, cmdBuilder CommandBuilder) *CommandHandlers {
+func NewCommandHandlers(logger *slog.Logger, procFS proc.ProcFS, pidResolver *PIDResolver, cmdBuilder CommandBuilder) *CommandHandlers {
 	return &CommandHandlers{
-		logger:     logger,
-		procFS:     procFS,
-		cmdBuilder: cmdBuilder,
-		cachedPIDs: make(map[string]int),
-		commands:   make(map[string]*commandEntry),
+		logger:      logger,
+		procFS:      procFS,
+		pidResolver: pidResolver,
+		cmdBuilder:  cmdBuilder,
+		commands:    make(map[string]*commandEntry),
 	}
-}
-
-func (h *CommandHandlers) findCachedContainerPID(containerName string) (int, error) {
-	h.pidMu.RLock()
-	pid, ok := h.cachedPIDs[containerName]
-	h.pidMu.RUnlock()
-
-	if ok {
-		if name, found := proc.GetContainerName(pid); found && (containerName == "" || name == containerName) {
-			return pid, nil
-		}
-	}
-
-	newPID, err := h.procFS.FindMarkedPID(containerName)
-	if err != nil {
-		return 0, err
-	}
-
-	h.pidMu.Lock()
-	h.cachedPIDs[containerName] = newPID
-	h.pidMu.Unlock()
-
-	return newPID, nil
 }
 
 func (h *CommandHandlers) PostCommand(_ context.Context, input *CreateCommandInput) (*CreateCommandOutput, error) {
-	pid, err := h.findCachedContainerPID(input.Container)
+	pid, err := h.pidResolver.FindCachedContainerPID(input.Container)
 	if err != nil {
 		h.logger.Warn("failed to determine container pid", "error", err, "container", input.Container)
 		return nil, huma.Error400BadRequest("failed to determine container pid")

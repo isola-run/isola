@@ -115,7 +115,8 @@ var _ = BeforeSuite(func() {
 	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
 
 	healthHandlers := NewHealthHandlers()
-	filesystemHandlers := NewFilesystemHandlers(logger, mockProcFS)
+	pidResolver := NewPIDResolver(mockProcFS)
+	filesystemHandlers := NewFilesystemHandlers(logger, mockProcFS, pidResolver)
 
 	RegisterHealthRoutes(testAPI, healthHandlers)
 	RegisterFilesystemRoutes(testAPI, filesystemHandlers)

@@ -86,8 +86,8 @@ func setupSandboxSidecar() huma.API {
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected
 	healthHandlers := sidecar.NewHealthHandlers()
-	filesystemHandlers := sidecar.NewFilesystemHandlers(nil, nil)
-	commandHandlers := sidecar.NewCommandHandlers(nil, nil, nil)
+	filesystemHandlers := sidecar.NewFilesystemHandlers(nil, nil, nil)
+	commandHandlers := sidecar.NewCommandHandlers(nil, nil, nil, nil)
 
 	sidecar.RegisterHealthRoutes(api, healthHandlers)
 	sidecar.RegisterFilesystemRoutes(api, filesystemHandlers)

@@ -51,7 +51,7 @@ var _ = Describe("Filesystem error cases", func() {
 			}
 
 			_, errorAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Error Test API", "1.0.0"))
-			handler := NewFilesystemHandlers(logger, mockProcFS)
+			handler := NewFilesystemHandlers(logger, mockProcFS, NewPIDResolver(mockProcFS))
 			RegisterFilesystemRoutes(errorAPI, handler)
 		})
 

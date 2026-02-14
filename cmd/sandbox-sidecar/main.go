@@ -53,10 +53,11 @@ func main() {
 	api := humachi.New(r, humaConfig)
 
 	procFS := &proc.RealProcFS{}
+	pidResolver := handlers.NewPIDResolver(procFS)
 
 	healthHandlers := handlers.NewHealthHandlers()
-	filesystemHandlers := handlers.NewFilesystemHandlers(logger, procFS)
-	commandHandlers := handlers.NewCommandHandlers(logger, procFS, &handlers.NsenterCommandBuilder{})
+	filesystemHandlers := handlers.NewFilesystemHandlers(logger, procFS, pidResolver)
+	commandHandlers := handlers.NewCommandHandlers(logger, procFS, pidResolver, &handlers.NsenterCommandBuilder{})
 
 	handlers.RegisterHealthRoutes(api, healthHandlers)
 	handlers.RegisterFilesystemRoutes(api, filesystemHandlers)

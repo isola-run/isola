@@ -38,7 +38,7 @@ var _ = Describe("Command Handlers", func() {
 			uid:     0,
 			gid:     0,
 		}
-		commandHandlers = NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), mockProcFS, &DirectCommandBuilder{})
+		commandHandlers = NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), mockProcFS, NewPIDResolver(mockProcFS), &DirectCommandBuilder{})
 		RegisterCommandRoutes(commandAPI, commandHandlers)
 	})
 
@@ -331,7 +331,7 @@ var _ = Describe("Command Handlers", func() {
 
 			_, blockedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Blocked Test API", "1.0.0"))
 			blockedMock := &MockProcFS{rootDir: blockedRoot, cwd: testCwd}
-			blockedHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), blockedMock, &DirectCommandBuilder{})
+			blockedHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), blockedMock, NewPIDResolver(blockedMock), &DirectCommandBuilder{})
 			RegisterCommandRoutes(blockedAPI, blockedHandlers)
 
 			resp := blockedAPI.Post("/commands", "Content-Type: application/json",
@@ -384,7 +384,7 @@ var _ = Describe("Command Handlers", func() {
 
 			_, isolatedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Cleanup Test API", "1.0.0"))
 			isolatedMock := &MockProcFS{rootDir: isolatedRoot, cwd: testCwd}
-			isolatedHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, &DirectCommandBuilder{})
+			isolatedHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, NewPIDResolver(isolatedMock), &DirectCommandBuilder{})
 			RegisterCommandRoutes(isolatedAPI, isolatedHandlers)
 
 			resp := isolatedAPI.Post("/commands", "Content-Type: application/json",
@@ -543,7 +543,7 @@ var _ = Describe("Command Handlers", func() {
 				cwd:           testCwd,
 				findMarkedErr: fmt.Errorf("container not found"),
 			}
-			failingHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), failingMock, &DirectCommandBuilder{})
+			failingHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), failingMock, NewPIDResolver(failingMock), &DirectCommandBuilder{})
 			RegisterCommandRoutes(failingAPI, failingHandlers)
 
 			resp := failingAPI.Post("/commands", "Content-Type: application/json",
@@ -615,7 +615,7 @@ var _ = Describe("Command Handlers", func() {
 			_, isolatedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Builder Fail API", "1.0.0"))
 			isolatedMock := &MockProcFS{rootDir: isolatedRoot, cwd: testCwd}
 			failBuilder := &FailingCommandBuilder{err: fmt.Errorf("build error")}
-			isolatedHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, failBuilder)
+			isolatedHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, NewPIDResolver(isolatedMock), failBuilder)
 			RegisterCommandRoutes(isolatedAPI, isolatedHandlers)
 
 			resp := isolatedAPI.Post("/commands", "Content-Type: application/json",
@@ -642,7 +642,7 @@ var _ = Describe("Command Handlers", func() {
 				cwd:           testCwd,
 				getEnvironErr: fmt.Errorf("permission denied"),
 			}
-			envFailHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), envFailMock, &DirectCommandBuilder{})
+			envFailHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), envFailMock, NewPIDResolver(envFailMock), &DirectCommandBuilder{})
 			RegisterCommandRoutes(envFailAPI, envFailHandlers)
 
 			resp := envFailAPI.Post("/commands", "Content-Type: application/json",

@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -17,45 +16,17 @@ import (
 )
 
 type FilesystemHandlers struct {
-	logger *slog.Logger
-	procFS proc.ProcFS
-
-	// PID cache to avoid repeated /proc scans (containerName -> pid)
-	pidMu      sync.RWMutex
-	cachedPIDs map[string]int
+	logger      *slog.Logger
+	procFS      proc.ProcFS
+	pidResolver *PIDResolver
 }
 
-func NewFilesystemHandlers(logger *slog.Logger, procFS proc.ProcFS) *FilesystemHandlers {
+func NewFilesystemHandlers(logger *slog.Logger, procFS proc.ProcFS, pidResolver *PIDResolver) *FilesystemHandlers {
 	return &FilesystemHandlers{
-		logger:     logger,
-		procFS:     procFS,
-		cachedPIDs: make(map[string]int),
+		logger:      logger,
+		procFS:      procFS,
+		pidResolver: pidResolver,
 	}
-}
-
-func (h *FilesystemHandlers) findCachedContainerPID(containerName string) (int, error) {
-	h.pidMu.RLock()
-	pid, ok := h.cachedPIDs[containerName]
-	h.pidMu.RUnlock()
-
-	// Validate cached PID still has the expected marker
-	if ok {
-		if name, found := proc.GetContainerName(pid); found && (containerName == "" || name == containerName) {
-			return pid, nil
-		}
-	}
-
-	// Cache miss or stale - rescan
-	newPID, err := h.procFS.FindMarkedPID(containerName)
-	if err != nil {
-		return 0, err
-	}
-
-	h.pidMu.Lock()
-	h.cachedPIDs[containerName] = newPID
-	h.pidMu.Unlock()
-
-	return newPID, nil
 }
 
 func (h *FilesystemHandlers) resolveAbsolutePath(path string, pid int) (string, huma.StatusError) {
@@ -110,7 +81,7 @@ func (h *FilesystemHandlers) PostFilesystem(_ context.Context, input *Filesystem
 	path := input.Path
 	container := input.Container
 
-	pid, err := h.findCachedContainerPID(container)
+	pid, err := h.pidResolver.FindCachedContainerPID(container)
 	if err != nil {
 		if container == "" {
 			h.logger.Warn("failed to determine container pid", "error", err)
@@ -178,7 +149,7 @@ func (h *FilesystemHandlers) GetFilesystem(_ context.Context, input *FilesystemR
 	path := input.Path
 	container := input.Container
 
-	pid, err := h.findCachedContainerPID(container)
+	pid, err := h.pidResolver.FindCachedContainerPID(container)
 	if err != nil {
 		if container == "" {
 			h.logger.Warn("failed to determine container pid", "error", err)
