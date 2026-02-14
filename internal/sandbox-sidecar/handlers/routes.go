@@ -37,6 +37,7 @@ func RegisterFilesystemRoutes(api huma.API, h *FilesystemHandlers) {
 		// Since we use BodyStream resolver (no Body/RawBody field),
 		// we need to manually specify the request body in OpenAPI
 		RequestBody: &huma.RequestBody{
+			Required: true,
 			Content: map[string]*huma.MediaType{
 				"application/octet-stream": {
 					Schema: &huma.Schema{Type: "string", Format: "binary"},
@@ -138,6 +139,7 @@ func RegisterCommandRoutes(api huma.API, h *CommandHandlers) {
 		Description: "Writes raw bytes to the command's stdin",
 		Tags:        []string{"commands"},
 		RequestBody: &huma.RequestBody{
+			Required: true,
 			Content: map[string]*huma.MediaType{
 				"application/octet-stream": {
 					Schema: &huma.Schema{Type: "string", Format: "binary"},
