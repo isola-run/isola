@@ -25,6 +25,8 @@ var (
 )
 
 // DirectCommandBuilder runs commands directly without nsenter (for testing).
+// This mimics nsenter's behavior when --pid is NOT specified: nsenter calls
+// execvp() directly (no fork), so the Go child process IS the target command.
 type DirectCommandBuilder struct{}
 
 func (b *DirectCommandBuilder) Build(ctx context.Context, _ int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
@@ -32,6 +34,7 @@ func (b *DirectCommandBuilder) Build(ctx context.Context, _ int, req sidecarapi.
 	cmd.Stdout = stdoutFile
 	cmd.Stderr = stderrFile
 	cmd.Env = env
+	cmd.WaitDelay = waitDelayGracePeriod
 	if req.Cwd != "" {
 		cmd.Dir = req.Cwd
 	}

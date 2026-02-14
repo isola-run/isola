@@ -41,12 +41,25 @@ type NsenterCommandBuilder struct{}
 func (b *NsenterCommandBuilder) Build(ctx context.Context, pid int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
 	args := []string{
 		// https://man7.org/linux/man-pages/man1/nsenter.1.html
-		"--target", strconv.Itoa(pid), // target process to get contexts from
-		"--all",  // enter all namespaces of the target process
-		"--root", // chroot to /proc/<pid>/root
+		"--target", strconv.Itoa(pid), // target process to get namespaces from
+		"--all",     // enter all usable namespaces (see nsenter.c is_usable_namespace())
+		"--no-fork", // prevent nsenter's implicit fork when entering PID namespace (execvp directly)
+		"--root",    // chroot to /proc/<pid>/root
+		// execute as root:
 		"--setuid=0",
 		"--setgid=0",
-		// NO --env - we built the env ourselves and must not inherit the sidecar's
+		// --no-fork is critical: without it, nsenter forks when entering a PID namespace,
+		// creating an intermediate parent in a waitpid loop. SIGKILL would kill that parent
+		// and orphan the actual command. With --no-fork, nsenter calls execvp() directly,
+		// so SIGKILL reaches the user's process.
+		//
+		// --no-fork means the exec'd process itself doesn't join the target PID namespace (only its children would).
+		// This is safe because the sandbox pod has shareProcessNamespace: true,
+		// so caller and target already share the same PID namespace.
+		//
+		// --all (vs explicit flags) gracefully handles namespaces that can't be entered
+		// (e.g. the caller's own user namespace, which setns(2) forbids reentering).
+		// No --env: we build the env ourselves and must not inherit the sidecar's.
 	}
 	if req.Cwd != "" {
 		args = append(args, "--wdns="+req.Cwd)
