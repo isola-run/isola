@@ -697,12 +697,12 @@ paths:
           schema:
             description: Sandbox identifier
             type: string
-        - description: Command identifier (UUID)
+        - description: Command identifier
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier (UUID)
+            description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
       responses:
@@ -754,12 +754,12 @@ paths:
           schema:
             description: Sandbox identifier
             type: string
-        - description: Command identifier (UUID)
+        - description: Command identifier
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier (UUID)
+            description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
       responses:
@@ -815,12 +815,12 @@ paths:
           schema:
             description: Sandbox identifier
             type: string
-        - description: Command identifier (UUID)
+        - description: Command identifier
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier (UUID)
+            description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
         - description: Byte offset to resume from (default 0)
@@ -887,12 +887,12 @@ paths:
           schema:
             description: Sandbox identifier
             type: string
-        - description: Command identifier (UUID)
+        - description: Command identifier
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier (UUID)
+            description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
       requestBody:
@@ -952,12 +952,12 @@ paths:
           schema:
             description: Sandbox identifier
             type: string
-        - description: Command identifier (UUID)
+        - description: Command identifier
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier (UUID)
+            description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
         - description: Byte offset to resume from (default 0)

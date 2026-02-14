@@ -172,7 +172,7 @@ type CreateSandboxCommandOutput struct {
 
 type GetSandboxCommandStatusInput struct {
 	ID    string `path:"id" doc:"Sandbox identifier"`
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier (UUID)"`
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
 
 type GetSandboxCommandStatusOutput struct {
@@ -181,17 +181,17 @@ type GetSandboxCommandStatusOutput struct {
 
 type GetSandboxCommandStreamInput struct {
 	ID     string `path:"id" doc:"Sandbox identifier"`
-	CmdID  string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier (UUID)"`
+	CmdID  string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	Offset int64  `query:"offset,omitempty" minimum:"0" doc:"Byte offset to resume from (default 0)"`
 }
 
 type PostSandboxCommandStdinInput struct {
 	ID    string `path:"id" doc:"Sandbox identifier"`
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier (UUID)"`
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	BodyStream
 }
 
 type DeleteSandboxCommandInput struct {
 	ID    string `path:"id" doc:"Sandbox identifier"`
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier (UUID)"`
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }

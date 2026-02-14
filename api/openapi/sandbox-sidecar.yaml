@@ -231,12 +231,12 @@ paths:
       description: Kills the command process. Idempotent for already-exited commands.
       operationId: deleteCommand
       parameters:
-        - description: Command identifier (UUID)
+        - description: Command identifier
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier (UUID)
+            description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
       responses:
@@ -268,12 +268,12 @@ paths:
       description: Returns the exit code of the command, or null if still running
       operationId: getCommandStatus
       parameters:
-        - description: Command identifier (UUID)
+        - description: Command identifier
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier (UUID)
+            description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
       responses:
@@ -309,12 +309,12 @@ paths:
       description: Streams the command's stderr as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.
       operationId: getCommandStderr
       parameters:
-        - description: Command identifier (UUID)
+        - description: Command identifier
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier (UUID)
+            description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
         - description: Byte offset to resume from (default 0)
@@ -361,12 +361,12 @@ paths:
       description: Writes raw bytes to the command's stdin
       operationId: postCommandStdin
       parameters:
-        - description: Command identifier (UUID)
+        - description: Command identifier
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier (UUID)
+            description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
       requestBody:
@@ -412,12 +412,12 @@ paths:
       description: Streams the command's stdout as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.
       operationId: getCommandStdout
       parameters:
-        - description: Command identifier (UUID)
+        - description: Command identifier
           in: path
           name: cmdId
           required: true
           schema:
-            description: Command identifier (UUID)
+            description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
         - description: Byte offset to resume from (default 0)
