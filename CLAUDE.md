@@ -9,9 +9,11 @@ make fix-all            # Auto-fix formatting and lint issues
 
 # Testing
 make test               # Unit tests with coverage
+make test-verbose           # All tests with verbose output
 make test-operator FOCUS="TestName"  # Run focused operator test
 make test-gateway           # Run api-gateway tests
 make test-sidecar           # Run sandbox-sidecar tests
+make test GO_TEST_FLAGS="-race"  # With race detector
 make generate           # Regenerate DeepCopy methods after CRD changes
 make manifests          # Regenerate CRD YAML after CRD changes
 
@@ -40,35 +42,24 @@ If you don't know something:
 
 Never make assumptions about version compatibility, release tag formats, or tool behavior. Always verify.
 
-## CRD Workflow
+## Generated Files (do not edit manually)
 
 After modifying `api/v1alpha1/*_types.go`:
 ```bash
 make generate manifests
 ```
-
-This generates CRDs and RBAC directly to the Helm chart:
 - CRDs → `charts/isola/crds/`
 - RBAC → `charts/isola/generated/role.yaml`
 
 The Helm `clusterrole.yaml` template uses `.Files.Get` to include the generated RBAC rules
 with proper Helm templating for name/labels.
 
-## OpenAPI Workflow
-
 After modifying handler input/output types or route registrations:
 ```bash
-make openapi  # Regenerates api/openapi/*.yaml from Huma type definitions
+make openapi
 ```
-
-OpenAPI 3.1 specs are generated per service:
 - `api/openapi/api-gateway.yaml` - End-user facing API
 - `api/openapi/sandbox-sidecar.yaml` - Internal API (api-gateway → sidecar)
-
-At runtime, each service also serves:
-- `/docs` - Interactive Stoplight Elements UI
-- `/openapi.json` - OpenAPI 3.1 spec (JSON)
-- `/openapi.yaml` - OpenAPI 3.1 spec (YAML)
 
 CI runs `make check-openapi` to verify generated specs are in sync.
 
@@ -78,29 +69,12 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **Single Go module:** The project uses a single `go.mod` at the root (`github.com/isola-ai/isola-sb`). All binaries import from this module.
 
-**Project structure:**
-- `api/v1alpha1/` - CRD type definitions (Sandbox, RootfsSnapshot)
-- `api/openapi/` - Generated OpenAPI specs (api-gateway.yaml, sandbox-sidecar.yaml)
-- `cmd/operator/` - Kubebuilder operator entry point
-- `cmd/api-gateway/` - API gateway for external clients
-- `cmd/sandbox-sidecar/` - Sidecar injected into sandbox pods by operator
-- `cmd/uploader/` - Snapshot uploader job (uploads tarballs to S3/GCS/Azure)
-- `cmd/openapi-gen/` - CLI tool to generate OpenAPI specs from Huma types
-- `internal/operator/controller/` - Reconciler implementations
-- `internal/operator/controller/network/` - Custom per-sandbox NetworkPolicy builder
-- `internal/operator/controller/podutil/` - Pod utility functions (naming, status checks)
-- `internal/api-gateway/handlers/` - REST handlers, Huma route registrations, REST↔CRD conversion
-- `internal/sandbox-sidecar/handlers/` - Sidecar handlers and route registrations
-- `internal/sandbox-sidecar/proc/` - Procfs abstraction for container PID discovery and filesystem access
-- `internal/snapshot/` - Shared snapshot types (used by operator and uploader)
-- `internal/logging/` - Shared slog-based logging configuration (used by all services)
-- `internal/testutil/` - Test utilities and fixtures
-- `charts/` - Helm charts (source of truth for deployment)
-- `charts/isola/generated/` - Auto-generated RBAC from kubebuilder annotations (do not edit)
+**Multi-service architecture:** Four binaries in `cmd/` — `operator`, `api-gateway`, `sandbox-sidecar`, `uploader`. Each has its own `internal/` packages under the matching path (e.g., `internal/api-gateway/handlers/`). Cross-service packages:
+- `internal/sidecar-api/` - Shared contract types between api-gateway and sandbox-sidecar
+- `internal/snapshot/` - Shared types used by both operator and uploader
+- `internal/sandbox-sidecar/proc/` - Procfs abstraction for container PID discovery and filesystem access via `/proc/<pid>/root`
 
 **Default namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
-
-**Helm charts are source of truth** - CRDs and RBAC are generated directly to Helm chart via `make manifests`
 
 ## CRDs
 
@@ -123,14 +97,17 @@ The api-gateway is a thin passthrough to K8s — it validates input structure bu
 - `DELETE /sandboxes/{id}` — delete (idempotent)
 - `POST /sandboxes/{id}/filesystem` — file upload (proxied to sidecar)
 - `GET /sandboxes/{id}/filesystem` — file download (proxied to sidecar)
+- `POST /sandboxes/{id}/commands` — start command (proxied to sidecar, 202 Accepted)
+- `GET /sandboxes/{id}/commands/{cmdId}/status` — exit code (null if running)
+- `GET /sandboxes/{id}/commands/{cmdId}/stdout` — stream stdout (?offset=N for resume)
+- `GET /sandboxes/{id}/commands/{cmdId}/stderr` — stream stderr (?offset=N for resume)
+- `POST /sandboxes/{id}/commands/{cmdId}/stdin` — write to stdin
+- `DELETE /sandboxes/{id}/commands/{cmdId}` — kill command (idempotent)
 
 **REST ↔ CRD conversion (`convert.go`):**
 REST types are separate from CRD types with explicit conversion in `convert.go`. Key behaviors:
-- `requestToSandboxCR` generates a 22-char lowercase alphanumeric nanoid (a-z0-9, starts with letter, DNS-1123 safe)
-- Resource quantity strings (e.g. "125m", "512Mi") are parsed via K8s `resource.ParseQuantity` — failures return 400 with the field name
-- Env var map keys are sorted for deterministic CRD output
-- `sandboxToResponse` reads only the first container (single-container model for now)
-- `conditionsToStatus` maps K8s condition Reasons to user-facing status enum: `creating`, `running`, `shuttingDown`, `failed`, `stopped`, `unknown`
+- Single-container model: `sandboxToResponse` reads only the first container
+- User-facing status enum: `creating`, `running`, `shuttingDown`, `failed`, `stopped`, `unknown`
 
 **Env vars are write-only:** Request types accept env vars but response types intentionally omit them to avoid leaking secrets. `ContainerSpec` (request) has `Env`; `ContainerInfo` (response) does not.
 
@@ -148,13 +125,10 @@ REST types are separate from CRD types with explicit conversion in `convert.go`.
   - `allowAllInternet: true` - allows 0.0.0.0/0 egress (private ranges auto-blocked)
   - `allowedEgressCIDRs` - specific CIDR allowlist
   - `nameservers` - custom DNS servers (default: sink or 8.8.8.8/1.1.1.1 for internet)
-- Network config is **immutable** after sandbox creation
 - Static NetworkPolicies deployed via Helm handle base isolation
-- Custom per-sandbox NetworkPolicies created by operator when NetworkSpec is set
-- `allowAllInternet` and `allowClusterDNS` are `*bool` (pointer) — custom policy only created when CIDRs or custom nameservers are specified (and `allowAllInternet` is not true)
+- Custom per-sandbox NetworkPolicy created by operator only when CIDRs or custom nameservers are specified (and `allowAllInternet` is not true)
 
 **Finalizers:** `sandbox.isola.run/cleanup` ensures cleanup before sandbox deletion.
-
 
 **Snapshot workflow:**
 1. Create RootfsSnapshot CR referencing a sandbox
@@ -164,21 +138,17 @@ REST types are separate from CRD types with explicit conversion in `convert.go`.
 5. Writes result to termination log, operator reads and updates status
 6. TTL controller deletes snapshot after `ttlSecondsAfterFinished`
 
+**Command execution:**
+- Commands run via `nsenter --all --target <pid>` inside the sandbox container's namespaces.
+- Command stdout/stderr are stored on the container's ephemeral storage (counts against resource limits).
+- Command state is in-memory in the sidecar — all running/completed commands are lost on sidecar restart.
+- Gateway command handlers use compile-time type assertions (`_ = sidecarapi.CreateCommandRequest(CreateCommandRequest{})`) to enforce structural compatibility with `sidecar-api` contract types. Do not remove these.
+
 **Dockerfiles copy all of internal/:** Each binary's Dockerfile copies the entire `internal/` directory rather than individual packages. This avoids needing to update Dockerfiles and Tiltfile when adding new `internal/` packages.
 
 ## Testing
 
 **Go tests:** Ginkgo/Gomega with envtest (K8s API simulation)
-
-```bash
-make test                            # Run all tests
-make test-verbose                    # All tests with verbose output
-make test-operator                   # Operator tests only
-make test-gateway                    # api-gateway tests only
-make test-sidecar                    # sandbox-sidecar tests only
-make test-operator FOCUS="Reconcile" # Focused by Ginkgo pattern
-make test GO_TEST_FLAGS="-race"      # With race detector
-```
 
 **Variables** (following Cluster API / Kubernetes patterns):
 - `FOCUS` - Ginkgo focus pattern for component targets
