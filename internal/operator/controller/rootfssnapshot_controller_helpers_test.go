@@ -40,7 +40,7 @@ func createRuntimeClassForSnapshot(ctx context.Context, name, handler string) {
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Handler:    handler,
 	}
-	err := k8sClient.Create(ctx, rc) //nolint:nilaway // initialized in BeforeSuite
+	err := k8sClient.Create(ctx, rc)
 	if !errors.IsAlreadyExists(err) {
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	}

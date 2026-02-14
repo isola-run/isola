@@ -106,9 +106,9 @@ func doPost(path string, body []byte) *httptest.ResponseRecorder {
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
 	}
-	return testAPI.Post(path, "Content-Type: application/octet-stream", bodyReader) //nolint:nilaway // initialized in BeforeSuite
+	return testAPI.Post(path, "Content-Type: application/octet-stream", bodyReader)
 }
 
 func doGet(path string) *httptest.ResponseRecorder {
-	return testAPI.Get(path) //nolint:nilaway // initialized in BeforeSuite
+	return testAPI.Get(path)
 }

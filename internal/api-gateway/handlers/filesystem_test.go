@@ -42,7 +42,7 @@ func createSandboxCR() string {
 			},
 		},
 	}
-	Expect(k8sClient.Create(ctx, sb)).To(Succeed()) //nolint:nilaway // initialized in BeforeSuite
+	Expect(k8sClient.Create(ctx, sb)).To(Succeed())
 
 	Eventually(func() error {
 		return k8sClient.Get(ctx, client.ObjectKeyFromObject(sb), &sandboxv1alpha1.Sandbox{})
