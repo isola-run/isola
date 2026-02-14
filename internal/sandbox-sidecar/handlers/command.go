@@ -83,7 +83,8 @@ type commandEntry struct {
 	cmd       *exec.Cmd
 	cancel    context.CancelFunc
 	stdinPipe io.WriteCloser
-	exitCode  int // only valid after done is closed
+	stdinMu   sync.Mutex // serialize concurrent stdin writes
+	exitCode  int        // only valid after done is closed
 	done      chan struct{}
 	outputDir string
 }
@@ -386,7 +387,11 @@ func (h *CommandHandlers) PostCommandStdin(_ context.Context, input *PostCommand
 	default:
 	}
 
-	if _, err := io.Copy(entry.stdinPipe, input.Stream); err != nil {
+	entry.stdinMu.Lock()
+	written, err := io.Copy(entry.stdinPipe, input.Stream)
+	entry.stdinMu.Unlock()
+
+	if err != nil {
 		// Process may have exited between the check and the write
 		if errors.Is(err, syscall.EPIPE) || errors.Is(err, os.ErrClosed) {
 			return nil, huma.Error409Conflict("command has already exited")
@@ -395,6 +400,7 @@ func (h *CommandHandlers) PostCommandStdin(_ context.Context, input *PostCommand
 		return nil, huma.Error500InternalServerError("failed to write to stdin")
 	}
 
+	h.logger.Debug("stdin write", "cmdID", input.CmdID, "bytes", written)
 	return nil, nil
 }
 
