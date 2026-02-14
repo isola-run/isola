@@ -102,6 +102,12 @@ var _ = Describe("Filesystem", func() {
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 
+		It("returns 422 when path is empty", func() {
+			resp := doGet("/filesystem?path=")
+
+			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
+		})
+
 		It("returns 500 for null bytes in path", func() {
 			resp := doGet("/filesystem?path=/tmp/evil%00file.txt")
 
@@ -215,6 +221,12 @@ var _ = Describe("Filesystem", func() {
 
 		It("returns 422 when path is missing", func() {
 			resp := doPost("/filesystem", []byte("some content"))
+
+			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
+		})
+
+		It("returns 422 when path is empty", func() {
+			resp := doPost("/filesystem?path=", []byte("some content"))
 
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})

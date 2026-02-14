@@ -142,7 +142,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/status", sbName))
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 
 			var status CommandStatusResponse
@@ -162,7 +162,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/nonexistent/status", sbName))
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/00000000-0000-0000-0000-000000000000/status", sbName))
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 	})
@@ -183,7 +183,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stdout", sbName))
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Bytes()).To(Equal(content))
 			Expect(resp.Header().Get("Content-Type")).To(Equal("application/octet-stream"))
@@ -204,7 +204,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stdout?offset=42", sbName))
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout?offset=42", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(capturedOffset).To(Equal("42"))
 		})
@@ -228,7 +228,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stdin", sbName),
+				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("input data"),
 			)
@@ -251,7 +251,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/cmd-123", sbName))
+			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", sbName))
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 			Expect(capturedMethod).To(Equal(http.MethodDelete))
 		})
@@ -264,7 +264,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/cmd-123", sbName))
+			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", sbName))
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 
@@ -278,7 +278,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/cmd-123", sbName))
+			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", sbName))
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 
@@ -294,7 +294,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/cmd-123", sbName))
+			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", sbName))
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 	})
@@ -314,7 +314,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stderr", sbName))
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stderr", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Bytes()).To(Equal(content))
 		})
@@ -333,7 +333,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stderr?offset=10", sbName))
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stderr?offset=10", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(capturedOffset).To(Equal("10"))
 		})
@@ -352,7 +352,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/status", sbName))
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 
@@ -436,7 +436,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/status", sbName))
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 
@@ -449,7 +449,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stdin", sbName),
+				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -464,7 +464,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stdout", sbName))
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout", sbName))
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 
@@ -483,7 +483,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands/cmd-123/stdin", sbName),
+				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -504,7 +504,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/nonexistent/stdout", sbName))
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/00000000-0000-0000-0000-000000000000/stdout", sbName))
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 	})

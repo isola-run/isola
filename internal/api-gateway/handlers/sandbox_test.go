@@ -151,6 +151,18 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(resp.Code).To(Equal(400))
 		})
 
+		It("rejects empty image with 422", func() {
+			reqBody := `{"podTemplate":{"container":{"image":""}}}`
+			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(422))
+		})
+
+		It("rejects more than 3 nameservers with 422", func() {
+			reqBody := `{"podTemplate":{"container":{"image":"alpine"}},"network":{"nameservers":["1.1.1.1","8.8.8.8","9.9.9.9","208.67.222.222"]}}`
+			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(422))
+		})
+
 		It("rejects activeDeadlineSeconds of 0", func() {
 			reqBody := `{"podTemplate":{"container":{"image":"x"}},"activeDeadlineSeconds":0}`
 			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
