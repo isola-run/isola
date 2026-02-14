@@ -63,7 +63,7 @@ type GetCommandStatusOutput struct {
 
 type GetCommandStreamInput struct {
 	CmdID  string `path:"cmdId" doc:"Command identifier"`
-	Offset int64  `query:"offset,omitempty" doc:"Byte offset to resume from (default 0)"`
+	Offset int64  `query:"offset,omitempty" minimum:"0" doc:"Byte offset to resume from (default 0)"`
 }
 
 type PostCommandStdinInput struct {

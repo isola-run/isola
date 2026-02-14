@@ -182,7 +182,7 @@ type GetSandboxCommandStatusOutput struct {
 type GetSandboxCommandStreamInput struct {
 	ID     string `path:"id" doc:"Sandbox identifier"`
 	CmdID  string `path:"cmdId" doc:"Command identifier"`
-	Offset int64  `query:"offset,omitempty" doc:"Byte offset to resume from (default 0)"`
+	Offset int64  `query:"offset,omitempty" minimum:"0" doc:"Byte offset to resume from (default 0)"`
 }
 
 type PostSandboxCommandStdinInput struct {
