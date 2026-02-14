@@ -391,8 +391,13 @@ var _ = Describe("Command Handlers", func() {
 				strings.NewReader(`{"cmd": "/nonexistent/binary"}`))
 			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
 
+			// Directory may not exist (RemoveAll removed it) or may be empty — either is acceptable
 			commandsDir := filepath.Join(isolatedRoot, "var", "run", "isola", "commands")
-			if entries, err := os.ReadDir(commandsDir); err == nil {
+			entries, err := os.ReadDir(commandsDir)
+			if err != nil && !os.IsNotExist(err) {
+				Fail(fmt.Sprintf("unexpected error reading commands dir: %v", err))
+			}
+			if err == nil {
 				Expect(entries).To(BeEmpty(), "orphaned command output directory after failed start")
 			}
 		})
