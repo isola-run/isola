@@ -84,7 +84,7 @@ components:
           minLength: 1
           type: string
         cwd:
-          description: Working directory inside the sandbox
+          description: Working directory inside the sandbox. Defaults to the target container process's working directory if omitted.
           type: string
         env:
           additionalProperties:
@@ -801,7 +801,7 @@ paths:
         - commands
   /sandboxes/{id}/commands/{cmdId}/stderr:
     get:
-      description: Streams the command's stderr as raw bytes. Supports resuming via ?offset=N query parameter.
+      description: Streams the command's stderr as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.
       operationId: getSandboxCommandStderr
       parameters:
         - description: Sandbox identifier
@@ -934,7 +934,7 @@ paths:
         - commands
   /sandboxes/{id}/commands/{cmdId}/stdout:
     get:
-      description: Streams the command's stdout as raw bytes. Supports resuming via ?offset=N query parameter.
+      description: Streams the command's stdout as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.
       operationId: getSandboxCommandStdout
       parameters:
         - description: Sandbox identifier

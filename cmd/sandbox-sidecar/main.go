@@ -56,7 +56,7 @@ func main() {
 
 	healthHandlers := handlers.NewHealthHandlers()
 	filesystemHandlers := handlers.NewFilesystemHandlers(logger, procFS)
-	commandHandlers := handlers.NewCommandHandlers(logger, procFS)
+	commandHandlers := handlers.NewCommandHandlers(logger, procFS, &handlers.NsenterCommandBuilder{})
 
 	handlers.RegisterHealthRoutes(api, healthHandlers)
 	handlers.RegisterFilesystemRoutes(api, filesystemHandlers)

@@ -95,7 +95,7 @@ func RegisterCommandRoutes(api huma.API, h *CommandHandlers) {
 		Method:      http.MethodGet,
 		Path:        "/commands/{cmdId}/stdout",
 		Summary:     "Stream command stdout",
-		Description: "Streams the command's stdout as raw bytes. Supports resuming via ?offset=N query parameter.",
+		Description: "Streams the command's stdout as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.",
 		Tags:        []string{"commands"},
 		Responses: map[string]*huma.Response{
 			"200": {
@@ -115,7 +115,7 @@ func RegisterCommandRoutes(api huma.API, h *CommandHandlers) {
 		Method:      http.MethodGet,
 		Path:        "/commands/{cmdId}/stderr",
 		Summary:     "Stream command stderr",
-		Description: "Streams the command's stderr as raw bytes. Supports resuming via ?offset=N query parameter.",
+		Description: "Streams the command's stderr as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.",
 		Tags:        []string{"commands"},
 		Responses: map[string]*huma.Response{
 			"200": {

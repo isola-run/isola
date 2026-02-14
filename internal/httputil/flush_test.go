@@ -1,21 +1,27 @@
-package handlers
+package httputil
 
 import (
 	"bytes"
 	"errors"
 	"sync"
+	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
+func TestHTTPUtil(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "HTTPUtil Suite")
+}
+
 // mockFlusherWriter is an io.Writer + http.Flusher that records calls.
 type mockFlusherWriter struct {
-	mu          sync.Mutex
-	written     []byte
-	flushCount  int
-	writeErr    error // injected error for Write
+	mu         sync.Mutex
+	written    []byte
+	flushCount int
+	writeErr   error // injected error for Write
 }
 
 func (m *mockFlusherWriter) Write(p []byte) (int, error) {
@@ -46,11 +52,11 @@ func (m *mockFlusherWriter) getWritten() []byte {
 	return append([]byte{}, m.written...)
 }
 
-var _ = Describe("timedFlushWriter", func() {
+var _ = Describe("TimedFlushWriter", func() {
 	It("flushes after the interval elapses", func() {
 		mock := &mockFlusherWriter{}
-		fw := newTimedFlushWriter(mock, 50*time.Millisecond)
-		defer fw.stop()
+		fw := NewTimedFlushWriter(mock, 50*time.Millisecond)
+		defer fw.Stop()
 
 		n, err := fw.Write([]byte("hello"))
 		Expect(err).NotTo(HaveOccurred())
@@ -65,8 +71,8 @@ var _ = Describe("timedFlushWriter", func() {
 
 	It("coalesces multiple writes into one flush", func() {
 		mock := &mockFlusherWriter{}
-		fw := newTimedFlushWriter(mock, 50*time.Millisecond)
-		defer fw.stop()
+		fw := NewTimedFlushWriter(mock, 50*time.Millisecond)
+		defer fw.Stop()
 
 		for i := 0; i < 10; i++ {
 			_, err := fw.Write([]byte("x"))
@@ -80,10 +86,10 @@ var _ = Describe("timedFlushWriter", func() {
 		Eventually(mock.getFlushCount, 200*time.Millisecond, 10*time.Millisecond).Should(Equal(1))
 	})
 
-	It("stop performs a final flush of pending data", func() {
+	It("Stop performs a final flush of pending data", func() {
 		mock := &mockFlusherWriter{}
-		fw := newTimedFlushWriter(mock, time.Hour) // very long interval
-		defer fw.stop()
+		fw := NewTimedFlushWriter(mock, time.Hour) // very long interval
+		defer fw.Stop()
 
 		_, err := fw.Write([]byte("data"))
 		Expect(err).NotTo(HaveOccurred())
@@ -91,24 +97,24 @@ var _ = Describe("timedFlushWriter", func() {
 		// Timer hasn't fired (1 hour interval)
 		Expect(mock.getFlushCount()).To(Equal(0))
 
-		// stop should flush immediately
-		fw.stop()
+		// Stop should flush immediately
+		fw.Stop()
 		Expect(mock.getFlushCount()).To(Equal(1))
 	})
 
-	It("stop is a no-op when nothing is pending", func() {
+	It("Stop is a no-op when nothing is pending", func() {
 		mock := &mockFlusherWriter{}
-		fw := newTimedFlushWriter(mock, 50*time.Millisecond)
+		fw := NewTimedFlushWriter(mock, 50*time.Millisecond)
 
 		// No writes, just stop
-		fw.stop()
+		fw.Stop()
 		Expect(mock.getFlushCount()).To(Equal(0))
 	})
 
 	It("works with a writer that does not implement http.Flusher", func() {
 		var buf bytes.Buffer
-		fw := newTimedFlushWriter(&buf, 50*time.Millisecond)
-		defer fw.stop()
+		fw := NewTimedFlushWriter(&buf, 50*time.Millisecond)
+		defer fw.Stop()
 
 		n, err := fw.Write([]byte("hello"))
 		Expect(err).NotTo(HaveOccurred())
@@ -120,8 +126,8 @@ var _ = Describe("timedFlushWriter", func() {
 
 	It("schedules flush even on write error (matches stdlib)", func() {
 		mock := &mockFlusherWriter{writeErr: errors.New("broken")}
-		fw := newTimedFlushWriter(mock, 50*time.Millisecond)
-		defer fw.stop()
+		fw := NewTimedFlushWriter(mock, 50*time.Millisecond)
+		defer fw.Stop()
 
 		_, err := fw.Write([]byte("hello"))
 		Expect(err).To(MatchError("broken"))
@@ -132,8 +138,8 @@ var _ = Describe("timedFlushWriter", func() {
 
 	It("resumes flushing after timer fires", func() {
 		mock := &mockFlusherWriter{}
-		fw := newTimedFlushWriter(mock, 50*time.Millisecond)
-		defer fw.stop()
+		fw := NewTimedFlushWriter(mock, 50*time.Millisecond)
+		defer fw.Stop()
 
 		// First write + flush cycle
 		_, _ = fw.Write([]byte("a"))

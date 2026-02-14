@@ -205,6 +205,9 @@ func recreatePodWithNodeName(ctx context.Context, podName, nodeName string, runt
 	// Get the existing pod to copy labels
 	existingPod := getPod(ctx, podName)
 	ExpectWithOffset(1, existingPod).NotTo(BeNil())
+	if existingPod == nil {
+		return nil
+	}
 	labels := existingPod.Labels
 	ExpectWithOffset(1, k8sClient.Delete(ctx, existingPod)).To(Succeed())
 

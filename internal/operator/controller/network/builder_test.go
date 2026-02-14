@@ -26,6 +26,18 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+func mustBuildCustomNetworkPolicy(t *testing.T, network *sandboxv1alpha1.NetworkSpec) *networkingv1.NetworkPolicy {
+	t.Helper()
+	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
+	if err != nil {
+		t.Fatalf("BuildCustomNetworkPolicy returned error: %v", err)
+	}
+	if np == nil {
+		t.Fatal("BuildCustomNetworkPolicy returned nil")
+	}
+	return np
+}
+
 func TestBuildCustomNetworkPolicy_NilNetwork(t *testing.T) {
 	g := NewWithT(t)
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", nil)
@@ -48,9 +60,7 @@ func TestBuildCustomNetworkPolicy_WithAllowedEgressCIDRs(t *testing.T) {
 		AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 	}
 
-	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(np).ToNot(BeNil())
+	np := mustBuildCustomNetworkPolicy(t, network)
 
 	g.Expect(np.Name).To(Equal("test-sandbox-custom-netpol"))
 	g.Expect(np.Namespace).To(Equal("default"))
@@ -67,9 +77,7 @@ func TestBuildCustomNetworkPolicy_BlocksRiskyCIDRs(t *testing.T) {
 		AllowedEgressCIDRs: []string{"0.0.0.0/0"},
 	}
 
-	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(np).ToNot(BeNil())
+	np := mustBuildCustomNetworkPolicy(t, network)
 
 	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	egressRule := np.Spec.Egress[0]
@@ -91,9 +99,7 @@ func TestBuildCustomNetworkPolicy_DoesNotBlockNonOverlappingCIDRs(t *testing.T) 
 		AllowedEgressCIDRs: []string{"8.8.0.0/16"},
 	}
 
-	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(np).ToNot(BeNil())
+	np := mustBuildCustomNetworkPolicy(t, network)
 
 	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	ipBlock := np.Spec.Egress[0].To[0].IPBlock
@@ -107,9 +113,7 @@ func TestBuildCustomNetworkPolicy_WithNameservers(t *testing.T) {
 		Nameservers: []string{"8.8.8.8", "1.1.1.1"},
 	}
 
-	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(np).ToNot(BeNil())
+	np := mustBuildCustomNetworkPolicy(t, network)
 
 	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	dnsRule := np.Spec.Egress[0]
@@ -194,10 +198,9 @@ func TestBuildCustomNetworkPolicy_NameserversWithoutInternetAccess(t *testing.T)
 		Nameservers:      []string{"8.8.8.8", "10.0.0.53"},
 	}
 
-	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	g.Expect(err).ToNot(HaveOccurred())
 	// Without internet access, ALL nameservers need explicit rules
-	g.Expect(np).ToNot(BeNil())
+	np := mustBuildCustomNetworkPolicy(t, network)
+
 	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	g.Expect(np.Spec.Egress[0].To).To(HaveLen(2))
 	cidrs := []string{np.Spec.Egress[0].To[0].IPBlock.CIDR, np.Spec.Egress[0].To[1].IPBlock.CIDR}
@@ -312,9 +315,7 @@ func TestBuildCustomNetworkPolicy_CombinedRules(t *testing.T) {
 		AllowedEgressCIDRs: []string{"1.1.1.0/24"},
 	}
 
-	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(np).ToNot(BeNil())
+	np := mustBuildCustomNetworkPolicy(t, network)
 
 	// Should have 2 egress rules: DNS IP + CIDR
 	g.Expect(np.Spec.Egress).To(HaveLen(2))
@@ -326,9 +327,7 @@ func TestBuildCustomNetworkPolicy_DeduplicatesCIDRs(t *testing.T) {
 		AllowedEgressCIDRs: []string{"8.8.8.0/24", "8.8.8.0/24", "1.1.1.0/24"},
 	}
 
-	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(np).ToNot(BeNil())
+	np := mustBuildCustomNetworkPolicy(t, network)
 
 	// Should have 2 egress rules (deduplicated)
 	g.Expect(np.Spec.Egress).To(HaveLen(2))
@@ -342,9 +341,7 @@ func TestBuildCustomNetworkPolicy_IPv6Nameservers(t *testing.T) {
 		Nameservers: []string{"2001:4860:4860::8888", "2001:4860:4860::8844"},
 	}
 
-	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(np).ToNot(BeNil())
+	np := mustBuildCustomNetworkPolicy(t, network)
 
 	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	dnsRule := np.Spec.Egress[0]
@@ -364,9 +361,7 @@ func TestBuildCustomNetworkPolicy_MixedIPv4IPv6Nameservers(t *testing.T) {
 		Nameservers: []string{"8.8.8.8", "2001:4860:4860::8888"},
 	}
 
-	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(np).ToNot(BeNil())
+	np := mustBuildCustomNetworkPolicy(t, network)
 
 	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	dnsRule := np.Spec.Egress[0]
@@ -383,9 +378,7 @@ func TestBuildCustomNetworkPolicy_IPv6AllowedEgressCIDR(t *testing.T) {
 		AllowedEgressCIDRs: []string{"2001:4860::/32"},
 	}
 
-	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(np).ToNot(BeNil())
+	np := mustBuildCustomNetworkPolicy(t, network)
 
 	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	ipBlock := np.Spec.Egress[0].To[0].IPBlock
@@ -400,9 +393,7 @@ func TestBuildCustomNetworkPolicy_IPv6AllInternet(t *testing.T) {
 		AllowedEgressCIDRs: []string{"::/0"},
 	}
 
-	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(np).ToNot(BeNil())
+	np := mustBuildCustomNetworkPolicy(t, network)
 
 	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	ipBlock := np.Spec.Egress[0].To[0].IPBlock

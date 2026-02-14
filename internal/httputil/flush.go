@@ -1,4 +1,4 @@
-package handlers
+package httputil
 
 import (
 	"io"
@@ -7,12 +7,12 @@ import (
 	"time"
 )
 
-// timedFlushWriter wraps an io.Writer and an http.Flusher, flushing buffered
+// TimedFlushWriter wraps an io.Writer and an http.Flusher, flushing buffered
 // data to the client at most every `interval`. Modeled on Go stdlib's
 // maxLatencyWriter in net/http/httputil/reverseproxy.go.
 //
 // This prevents excessive per-write syscalls while keeping streaming latency bounded.
-type timedFlushWriter struct {
+type TimedFlushWriter struct {
 	w        io.Writer
 	flusher  http.Flusher
 	interval time.Duration
@@ -22,8 +22,8 @@ type timedFlushWriter struct {
 	flushPending bool
 }
 
-func newTimedFlushWriter(w io.Writer, interval time.Duration) *timedFlushWriter {
-	fw := &timedFlushWriter{
+func NewTimedFlushWriter(w io.Writer, interval time.Duration) *TimedFlushWriter {
+	fw := &TimedFlushWriter{
 		w:        w,
 		interval: interval,
 	}
@@ -33,7 +33,7 @@ func newTimedFlushWriter(w io.Writer, interval time.Duration) *timedFlushWriter 
 	return fw
 }
 
-func (fw *timedFlushWriter) Write(p []byte) (n int, err error) {
+func (fw *TimedFlushWriter) Write(p []byte) (n int, err error) {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
@@ -53,7 +53,7 @@ func (fw *timedFlushWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
-func (fw *timedFlushWriter) delayedFlush() {
+func (fw *TimedFlushWriter) delayedFlush() {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 	if !fw.flushPending {
@@ -63,12 +63,12 @@ func (fw *timedFlushWriter) delayedFlush() {
 	fw.flushPending = false
 }
 
-// stop cancels the pending flush timer and performs a final flush so the
+// Stop cancels the pending flush timer and performs a final flush so the
 // client receives any remaining buffered bytes immediately, without relying
 // on the framework to finalize the response.
 // The final flush behaviour differs from stdlib's reverseproxy behaviour
 // which does not flush the remaining bytes on stop.
-func (fw *timedFlushWriter) stop() {
+func (fw *TimedFlushWriter) Stop() {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 	if fw.t != nil {

@@ -2,16 +2,20 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
 var (
@@ -19,6 +23,20 @@ var (
 	testRootDir string
 	testCwd     string
 )
+
+// DirectCommandBuilder runs commands directly without nsenter (for testing).
+type DirectCommandBuilder struct{}
+
+func (b *DirectCommandBuilder) Build(ctx context.Context, _ int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
+	cmd := exec.CommandContext(ctx, req.Cmd, req.Args...) //nolint:gosec // test-only builder; inputs are test fixtures
+	cmd.Stdout = stdoutFile
+	cmd.Stderr = stderrFile
+	cmd.Env = env
+	if req.Cwd != "" {
+		cmd.Dir = req.Cwd
+	}
+	return cmd, nil
+}
 
 // MockProcFS implements proc.ProcFS for testing.
 type MockProcFS struct {
@@ -88,9 +106,9 @@ func doPost(path string, body []byte) *httptest.ResponseRecorder {
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
 	}
-	return testAPI.Post(path, "Content-Type: application/octet-stream", bodyReader)
+	return testAPI.Post(path, "Content-Type: application/octet-stream", bodyReader) //nolint:nilaway // initialized in BeforeSuite
 }
 
 func doGet(path string) *httptest.ResponseRecorder {
-	return testAPI.Get(path)
+	return testAPI.Get(path) //nolint:nilaway // initialized in BeforeSuite
 }

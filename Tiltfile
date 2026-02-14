@@ -12,6 +12,7 @@ allow_k8s_contexts('kind-isola-dev')
 
 # Local registry (created by hack/setup.sh)
 default_registry('localhost:5001')
+update_settings(suppress_unused_image_warnings=['isola-uploader'])
 
 # ==============================================================================
 # LocalStack (S3 storage backend)

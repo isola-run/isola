@@ -1,14 +1,17 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -22,11 +25,12 @@ import (
 var _ = Describe("Command Handlers", func() {
 	var (
 		commandAPI      humatest.TestAPI
+		commandHandler  http.Handler
 		commandHandlers *CommandHandlers
 	)
 
 	BeforeEach(func() {
-		_, commandAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Command Test API", "1.0.0"))
+		commandHandler, commandAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Command Test API", "1.0.0"))
 
 		mockProcFS := &MockProcFS{
 			rootDir: testRootDir,
@@ -34,7 +38,7 @@ var _ = Describe("Command Handlers", func() {
 			uid:     0,
 			gid:     0,
 		}
-		commandHandlers = NewCommandHandlersForTest(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), mockProcFS)
+		commandHandlers = NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), mockProcFS, &DirectCommandBuilder{})
 		RegisterCommandRoutes(commandAPI, commandHandlers)
 	})
 
@@ -267,6 +271,31 @@ var _ = Describe("Command Handlers", func() {
 				return status.ExitCode
 			}, "5s").ShouldNot(BeNil())
 		})
+
+		It("preserves partial output and reports kill exit code", func() {
+			code, result := postCommand(`{
+				"cmd": "/bin/sh",
+				"args": ["-c", "echo -n before-timeout; sleep 60"],
+				"timeout": 1
+			}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			var exitCode *int
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status", result.CommandID))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				exitCode = status.ExitCode
+				return status.ExitCode
+			}, "5s").ShouldNot(BeNil())
+
+			// SIGKILL: Go reports -1 for signal kills
+			Expect(*exitCode).To(Equal(-1))
+
+			// Output written before the kill should be preserved
+			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+			Expect(resp.Body.String()).To(Equal("before-timeout"))
+		})
 	})
 
 	Describe("Immediate exit", func() {
@@ -298,11 +327,11 @@ var _ = Describe("Command Handlers", func() {
 			DeferCleanup(func() { _ = os.RemoveAll(blockedRoot) })
 
 			// Place a regular file at <root>/var so MkdirAll(<root>/var/run/isola/...) fails
-			Expect(os.WriteFile(filepath.Join(blockedRoot, "var"), []byte("blocker"), 0644)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(blockedRoot, "var"), []byte("blocker"), 0600)).To(Succeed())
 
 			_, blockedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Blocked Test API", "1.0.0"))
 			blockedMock := &MockProcFS{rootDir: blockedRoot, cwd: testCwd}
-			blockedHandlers := NewCommandHandlersForTest(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), blockedMock)
+			blockedHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), blockedMock, &DirectCommandBuilder{})
 			RegisterCommandRoutes(blockedAPI, blockedHandlers)
 
 			resp := blockedAPI.Post("/commands", "Content-Type: application/json",
@@ -326,9 +355,10 @@ var _ = Describe("Command Handlers", func() {
 
 			// Replace the stdout file with a directory.
 			// os.Open on a directory succeeds, but f.Read returns EISDIR.
-			Expect(os.Remove(entry.stdoutPath)).To(Succeed())
-			Expect(os.Mkdir(entry.stdoutPath, 0755)).To(Succeed())
-			DeferCleanup(func() { _ = os.Remove(entry.stdoutPath) })
+			stdoutPath := filepath.Join(entry.outputDir, "stdout")
+			Expect(os.Remove(stdoutPath)).To(Succeed())
+			Expect(os.Mkdir(stdoutPath, 0750)).To(Succeed())
+			DeferCleanup(func() { _ = os.Remove(stdoutPath) })
 
 			// Run the streaming request in a goroutine since with the bug
 			// it spins forever retrying the failing read.
@@ -342,6 +372,101 @@ var _ = Describe("Command Handlers", func() {
 			// With the fix, streamOutput detects the non-EOF read error and returns.
 			// Without the fix, it loops forever (sleep 100ms between retries).
 			Eventually(done, "2s").Should(BeClosed())
+		})
+	})
+
+	Describe("output directory cleanup on start failure", func() {
+		It("cleans up output directory when command binary does not exist", func() {
+			// Use an isolated rootDir so other tests' command dirs don't interfere
+			isolatedRoot, err := os.MkdirTemp("", "sidecar-test-cleanup-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(isolatedRoot) })
+
+			_, isolatedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Cleanup Test API", "1.0.0"))
+			isolatedMock := &MockProcFS{rootDir: isolatedRoot, cwd: testCwd}
+			isolatedHandlers := NewCommandHandlers(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, &DirectCommandBuilder{})
+			RegisterCommandRoutes(isolatedAPI, isolatedHandlers)
+
+			resp := isolatedAPI.Post("/commands", "Content-Type: application/json",
+				strings.NewReader(`{"cmd": "/nonexistent/binary"}`))
+			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
+
+			commandsDir := filepath.Join(isolatedRoot, "var", "run", "isola", "commands")
+			if entries, err := os.ReadDir(commandsDir); err == nil {
+				Expect(entries).To(BeEmpty(), "orphaned command output directory after failed start")
+			}
+		})
+	})
+
+	Describe("offset beyond file size", func() {
+		It("returns empty body when offset exceeds output size for exited command", func() {
+			code, result := postCommand(`{"cmd": "echo", "args": ["-n", "short"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status", result.CommandID))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				return status.ExitCode
+			}).ShouldNot(BeNil())
+
+			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout?offset=9999", result.CommandID))
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Body.String()).To(BeEmpty())
+		})
+	})
+
+	Describe("multiple stdin writes", func() {
+		It("delivers sequential writes in order", func() {
+			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "head -c 10"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			resp := commandAPI.Post(
+				fmt.Sprintf("/commands/%s/stdin", result.CommandID),
+				"Content-Type: application/octet-stream",
+				strings.NewReader("hello"),
+			)
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+
+			resp = commandAPI.Post(
+				fmt.Sprintf("/commands/%s/stdin", result.CommandID),
+				"Content-Type: application/octet-stream",
+				strings.NewReader("world"),
+			)
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+
+			Eventually(func() string {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+				return resp.Body.String()
+			}).Should(Equal("helloworld"))
+		})
+	})
+
+	Describe("client disconnect", func() {
+		It("stops streaming when request context is cancelled", func() {
+			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+			DeferCleanup(func() {
+				commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
+			})
+
+			// humatest.TestAPI.Get() doesn't let us control the request context,
+			// so we call ServeHTTP directly with a cancellable context
+			ctx, cancel := context.WithCancel(context.Background())
+			req := httptest.NewRequest("GET", fmt.Sprintf("/commands/%s/stdout", result.CommandID), nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+
+			done := make(chan struct{})
+			go func() {
+				defer GinkgoRecover()
+				commandHandler.ServeHTTP(w, req)
+				close(done)
+			}()
+
+			time.Sleep(100 * time.Millisecond)
+			cancel()
+
+			Eventually(done, "1s").Should(BeClosed())
 		})
 	})
 })

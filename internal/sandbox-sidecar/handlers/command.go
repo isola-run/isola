@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,66 +19,60 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/isola-ai/isola-sb/internal/constants"
+	"github.com/isola-ai/isola-sb/internal/httputil"
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
+// time cmd.Wait() has to drain before giving up
+// in our case, there should be nothing to drain
+// but it's a safety precaution for infinitely blocking after process kill
+const waitDelayGracePeriod = 5 * time.Second
+
 // CommandBuilder abstracts command construction for testability.
 // The real implementation uses nsenter; tests use direct execution.
 type CommandBuilder interface {
-	Build(pid int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error)
+	Build(ctx context.Context, pid int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error)
 }
 
-// nsenterCommandBuilder constructs nsenter commands that enter the target container's namespaces.
-type nsenterCommandBuilder struct{}
+// NsenterCommandBuilder constructs nsenter commands that enter the target container's namespaces.
+type NsenterCommandBuilder struct{}
 
-func (b *nsenterCommandBuilder) Build(pid int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
+func (b *NsenterCommandBuilder) Build(ctx context.Context, pid int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
 	args := []string{
-		"--target", strconv.Itoa(pid),
-		"--mount", "--pid", "--ipc", "--uts",
+		// https://man7.org/linux/man-pages/man1/nsenter.1.html
+		"--target", strconv.Itoa(pid), // target process to get contexts from
+		"--all",  // enter all namespaces of the target process
+		"--root", // chroot to /proc/<pid>/root
+		"--setuid=0",
+		"--setgid=0",
+		// NO --env - we built the env ourselves and must not inherit the sidecar's
 	}
 	if req.Cwd != "" {
-		args = append(args, "--wd="+req.Cwd)
+		args = append(args, "--wdns="+req.Cwd)
 	} else {
-		// --wd with no argument sets CWD to the target process's working directory
-		args = append(args, "--wd")
+		args = append(args, "--wd") // effectively /proc/<pid>/cwd
 	}
 	args = append(args, "--")
 	args = append(args, req.Cmd)
 	args = append(args, req.Args...)
 
-	cmd := exec.CommandContext(context.Background(), "nsenter", args...) //nolint:gosec // args are constructed from validated request
+	cmd := exec.CommandContext(ctx, "nsenter", args...) //nolint:gosec // args are constructed from validated request
 	cmd.Stdout = stdoutFile
 	cmd.Stderr = stderrFile
 	cmd.Env = env
-	return cmd, nil
-}
-
-// directCommandBuilder runs commands directly without nsenter (for testing).
-type directCommandBuilder struct{}
-
-func (b *directCommandBuilder) Build(_ int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
-	cmd := exec.CommandContext(context.Background(), req.Cmd, req.Args...) //nolint:gosec // test-only builder
-	cmd.Stdout = stdoutFile
-	cmd.Stderr = stderrFile
-	cmd.Env = env
-	if req.Cwd != "" {
-		cmd.Dir = req.Cwd
-	}
+	cmd.WaitDelay = waitDelayGracePeriod
 	return cmd, nil
 }
 
 type commandEntry struct {
-	cmdId      string
-	cmd        *exec.Cmd
-	stdinPipe  io.WriteCloser
-	timer      *time.Timer
-	mu         sync.Mutex
-	exitCode   *int
-	exited     bool
-	done       chan struct{}
-	stdoutPath string
-	stderrPath string
+	cmdID     string
+	cmd       *exec.Cmd
+	cancel    context.CancelFunc
+	stdinPipe io.WriteCloser
+	exitCode  int // only valid after done is closed
+	done      chan struct{}
+	outputDir string
 }
 
 type CommandHandlers struct {
@@ -94,22 +87,11 @@ type CommandHandlers struct {
 	commands map[string]*commandEntry
 }
 
-func NewCommandHandlers(logger *slog.Logger, procFS proc.ProcFS) *CommandHandlers {
+func NewCommandHandlers(logger *slog.Logger, procFS proc.ProcFS, cmdBuilder CommandBuilder) *CommandHandlers {
 	return &CommandHandlers{
 		logger:     logger,
 		procFS:     procFS,
-		cmdBuilder: &nsenterCommandBuilder{},
-		cachedPIDs: make(map[string]int),
-		commands:   make(map[string]*commandEntry),
-	}
-}
-
-// NewCommandHandlersForTest creates CommandHandlers with a direct command builder for testing.
-func NewCommandHandlersForTest(logger *slog.Logger, procFS proc.ProcFS) *CommandHandlers {
-	return &CommandHandlers{
-		logger:     logger,
-		procFS:     procFS,
-		cmdBuilder: &directCommandBuilder{},
+		cmdBuilder: cmdBuilder,
 		cachedPIDs: make(map[string]int),
 		commands:   make(map[string]*commandEntry),
 	}
@@ -145,30 +127,48 @@ func (h *CommandHandlers) PostCommand(_ context.Context, input *CreateCommandInp
 		return nil, huma.Error400BadRequest("failed to determine container pid")
 	}
 
-	cmdId := uuid.New().String()
+	entry, err := h.startCommand(pid, input)
+	if err != nil {
+		return nil, err
+	}
+
+	h.cmdMu.Lock()
+	// since cmdID is a random UUID, there's no collision risk and hence
+	// existence check is skipped for simplicity
+	h.commands[entry.cmdID] = entry
+	h.cmdMu.Unlock()
+
+	go h.waitForExit(entry)
+
+	return &CreateCommandOutput{Body: sidecarapi.CreateCommandResponse{CommandID: entry.cmdID}}, nil
+}
+
+// startCommand sets up output files, builds and starts the command.
+// On error, all resources are cleaned up via defer. On success, ownership
+// of file handles transfers to the returned entry (closed by waitForExit).
+func (h *CommandHandlers) startCommand(pid int, input *CreateCommandInput) (*commandEntry, error) {
+	cmdID := uuid.New().String()
 
 	// Create output directory on the target container rootfs, so the logs count against its ephemeral storage calculation.
-	outputDir := filepath.Join(h.procFS.GetRoot(pid), "var", "run", "isola", "commands", cmdId)
+	outputDir := filepath.Join(h.procFS.GetRoot(pid), "var", "run", "isola", "commands", cmdID)
 	if err := os.MkdirAll(outputDir, 0755); err != nil { //nolint:gosec
 		h.logger.Error("failed to create command output directory", "error", err, "path", outputDir)
 		return nil, huma.Error500InternalServerError("failed to create command output directory")
 	}
 
-	stdoutPath := filepath.Join(outputDir, "stdout")
-	stderrPath := filepath.Join(outputDir, "stderr")
-
-	stdoutFile, err := os.Create(stdoutPath) //nolint:gosec
+	stdoutFile, err := os.Create(filepath.Join(outputDir, "stdout")) //nolint:gosec
 	if err != nil {
 		h.logger.Error("failed to create stdout file", "error", err)
 		return nil, huma.Error500InternalServerError("failed to create stdout file")
 	}
+	defer func() { _ = stdoutFile.Close() }()
 
-	stderrFile, err := os.Create(stderrPath) //nolint:gosec
+	stderrFile, err := os.Create(filepath.Join(outputDir, "stderr")) //nolint:gosec
 	if err != nil {
-		_ = stdoutFile.Close()
 		h.logger.Error("failed to create stderr file", "error", err)
 		return nil, huma.Error500InternalServerError("failed to create stderr file")
 	}
+	defer func() { _ = stderrFile.Close() }()
 
 	containerEnv, envErr := h.procFS.GetEnviron(pid)
 	if envErr != nil {
@@ -177,103 +177,83 @@ func (h *CommandHandlers) PostCommand(_ context.Context, input *CreateCommandInp
 	}
 	cmdEnv := buildCmdEnv(containerEnv, input.Body.Env)
 
-	cmd, err := h.cmdBuilder.Build(pid, input.Body, cmdEnv, stdoutFile, stderrFile)
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if input.Body.Timeout != nil && *input.Body.Timeout > 0 {
+		duration := time.Duration(*input.Body.Timeout) * time.Second
+		// will send SIGKILL to the process after timeout
+		ctx, cancel = context.WithTimeout(context.Background(), duration)
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+	}
+
+	succeeded := false
+	defer func() {
+		if !succeeded {
+			cancel()
+			_ = os.RemoveAll(outputDir)
+		}
+	}()
+
+	cmd, err := h.cmdBuilder.Build(ctx, pid, input.Body, cmdEnv, stdoutFile, stderrFile)
 	if err != nil {
-		_ = stdoutFile.Close()
-		_ = stderrFile.Close()
 		h.logger.Error("failed to build command", "error", err)
 		return nil, huma.Error500InternalServerError("failed to build command")
 	}
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
-		_ = stdoutFile.Close()
-		_ = stderrFile.Close()
 		h.logger.Error("failed to create stdin pipe", "error", err)
 		return nil, huma.Error500InternalServerError("failed to create stdin pipe")
 	}
 
 	if err := cmd.Start(); err != nil {
-		_ = stdoutFile.Close()
-		_ = stderrFile.Close()
-		_ = stdinPipe.Close()
 		h.logger.Error("failed to start command", "error", err, "cmd", input.Body.Cmd)
 		return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to start command: %s", err.Error()))
 	}
 
-	entry := &commandEntry{
-		cmdId:      cmdId,
-		cmd:        cmd,
-		stdinPipe:  stdinPipe,
-		done:       make(chan struct{}),
-		stdoutPath: stdoutPath,
-		stderrPath: stderrPath,
-	}
+	succeeded = true
+	return &commandEntry{
+		cmdID:     cmdID,
+		cmd:       cmd,
+		cancel:    cancel,
+		stdinPipe: stdinPipe,
+		done:      make(chan struct{}),
+		outputDir: outputDir,
+	}, nil
+}
 
-	if input.Body.Timeout != nil && *input.Body.Timeout > 0 {
-		duration := time.Duration(*input.Body.Timeout) * time.Second
-		entry.timer = time.AfterFunc(duration, func() {
-			entry.mu.Lock()
-			exited := entry.exited
-			entry.mu.Unlock()
-			if !exited {
-				_ = cmd.Process.Kill()
+// wait for the process to exit, populate the exitCode and clean up
+// the entries context and done channel
+func (h *CommandHandlers) waitForExit(entry *commandEntry) {
+	defer close(entry.done)
+	defer entry.cancel()
+
+	var exitCode int
+	if err := entry.cmd.Wait(); err != nil {
+		if errors.Is(err, exec.ErrWaitDelay) {
+			// ErrWaitDelay is returned by [Cmd.Wait] if the process exits with a
+			// successful status code but its output pipes are not closed before the
+			// command's WaitDelay expires.
+			exitCode = 0
+			h.logger.Warn("command wait expired", "error", err, "cmdID", entry.cmdID)
+		} else {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				exitCode = exitErr.ExitCode()
+			} else {
+				exitCode = -1
+				h.logger.Error("command wait failed", "error", err, "cmdID", entry.cmdID)
 			}
-		})
-	}
-
-	h.cmdMu.Lock()
-	h.commands[cmdId] = entry
-	h.cmdMu.Unlock()
-
-	// Wait goroutine: owns writer file handles, closes them on exit
-	go func() {
-		defer close(entry.done)
-
-		_ = cmd.Wait()
-
-		entry.mu.Lock()
-		entry.exited = true
-		exitCode := cmd.ProcessState.ExitCode()
-		entry.exitCode = &exitCode
-		entry.mu.Unlock()
-
-		_ = stdoutFile.Close()
-		_ = stderrFile.Close()
-		_ = entry.stdinPipe.Close()
-		if entry.timer != nil {
-			entry.timer.Stop()
 		}
-	}()
-
-	return &CreateCommandOutput{Body: sidecarapi.CreateCommandResponse{CommandID: cmdId}}, nil
-}
-
-func (h *CommandHandlers) GetCommandStatus(_ context.Context, input *GetCommandStatusInput) (*GetCommandStatusOutput, error) {
-	h.cmdMu.RLock()
-	entry, ok := h.commands[input.CmdID]
-	h.cmdMu.RUnlock()
-
-	if !ok {
-		return nil, huma.Error404NotFound(fmt.Sprintf("command %q not found", input.CmdID))
+	} else {
+		exitCode = 0
 	}
 
-	entry.mu.Lock()
-	exitCode := entry.exitCode
-	entry.mu.Unlock()
-
-	return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: exitCode}}, nil
+	entry.exitCode = exitCode
 }
 
-func (h *CommandHandlers) GetCommandStdout(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
-	return h.streamOutput(input.CmdID, input.Offset, true)
-}
-
-func (h *CommandHandlers) GetCommandStderr(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
-	return h.streamOutput(input.CmdID, input.Offset, false)
-}
-
-func (h *CommandHandlers) streamOutput(cmdID string, offset int64, isStdout bool) (*huma.StreamResponse, error) {
+func (h *CommandHandlers) getCommandEntry(cmdID string) (*commandEntry, error) {
 	h.cmdMu.RLock()
 	entry, ok := h.commands[cmdID]
 	h.cmdMu.RUnlock()
@@ -281,19 +261,50 @@ func (h *CommandHandlers) streamOutput(cmdID string, offset int64, isStdout bool
 	if !ok {
 		return nil, huma.Error404NotFound(fmt.Sprintf("command %q not found", cmdID))
 	}
+	return entry, nil
+}
 
-	filePath := entry.stderrPath
-	if isStdout {
-		filePath = entry.stdoutPath
+func (h *CommandHandlers) GetCommandStatus(_ context.Context, input *GetCommandStatusInput) (*GetCommandStatusOutput, error) {
+	entry, err := h.getCommandEntry(input.CmdID)
+	if err != nil {
+		return nil, err
 	}
+
+	select {
+	case <-entry.done:
+		exitCode := entry.exitCode
+		return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: &exitCode}}, nil
+	default: // return immediately if cmd not done, indicating "still running"
+		return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: nil}}, nil
+	}
+}
+
+func (h *CommandHandlers) GetCommandStdout(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
+	return h.streamOutput(input.CmdID, input.Offset, "stdout")
+}
+
+func (h *CommandHandlers) GetCommandStderr(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
+	return h.streamOutput(input.CmdID, input.Offset, "stderr")
+}
+
+func (h *CommandHandlers) streamOutput(cmdID string, offset int64, streamName string) (*huma.StreamResponse, error) {
+	entry, err := h.getCommandEntry(cmdID)
+	if err != nil {
+		return nil, err
+	}
+
+	filePath := filepath.Join(entry.outputDir, streamName)
 
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
 			ctx.SetHeader("Content-Type", "application/octet-stream")
+			// no-cache, since the stream change over time
+			// not ", private" in the context of the sandbox->api-gateway
 			ctx.SetHeader("Cache-Control", "no-cache")
+			// X-Accel-Buffering: no, disable nginx buffering (serve immediately)
 			ctx.SetHeader("X-Accel-Buffering", "no")
 
-			f, err := os.Open(filePath) //nolint:gosec // path from trusted internal state
+			f, err := os.Open(filePath) //nolint:gosec
 			if err != nil {
 				h.logger.Error("failed to open output file for streaming", "error", err, "path", filePath)
 				return
@@ -307,67 +318,43 @@ func (h *CommandHandlers) streamOutput(cmdID string, offset int64, isStdout bool
 				}
 			}
 
-			w := ctx.BodyWriter()
-			flusher, canFlush := w.(http.Flusher)
-			buf := make([]byte, 4096)
-			pos := offset
+			fw := httputil.NewTimedFlushWriter(ctx.BodyWriter(), 100*time.Millisecond)
+			defer fw.Stop()
 
 			for {
-				// Inner drain loop: read all available bytes before checking exit
-				drained := false
-				for !drained {
-					n, readErr := f.Read(buf)
-					if n > 0 {
-						if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-							if isClientDisconnect(writeErr) {
-								h.logger.Warn("client disconnected during command stream", "error", writeErr, "cmdId", cmdID)
-							} else {
-								h.logger.Error("unexpected error streaming command output", "error", writeErr, "cmdId", cmdID)
-							}
-							return
-						}
-						pos += int64(n)
-						if canFlush {
-							flusher.Flush()
-						}
+				written, err := io.Copy(fw, f)
+				if err != nil {
+					if isClientDisconnect(err) {
+						h.logger.Warn("client disconnected during command stream", "error", err, "cmdID", cmdID)
+					} else {
+						h.logger.Error("unexpected error streaming command output", "error", err, "cmdID", cmdID)
 					}
-					if readErr != nil {
-						if readErr != io.EOF {
-							h.logger.Error("failed to read command output file", "error", readErr, "cmdId", cmdID)
-							return
-						}
-						drained = true
-					}
+					return
 				}
-
-				// Check if process has exited
+				eof := written == 0 && err == nil
+				if !eof {
+					continue
+				}
+				// EOF - check if process is done or wait for more data
 				select {
 				case <-entry.done:
-					// Final drain: process exited, read any remaining bytes
-					for {
-						n, readErr := f.Read(buf)
-						if n > 0 {
-							if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-								if isClientDisconnect(writeErr) {
-									h.logger.Warn("client disconnected during command stream", "error", writeErr, "cmdId", cmdID)
-								} else {
-									h.logger.Error("unexpected error streaming command output", "error", writeErr, "cmdId", cmdID)
-								}
-								return
-							}
-							if canFlush {
-								flusher.Flush()
-							}
-						}
-						if readErr != nil {
-							if readErr != io.EOF {
-								h.logger.Error("failed to read command output file", "error", readErr, "cmdId", cmdID)
-							}
-							return
+					// process exited; drain anything written between the read and the channel check
+					if _, err := io.Copy(fw, f); err != nil {
+						if isClientDisconnect(err) {
+							h.logger.Warn("client disconnected during command stream", "error", err, "cmdID", cmdID)
+						} else {
+							h.logger.Error("error during final drain of command output", "error", err, "cmdID", cmdID)
 						}
 					}
+					return
+				case <-ctx.Context().Done():
+					h.logger.Warn("client disconnected during command stream", "cmdID", cmdID)
+					return
 				default:
-					time.Sleep(100 * time.Millisecond)
+					// we could have used inotify to watch writes to the file, but it would complicate the solution
+					// and introduce possible file descriptor saturation issues, and waking up a few times a second
+					// to poll the file isn't that bad nor we need ~0 latency on sudden writes to the file
+					time.Sleep(20 * time.Millisecond)
 				}
 			}
 		},
@@ -375,50 +362,37 @@ func (h *CommandHandlers) streamOutput(cmdID string, offset int64, isStdout bool
 }
 
 func (h *CommandHandlers) PostCommandStdin(_ context.Context, input *PostCommandStdinInput) (*struct{}, error) {
-	h.cmdMu.RLock()
-	entry, ok := h.commands[input.CmdID]
-	h.cmdMu.RUnlock()
-
-	if !ok {
-		return nil, huma.Error404NotFound(fmt.Sprintf("command %q not found", input.CmdID))
+	entry, err := h.getCommandEntry(input.CmdID)
+	if err != nil {
+		return nil, err
 	}
 
-	entry.mu.Lock()
-	exited := entry.exited
-	entry.mu.Unlock()
-
-	if exited {
+	select {
+	case <-entry.done:
 		return nil, huma.Error409Conflict("command has already exited")
+	default:
 	}
 
 	if _, err := io.Copy(entry.stdinPipe, input.Stream); err != nil {
 		// Process may have exited between the check and the write
-		if strings.Contains(err.Error(), "broken pipe") || strings.Contains(err.Error(), "file already closed") {
+		if errors.Is(err, syscall.EPIPE) || errors.Is(err, os.ErrClosed) {
 			return nil, huma.Error409Conflict("command has already exited")
 		}
-		h.logger.Error("failed to write to stdin", "error", err, "cmdId", input.CmdID)
+		h.logger.Error("failed to write to stdin", "error", err, "cmdID", input.CmdID)
 		return nil, huma.Error500InternalServerError("failed to write to stdin")
 	}
 
 	return nil, nil
 }
+
 // todo benl: delete from commands map (eventually?) to constraint memory?
 func (h *CommandHandlers) DeleteCommand(_ context.Context, input *DeleteCommandInput) (*struct{}, error) {
-	h.cmdMu.RLock()
-	entry, ok := h.commands[input.CmdID]
-	h.cmdMu.RUnlock()
-
-	if !ok {
-		return nil, huma.Error404NotFound(fmt.Sprintf("command %q not found", input.CmdID))
+	entry, err := h.getCommandEntry(input.CmdID)
+	if err != nil {
+		return nil, err
 	}
 
-	entry.mu.Lock()
-	exited := entry.exited
-	entry.mu.Unlock()
-
-	if !exited {
-		_ = entry.cmd.Process.Kill()
-	}
+	entry.cancel()
 
 	return nil, nil
 }
@@ -440,8 +414,8 @@ func buildCmdEnv(containerEnv []string, overrides map[string]string) []string {
 		envMap[k] = v
 	}
 	// delete IsolaContainerNameEnv marker to avoid detecting child process as the container process
-	// since child process may feely change the configured cwd etc that were configured in the OCI image
-	// or during pod creating, which may be suprising
+	// since child process may freely change the configured cwd etc that were configured in the OCI image
+	// or during pod creation, which may be surprising
 	delete(envMap, constants.IsolaContainerNameEnv)
 
 	result := make([]string, 0, len(envMap))

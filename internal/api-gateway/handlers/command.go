@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/isola-ai/isola-sb/internal/constants"
+	"github.com/isola-ai/isola-sb/internal/httputil"
 	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
@@ -172,8 +173,8 @@ func (h *CommandHandlers) proxyStream(ctx context.Context, sandboxID, cmdID, str
 			// X-Accel-Buffering: no, disable nginx buffering (serve immediately)
 			ctx.SetHeader("X-Accel-Buffering", "no")
 
-			fw := newTimedFlushWriter(ctx.BodyWriter(), 100*time.Millisecond)
-			defer fw.stop()
+			fw := httputil.NewTimedFlushWriter(ctx.BodyWriter(), 100*time.Millisecond)
+			defer fw.Stop()
 
 			if _, err := io.Copy(fw, resp.Body); err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) {

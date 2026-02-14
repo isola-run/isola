@@ -14,8 +14,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/humatest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	)
+)
 
 func newCommandTestAPI(httpClient HTTPDoer, sidecarPort int) humatest.TestAPI {
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
