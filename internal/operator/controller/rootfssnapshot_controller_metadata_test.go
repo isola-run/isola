@@ -22,13 +22,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
 	snapshotpkg "github.com/isola-ai/isola-sb/internal/snapshot"
 )
 
@@ -142,7 +140,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 	})
 
 	Context("Container Selection", func() {
-		It("should fail when containerNames is empty", func() {
+		It("should auto-discover all non-sidecar containers when containerNames is empty", func() {
 			snapName := "snap-auto"
 			sandboxName := "sandbox-auto"
 			podName := sandboxName + "-pod"
@@ -154,17 +152,18 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			createSnapshotPod(ctx, podName, runtimeClassName,
 				[]corev1.Container{
 					{Name: "app", Image: "busybox"},
-					{Name: "sidecar", Image: "busybox"},
+					{Name: "sandbox-sidecar", Image: "busybox"},
 				},
 				[]corev1.ContainerStatus{
 					{Name: "app", ContainerID: "containerd://app123", Ready: true},
-					{Name: "sidecar", ContainerID: "containerd://sidecar456", Ready: true},
+					{Name: "sandbox-sidecar", ContainerID: "containerd://sidecar456", Ready: true},
 				},
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, nil) // nil = no containers specified
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, nil) // nil = auto-discover
 			defer deleteRootfsSnapshotCR(ctx, snapName)
+			defer deleteSnapshotJob(ctx, snapName+"-app")
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
@@ -174,14 +173,12 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snap := getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
 
-			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
-			Expect(failedCond).NotTo(BeNil())
-			Expect(failedCond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(failedCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
-			Expect(failedCond.Message).To(ContainSubstring("No containers found"))
+			// Should auto-discover "app" but exclude "sandbox-sidecar"
+			Expect(snap.Status.ContainerSnapshots).To(HaveLen(1))
+			Expect(snap.Status.ContainerSnapshots[0].ContainerName).To(Equal("app"))
 		})
 
-		It("should use first specified container when containerNames is provided", func() {
+		It("should snapshot all specified containers", func() {
 			snapName := "snap-specified"
 			sandboxName := "sandbox-specified"
 			podName := sandboxName + "-pod"
@@ -202,10 +199,11 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			// Request specific containers - controller uses first one
+			// Request both containers
 			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"b", "a"})
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 			defer deleteSnapshotJob(ctx, snapName+"-b")
+			defer deleteSnapshotJob(ctx, snapName+"-a")
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
@@ -214,8 +212,9 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			snap := getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
-			Expect(snap.Status.ContainerSnapshots).To(HaveLen(1))
+			Expect(snap.Status.ContainerSnapshots).To(HaveLen(2))
 			Expect(snap.Status.ContainerSnapshots[0].ContainerName).To(Equal("b"))
+			Expect(snap.Status.ContainerSnapshots[1].ContainerName).To(Equal("a"))
 		})
 	})
 })

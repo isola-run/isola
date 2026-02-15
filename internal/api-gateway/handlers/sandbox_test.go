@@ -278,68 +278,65 @@ var _ = Describe("Sandbox Endpoints", func() {
 	Describe("Status mapping", func() {
 		It("maps Ready=True to running regardless of reason", func() {
 			Expect(conditionsToStatus([]metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionTrue, Reason: "PodRunning"},
-			})).To(Equal("running"))
+				{Type: sandboxv1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: sandboxv1alpha1.ReasonPodRunning},
+			})).To(Equal(StatusRunning))
 			Expect(conditionsToStatus([]metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionTrue, Reason: "AnythingElse"},
-			})).To(Equal("running"))
+				{Type: sandboxv1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: "AnythingElse"},
+			})).To(Equal(StatusRunning))
 		})
 
 		It("maps PodPending to creating", func() {
 			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodPending"},
+				{Type: sandboxv1alpha1.ConditionReady, Status: metav1.ConditionFalse, Reason: sandboxv1alpha1.ReasonPodPending},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("creating"))
-		})
-
-		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
-		// and encapsulated in the RootfsSnapshot CRD only (see convert.go TODO).
-		It("maps RootfsSnapshottingInProgress to running", func() {
-			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshottingInProgress"},
-			}
-			Expect(conditionsToStatus(conditions)).To(Equal("running"))
+			Expect(conditionsToStatus(conditions)).To(Equal(StatusCreating))
 		})
 
 		It("maps NetworkPolicyApplied to creating", func() {
 			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "NetworkPolicyApplied"},
+				{Type: sandboxv1alpha1.ConditionReady, Status: metav1.ConditionFalse, Reason: sandboxv1alpha1.ReasonNetworkPolicyApplied},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("creating"))
+			Expect(conditionsToStatus(conditions)).To(Equal(StatusCreating))
 		})
 
 		It("maps Deleting to shuttingDown", func() {
 			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "Deleting"},
+				{Type: sandboxv1alpha1.ConditionReady, Status: metav1.ConditionFalse, Reason: sandboxv1alpha1.ReasonDeleting},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("shuttingDown"))
+			Expect(conditionsToStatus(conditions)).To(Equal(StatusShuttingDown))
 		})
 
 		It("maps PodFailed to failed", func() {
 			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodFailed"},
+				{Type: sandboxv1alpha1.ConditionReady, Status: metav1.ConditionFalse, Reason: sandboxv1alpha1.ReasonPodFailed},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("failed"))
+			Expect(conditionsToStatus(conditions)).To(Equal(StatusFailed))
 		})
 
 		It("maps PodSucceeded to stopped", func() {
 			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodSucceeded"},
+				{Type: sandboxv1alpha1.ConditionReady, Status: metav1.ConditionFalse, Reason: sandboxv1alpha1.ReasonPodSucceeded},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("stopped"))
+			Expect(conditionsToStatus(conditions)).To(Equal(StatusStopped))
 		})
 
-		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
-		// and encapsulated in the RootfsSnapshot CRD only (see convert.go TODO).
-		It("maps RootfsSnapshotComplete to stopped", func() {
-			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshotComplete"},
+		It("maps snapshot-related reasons to unknown (encapsulated in RootfsSnapshot CRD)", func() {
+			for _, reason := range []string{
+				sandboxv1alpha1.ReasonSnapshottingInProgress,
+				sandboxv1alpha1.ReasonSnapshotComplete,
+				sandboxv1alpha1.ReasonSnapshotFailed,
+				sandboxv1alpha1.ReasonSnapshotTimeout,
+			} {
+				conditions := []metav1.Condition{
+					{Type: sandboxv1alpha1.ConditionReady, Status: metav1.ConditionFalse, Reason: reason},
+				}
+				Expect(conditionsToStatus(conditions)).To(Equal(StatusUnknown),
+					"expected snapshot reason %q to map to unknown", reason)
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("stopped"))
 		})
 
 		It("maps no conditions to unknown", func() {
-			Expect(conditionsToStatus(nil)).To(Equal("unknown"))
+			Expect(conditionsToStatus(nil)).To(Equal(StatusUnknown))
 		})
 	})
 })

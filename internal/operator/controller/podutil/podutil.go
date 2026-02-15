@@ -64,6 +64,22 @@ func GetSnapshotJobName(snapshotName, containerName string) string {
 	return snapshotName + "-" + containerName
 }
 
+// GetSnapshotContainerNames returns the names of containers to snapshot.
+// Returns the user-specified list if non-empty, otherwise all non-init
+// containers from the pod excluding the sandbox-sidecar.
+func GetSnapshotContainerNames(pod *corev1.Pod, specified []string) []string {
+	if len(specified) > 0 {
+		return specified
+	}
+	var names []string
+	for _, c := range pod.Spec.Containers {
+		if c.Name != "sandbox-sidecar" {
+			names = append(names, c.Name)
+		}
+	}
+	return names
+}
+
 // ExtractContainerID gets the container ID for a named container.
 // Returns the ID without the containerd:// prefix.
 // The containerName must match a container in the pod's status.

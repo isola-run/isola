@@ -140,7 +140,6 @@ func RegisterCommandRoutes(api huma.API, h *CommandHandlers) {
 		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.PostCommand)
 
-	// todo benl: add long polling wait param (or just default to long poll)
 	huma.Register(api, huma.Operation{
 		OperationID: "getSandboxCommandStatus",
 		Method:      http.MethodGet,

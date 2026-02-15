@@ -169,23 +169,78 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "Runtime does not support rootfs snapshotting")
 	}
 
-	containersToSnapshot := snap.Spec.ContainerNames
+	containersToSnapshot := podutil.GetSnapshotContainerNames(sandboxPod, snap.Spec.ContainerNames)
 	if len(containersToSnapshot) == 0 {
 		return r.setFailed(ctx, baseSnap, snap, "No containers found to snapshot")
 	}
 
-	// Get or create the snapshot job (single job for the first container for now)
-	// TODO: support multiple containers by iterating
-	containerName := containersToSnapshot[0]
-	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName)
+	return r.reconcileAllContainerJobs(ctx, baseSnap, snap, sandboxPod, containersToSnapshot)
 }
 
-func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
+// containerJobStatus represents the state of a single container's snapshot job.
+type containerJobStatus int
+
+const (
+	containerJobPending   containerJobStatus = iota // job not yet created
+	containerJobRunning                             // job created and in progress
+	containerJobSucceeded                           // job completed successfully
+	containerJobFailed                              // job failed
+)
+
+// containerJobResult holds the outcome of reconciling a single container's snapshot job.
+type containerJobResult struct {
+	status       containerJobStatus
+	containerID  string
+	uploadResult *snapshotpkg.UploadResult
+	failMessage  string
+}
+
+// reconcileAllContainerJobs iterates over all containers, creates/checks jobs
+// for each, and sets overall snapshot status based on the aggregate result.
+func (r *RootfsSnapshotReconciler) reconcileAllContainerJobs(
 	ctx context.Context,
 	baseSnap, snap *sandboxv1alpha1.RootfsSnapshot,
 	pod *corev1.Pod,
-	containerName string,
+	containers []string,
 ) (ctrl.Result, error) {
+	results := make(map[string]containerJobResult, len(containers))
+
+	for _, containerName := range containers {
+		result, err := r.reconcileContainerJob(ctx, snap, pod, containerName)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		results[containerName] = result
+	}
+
+	// Aggregate: any failed → overall failed, all succeeded → overall succeeded
+	allSucceeded := true
+	for _, name := range containers {
+		res := results[name]
+		if res.status == containerJobFailed {
+			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Container %q: %s", name, res.failMessage))
+		}
+		if res.status != containerJobSucceeded {
+			allSucceeded = false
+		}
+	}
+
+	if allSucceeded {
+		return r.setAllSucceeded(ctx, baseSnap, snap, containers, results)
+	}
+
+	// Some containers still in progress — initialize status if needed
+	return r.setContainersInProgress(ctx, baseSnap, snap, containers, results)
+}
+
+// reconcileContainerJob checks/creates a single container's snapshot job.
+// Returns the job result without modifying overall snapshot status.
+func (r *RootfsSnapshotReconciler) reconcileContainerJob(
+	ctx context.Context,
+	snap *sandboxv1alpha1.RootfsSnapshot,
+	pod *corev1.Pod,
+	containerName string,
+) (containerJobResult, error) {
 	log := logf.FromContext(ctx).WithValues("container", containerName)
 
 	jobName := podutil.GetSnapshotJobName(snap.Name, containerName)
@@ -196,42 +251,51 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		containerID, err := podutil.ExtractContainerID(pod, containerName)
 		if err != nil {
 			log.Error(err, "Failed to extract container ID")
-			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Failed to extract container ID: %v", err))
+			return containerJobResult{
+				status:      containerJobFailed,
+				failMessage: fmt.Sprintf("Failed to extract container ID: %v", err),
+			}, nil
 		}
 
-		err = r.createSnapshotJob(ctx, snap, pod, containerName, containerID)
-		if err != nil {
-			return ctrl.Result{}, err
+		if err := r.createSnapshotJob(ctx, snap, pod, containerName, containerID); err != nil {
+			return containerJobResult{}, err
 		}
 
 		log.Info("Created snapshot job", "job", jobName)
 		r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "JobCreated", "Created", "Created snapshot job for container %s", containerName)
 
-		return r.setInProgress(ctx, baseSnap, snap, containerName, containerID)
+		return containerJobResult{
+			status:      containerJobRunning,
+			containerID: containerID,
+		}, nil
 	}
 	if err != nil {
-		return ctrl.Result{}, err
+		return containerJobResult{}, err
 	}
 
 	// Job exists, check status
 	if podutil.IsJobComplete(job) {
 		log.Info("Snapshot job completed", "job", jobName)
 
-		// Read the upload result from the job pod's termination message
 		result, err := r.getUploadResult(ctx, job)
 		if err != nil {
 			log.Error(err, "Failed to read upload result from termination message")
 			r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "TerminationLogReadFailed", "ReadFailed", "%s", err.Error())
 			r.deleteJob(ctx, job)
-			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Failed to read upload result: %v", err))
+			return containerJobResult{
+				status:      containerJobFailed,
+				failMessage: fmt.Sprintf("Failed to read upload result: %v", err),
+			}, nil
 		}
 
-		r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "SnapshotComplete", "Completed", "Snapshot completed successfully")
-
-		// Delete the job now that we've read the results
+		r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "SnapshotComplete", "Completed",
+			"Snapshot completed for container %s", containerName)
 		r.deleteJob(ctx, job)
 
-		return r.setSucceeded(ctx, baseSnap, snap, result)
+		return containerJobResult{
+			status:       containerJobSucceeded,
+			uploadResult: result,
+		}, nil
 	}
 
 	if podutil.IsJobFailed(job) {
@@ -241,15 +305,16 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		}
 		log.Info(message, "job", jobName)
 		r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "SnapshotFailed", "Failed", "%s", message)
-
-		// Delete the job - no point keeping failed jobs until we hit to snapshotter TTL
 		r.deleteJob(ctx, job)
 
-		return r.setFailed(ctx, baseSnap, snap, message)
+		return containerJobResult{
+			status:      containerJobFailed,
+			failMessage: message,
+		}, nil
 	}
 
-	// Still running - job watch will trigger reconciliation when status changes
-	return ctrl.Result{}, nil
+	// Still running
+	return containerJobResult{status: containerJobRunning}, nil
 }
 
 // getUploadResult reads the upload result from the job pod's termination message.
@@ -507,15 +572,26 @@ func (r *RootfsSnapshotReconciler) patchStatus(ctx context.Context, base, snap *
 	return r.Status().Patch(ctx, snap, client.MergeFrom(base))
 }
 
-func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, containerName, containerID string) (ctrl.Result, error) {
-	now := metav1.NewTime(r.clock().Now())
-	snap.Status.StartTime = &now
-	snap.Status.ContainerSnapshots = []sandboxv1alpha1.ContainerSnapshotStatus{
-		{
-			ContainerName: containerName,
-			ContainerID:   containerID,
-		},
+// setContainersInProgress initializes per-container status and sets StartTime.
+func (r *RootfsSnapshotReconciler) setContainersInProgress(
+	ctx context.Context,
+	base, snap *sandboxv1alpha1.RootfsSnapshot,
+	containers []string,
+	results map[string]containerJobResult,
+) (ctrl.Result, error) {
+	if snap.Status.StartTime == nil {
+		now := metav1.NewTime(r.clock().Now())
+		snap.Status.StartTime = &now
 	}
+
+	snap.Status.ContainerSnapshots = make([]sandboxv1alpha1.ContainerSnapshotStatus, len(containers))
+	for i, name := range containers {
+		snap.Status.ContainerSnapshots[i] = sandboxv1alpha1.ContainerSnapshotStatus{
+			ContainerName: name,
+			ContainerID:   results[name].containerID,
+		}
+	}
+
 	if err := r.patchStatus(ctx, base, snap, nil); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -523,15 +599,29 @@ func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap
 	return ctrl.Result{}, nil
 }
 
-func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, result *snapshotpkg.UploadResult) (ctrl.Result, error) {
+// setAllSucceeded sets the overall snapshot status to succeeded with per-container results.
+func (r *RootfsSnapshotReconciler) setAllSucceeded(
+	ctx context.Context,
+	base, snap *sandboxv1alpha1.RootfsSnapshot,
+	containers []string,
+	results map[string]containerJobResult,
+) (ctrl.Result, error) {
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletionTime = &now
 
-	if result != nil {
-		snap.Status.Revision = result.Revision
-		if len(snap.Status.ContainerSnapshots) > 0 {
-			snap.Status.ContainerSnapshots[0].SnapshotKey = result.SnapshotKey
+	snap.Status.ContainerSnapshots = make([]sandboxv1alpha1.ContainerSnapshotStatus, len(containers))
+	for i, name := range containers {
+		res := results[name]
+		cs := sandboxv1alpha1.ContainerSnapshotStatus{
+			ContainerName: name,
+			ContainerID:   res.containerID,
 		}
+		if res.uploadResult != nil {
+			cs.SnapshotKey = res.uploadResult.SnapshotKey
+			// Use the revision from the last container (they should all be the same)
+			snap.Status.Revision = res.uploadResult.Revision
+		}
+		snap.Status.ContainerSnapshots[i] = cs
 	}
 
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
@@ -539,7 +629,7 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap 
 			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
 			Status:             metav1.ConditionTrue,
 			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotSucceeded,
-			Message:            "Snapshot completed successfully",
+			Message:            "All container snapshots completed successfully",
 			ObservedGeneration: snap.Generation,
 		},
 	}); err != nil {

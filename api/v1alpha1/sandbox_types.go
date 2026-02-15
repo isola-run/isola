@@ -32,11 +32,6 @@ const (
 	SandboxPodReady SandboxConditionType = "PodReady"
 	// Network is configured
 	SandboxNetworkConfigured SandboxConditionType = "NetworkConfigured"
-	// set when sandbox is past its timeout
-	// todo benl: necessary? helpful?
-	SandboxTimedOut SandboxConditionType = "TimedOut"
-	// Filesystem snapshotting is in progress
-	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
 )
 
 // SandboxShutdownStrategy defines the policy for handling sandbox termination
