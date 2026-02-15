@@ -174,8 +174,6 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "No containers found to snapshot")
 	}
 
-	// Get or create the snapshot job (single job for the first container for now)
-	// TODO: support multiple containers by iterating
 	containerName := containersToSnapshot[0]
 	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName)
 }

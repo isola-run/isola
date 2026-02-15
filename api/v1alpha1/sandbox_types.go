@@ -33,10 +33,30 @@ const (
 	// Network is configured
 	SandboxNetworkConfigured SandboxConditionType = "NetworkConfigured"
 	// set when sandbox is past its timeout
-	// todo benl: necessary? helpful?
 	SandboxTimedOut SandboxConditionType = "TimedOut"
 	// Filesystem snapshotting is in progress
 	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
+)
+
+// Condition reason constants for the Sandbox Ready condition.
+const (
+	ReasonPodPending        = "PodPending"
+	ReasonPodRunning        = "PodRunning"
+	ReasonPodFailed         = "PodFailed"
+	ReasonPodSucceeded      = "PodSucceeded"
+	ReasonPodCreating       = "PodCreating"
+	ReasonPodCreationFailed = "PodCreationFailed"
+	ReasonDeleting          = "Deleting"
+	ReasonReconciling       = "Reconciling"
+
+	ReasonRootfsSnapshottingInProgress = "RootfsSnapshottingInProgress"
+	ReasonRootfsSnapshotComplete       = "RootfsSnapshotComplete"
+	ReasonRootfsSnapshotFailed         = "RootfsSnapshotFailed"
+	ReasonRootfsSnapshotTimeout        = "RootfsSnapshotTimeout"
+	ReasonInvalidRuntime               = "InvalidRuntime"
+
+	ReasonNetworkPolicyApplied = "NetworkPolicyApplied"
+	ReasonNetworkPolicyFailed  = "NetworkPolicyFailed"
 )
 
 // SandboxShutdownStrategy defines the policy for handling sandbox termination

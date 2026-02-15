@@ -24,6 +24,16 @@ import (
 
 const containerName = "sandbox"
 
+// User-facing sandbox status values.
+const (
+	StatusCreating     = "creating"
+	StatusRunning      = "running"
+	StatusShuttingDown = "shuttingDown"
+	StatusFailed       = "failed"
+	StatusStopped      = "stopped"
+	StatusUnknown      = "unknown"
+)
+
 func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 	resp := SandboxResponse{
 		ID:                sb.Name,
@@ -31,7 +41,6 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 		CreationTimestamp: sb.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 
-	// todo benl: change to support multiple containers
 	if len(sb.Spec.PodTemplate.Spec.Containers) > 0 {
 		c := sb.Spec.PodTemplate.Spec.Containers[0]
 		resp.PodTemplate.Container.Image = c.Image
@@ -56,30 +65,36 @@ func sandboxToSummary(sb *sandboxv1alpha1.Sandbox) SandboxSummary {
 func conditionsToStatus(conditions []metav1.Condition) string {
 	ready := meta.FindStatusCondition(conditions, "Ready")
 	if ready == nil {
-		return "unknown"
+		return StatusUnknown
 	}
 
 	if ready.Status == metav1.ConditionTrue {
-		return "running"
+		return StatusRunning
 	}
 
-	// TODO: remove snapshot-related reasons from Sandbox CRD — they should be
-	// encapsulated in the RootfsSnapshot CRD only.
-	// TODO benl: make them as constants and share them with routes.go openapi enum generation
 	switch ready.Reason {
-	case "PodPending", "PodCreating", "Reconciling", "NetworkPolicyApplied":
-		return "creating"
-	case "PodRunning", "RootfsSnapshottingInProgress":
-		return "running"
-	case "Deleting":
-		return "shuttingDown"
-	case "PodFailed", "PodCreationFailed", "InvalidRuntime",
-		"NetworkPolicyFailed", "RootfsSnapshotFailed", "RootfsSnapshotTimeout":
-		return "failed"
-	case "PodSucceeded", "RootfsSnapshotComplete":
-		return "stopped"
+	case sandboxv1alpha1.ReasonPodPending,
+		sandboxv1alpha1.ReasonPodCreating,
+		sandboxv1alpha1.ReasonReconciling,
+		sandboxv1alpha1.ReasonNetworkPolicyApplied:
+		return StatusCreating
+	case sandboxv1alpha1.ReasonPodRunning,
+		sandboxv1alpha1.ReasonRootfsSnapshottingInProgress:
+		return StatusRunning
+	case sandboxv1alpha1.ReasonDeleting:
+		return StatusShuttingDown
+	case sandboxv1alpha1.ReasonPodFailed,
+		sandboxv1alpha1.ReasonPodCreationFailed,
+		sandboxv1alpha1.ReasonInvalidRuntime,
+		sandboxv1alpha1.ReasonNetworkPolicyFailed,
+		sandboxv1alpha1.ReasonRootfsSnapshotFailed,
+		sandboxv1alpha1.ReasonRootfsSnapshotTimeout:
+		return StatusFailed
+	case sandboxv1alpha1.ReasonPodSucceeded,
+		sandboxv1alpha1.ReasonRootfsSnapshotComplete:
+		return StatusStopped
 	default:
-		return "unknown"
+		return StatusUnknown
 	}
 }
 
@@ -266,8 +281,7 @@ func getReadySandbox(ctx context.Context, k8sClient client.Client, namespace, id
 		return nil, k8sErrorToHuma(err, "failed to get sandbox")
 	}
 
-	// todo benl: stop using raw strings for sandbox status
-	if conditionsToStatus(sb.Status.Conditions) != "running" {
+	if conditionsToStatus(sb.Status.Conditions) != StatusRunning {
 		logger.Warn("sandbox is not ready", "id", id, "status", conditionsToStatus(sb.Status.Conditions))
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}

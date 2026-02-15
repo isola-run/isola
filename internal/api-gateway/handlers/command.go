@@ -150,7 +150,6 @@ func (h *CommandHandlers) proxyStream(ctx context.Context, sandboxID, cmdID, str
 		return nil, huma.Error500InternalServerError("failed to build sidecar request")
 	}
 
-	// todo benl: can probably refactor the code around here to something like doSidecarRequest
 	resp, err := h.httpClient.Do(req) //nolint:bodyclose // closed in both error and streaming paths below
 	if err != nil {
 		h.logger.Error("sidecar request failed", "error", err, "id", sandboxID)

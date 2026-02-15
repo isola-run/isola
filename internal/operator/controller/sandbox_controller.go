@@ -52,26 +52,25 @@ const (
 	SandboxRootfsSnapshotCondition = "RootfsSnapshot"
 )
 
+// Aliases for shared condition reason constants from the CRD types package.
 const (
-	CondReasonPodPending        = "PodPending"
-	CondReasonPodRunning        = "PodRunning"
-	CondReasonPodFailed         = "PodFailed"
-	CondReasonPodSucceeded      = "PodSucceeded"
-	CondReasonPodCreating       = "PodCreating"
-	CondReasonPodCreationFailed = "PodCreationFailed"
-	CondReasonDeleting          = "Deleting"
-	CondReasonReconciling       = "Reconciling"
+	CondReasonPodPending        = sandboxv1alpha1.ReasonPodPending
+	CondReasonPodRunning        = sandboxv1alpha1.ReasonPodRunning
+	CondReasonPodFailed         = sandboxv1alpha1.ReasonPodFailed
+	CondReasonPodSucceeded      = sandboxv1alpha1.ReasonPodSucceeded
+	CondReasonPodCreating       = sandboxv1alpha1.ReasonPodCreating
+	CondReasonPodCreationFailed = sandboxv1alpha1.ReasonPodCreationFailed
+	CondReasonDeleting          = sandboxv1alpha1.ReasonDeleting
+	CondReasonReconciling       = sandboxv1alpha1.ReasonReconciling
 
-	// RootfsSnapshot-related reasons
-	CondReasonRootfsSnapshottingInProgress = "RootfsSnapshottingInProgress"
-	CondReasonRootfsSnapshotComplete       = "RootfsSnapshotComplete"
-	CondReasonRootfsSnapshotFailed         = "RootfsSnapshotFailed"
-	CondReasonRootfsSnapshotTimeout        = "RootfsSnapshotTimeout"
-	CondReasonInvalidRuntime               = "InvalidRuntime"
+	CondReasonRootfsSnapshottingInProgress = sandboxv1alpha1.ReasonRootfsSnapshottingInProgress
+	CondReasonRootfsSnapshotComplete       = sandboxv1alpha1.ReasonRootfsSnapshotComplete
+	CondReasonRootfsSnapshotFailed         = sandboxv1alpha1.ReasonRootfsSnapshotFailed
+	CondReasonRootfsSnapshotTimeout        = sandboxv1alpha1.ReasonRootfsSnapshotTimeout
+	CondReasonInvalidRuntime               = sandboxv1alpha1.ReasonInvalidRuntime
 
-	// NetworkPolicy-related reasons
-	CondReasonNetworkPolicyApplied = "NetworkPolicyApplied"
-	CondReasonNetworkPolicyFailed  = "NetworkPolicyFailed"
+	CondReasonNetworkPolicyApplied = sandboxv1alpha1.ReasonNetworkPolicyApplied
+	CondReasonNetworkPolicyFailed  = sandboxv1alpha1.ReasonNetworkPolicyFailed
 )
 
 const defaultActiveDeadlineSeconds int64 = 300
@@ -161,7 +160,6 @@ func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandbo
 
 func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) error {
 	log := logf.FromContext(ctx)
-	// todo benl reduce verbose logging
 	log.Info("Creating Pod")
 
 	// Apply pod template labels first, then override with our labels.
@@ -299,7 +297,6 @@ func configureDNS(sandboxPod *corev1.Pod, network *sandboxv1alpha1.NetworkSpec) 
 			if sandboxPod.Spec.DNSConfig == nil {
 				sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{}
 			}
-			// todo benl: log warn if pod spec has nameservers already?
 			sandboxPod.Spec.DNSConfig.Nameservers = network.Nameservers
 		}
 	} else {
@@ -426,7 +423,6 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 
 func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
 	log := logf.FromContext(ctx)
-	// todo benl: update sandbox condition(s) here?
 	if sandbox.Spec.ActiveDeadlineSeconds == nil {
 		return nil
 	}
@@ -488,7 +484,6 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	networkCondition := r.determineNetworkCondition(sandbox)
 	conditions = append(conditions, networkCondition)
 
-	// todo benl: currently, only shutdown snapsbot condition is reflected
 	shutdownSnapshot, err := r.getShutdownRootfssnapshot(ctx, sandbox)
 	if err != nil {
 		return err
@@ -655,8 +650,6 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 
 func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// todo benl: pass params by value sometimes, to avoid dereferencing nils by accident
-	// todo benl: add r.RecordEvent for events (observability)
 	log := logf.FromContext(ctx)
 
 	log.Info("Reconciling Sandbox")

@@ -292,8 +292,6 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(conditionsToStatus(conditions)).To(Equal("creating"))
 		})
 
-		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
-		// and encapsulated in the RootfsSnapshot CRD only (see convert.go TODO).
 		It("maps RootfsSnapshottingInProgress to running", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshottingInProgress"},
@@ -329,8 +327,6 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(conditionsToStatus(conditions)).To(Equal("stopped"))
 		})
 
-		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
-		// and encapsulated in the RootfsSnapshot CRD only (see convert.go TODO).
 		It("maps RootfsSnapshotComplete to stopped", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshotComplete"},

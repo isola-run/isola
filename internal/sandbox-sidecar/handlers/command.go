@@ -379,7 +379,6 @@ func (h *CommandHandlers) PostCommandStdin(_ context.Context, input *PostCommand
 	return nil, nil
 }
 
-// todo benl: delete from commands map (eventually?) to constraint memory?
 func (h *CommandHandlers) DeleteCommand(_ context.Context, input *DeleteCommandInput) (*struct{}, error) {
 	entry, err := h.getCommandEntry(input.CmdID)
 	if err != nil {
@@ -387,6 +386,10 @@ func (h *CommandHandlers) DeleteCommand(_ context.Context, input *DeleteCommandI
 	}
 
 	entry.cancel()
+
+	h.cmdMu.Lock()
+	delete(h.commands, input.CmdID)
+	h.cmdMu.Unlock()
 
 	return nil, nil
 }
