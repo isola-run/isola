@@ -1,4 +1,4 @@
-package handlers
+package command
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/isola-ai/isola-sb/internal/constants"
 	"github.com/isola-ai/isola-sb/internal/httputil"
+	sandboxsidecar "github.com/isola-ai/isola-sb/internal/sandbox-sidecar"
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
@@ -78,6 +80,41 @@ func (b *NsenterCommandBuilder) Build(ctx context.Context, pid int, req sidecara
 	return cmd, nil
 }
 
+// --- Input/Output types ---
+
+type CreateCommandInput struct {
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+	Body      sidecarapi.CreateCommandRequest
+}
+
+type CreateCommandOutput struct {
+	Body sidecarapi.CreateCommandResponse
+}
+
+type GetCommandStatusInput struct {
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+}
+
+type GetCommandStatusOutput struct {
+	Body sidecarapi.CommandStatusResponse
+}
+
+type GetCommandStreamInput struct {
+	CmdID  string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	Offset int64  `query:"offset,omitempty" minimum:"0" doc:"Byte offset to resume from (default 0)"`
+}
+
+type PostCommandStdinInput struct {
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	sandboxsidecar.BodyStream
+}
+
+type DeleteCommandInput struct {
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+}
+
+// --- Handlers ---
+
 type commandEntry struct {
 	cmdID     string
 	cmd       *exec.Cmd
@@ -89,18 +126,18 @@ type commandEntry struct {
 	outputDir string
 }
 
-type CommandHandlers struct {
+type Handlers struct {
 	logger      *slog.Logger
 	procFS      proc.ProcFS
-	pidResolver *PIDResolver
+	pidResolver *sandboxsidecar.PIDResolver
 	cmdBuilder  CommandBuilder
 
 	cmdMu    sync.RWMutex
 	commands map[string]*commandEntry
 }
 
-func NewCommandHandlers(logger *slog.Logger, procFS proc.ProcFS, pidResolver *PIDResolver, cmdBuilder CommandBuilder) *CommandHandlers {
-	return &CommandHandlers{
+func New(logger *slog.Logger, procFS proc.ProcFS, pidResolver *sandboxsidecar.PIDResolver, cmdBuilder CommandBuilder) *Handlers {
+	return &Handlers{
 		logger:      logger,
 		procFS:      procFS,
 		pidResolver: pidResolver,
@@ -109,7 +146,7 @@ func NewCommandHandlers(logger *slog.Logger, procFS proc.ProcFS, pidResolver *PI
 	}
 }
 
-func (h *CommandHandlers) PostCommand(_ context.Context, input *CreateCommandInput) (*CreateCommandOutput, error) {
+func (h *Handlers) PostCommand(_ context.Context, input *CreateCommandInput) (*CreateCommandOutput, error) {
 	pid, err := h.pidResolver.FindCachedContainerPID(input.Container)
 	if err != nil {
 		h.logger.Warn("failed to determine container pid", "error", err, "container", input.Container)
@@ -135,7 +172,7 @@ func (h *CommandHandlers) PostCommand(_ context.Context, input *CreateCommandInp
 // startCommand sets up output files, builds and starts the command.
 // On error, all resources are cleaned up via defer. On success, ownership
 // of file handles transfers to the returned entry (closed by waitForExit).
-func (h *CommandHandlers) startCommand(pid int, input *CreateCommandInput) (*commandEntry, error) {
+func (h *Handlers) startCommand(pid int, input *CreateCommandInput) (*commandEntry, error) {
 	cmdID := uuid.New().String()
 
 	// Create output directory on the target container rootfs, so the logs count against its ephemeral storage calculation.
@@ -214,7 +251,7 @@ func (h *CommandHandlers) startCommand(pid int, input *CreateCommandInput) (*com
 
 // wait for the process to exit, populate the exitCode and clean up
 // the entries context and done channel
-func (h *CommandHandlers) waitForExit(entry *commandEntry) {
+func (h *Handlers) waitForExit(entry *commandEntry) {
 	defer close(entry.done)
 	defer entry.cancel()
 
@@ -242,7 +279,7 @@ func (h *CommandHandlers) waitForExit(entry *commandEntry) {
 	entry.exitCode = exitCode
 }
 
-func (h *CommandHandlers) getCommandEntry(cmdID string) (*commandEntry, error) {
+func (h *Handlers) getCommandEntry(cmdID string) (*commandEntry, error) {
 	h.cmdMu.RLock()
 	entry, ok := h.commands[cmdID]
 	h.cmdMu.RUnlock()
@@ -253,7 +290,7 @@ func (h *CommandHandlers) getCommandEntry(cmdID string) (*commandEntry, error) {
 	return entry, nil
 }
 
-func (h *CommandHandlers) GetCommandStatus(_ context.Context, input *GetCommandStatusInput) (*GetCommandStatusOutput, error) {
+func (h *Handlers) GetCommandStatus(_ context.Context, input *GetCommandStatusInput) (*GetCommandStatusOutput, error) {
 	entry, err := h.getCommandEntry(input.CmdID)
 	if err != nil {
 		return nil, err
@@ -268,15 +305,15 @@ func (h *CommandHandlers) GetCommandStatus(_ context.Context, input *GetCommandS
 	}
 }
 
-func (h *CommandHandlers) GetCommandStdout(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
+func (h *Handlers) GetCommandStdout(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
 	return h.streamOutput(input.CmdID, input.Offset, "stdout")
 }
 
-func (h *CommandHandlers) GetCommandStderr(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
+func (h *Handlers) GetCommandStderr(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
 	return h.streamOutput(input.CmdID, input.Offset, "stderr")
 }
 
-func (h *CommandHandlers) streamOutput(cmdID string, offset int64, streamName string) (*huma.StreamResponse, error) {
+func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (*huma.StreamResponse, error) {
 	entry, err := h.getCommandEntry(cmdID)
 	if err != nil {
 		return nil, err
@@ -350,7 +387,7 @@ func (h *CommandHandlers) streamOutput(cmdID string, offset int64, streamName st
 	}, nil
 }
 
-func (h *CommandHandlers) PostCommandStdin(_ context.Context, input *PostCommandStdinInput) (*struct{}, error) {
+func (h *Handlers) PostCommandStdin(_ context.Context, input *PostCommandStdinInput) (*struct{}, error) {
 	entry, err := h.getCommandEntry(input.CmdID)
 	if err != nil {
 		return nil, err
@@ -380,7 +417,7 @@ func (h *CommandHandlers) PostCommandStdin(_ context.Context, input *PostCommand
 }
 
 // todo benl: delete from commands map (eventually?) to constraint memory?
-func (h *CommandHandlers) DeleteCommand(_ context.Context, input *DeleteCommandInput) (*struct{}, error) {
+func (h *Handlers) DeleteCommand(_ context.Context, input *DeleteCommandInput) (*struct{}, error) {
 	entry, err := h.getCommandEntry(input.CmdID)
 	if err != nil {
 		return nil, err
@@ -417,4 +454,97 @@ func buildCmdEnv(containerEnv []string, overrides map[string]string) []string {
 		result = append(result, k+"="+v)
 	}
 	return result
+}
+
+func Register(api huma.API, h *Handlers) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "createCommand",
+		Method:        http.MethodPost,
+		Path:          "/commands",
+		Summary:       "Start a command in the sandbox",
+		Description:   "Starts a new command in the sandbox container and returns a command ID for tracking. Commands always run as root (UID 0, GID 0).",
+		Tags:          []string{"commands"},
+		DefaultStatus: http.StatusAccepted,
+		Errors:        []int{http.StatusBadRequest},
+	}, h.PostCommand)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "getCommandStatus",
+		Method:      http.MethodGet,
+		Path:        "/commands/{cmdId}/status",
+		Summary:     "Get command status",
+		Description: "Returns the exit code of the command, or null if still running",
+		Tags:        []string{"commands"},
+		Errors:      []int{http.StatusNotFound},
+	}, h.GetCommandStatus)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "getCommandStdout",
+		Method:      http.MethodGet,
+		Path:        "/commands/{cmdId}/stdout",
+		Summary:     "Stream command stdout",
+		Description: "Streams the command's stdout as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.",
+		Tags:        []string{"commands"},
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Command stdout stream",
+				Content: map[string]*huma.MediaType{
+					"application/octet-stream": {
+						Schema: &huma.Schema{Type: "string", Format: "binary"},
+					},
+				},
+			},
+		},
+		Errors: []int{http.StatusNotFound},
+	}, h.GetCommandStdout)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "getCommandStderr",
+		Method:      http.MethodGet,
+		Path:        "/commands/{cmdId}/stderr",
+		Summary:     "Stream command stderr",
+		Description: "Streams the command's stderr as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.",
+		Tags:        []string{"commands"},
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Command stderr stream",
+				Content: map[string]*huma.MediaType{
+					"application/octet-stream": {
+						Schema: &huma.Schema{Type: "string", Format: "binary"},
+					},
+				},
+			},
+		},
+		Errors: []int{http.StatusNotFound},
+	}, h.GetCommandStderr)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "postCommandStdin",
+		Method:      http.MethodPost,
+		Path:        "/commands/{cmdId}/stdin",
+		Summary:     "Write to command stdin",
+		Description: "Writes raw bytes to the command's stdin",
+		Tags:        []string{"commands"},
+		RequestBody: &huma.RequestBody{
+			Required: true,
+			Content: map[string]*huma.MediaType{
+				"application/octet-stream": {
+					Schema: &huma.Schema{Type: "string", Format: "binary"},
+				},
+			},
+		},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusNotFound, http.StatusConflict},
+	}, h.PostCommandStdin)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteCommand",
+		Method:        http.MethodDelete,
+		Path:          "/commands/{cmdId}",
+		Summary:       "Kill a command",
+		Description:   "Kills the command process. Idempotent for already-exited commands.",
+		Tags:          []string{"commands"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusNotFound},
+	}, h.DeleteCommand)
 }

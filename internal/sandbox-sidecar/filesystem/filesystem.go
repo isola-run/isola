@@ -1,4 +1,4 @@
-package handlers
+package filesystem
 
 import (
 	"context"
@@ -6,30 +6,47 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	sandboxsidecar "github.com/isola-ai/isola-sb/internal/sandbox-sidecar"
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
-type FilesystemHandlers struct {
-	logger      *slog.Logger
-	procFS      proc.ProcFS
-	pidResolver *PIDResolver
+type FilesystemWriteInput struct {
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Destination path (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+	sandboxsidecar.BodyStream
 }
 
-func NewFilesystemHandlers(logger *slog.Logger, procFS proc.ProcFS, pidResolver *PIDResolver) *FilesystemHandlers {
-	return &FilesystemHandlers{
+type FilesystemWriteOutput struct {
+	Body sidecarapi.FilesystemWriteResponse
+}
+
+type FilesystemReadInput struct {
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Source path (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type Handlers struct {
+	logger      *slog.Logger
+	procFS      proc.ProcFS
+	pidResolver *sandboxsidecar.PIDResolver
+}
+
+func New(logger *slog.Logger, procFS proc.ProcFS, pidResolver *sandboxsidecar.PIDResolver) *Handlers {
+	return &Handlers{
 		logger:      logger,
 		procFS:      procFS,
 		pidResolver: pidResolver,
 	}
 }
 
-func (h *FilesystemHandlers) resolveAbsolutePath(path string, pid int) (string, huma.StatusError) {
+func (h *Handlers) resolveAbsolutePath(path string, pid int) (string, huma.StatusError) {
 	if filepath.IsAbs(path) {
 		return filepath.Clean(path), nil
 	}
@@ -77,7 +94,7 @@ func mkdirAllChown(path string, uid, gid int) error {
 	return os.Chown(path, uid, gid)
 }
 
-func (h *FilesystemHandlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
+func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
 	path := input.Path
 	container := input.Container
 
@@ -145,7 +162,7 @@ func (h *FilesystemHandlers) PostFilesystem(_ context.Context, input *Filesystem
 	}, nil
 }
 
-func (h *FilesystemHandlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {
+func (h *Handlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {
 	path := input.Path
 	container := input.Container
 
@@ -210,4 +227,47 @@ func (h *FilesystemHandlers) GetFilesystem(_ context.Context, input *FilesystemR
 			}
 		},
 	}, nil
+}
+
+func Register(api huma.API, h *Handlers) {
+	huma.Register(api, huma.Operation{
+		OperationID: "postFilesystem",
+		Method:      http.MethodPost,
+		Path:        "/filesystem",
+		Summary:     "Write a file to the sandbox filesystem",
+		Description: "Writes a file to the specified path in the sandbox container",
+		Tags:        []string{"filesystem"},
+		// Since we use BodyStream resolver (no Body/RawBody field),
+		// we need to manually specify the request body in OpenAPI
+		RequestBody: &huma.RequestBody{
+			Required: true,
+			Content: map[string]*huma.MediaType{
+				"application/octet-stream": {
+					Schema: &huma.Schema{Type: "string", Format: "binary"},
+				},
+			},
+		},
+		DefaultStatus: http.StatusCreated,
+		Errors:        []int{http.StatusBadRequest},
+	}, h.PostFilesystem)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "getFilesystem",
+		Method:      http.MethodGet,
+		Path:        "/filesystem",
+		Summary:     "Read a file from the sandbox filesystem",
+		Description: "Reads a file from the specified path in the sandbox container",
+		Tags:        []string{"filesystem"},
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "File content",
+				Content: map[string]*huma.MediaType{
+					"application/octet-stream": {
+						Schema: &huma.Schema{Type: "string", Format: "binary"},
+					},
+				},
+			},
+		},
+		Errors: []int{http.StatusBadRequest, http.StatusNotFound},
+	}, h.GetFilesystem)
 }

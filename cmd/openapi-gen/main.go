@@ -18,7 +18,9 @@ import (
 	"github.com/isola-ai/isola-sb/internal/api-gateway/filesystem"
 	"github.com/isola-ai/isola-sb/internal/api-gateway/health"
 	"github.com/isola-ai/isola-sb/internal/api-gateway/sandbox"
-	sidecar "github.com/isola-ai/isola-sb/internal/sandbox-sidecar/handlers"
+	sidecarCmd "github.com/isola-ai/isola-sb/internal/sandbox-sidecar/command"
+	sidecarFs "github.com/isola-ai/isola-sb/internal/sandbox-sidecar/filesystem"
+	sidecarHealth "github.com/isola-ai/isola-sb/internal/sandbox-sidecar/health"
 )
 
 func main() {
@@ -81,13 +83,9 @@ func setupSandboxSidecar() huma.API {
 	api := humachi.New(r, config)
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected
-	healthHandlers := sidecar.NewHealthHandlers()
-	filesystemHandlers := sidecar.NewFilesystemHandlers(nil, nil, nil)
-	commandHandlers := sidecar.NewCommandHandlers(nil, nil, nil, nil)
-
-	sidecar.RegisterHealthRoutes(api, healthHandlers)
-	sidecar.RegisterFilesystemRoutes(api, filesystemHandlers)
-	sidecar.RegisterCommandRoutes(api, commandHandlers)
+	sidecarHealth.Register(api, sidecarHealth.New())
+	sidecarFs.Register(api, sidecarFs.New(nil, nil, nil))
+	sidecarCmd.Register(api, sidecarCmd.New(nil, nil, nil, nil))
 
 	return api
 }

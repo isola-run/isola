@@ -1,13 +1,11 @@
-package handlers
+package filesystem
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"log/slog"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -15,7 +13,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
+	sandboxsidecar "github.com/isola-ai/isola-sb/internal/sandbox-sidecar"
 )
 
 var (
@@ -23,23 +21,6 @@ var (
 	testRootDir string
 	testCwd     string
 )
-
-// DirectCommandBuilder runs commands directly without nsenter (for testing).
-// This mimics nsenter's behavior when --pid is NOT specified: nsenter calls
-// execvp() directly (no fork), so the Go child process IS the target command.
-type DirectCommandBuilder struct{}
-
-func (b *DirectCommandBuilder) Build(ctx context.Context, _ int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
-	cmd := exec.CommandContext(ctx, req.Cmd, req.Args...) //nolint:gosec // test-only builder; inputs are test fixtures
-	cmd.Stdout = stdoutFile
-	cmd.Stderr = stderrFile
-	cmd.Env = env
-	cmd.WaitDelay = waitDelayGracePeriod
-	if req.Cwd != "" {
-		cmd.Dir = req.Cwd
-	}
-	return cmd, nil
-}
 
 // MockProcFS implements proc.ProcFS for testing.
 type MockProcFS struct {
@@ -77,18 +58,9 @@ func (m *MockProcFS) GetEnviron(pid int) ([]string, error) {
 	return []string{"PATH=/usr/bin:/bin", "HOME=/root"}, nil
 }
 
-// FailingCommandBuilder is a CommandBuilder that always returns an error.
-type FailingCommandBuilder struct {
-	err error
-}
-
-func (b *FailingCommandBuilder) Build(_ context.Context, _ int, _ sidecarapi.CreateCommandRequest, _ []string, _ *os.File, _ *os.File) (*exec.Cmd, error) {
-	return nil, b.err
-}
-
-func TestHandlers(t *testing.T) {
+func TestFilesystem(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Sidecar Handlers Suite")
+	RunSpecs(t, "Sidecar Filesystem Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -114,12 +86,9 @@ var _ = BeforeSuite(func() {
 
 	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
 
-	healthHandlers := NewHealthHandlers()
-	pidResolver := NewPIDResolver(mockProcFS)
-	filesystemHandlers := NewFilesystemHandlers(logger, mockProcFS, pidResolver)
-
-	RegisterHealthRoutes(testAPI, healthHandlers)
-	RegisterFilesystemRoutes(testAPI, filesystemHandlers)
+	pidResolver := sandboxsidecar.NewPIDResolver(mockProcFS)
+	h := New(logger, mockProcFS, pidResolver)
+	Register(testAPI, h)
 })
 
 func doPost(path string, body []byte) *httptest.ResponseRecorder {
