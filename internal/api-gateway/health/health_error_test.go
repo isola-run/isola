@@ -1,4 +1,4 @@
-package handlers
+package health
 
 import (
 	"context"
@@ -20,11 +20,11 @@ func newHealthErrorTestAPI(funcs interceptor.Funcs) humatest.TestAPI {
 	baseClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
 	wrappedClient := interceptor.NewClient(baseClient, funcs)
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
-	h := NewHealthHandlers(
+	h := New(
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		wrappedClient,
 	)
-	RegisterHealthRoutes(api, h)
+	Register(api, h)
 	return api
 }
 

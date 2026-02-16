@@ -1,4 +1,4 @@
-package handlers
+package sandbox
 
 import (
 	"io"
@@ -14,6 +14,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	apigateway "github.com/isola-ai/isola-sb/internal/api-gateway"
 )
 
 var _ = Describe("Conversion functions", func() {
@@ -165,7 +166,7 @@ var _ = Describe("Conversion functions", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "SomethingNew"},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("unknown"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("unknown"))
 		})
 	})
 
@@ -178,7 +179,7 @@ var _ = Describe("Conversion functions", func() {
 				StatusCode: http.StatusInternalServerError,
 				Body:       io.NopCloser(strings.NewReader(body)),
 			}
-			err := handleSidecarError(resp, "sb-123", logger)
+			err := apigateway.HandleSidecarError(resp, "sb-123", logger)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("sidecar internal error"))
 
@@ -193,7 +194,7 @@ var _ = Describe("Conversion functions", func() {
 				StatusCode: http.StatusNotFound,
 				Body:       io.NopCloser(strings.NewReader(body)),
 			}
-			err := handleSidecarError(resp, "sb-123", logger)
+			err := apigateway.HandleSidecarError(resp, "sb-123", logger)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring(`command "abc" not found`))
 		})

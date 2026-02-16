@@ -14,7 +14,10 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 
-	apigateway "github.com/isola-ai/isola-sb/internal/api-gateway/handlers"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/command"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/filesystem"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/health"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/sandbox"
 	sidecar "github.com/isola-ai/isola-sb/internal/sandbox-sidecar/handlers"
 )
 
@@ -63,17 +66,10 @@ func setupAPIGateway() huma.API {
 	api := humachi.New(r, config)
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected
-	healthHandlers := apigateway.NewHealthHandlers(nil, nil)
-	apigateway.RegisterHealthRoutes(api, healthHandlers)
-
-	sandboxHandlers := apigateway.NewSandboxHandlers(nil, "", nil)
-	apigateway.RegisterSandboxRoutes(api, sandboxHandlers)
-
-	filesystemHandlers := apigateway.NewFilesystemHandlers(nil, "", nil, nil)
-	apigateway.RegisterFilesystemRoutes(api, filesystemHandlers)
-
-	commandHandlers := apigateway.NewCommandHandlers(nil, "", nil, nil)
-	apigateway.RegisterCommandRoutes(api, commandHandlers)
+	health.Register(api, health.New(nil, nil))
+	sandbox.Register(api, sandbox.New(nil, "", nil))
+	filesystem.Register(api, filesystem.New(nil, "", nil, nil))
+	command.Register(api, command.New(nil, "", nil, nil))
 
 	return api
 }

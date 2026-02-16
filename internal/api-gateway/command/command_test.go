@@ -1,4 +1,4 @@
-package handlers
+package command
 
 import (
 	"encoding/json"
@@ -14,18 +14,102 @@ import (
 	"github.com/danielgtaylor/huma/v2/humatest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	apigateway "github.com/isola-ai/isola-sb/internal/api-gateway"
 )
 
-func newCommandTestAPI(httpClient HTTPDoer, sidecarPort int) humatest.TestAPI {
+func createSandboxCR() string {
+	name := generateName()
+
+	sb := &sandboxv1alpha1.Sandbox{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: testNamespace,
+		},
+		Spec: sandboxv1alpha1.SandboxSpec{
+			PodTemplate: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "sandbox", Image: "alpine:latest"},
+					},
+				},
+			},
+		},
+	}
+	Expect(k8sClient.Create(ctx, sb)).To(Succeed())
+
+	Eventually(func() error {
+		return k8sClient.Get(ctx, client.ObjectKeyFromObject(sb), &sandboxv1alpha1.Sandbox{})
+	}).Should(Succeed())
+
+	return name
+}
+
+func createRunningSandboxCR() string {
+	name := createSandboxCR()
+	podIP := "127.0.0.1"
+
+	sb := &sandboxv1alpha1.Sandbox{}
+	Expect(k8sClient.Get(ctx, client.ObjectKey{Name: name, Namespace: testNamespace}, sb)).To(Succeed())
+
+	sb.Status.PodIP = podIP
+	sb.Status.Conditions = []metav1.Condition{
+		{
+			Type:               "Ready",
+			Status:             metav1.ConditionTrue,
+			Reason:             "PodRunning",
+			LastTransitionTime: metav1.Now(),
+		},
+	}
+	Expect(k8sClient.Status().Update(ctx, sb)).To(Succeed())
+
+	Eventually(func() string {
+		got := &sandboxv1alpha1.Sandbox{}
+		if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(sb), got); err != nil {
+			return ""
+		}
+		return got.Status.PodIP
+	}).Should(Equal(podIP))
+
+	return name
+}
+
+func generateName() string {
+	nameCounter++
+	return fmt.Sprintf("testcmd%014d", nameCounter)
+}
+
+var nameCounter int
+
+// errReader is an io.Reader whose Read always fails.
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+
+// brokenBodyDoer is an HTTPDoer that returns a response with an unreadable body.
+type brokenBodyDoer struct{ statusCode int }
+
+func (d *brokenBodyDoer) Do(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: d.statusCode,
+		Body:       io.NopCloser(errReader{}),
+	}, nil
+}
+
+func newCommandTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humatest.TestAPI {
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
-	h := NewCommandHandlers(
+	h := New(
 		slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
 		testNamespace,
 		k8sClient,
 		httpClient,
 	)
 	h.sidecarPort = sidecarPort
-	RegisterCommandRoutes(api, h)
+	Register(api, h)
 	return api
 }
 

@@ -26,7 +26,10 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
-	"github.com/isola-ai/isola-sb/internal/api-gateway/handlers"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/command"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/filesystem"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/health"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/sandbox"
 	"github.com/isola-ai/isola-sb/internal/env"
 	"github.com/isola-ai/isola-sb/internal/logging"
 )
@@ -133,19 +136,13 @@ func main() {
 	humaConfig.Info.Description = "API for managing sandboxes"
 	api := humachi.New(r, humaConfig)
 
-	healthHandlers := handlers.NewHealthHandlers(logger, mgr.GetClient())
-	handlers.RegisterHealthRoutes(api, healthHandlers)
-
-	sandboxHandlers := handlers.NewSandboxHandlers(logger, cfg.sandboxNamespace, mgr.GetClient())
-	handlers.RegisterSandboxRoutes(api, sandboxHandlers)
+	health.Register(api, health.New(logger, mgr.GetClient()))
+	sandbox.Register(api, sandbox.New(logger, cfg.sandboxNamespace, mgr.GetClient()))
 
 	sandboxClient := initSandboxClient()
 
-	filesystemHandlers := handlers.NewFilesystemHandlers(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient)
-	handlers.RegisterFilesystemRoutes(api, filesystemHandlers)
-
-	commandHandlers := handlers.NewCommandHandlers(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient)
-	handlers.RegisterCommandRoutes(api, commandHandlers)
+	filesystem.Register(api, filesystem.New(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient))
+	command.Register(api, command.New(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient))
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.httpPort),

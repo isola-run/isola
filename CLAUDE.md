@@ -69,7 +69,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **Single Go module:** The project uses a single `go.mod` at the root (`github.com/isola-ai/isola-sb`). All binaries import from this module.
 
-**Multi-service architecture:** Four binaries in `cmd/` — `operator`, `api-gateway`, `sandbox-sidecar`, `uploader`. Each has its own `internal/` packages under the matching path (e.g., `internal/api-gateway/handlers/`). Cross-service packages:
+**Multi-service architecture:** Four binaries in `cmd/` — `operator`, `api-gateway`, `sandbox-sidecar`, `uploader`. Each has its own `internal/` packages under the matching path. The api-gateway uses domain sub-packages (`internal/api-gateway/{health,sandbox,filesystem,command}/`) with shared utilities in `internal/api-gateway/proxy.go`. Cross-service packages:
 - `internal/sidecar-api/` - Shared contract types between api-gateway and sandbox-sidecar
 - `internal/snapshot/` - Shared types used by both operator and uploader
 - `internal/sandbox-sidecar/proc/` - Procfs abstraction for container PID discovery and filesystem access via `/proc/<pid>/root`
@@ -104,8 +104,8 @@ The api-gateway is a thin passthrough to K8s — it validates input structure bu
 - `POST /sandboxes/{id}/commands/{cmdId}/stdin` — write to stdin
 - `DELETE /sandboxes/{id}/commands/{cmdId}` — kill command (idempotent)
 
-**REST ↔ CRD conversion (`convert.go`):**
-REST types are separate from CRD types with explicit conversion in `convert.go`. Key behaviors:
+**REST ↔ CRD conversion (`sandbox/convert.go`):**
+REST types are separate from CRD types with explicit conversion in `sandbox/convert.go`. Key behaviors:
 - Single-container model: `sandboxToResponse` reads only the first container
 - User-facing status enum: `creating`, `running`, `shuttingDown`, `failed`, `stopped`, `unknown`
 
