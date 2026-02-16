@@ -14,8 +14,13 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 
-	apigateway "github.com/isola-ai/isola-sb/internal/api-gateway/handlers"
-	sidecar "github.com/isola-ai/isola-sb/internal/sandbox-sidecar/handlers"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/command"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/filesystem"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/health"
+	"github.com/isola-ai/isola-sb/internal/api-gateway/sandbox"
+	sidecarCmd "github.com/isola-ai/isola-sb/internal/sandbox-sidecar/command"
+	sidecarFs "github.com/isola-ai/isola-sb/internal/sandbox-sidecar/filesystem"
+	sidecarHealth "github.com/isola-ai/isola-sb/internal/sandbox-sidecar/health"
 )
 
 func main() {
@@ -63,17 +68,10 @@ func setupAPIGateway() huma.API {
 	api := humachi.New(r, config)
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected
-	healthHandlers := apigateway.NewHealthHandlers(nil, nil)
-	apigateway.RegisterHealthRoutes(api, healthHandlers)
-
-	sandboxHandlers := apigateway.NewSandboxHandlers(nil, "", nil)
-	apigateway.RegisterSandboxRoutes(api, sandboxHandlers)
-
-	filesystemHandlers := apigateway.NewFilesystemHandlers(nil, "", nil, nil)
-	apigateway.RegisterFilesystemRoutes(api, filesystemHandlers)
-
-	commandHandlers := apigateway.NewCommandHandlers(nil, "", nil, nil)
-	apigateway.RegisterCommandRoutes(api, commandHandlers)
+	health.Register(api, health.New(nil, nil))
+	sandbox.Register(api, sandbox.New(nil, "", nil))
+	filesystem.Register(api, filesystem.New(nil, "", nil, nil))
+	command.Register(api, command.New(nil, "", nil, nil))
 
 	return api
 }
@@ -85,13 +83,9 @@ func setupSandboxSidecar() huma.API {
 	api := humachi.New(r, config)
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected
-	healthHandlers := sidecar.NewHealthHandlers()
-	filesystemHandlers := sidecar.NewFilesystemHandlers(nil, nil, nil)
-	commandHandlers := sidecar.NewCommandHandlers(nil, nil, nil, nil)
-
-	sidecar.RegisterHealthRoutes(api, healthHandlers)
-	sidecar.RegisterFilesystemRoutes(api, filesystemHandlers)
-	sidecar.RegisterCommandRoutes(api, commandHandlers)
+	sidecarHealth.Register(api, sidecarHealth.New())
+	sidecarFs.Register(api, sidecarFs.New(nil, nil, nil))
+	sidecarCmd.Register(api, sidecarCmd.New(nil, nil, nil, nil))
 
 	return api
 }

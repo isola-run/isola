@@ -16,7 +16,10 @@ import (
 	"github.com/isola-ai/isola-sb/internal/constants"
 	"github.com/isola-ai/isola-sb/internal/env"
 	"github.com/isola-ai/isola-sb/internal/logging"
-	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/handlers"
+	sandboxsidecar "github.com/isola-ai/isola-sb/internal/sandbox-sidecar"
+	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/command"
+	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/filesystem"
+	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/health"
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 )
 
@@ -53,15 +56,11 @@ func main() {
 	api := humachi.New(r, humaConfig)
 
 	procFS := &proc.RealProcFS{}
-	pidResolver := handlers.NewPIDResolver(procFS)
+	pidResolver := sandboxsidecar.NewPIDResolver(procFS)
 
-	healthHandlers := handlers.NewHealthHandlers()
-	filesystemHandlers := handlers.NewFilesystemHandlers(logger, procFS, pidResolver)
-	commandHandlers := handlers.NewCommandHandlers(logger, procFS, pidResolver, &handlers.NsenterCommandBuilder{})
-
-	handlers.RegisterHealthRoutes(api, healthHandlers)
-	handlers.RegisterFilesystemRoutes(api, filesystemHandlers)
-	handlers.RegisterCommandRoutes(api, commandHandlers)
+	health.Register(api, health.New())
+	filesystem.Register(api, filesystem.New(logger, procFS, pidResolver))
+	command.Register(api, command.New(logger, procFS, pidResolver, &command.NsenterCommandBuilder{}))
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", constants.SidecarPort),

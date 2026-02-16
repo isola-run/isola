@@ -1,4 +1,4 @@
-package handlers
+package sandbox
 
 import (
 	"encoding/json"
@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	apigateway "github.com/isola-ai/isola-sb/internal/api-gateway"
 )
 
 var _ = Describe("Sandbox Endpoints", func() {
@@ -277,10 +278,10 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 	Describe("Status mapping", func() {
 		It("maps Ready=True to running regardless of reason", func() {
-			Expect(conditionsToStatus([]metav1.Condition{
+			Expect(apigateway.ConditionsToStatus([]metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionTrue, Reason: "PodRunning"},
 			})).To(Equal("running"))
-			Expect(conditionsToStatus([]metav1.Condition{
+			Expect(apigateway.ConditionsToStatus([]metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionTrue, Reason: "AnythingElse"},
 			})).To(Equal("running"))
 		})
@@ -289,7 +290,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodPending"},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("creating"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("creating"))
 		})
 
 		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
@@ -298,35 +299,35 @@ var _ = Describe("Sandbox Endpoints", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshottingInProgress"},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("running"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("running"))
 		})
 
 		It("maps NetworkPolicyApplied to creating", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "NetworkPolicyApplied"},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("creating"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("creating"))
 		})
 
 		It("maps Deleting to shuttingDown", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "Deleting"},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("shuttingDown"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("shuttingDown"))
 		})
 
 		It("maps PodFailed to failed", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodFailed"},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("failed"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("failed"))
 		})
 
 		It("maps PodSucceeded to stopped", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodSucceeded"},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("stopped"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("stopped"))
 		})
 
 		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
@@ -335,11 +336,11 @@ var _ = Describe("Sandbox Endpoints", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshotComplete"},
 			}
-			Expect(conditionsToStatus(conditions)).To(Equal("stopped"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("stopped"))
 		})
 
 		It("maps no conditions to unknown", func() {
-			Expect(conditionsToStatus(nil)).To(Equal("unknown"))
+			Expect(apigateway.ConditionsToStatus(nil)).To(Equal("unknown"))
 		})
 	})
 })

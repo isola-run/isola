@@ -1,10 +1,24 @@
-package handlers
+package sandboxsidecar
 
 import (
+	"io"
 	"sync"
+
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
 )
+
+// BodyStream provides streaming access to request body via Huma's Resolver pattern.
+// See https://github.com/danielgtaylor/huma/issues/749
+type BodyStream struct {
+	Stream io.Reader
+}
+
+func (b *BodyStream) Resolve(ctx huma.Context) []error {
+	b.Stream = ctx.BodyReader()
+	return nil
+}
 
 // PIDResolver caches container PID lookups to avoid repeated /proc scans.
 // Shared across handler types so the cache is unified.

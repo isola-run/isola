@@ -1,13 +1,10 @@
-package handlers
+package command
 
 import (
 	"context"
-	"log/slog"
 	"path/filepath"
 	"testing"
 
-	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/humatest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -30,12 +27,11 @@ var (
 	cancel    context.CancelFunc
 	testEnv   *envtest.Environment
 	k8sClient client.Client
-	testAPI   humatest.TestAPI
 )
 
-func TestHandlers(t *testing.T) {
+func TestCommand(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "API Handlers Suite")
+	RunSpecs(t, "Command Handlers Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -43,7 +39,6 @@ var _ = BeforeSuite(func() {
 
 	ctx, cancel = context.WithCancel(context.TODO())
 
-	// Register sandbox types
 	err := sandboxv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -57,16 +52,14 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	// Create manager with cache
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
 		Metrics: metricsserver.Options{
-			BindAddress: "0", // Disable metrics server in tests
+			BindAddress: "0",
 		},
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	// Start manager in background
 	go func() {
 		defer GinkgoRecover()
 		err := mgr.Start(ctx)
@@ -78,23 +71,12 @@ var _ = BeforeSuite(func() {
 
 	Expect(mgr.GetCache().WaitForCacheSync(ctx)).To(BeTrue())
 
-	// Create test namespace
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testNamespace,
 		},
 	}
 	Expect(k8sClient.Create(ctx, ns)).To(Succeed())
-
-	logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
-
-	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
-
-	healthHandlers := NewHealthHandlers(logger, k8sClient)
-	RegisterHealthRoutes(testAPI, healthHandlers)
-
-	sandboxHandlers := NewSandboxHandlers(logger, testNamespace, k8sClient)
-	RegisterSandboxRoutes(testAPI, sandboxHandlers)
 })
 
 var _ = AfterSuite(func() {

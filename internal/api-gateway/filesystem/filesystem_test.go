@@ -1,4 +1,4 @@
-package handlers
+package filesystem
 
 import (
 	"encoding/json"
@@ -19,13 +19,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	apigateway "github.com/isola-ai/isola-sb/internal/api-gateway"
 	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
-// createSandboxCR creates a Sandbox CR and waits for it to appear in the cache.
 func createSandboxCR() string {
-	name, err := generateSandboxName()
-	Expect(err).NotTo(HaveOccurred())
+	name := generateName()
 
 	sb := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
@@ -51,8 +50,6 @@ func createSandboxCR() string {
 	return name
 }
 
-// createRunningSandboxCR creates a Sandbox CR with Ready=True status and PodIP=127.0.0.1,
-// simulating a sandbox that the operator has fully reconciled.
 func createRunningSandboxCR() string {
 	name := createSandboxCR()
 	podIP := "127.0.0.1"
@@ -82,6 +79,13 @@ func createRunningSandboxCR() string {
 	return name
 }
 
+var nameCounter int
+
+func generateName() string {
+	nameCounter++
+	return fmt.Sprintf("testfs%015d", nameCounter)
+}
+
 // errReader is an io.Reader whose Read always fails.
 type errReader struct{}
 
@@ -97,18 +101,16 @@ func (d *brokenBodyDoer) Do(*http.Request) (*http.Response, error) {
 	}, nil
 }
 
-// newFilesystemTestAPI creates a test API wired to the real envtest k8s client
-// and a custom HTTP client / sidecar port.
-func newFilesystemTestAPI(httpClient HTTPDoer, sidecarPort int) humatest.TestAPI {
+func newFilesystemTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humatest.TestAPI {
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
-	h := NewFilesystemHandlers(
+	h := New(
 		slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
 		testNamespace,
 		k8sClient,
 		httpClient,
 	)
 	h.sidecarPort = sidecarPort
-	RegisterFilesystemRoutes(api, h)
+	Register(api, h)
 	return api
 }
 
