@@ -193,6 +193,8 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		Spec: sandbox.Spec.PodTemplate.Spec,
 	}
 
+	sandboxPod.Spec.RestartPolicy = corev1.RestartPolicyNever
+
 	// Inject imagePullSecrets for private registries (configured via Helm global.imagePullSecrets)
 	if len(r.ImagePullSecrets) > 0 {
 		sandboxPod.Spec.ImagePullSecrets = append(sandboxPod.Spec.ImagePullSecrets, r.ImagePullSecrets...)
