@@ -229,6 +229,23 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.Containers[0].Command).To(Equal([]string{"python", "-c", "import time; time.sleep(3600)"}))
 		})
 
+		It("should set restartPolicy to Never so sandbox pods do not restart", func() {
+			sandboxName := "sandbox-restart-policy"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.RestartPolicy).To(Equal(corev1.RestartPolicyNever))
+		})
+
 		It("should preserve sandbox init containers when injecting sidecar", func() {
 			sandboxName := "sandbox-preserve-init"
 
