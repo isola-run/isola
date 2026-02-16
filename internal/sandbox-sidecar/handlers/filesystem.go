@@ -77,17 +77,16 @@ func mkdirAllChown(path string, uid, gid int) error {
 	return os.Chown(path, uid, gid)
 }
 
-func (h *FilesystemHandlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
+func (h *FilesystemHandlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
 	path := input.Path
 	container := input.Container
 
-	pid, err := h.pidResolver.FindCachedContainerPID(container)
+	pid, err := h.pidResolver.FindCachedContainerPID(ctx, container)
 	if err != nil {
-		if container == "" {
-			h.logger.Warn("failed to determine container pid", "error", err)
-			return nil, huma.Error400BadRequest("failed to determine container pid")
-		}
 		h.logger.Warn("failed to determine container pid", "error", err, "container", container)
+		if errors.Is(err, ErrContainerNotRunning) {
+			return nil, huma.Error503ServiceUnavailable("container is not running (crashed or restarting)")
+		}
 		return nil, huma.Error400BadRequest("failed to determine container pid")
 	}
 
@@ -145,17 +144,16 @@ func (h *FilesystemHandlers) PostFilesystem(_ context.Context, input *Filesystem
 	}, nil
 }
 
-func (h *FilesystemHandlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {
+func (h *FilesystemHandlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {
 	path := input.Path
 	container := input.Container
 
-	pid, err := h.pidResolver.FindCachedContainerPID(container)
+	pid, err := h.pidResolver.FindCachedContainerPID(ctx, container)
 	if err != nil {
-		if container == "" {
-			h.logger.Warn("failed to determine container pid", "error", err)
-			return nil, huma.Error400BadRequest("failed to determine container pid")
-		}
 		h.logger.Warn("failed to determine container pid", "error", err, "container", container)
+		if errors.Is(err, ErrContainerNotRunning) {
+			return nil, huma.Error503ServiceUnavailable("container is not running (crashed or restarting)")
+		}
 		return nil, huma.Error400BadRequest("failed to determine container pid")
 	}
 

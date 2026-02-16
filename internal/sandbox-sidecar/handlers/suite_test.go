@@ -58,6 +58,10 @@ func (m *MockProcFS) FindMarkedPID(containerName string) (int, error) {
 	return 1, nil
 }
 
+func (m *MockProcFS) GetContainerName(pid int) (string, bool) {
+	return "", false
+}
+
 func (m *MockProcFS) GetCwd(pid int) (string, error) {
 	return m.cwd, nil
 }

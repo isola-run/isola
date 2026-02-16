@@ -109,10 +109,13 @@ func NewCommandHandlers(logger *slog.Logger, procFS proc.ProcFS, pidResolver *PI
 	}
 }
 
-func (h *CommandHandlers) PostCommand(_ context.Context, input *CreateCommandInput) (*CreateCommandOutput, error) {
-	pid, err := h.pidResolver.FindCachedContainerPID(input.Container)
+func (h *CommandHandlers) PostCommand(ctx context.Context, input *CreateCommandInput) (*CreateCommandOutput, error) {
+	pid, err := h.pidResolver.FindCachedContainerPID(ctx, input.Container)
 	if err != nil {
 		h.logger.Warn("failed to determine container pid", "error", err, "container", input.Container)
+		if errors.Is(err, ErrContainerNotRunning) {
+			return nil, huma.Error503ServiceUnavailable("container is not running (crashed or restarting)")
+		}
 		return nil, huma.Error400BadRequest("failed to determine container pid")
 	}
 

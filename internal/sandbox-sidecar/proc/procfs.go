@@ -24,6 +24,9 @@ type ProcFS interface {
 	// If containerName is empty and there is only one container, it will return the PID of that container.
 	// Otherwise, return an error.
 	FindMarkedPID(containerName string) (int, error)
+	// GetContainerName returns the ISOLA_CONTAINER_NAME value if present in the process environment.
+	// Used by PIDResolver to validate cached PIDs are still alive.
+	GetContainerName(pid int) (string, bool)
 	// GetCwd reads the /proc/<pid>/cwd symlink to get the process working directory.
 	GetCwd(pid int) (string, error)
 	// GetRoot returns the path to /proc/<pid>/root for the given PID.
@@ -87,6 +90,11 @@ func (r *RealProcFS) FindMarkedPID(containerName string) (int, error) {
 
 	// if no container name is specified and only one container is found, return that container's PID
 	return foundPID, nil
+}
+
+// GetContainerName on RealProcFS delegates to the package-level GetContainerName function.
+func (r *RealProcFS) GetContainerName(pid int) (string, bool) {
+	return GetContainerName(pid)
 }
 
 // GetContainerName returns the ISOLA_CONTAINER_NAME value if present in the process environment.

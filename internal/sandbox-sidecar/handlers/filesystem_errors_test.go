@@ -23,6 +23,10 @@ func (m *errorMockProcFS) FindMarkedPID(containerName string) (int, error) {
 	return 0, m.findPIDError
 }
 
+func (m *errorMockProcFS) GetContainerName(pid int) (string, bool) {
+	return "", false
+}
+
 func (m *errorMockProcFS) GetCwd(pid int) (string, error) {
 	return "/workspace", nil
 }
