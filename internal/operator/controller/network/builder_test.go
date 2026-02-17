@@ -129,21 +129,21 @@ func TestBuildCustomNetworkPolicy_WithNameservers(t *testing.T) {
 func TestBuildCustomNetworkPolicy_NameserversWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: ptr.To(true),
-		Nameservers:      []string{"8.8.8.8"},
+		AllowInternetEgress: ptr.To(true),
+		Nameservers:         []string{"8.8.8.8"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
 	g.Expect(err).ToNot(HaveOccurred())
-	// Public nameserver already reachable via static allow-internet policy — no custom NP needed
+	// Public nameserver already reachable via static allow-internet-egress policy — no custom NP needed
 	g.Expect(np).To(BeNil())
 }
 
 func TestBuildCustomNetworkPolicy_PrivateNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: ptr.To(true),
-		Nameservers:      []string{"10.0.0.53"},
+		AllowInternetEgress: ptr.To(true),
+		Nameservers:         []string{"10.0.0.53"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
@@ -155,8 +155,8 @@ func TestBuildCustomNetworkPolicy_PrivateNameserverWithInternetAccess(t *testing
 func TestBuildCustomNetworkPolicy_MixedNameserversWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: ptr.To(true),
-		Nameservers:      []string{"8.8.8.8", "10.0.0.53", "1.1.1.1"},
+		AllowInternetEgress: ptr.To(true),
+		Nameservers:         []string{"8.8.8.8", "10.0.0.53", "1.1.1.1"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
@@ -168,8 +168,8 @@ func TestBuildCustomNetworkPolicy_MixedNameserversWithInternetAccess(t *testing.
 func TestBuildCustomNetworkPolicy_IPv6PublicNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: ptr.To(true),
-		Nameservers:      []string{"2001:4860:4860::8888"},
+		AllowInternetEgress: ptr.To(true),
+		Nameservers:         []string{"2001:4860:4860::8888"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
@@ -181,8 +181,8 @@ func TestBuildCustomNetworkPolicy_IPv6PublicNameserverWithInternetAccess(t *test
 func TestBuildCustomNetworkPolicy_IPv6PrivateNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: ptr.To(true),
-		Nameservers:      []string{"fd00::53"},
+		AllowInternetEgress: ptr.To(true),
+		Nameservers:         []string{"fd00::53"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
@@ -194,8 +194,8 @@ func TestBuildCustomNetworkPolicy_IPv6PrivateNameserverWithInternetAccess(t *tes
 func TestBuildCustomNetworkPolicy_NameserversWithoutInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet: ptr.To(false),
-		Nameservers:      []string{"8.8.8.8", "10.0.0.53"},
+		AllowInternetEgress: ptr.To(false),
+		Nameservers:         []string{"8.8.8.8", "10.0.0.53"},
 	}
 
 	// Without internet access, ALL nameservers need explicit rules
@@ -211,9 +211,9 @@ func TestBuildCustomNetworkPolicy_NameserversWithoutInternetAccess(t *testing.T)
 func TestBuildCustomNetworkPolicy_CIDRsAndPublicNameserversWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet:   ptr.To(true),
-		Nameservers:        []string{"8.8.8.8"},
-		AllowedEgressCIDRs: []string{"1.1.1.0/24"},
+		AllowInternetEgress: ptr.To(true),
+		Nameservers:         []string{"8.8.8.8"},
+		AllowedEgressCIDRs:  []string{"1.1.1.0/24"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
@@ -225,8 +225,8 @@ func TestBuildCustomNetworkPolicy_CIDRsAndPublicNameserversWithInternetAccess(t 
 func TestBuildCustomNetworkPolicy_CIDRsOnlyWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet:   ptr.To(true),
-		AllowedEgressCIDRs: []string{"8.8.8.0/24", "1.1.1.0/24"},
+		AllowInternetEgress: ptr.To(true),
+		AllowedEgressCIDRs:  []string{"8.8.8.0/24", "1.1.1.0/24"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
@@ -238,9 +238,9 @@ func TestBuildCustomNetworkPolicy_CIDRsOnlyWithInternetAccess(t *testing.T) {
 func TestBuildCustomNetworkPolicy_CIDRsAndPrivateNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet:   ptr.To(true),
-		Nameservers:        []string{"10.0.0.53"},
-		AllowedEgressCIDRs: []string{"1.1.1.0/24"},
+		AllowInternetEgress: ptr.To(true),
+		Nameservers:         []string{"10.0.0.53"},
+		AllowedEgressCIDRs:  []string{"1.1.1.0/24"},
 	}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)

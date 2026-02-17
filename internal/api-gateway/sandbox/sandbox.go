@@ -51,10 +51,10 @@ type ResourceList struct {
 }
 
 type NetworkSpec struct {
-	AllowAllInternet   *bool    `json:"allowAllInternet,omitempty" doc:"Allow public internet egress"`
-	AllowClusterDNS    *bool    `json:"allowClusterDNS,omitempty" doc:"Allow cluster DNS queries"`
-	AllowedEgressCIDRs []string `json:"allowedEgressCIDRs,omitempty" doc:"Allowed egress CIDRs"`
-	Nameservers        []string `json:"nameservers,omitempty" maxItems:"3" doc:"Custom DNS servers (max 3)"`
+	AllowInternetEgress *bool    `json:"allowInternetEgress,omitempty" doc:"Allow public internet egress"`
+	AllowClusterDNS     *bool    `json:"allowClusterDNS,omitempty" doc:"Allow cluster DNS queries"`
+	AllowedEgressCIDRs  []string `json:"allowedEgressCIDRs,omitempty" doc:"Allowed egress CIDRs"`
+	Nameservers         []string `json:"nameservers,omitempty" maxItems:"3" doc:"Custom DNS servers (max 3)"`
 }
 
 type GetSandboxInput struct {

@@ -122,11 +122,11 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 **Network isolation:**
 - Default: deny-all egress with sink DNS (127.0.0.1) so DNS queries fail fast
 - Custom rules via `Sandbox.spec.network` (NetworkSpec):
-  - `allowAllInternet: true` - allows 0.0.0.0/0 egress (private ranges auto-blocked)
+  - `allowInternetEgress: true` - allows 0.0.0.0/0 egress (private ranges auto-blocked)
   - `allowedEgressCIDRs` - specific CIDR allowlist
   - `nameservers` - custom DNS servers (default: sink or 8.8.8.8/1.1.1.1 for internet)
 - Static NetworkPolicies deployed via Helm handle base isolation
-- Custom per-sandbox NetworkPolicy created by operator only when CIDRs or custom nameservers are specified (and `allowAllInternet` is not true)
+- Custom per-sandbox NetworkPolicy created by operator only when CIDRs or custom nameservers are specified (and `allowInternetEgress` is not true)
 
 **Finalizers:** `sandbox.isola.run/cleanup` ensures cleanup before sandbox deletion.
 

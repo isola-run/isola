@@ -104,10 +104,10 @@ func crdNetworkToREST(n *sandboxv1alpha1.NetworkSpec) *NetworkSpec {
 	}
 
 	return &NetworkSpec{
-		AllowAllInternet:   n.AllowAllInternet,
-		AllowClusterDNS:    n.AllowClusterDNS,
-		AllowedEgressCIDRs: n.AllowedEgressCIDRs,
-		Nameservers:        n.Nameservers,
+		AllowInternetEgress: n.AllowInternetEgress,
+		AllowClusterDNS:     n.AllowClusterDNS,
+		AllowedEgressCIDRs:  n.AllowedEgressCIDRs,
+		Nameservers:         n.Nameservers,
 	}
 }
 
@@ -199,9 +199,9 @@ func restNetworkToCRD(n *NetworkSpec) *sandboxv1alpha1.NetworkSpec {
 	}
 
 	return &sandboxv1alpha1.NetworkSpec{
-		AllowAllInternet:   n.AllowAllInternet,
-		AllowClusterDNS:    n.AllowClusterDNS,
-		AllowedEgressCIDRs: n.AllowedEgressCIDRs,
-		Nameservers:        n.Nameservers,
+		AllowInternetEgress: n.AllowInternetEgress,
+		AllowClusterDNS:     n.AllowClusterDNS,
+		AllowedEgressCIDRs:  n.AllowedEgressCIDRs,
+		Nameservers:         n.Nameservers,
 	}
 }

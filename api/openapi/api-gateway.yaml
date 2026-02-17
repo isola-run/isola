@@ -265,11 +265,11 @@ components:
     NetworkSpec:
       additionalProperties: false
       properties:
-        allowAllInternet:
-          description: Allow public internet egress
-          type: boolean
         allowClusterDNS:
           description: Allow cluster DNS queries
+          type: boolean
+        allowInternetEgress:
+          description: Allow public internet egress
           type: boolean
         allowedEgressCIDRs:
           description: Allowed egress CIDRs

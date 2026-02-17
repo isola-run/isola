@@ -89,12 +89,12 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(np).To(BeNil())
 		})
 
-		It("should not create custom NetworkPolicy when only allowAllInternet is set", func() {
+		It("should not create custom NetworkPolicy when only allowInternetEgress is set", func() {
 			// Internet access is handled by Helm-installed NetworkPolicy, no custom policy needed
 			sandboxName := "sandbox-internet-only"
 
 			network := &sandboxv1alpha1.NetworkSpec{
-				AllowAllInternet: ptr.To(true),
+				AllowInternetEgress: ptr.To(true),
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
@@ -211,11 +211,11 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(np).NotTo(BeNil())
 		})
 
-		It("should add network labels to pod for allowAllInternet", func() {
+		It("should add network labels to pod for allowInternetEgress", func() {
 			sandboxName := "sandbox-internet-labels"
 
 			network := &sandboxv1alpha1.NetworkSpec{
-				AllowAllInternet: ptr.To(true),
+				AllowInternetEgress: ptr.To(true),
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
@@ -346,12 +346,12 @@ var _ = Describe("Sandbox Controller", func() {
 		})
 
 		It("should not create custom NetworkPolicy for public nameservers with internet access", func() {
-			// Public nameservers (8.8.8.8) already reachable via static allow-internet policy
+			// Public nameservers (8.8.8.8) already reachable via static allow-internet-egress policy
 			sandboxName := "sandbox-internet-dns"
 
 			network := &sandboxv1alpha1.NetworkSpec{
-				AllowAllInternet: ptr.To(true),
-				Nameservers:      []string{"8.8.8.8"},
+				AllowInternetEgress: ptr.To(true),
+				Nameservers:         []string{"8.8.8.8"},
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
@@ -375,8 +375,8 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-internet-cidrs"
 
 			network := &sandboxv1alpha1.NetworkSpec{
-				AllowAllInternet:   ptr.To(true),
-				AllowedEgressCIDRs: []string{"1.1.1.0/24"},
+				AllowInternetEgress: ptr.To(true),
+				AllowedEgressCIDRs:  []string{"1.1.1.0/24"},
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
@@ -395,8 +395,8 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-internet-private-dns"
 
 			network := &sandboxv1alpha1.NetworkSpec{
-				AllowAllInternet: ptr.To(true),
-				Nameservers:      []string{"10.0.0.53"},
+				AllowInternetEgress: ptr.To(true),
+				Nameservers:         []string{"10.0.0.53"},
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
