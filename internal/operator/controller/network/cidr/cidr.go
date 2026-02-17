@@ -23,23 +23,52 @@ import (
 
 // BlockedV4 are IPv4 prefixes that sandboxes should never reach via CIDR-based rules.
 var BlockedV4 = []netip.Prefix{
-	netip.MustParsePrefix("10.0.0.0/8"),      // RFC 1918: 10.0.0.0 - 10.255.255.255 (Class A private)
-	netip.MustParsePrefix("100.64.0.0/10"),   // RFC 6598: 100.64.0.0 - 100.127.255.255 (Carrier-grade NAT / shared address space)
+	// RFC 1918: Private address space
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+
+	// RFC 6598: Carrier-grade NAT / shared address space
+	netip.MustParsePrefix("100.64.0.0/10"),
+
+	// Reserved / special-purpose
+	netip.MustParsePrefix("0.0.0.0/8"),       // RFC 1122: "This network"
+	netip.MustParsePrefix("127.0.0.0/8"),     // RFC 1122: Loopback
 	netip.MustParsePrefix("169.254.0.0/16"),  // RFC 3927: Link-local (includes cloud metadata 169.254.169.254)
-	netip.MustParsePrefix("172.16.0.0/12"),   // RFC 1918: 172.16.0.0 - 172.31.255.255 (Class B private)
-	netip.MustParsePrefix("192.168.0.0/16"),  // RFC 1918: 192.168.0.0 - 192.168.255.255 (Class C private)
-	netip.MustParsePrefix("198.18.0.0/15"),   // RFC 2544: Benchmark testing range (also used by GKE on AWS)
-	netip.MustParsePrefix("240.0.0.0/4"),     // RFC 1112: 240.0.0.0 - 255.255.255.255 (Class E reserved)
-	netip.MustParsePrefix("34.118.224.0/20"), // GKE-managed Service ClusterIP range (newer GKE)
-	netip.MustParsePrefix("224.0.0.0/4"),     // Multicast
+	netip.MustParsePrefix("192.0.0.0/24"),    // RFC 6890: IETF Protocol Assignments
+	netip.MustParsePrefix("192.0.2.0/24"),    // RFC 5737: Documentation (TEST-NET-1)
+	netip.MustParsePrefix("192.88.99.0/24"),  // RFC 7526: 6to4 Relay Anycast (deprecated)
+	netip.MustParsePrefix("198.18.0.0/15"),   // RFC 2544: Benchmarking
+	netip.MustParsePrefix("198.51.100.0/24"), // RFC 5737: Documentation (TEST-NET-2)
+	netip.MustParsePrefix("203.0.113.0/24"),  // RFC 5737: Documentation (TEST-NET-3)
+	netip.MustParsePrefix("224.0.0.0/4"),     // RFC 5771: Multicast
+	netip.MustParsePrefix("240.0.0.0/4"),     // RFC 1112 §4: Reserved (Class E)
+
+	// Cloud provider internal
+	netip.MustParsePrefix("34.118.224.0/20"), // GKE-managed Service ClusterIP range
+	netip.MustParsePrefix("199.36.153.4/30"), // GCP restricted.googleapis.com
+	netip.MustParsePrefix("199.36.153.8/30"), // GCP private.googleapis.com
 }
 
 // BlockedV6 are IPv6 prefixes that sandboxes should never reach via CIDR-based rules.
 var BlockedV6 = []netip.Prefix{
-	netip.MustParsePrefix("fc00::/7"),           // RFC 4193: Unique Local Address (ULA) - IPv6 equivalent of RFC 1918
-	netip.MustParsePrefix("fe80::/10"),          // RFC 4291: Link-local - auto-configured addresses for local network
-	netip.MustParsePrefix("2600:2d00:0:4::/64"), // GKE-managed Service IPv6 range (dual-stack clusters)
-	netip.MustParsePrefix("ff00::/8"),           // Multicast
+	// Reserved / special-purpose
+	netip.MustParsePrefix("::/128"),        // Unspecified address
+	netip.MustParsePrefix("::1/128"),       // Loopback address
+	netip.MustParsePrefix("100::/64"),      // RFC 6666: Discard-Only prefix
+	netip.MustParsePrefix("2001:2::/48"),   // RFC 5180: Benchmarking
+	netip.MustParsePrefix("2001:db8::/32"), // RFC 3849: Documentation
+	netip.MustParsePrefix("2002::/16"),     // RFC 3056: 6to4 (deprecated per RFC 7526)
+	netip.MustParsePrefix("fc00::/7"),      // RFC 4193: Unique Local Address (ULA)
+	netip.MustParsePrefix("fe80::/10"),     // RFC 4291: Link-local
+	netip.MustParsePrefix("ff00::/8"),      // RFC 4291: Multicast
+
+	// Cloud provider internal
+	netip.MustParsePrefix("2600:2d00:0:2::/64"),        // GCP Router Next Hop
+	netip.MustParsePrefix("2600:2d00:0:3::/64"),        // GCP Router Next Hop
+	netip.MustParsePrefix("2600:2d00:0:4::/64"),        // GKE IPv6 Service Range
+	netip.MustParsePrefix("2600:2d00:2:1000::/56"),     // GCP restricted.googleapis.com
+	netip.MustParsePrefix("2600:2d00:2:2000::/56"),     // GCP private.googleapis.com
 }
 
 // ComputeExcept returns the list of blocked CIDRs to exclude from allowed in a NetworkPolicy.
