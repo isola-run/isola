@@ -52,7 +52,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 				},
 				"activeDeadlineSeconds": 600,
 				"network": {
-					"allowAllInternet": true,
+					"allowInternetEgress": true,
 					"allowClusterDNS": true,
 					"allowedEgressCIDRs": ["10.0.0.0/8"],
 					"nameservers": ["8.8.8.8"]
@@ -76,7 +76,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(body.PodTemplate.Container.Resources.Requests.EphemeralStorage).To(Equal("1Gi"))
 			Expect(*body.ActiveDeadlineSeconds).To(Equal(int64(600)))
 			Expect(body.Network).NotTo(BeNil())
-			Expect(*body.Network.AllowAllInternet).To(BeTrue())
+			Expect(*body.Network.AllowInternetEgress).To(BeTrue())
 			Expect(*body.Network.AllowClusterDNS).To(BeTrue())
 			Expect(body.Network.AllowedEgressCIDRs).To(ConsistOf("10.0.0.0/8"))
 			Expect(body.Network.Nameservers).To(ConsistOf("8.8.8.8"))

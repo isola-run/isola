@@ -68,11 +68,11 @@ type ShutdownPolicy struct {
 // NetworkSpec defines network isolation for a sandbox.
 // If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
 type NetworkSpec struct {
-	// AllowAllInternet allows egress to 0.0.0.0/0 and ::/0 with blocked ranges
+	// AllowInternetEgress allows egress to 0.0.0.0/0 and ::/0 with blocked ranges
 	// (private IPs, cloud metadata, etc.) automatically excepted.
-	// Adds label isola.run/allow-internet=true to the pod.
+	// Adds label isola.run/allow-internet-egress=true to the pod.
 	// +optional
-	AllowAllInternet *bool `json:"allowAllInternet,omitempty"`
+	AllowInternetEgress *bool `json:"allowInternetEgress,omitempty"`
 
 	// AllowClusterDNS allows DNS queries to cluster DNS (kube-dns/CoreDNS).
 	// When true: DNSPolicy=ClusterFirst, adds label isola.run/allow-cluster-dns=true
@@ -82,9 +82,9 @@ type NetworkSpec struct {
 
 	// AllowedEgressCIDRs specifies additional CIDRs the sandbox can reach.
 	// Blocked ranges (private IPs, cloud metadata, etc.) are rejected — see ComputeExcept.
-	// When allowAllInternet is true, these CIDRs are already reachable via the static
+	// When allowInternetEgress is true, these CIDRs are already reachable via the static
 	// internet policy and do not produce additional NetworkPolicy rules.
-	// Creates a custom NetworkPolicy only when allowAllInternet is false or unset.
+	// Creates a custom NetworkPolicy only when allowInternetEgress is false or unset.
 	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$`
 	// +optional
 	AllowedEgressCIDRs []string `json:"allowedEgressCIDRs,omitempty"`
@@ -92,7 +92,7 @@ type NetworkSpec struct {
 	// Nameservers are DNS server IPs to inject into the pod.
 	// When allowClusterDNS=false: These are the only nameservers (or 127.0.0.1 sink if empty).
 	// When allowClusterDNS=true: Combined with cluster DNS.
-	// When allowAllInternet is true, nameservers do not produce additional NetworkPolicy rules.
+	// When allowInternetEgress is true, nameservers do not produce additional NetworkPolicy rules.
 	// MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
 	// +kubebuilder:validation:MaxItems=3
 	// +kubebuilder:validation:XValidation:rule="self.all(s, isIP(s))",message="must be valid IP addresses"

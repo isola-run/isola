@@ -83,7 +83,7 @@ func WithInternetAccess() SandboxOption {
 		if s.Spec.Network == nil {
 			s.Spec.Network = &sandboxv1alpha1.NetworkSpec{}
 		}
-		s.Spec.Network.AllowAllInternet = ptr.To(true)
+		s.Spec.Network.AllowInternetEgress = ptr.To(true)
 	}
 }
 

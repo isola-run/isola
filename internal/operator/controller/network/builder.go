@@ -22,10 +22,10 @@ network configurations (custom CIDRs or custom DNS).
 
 Most sandboxes use static Helm-installed NetworkPolicies based on pod labels:
   - sandbox-default-deny: Denies all traffic for pods with app.kubernetes.io/name=isola-sandbox
-  - sandbox-allow-internet: Allows internet egress for pods with isola.run/allow-internet=true
+  - sandbox-allow-internet-egress: Allows internet egress for pods with isola.run/allow-internet-egress=true
   - sandbox-allow-cluster-dns: Allows cluster DNS for pods with isola.run/allow-cluster-dns=true
 
-This package builds custom NetworkPolicies only when needed (and allowAllInternet is not true):
+This package builds custom NetworkPolicies only when needed (and allowInternetEgress is not true):
   - Custom egress CIDRs are specified
   - Custom nameservers are specified
 */
@@ -62,8 +62,8 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 		return nil, nil
 	}
 
-	internetAllowed := network.AllowAllInternet != nil && *network.AllowAllInternet
-	// Skip egress CIDRs when internet is already allowed, the static allow-internet
+	internetAllowed := network.AllowInternetEgress != nil && *network.AllowInternetEgress
+	// Skip egress CIDRs when internet is already allowed, the static allow-internet-egress
 	// policy covers all valid CIDRs.
 	var egressCIDRs []egressCIDR
 	if !internetAllowed {
@@ -88,7 +88,7 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 	}
 
 	// Skip nameserver rules when internet is already allowed.
-	// Public nameservers like 1.1.1.1 are reachable via the static allow-internet policy.
+	// Public nameservers like 1.1.1.1 are reachable via the static allow-internet-egress policy.
 	// ClusterDNS is handled by AllowClusterDNS.
 	// Custom static-IP nameservers could be templated in allow-dns if and when need arise.
 	var dnsAddrs []netip.Addr

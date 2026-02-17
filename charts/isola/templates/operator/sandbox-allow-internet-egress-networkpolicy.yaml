@@ -1,8 +1,8 @@
-# Allow internet egress for sandbox pods with isola.run/allow-internet=true label
+# Allow internet egress for sandbox pods with isola.run/allow-internet-egress=true label
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: sandbox-allow-internet
+  name: sandbox-allow-internet-egress
   namespace: {{ include "isola.sandboxNamespace" . }}
   labels:
     {{- include "isola.operator.labels" . | nindent 4 }}
@@ -10,7 +10,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      isola.run/allow-internet: "true"
+      isola.run/allow-internet-egress: "true"
   policyTypes:
     - Egress
   egress:
