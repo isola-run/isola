@@ -142,7 +142,7 @@ class Sandbox:
         return self._data.status
 
     @property
-    def created_at(self) -> datetime:
+    def creation_timestamp(self) -> datetime:
         return self._data.creation_timestamp
 
     @property
@@ -173,7 +173,7 @@ class AsyncSandbox:
         return self._data.status
 
     @property
-    def created_at(self) -> datetime:
+    def creation_timestamp(self) -> datetime:
         return self._data.creation_timestamp
 
     @property
