@@ -49,7 +49,7 @@ class BadGatewayError(IsolaError):
     pass
 
 
-class ConnectionError(IsolaError):
+class APIConnectionError(IsolaError):
     def __init__(self, detail: str, *, raw: dict[str, Any] | None = None) -> None:
         super().__init__(status=0, detail=detail, errors=None, raw=raw)
 
@@ -109,10 +109,10 @@ def error_from_http(status: int, reason: str | None, body: bytes | None = None) 
     return exc_type(status=status, detail=detail, errors=errors, raw=raw)
 
 
-def connection_error_from_request(exc: httpx.RequestError) -> ConnectionError:
+def connection_error_from_request(exc: httpx.RequestError) -> APIConnectionError:
     request_url = str(exc.request.url) if exc.request is not None else None
     detail = str(exc) or "failed to reach Isola API"
     raw: dict[str, Any] = {"type": type(exc).__name__}
     if request_url:
         raw["url"] = request_url
-    return ConnectionError(detail=detail, raw=raw)
+    return APIConnectionError(detail=detail, raw=raw)

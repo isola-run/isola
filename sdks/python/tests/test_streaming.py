@@ -5,8 +5,7 @@ from collections.abc import AsyncIterator, Iterator
 import httpx
 import pytest
 
-from isola import ConnectionError as IsolaConnectionError
-from isola import NotFoundError, StreamTimeoutError
+from isola import APIConnectionError, NotFoundError, StreamTimeoutError
 from isola._streaming import MAX_RECONNECTS, AsyncCommandOutputStream, CommandOutputStream
 
 
@@ -59,8 +58,8 @@ class _FakeSyncAPI:
 
             raise error_from_http(response.status_code, None, response.read())
 
-    def to_connection_error(self, exc: httpx.RequestError) -> IsolaConnectionError:
-        return IsolaConnectionError(str(exc))
+    def to_connection_error(self, exc: httpx.RequestError) -> APIConnectionError:
+        return APIConnectionError(str(exc))
 
 
 class _FakeAsyncResponse:
@@ -113,8 +112,8 @@ class _FakeAsyncAPI:
 
             raise error_from_http(response.status_code, None, response.read())
 
-    def to_connection_error(self, exc: httpx.RequestError) -> IsolaConnectionError:
-        return IsolaConnectionError(str(exc))
+    def to_connection_error(self, exc: httpx.RequestError) -> APIConnectionError:
+        return APIConnectionError(str(exc))
 
 
 def test_sync_stream_reconnects_and_resumes_offset(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,6 +122,35 @@ def test_sync_stream_reconnects_and_resumes_offset(monkeypatch: pytest.MonkeyPat
     api = _FakeSyncAPI(
         [
             _FakeSyncCM(_FakeSyncResponse([b"ab"], raise_after=httpx.ConnectError("disconnect"))),
+            _FakeSyncCM(_FakeSyncResponse([b"cd"])),
+        ]
+    )
+
+    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    with stream as chunks:
+        output = b"".join(chunks)
+
+    assert output == b"abcd"
+    assert api.calls == [0, 2]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        httpx.ConnectError("connection refused"),
+        httpx.ReadError("server dropped"),
+        httpx.WriteError("broken pipe"),
+        httpx.CloseError("close failed"),
+    ],
+    ids=["ConnectError", "ReadError", "WriteError", "CloseError"],
+)
+def test_sync_stream_reconnects_on_network_error(monkeypatch: pytest.MonkeyPatch, error: Exception) -> None:
+    monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
+
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([b"ab"], raise_after=error)),
             _FakeSyncCM(_FakeSyncResponse([b"cd"])),
         ]
     )
@@ -202,7 +230,7 @@ def test_sync_stream_max_reconnects_exhausted(monkeypatch: pytest.MonkeyPatch) -
 
     stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout")
 
-    with pytest.raises(IsolaConnectionError), stream as chunks:
+    with pytest.raises(APIConnectionError), stream as chunks:
         list(chunks)
 
 
@@ -251,7 +279,7 @@ async def test_async_stream_max_reconnects_exhausted(monkeypatch: pytest.MonkeyP
 
     stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout")
 
-    with pytest.raises(IsolaConnectionError):
+    with pytest.raises(APIConnectionError):
         async with stream as chunks:
             async for _ in chunks:
                 pass

@@ -4,7 +4,7 @@ from ._exceptions import (
     BadGatewayError,
     BadRequestError,
     ConflictError,
-    ConnectionError,
+    APIConnectionError,
     InternalError,
     IsolaError,
     NotFoundError,
@@ -40,6 +40,6 @@ __all__ = [
     "ValidationError",
     "InternalError",
     "BadGatewayError",
-    "ConnectionError",
+    "APIConnectionError",
     "StreamTimeoutError",
 ]

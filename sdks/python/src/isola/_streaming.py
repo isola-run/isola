@@ -9,7 +9,7 @@ from typing import Protocol
 
 import httpx
 
-from ._exceptions import ConnectionError, StreamTimeoutError
+from ._exceptions import APIConnectionError, StreamTimeoutError
 
 STREAM_CONNECT_TIMEOUT = 5.0
 MAX_RECONNECTS = 5
@@ -29,7 +29,7 @@ class _SyncStreamAPI(Protocol):
 
     def raise_for_status(self, response: httpx.Response) -> None: ...
 
-    def to_connection_error(self, exc: httpx.RequestError) -> ConnectionError: ...
+    def to_connection_error(self, exc: httpx.RequestError) -> APIConnectionError: ...
 
 
 class _AsyncStreamAPI(Protocol):
@@ -43,7 +43,7 @@ class _AsyncStreamAPI(Protocol):
 
     async def raise_for_status(self, response: httpx.Response) -> None: ...
 
-    def to_connection_error(self, exc: httpx.RequestError) -> ConnectionError: ...
+    def to_connection_error(self, exc: httpx.RequestError) -> APIConnectionError: ...
 
 
 class CommandOutputStream:
@@ -126,7 +126,7 @@ class CommandOutputStream:
             except httpx.ReadTimeout as exc:
                 self._close_stream()
                 raise StreamTimeoutError(f"No data received for {self._timeout}s") from exc
-            except httpx.ConnectError as exc:
+            except httpx.NetworkError as exc:
                 self._close_stream()
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
@@ -215,7 +215,7 @@ class AsyncCommandOutputStream:
             except httpx.ReadTimeout as exc:
                 await self._close_stream()
                 raise StreamTimeoutError(f"No data received for {self._timeout}s") from exc
-            except httpx.ConnectError as exc:
+            except httpx.NetworkError as exc:
                 await self._close_stream()
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:

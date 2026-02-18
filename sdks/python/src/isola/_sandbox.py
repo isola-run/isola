@@ -24,11 +24,11 @@ def _sandbox_path(sandbox_id: str) -> str:
     return f"/sandboxes/{quote(sandbox_id, safe='')}"
 
 
-def _build_resources(cpu: str | None, memory: str | None, disk: str | None) -> ResourcesSpec | None:
-    if cpu is None and memory is None and disk is None:
+def _build_resources(cpu: str | None, memory: str | None, ephemeral_storage: str | None) -> ResourcesSpec | None:
+    if cpu is None and memory is None and ephemeral_storage is None:
         return None
 
-    resource_list = ResourceList(cpu=cpu, memory=memory, ephemeral_storage=disk)
+    resource_list = ResourceList(cpu=cpu, memory=memory, ephemeral_storage=ephemeral_storage)
     return ResourcesSpec(limits=resource_list, requests=resource_list)
 
 
@@ -44,11 +44,11 @@ class Sandboxes:
         env: dict[str, str] | None = None,
         cpu: str | None = None,
         memory: str | None = None,
-        disk: str | None = None,
+        ephemeral_storage: str | None = None,
         active_deadline_seconds: int | None = None,
         network: NetworkSpec | None = None,
     ) -> Sandbox:
-        resources = _build_resources(cpu, memory, disk)
+        resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(
                 container=ContainerSpec(
@@ -91,11 +91,11 @@ class AsyncSandboxes:
         env: dict[str, str] | None = None,
         cpu: str | None = None,
         memory: str | None = None,
-        disk: str | None = None,
+        ephemeral_storage: str | None = None,
         active_deadline_seconds: int | None = None,
         network: NetworkSpec | None = None,
     ) -> AsyncSandbox:
-        resources = _build_resources(cpu, memory, disk)
+        resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(
                 container=ContainerSpec(

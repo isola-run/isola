@@ -4,8 +4,7 @@ import httpx
 import pytest
 import respx
 
-from isola import AsyncIsola, Isola, NotFoundError
-from isola import ConnectionError as IsolaConnectionError
+from isola import APIConnectionError, AsyncIsola, Isola, NotFoundError
 
 
 @respx.mock
@@ -59,7 +58,7 @@ def test_transport_error_mapping() -> None:
     route = respx.get("http://localhost:8080/sandboxes")
     route.mock(side_effect=httpx.ConnectError("connect failed"))
 
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(IsolaConnectionError) as exc_info:
+    with Isola(base_url="http://localhost:8080") as client, pytest.raises(APIConnectionError) as exc_info:
         client.sandboxes.list()
 
     assert exc_info.value.status == 0

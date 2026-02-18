@@ -21,7 +21,7 @@ def test_create_sandbox_maps_flat_resources(sandbox_response_copy: dict[str, obj
             env={"KEY": "value"},
             cpu="500m",
             memory="1Gi",
-            disk="2Gi",
+            ephemeral_storage="2Gi",
             active_deadline_seconds=3600,
         )
 
@@ -33,6 +33,19 @@ def test_create_sandbox_maps_flat_resources(sandbox_response_copy: dict[str, obj
         "limits": {"cpu": "500m", "memory": "1Gi", "ephemeralStorage": "2Gi"},
         "requests": {"cpu": "500m", "memory": "1Gi", "ephemeralStorage": "2Gi"},
     }
+
+
+@respx.mock
+def test_create_sandbox_without_resources_omits_key(sandbox_response_copy: dict[str, object]) -> None:
+    create_route = respx.post("http://localhost:8080/sandboxes").mock(
+        return_value=httpx.Response(201, json=sandbox_response_copy)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        client.sandboxes.create(image="python:3.12")
+
+    payload = json.loads(create_route.calls[0].request.content)
+    assert "resources" not in payload["podTemplate"]["container"]
 
 
 @respx.mock

@@ -3,8 +3,12 @@ name: Python SDK
 on:
   push:
     branches: [main]
+    paths:
+      - 'sdks/python/**'
   pull_request:
     branches: [main]
+    paths:
+      - 'sdks/python/**'
 
 jobs:
   python-sdk:
