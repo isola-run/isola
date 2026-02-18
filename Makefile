@@ -115,6 +115,30 @@ test-gateway: ## Run api-gateway tests (supports FOCUS=pattern)
 test-sidecar: ## Run sandbox-sidecar tests (supports FOCUS=pattern)
 	go test ./internal/sandbox-sidecar/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
 
+##@ Python SDK
+
+.PHONY: python-sdk-sync
+python-sdk-sync: ## Sync Python SDK dependencies from lockfile
+	cd sdks/python && uv sync --frozen --extra dev
+
+.PHONY: python-sdk-lint
+python-sdk-lint: ## Lint Python SDK
+	cd sdks/python && uv run --frozen --extra dev ruff check .
+
+.PHONY: python-sdk-typecheck
+python-sdk-typecheck: ## Type-check Python SDK
+	cd sdks/python && uv run --frozen --extra dev mypy src
+
+.PHONY: python-sdk-test
+python-sdk-test: ## Test Python SDK
+	cd sdks/python && uv run --frozen --extra dev pytest -q
+
+.PHONY: python-sdk-check
+python-sdk-check: ## Run all Python SDK checks
+	$(MAKE) python-sdk-lint
+	$(MAKE) python-sdk-typecheck
+	$(MAKE) python-sdk-test
+
 ##@ Build
 
 .PHONY: build
