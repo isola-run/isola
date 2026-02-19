@@ -5,7 +5,7 @@ import json
 import httpx
 import respx
 
-from isola import Isola, SandboxStatus
+from isola import Isola, NetworkSpec, SandboxStatus
 
 
 @respx.mock
@@ -75,3 +75,39 @@ def test_get_and_delete_sandbox(sandbox_response_copy: dict[str, object]) -> Non
 
     assert sandbox.id == "sandbox-123"
     assert delete_route.called
+
+
+@respx.mock
+def test_network_spec_acronym_aliases_round_trip(sandbox_response_copy: dict[str, object]) -> None:
+    """Verify NetworkSpec fields with acronyms use the correct OpenAPI casing."""
+    sandbox_response_copy["network"] = {
+        "allowInternetEgress": False,
+        "allowClusterDNS": True,
+        "allowedEgressCIDRs": ["10.0.0.0/8"],
+        "nameservers": ["8.8.8.8"],
+    }
+    create_route = respx.post("http://localhost:8080/sandboxes").mock(
+        return_value=httpx.Response(201, json=sandbox_response_copy)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.create(
+            image="python:3.12",
+            network=NetworkSpec(
+                allow_internet_egress=False,
+                allow_cluster_dns=True,
+                allowed_egress_cidrs=["10.0.0.0/8"],
+                nameservers=["8.8.8.8"],
+            ),
+        )
+
+    # Response deserialization: server's OpenAPI casing must be parsed correctly
+    assert sandbox.network is not None
+    assert sandbox.network.allow_cluster_dns is True
+    assert sandbox.network.allowed_egress_cidrs == ["10.0.0.0/8"]
+
+    # Request serialization: SDK must send OpenAPI casing
+    payload = json.loads(create_route.calls[0].request.content)
+    network = payload["network"]
+    assert "allowClusterDNS" in network
+    assert "allowedEgressCIDRs" in network

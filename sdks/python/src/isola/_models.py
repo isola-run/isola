@@ -42,8 +42,8 @@ class ErrorResponse(IsolaModel):
 
 class NetworkSpec(IsolaModel):
     allow_internet_egress: bool | None = None
-    allow_cluster_dns: bool | None = None
-    allowed_egress_cidrs: list[str] | None = None
+    allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
+    allowed_egress_cidrs: list[str] | None = Field(None, alias="allowedEgressCIDRs")
     nameservers: list[str] | None = None
 
 
