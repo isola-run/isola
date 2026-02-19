@@ -83,6 +83,28 @@ async def test_async_filesystem_write_and_read(sandbox_response_copy: dict[str, 
     assert read_route.calls[0].request.url.params["path"] == "/tmp/data.bin"
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_filesystem_with_container(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(201, json={"absolutePath": "/app/cfg.yaml", "bytesWritten": 3})
+    )
+    read_route = respx.get("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(200, content=b"abc")
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        await sandbox.filesystem.write("/app/cfg.yaml", b"abc", container="sidecar")
+        await sandbox.filesystem.read("/app/cfg.yaml", container="sidecar")
+
+    assert write_route.calls[0].request.url.params["container"] == "sidecar"
+    assert read_route.calls[0].request.url.params["container"] == "sidecar"
+
+
 def test_filesystem_write_from_str_file_like_raises_type_error(sandbox_response_copy: dict[str, object]) -> None:
     with Isola(base_url="http://localhost:8080") as client:
         # Manually construct a sandbox to avoid HTTP call

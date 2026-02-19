@@ -81,6 +81,32 @@ async def test_async_command_run_and_status(sandbox_response_copy: dict[str, obj
     assert status.exit_code == 0
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_command_stdin_and_kill(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-async-1"})
+    )
+    stdin_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-async-1/stdin").mock(
+        return_value=httpx.Response(204)
+    )
+    kill_route = respx.delete("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-async-1").mock(
+        return_value=httpx.Response(204)
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        cmd = await sandbox.commands.run(cmd="cat")
+        await cmd.write_stdin(b"hello\n")
+        await cmd.kill()
+
+    assert stdin_route.calls[0].request.content == b"hello\n"
+    assert kill_route.called
+
+
 @respx.mock
 def test_command_stdout_streams_bytes(sandbox_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
