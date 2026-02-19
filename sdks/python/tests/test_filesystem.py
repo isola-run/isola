@@ -115,7 +115,7 @@ def test_filesystem_write_from_str_file_like_raises_type_error(sandbox_response_
 
         sandbox = Sandbox(client._api, data)
 
-        with pytest.raises(TypeError, match="file-like object must return bytes"):
+        with pytest.raises(TypeError):
             sandbox.filesystem.write("/tmp/file.txt", io.StringIO("text"))
 
 

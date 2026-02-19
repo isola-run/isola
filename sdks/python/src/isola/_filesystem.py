@@ -10,15 +10,6 @@ def _filesystem_path(sandbox_id: str) -> str:
     return f"/sandboxes/{quote(sandbox_id, safe='')}/filesystem"
 
 
-def _coerce_bytes(data: bytes | BinaryIO) -> bytes:
-    if isinstance(data, bytes):
-        return data
-    body = data.read()
-    if isinstance(body, bytes):
-        return body
-    raise TypeError("file-like object must return bytes")
-
-
 class Filesystem:
     def __init__(self, api: _SyncAPI, sandbox_id: str) -> None:
         self._api = api
@@ -34,7 +25,7 @@ class Filesystem:
             _filesystem_path(self._sandbox_id),
             FileWriteResult,
             params=params,
-            content=_coerce_bytes(data),
+            content=data,
             headers={"Content-Type": "application/octet-stream"},
         )
         return result
@@ -62,7 +53,7 @@ class AsyncFilesystem:
             _filesystem_path(self._sandbox_id),
             FileWriteResult,
             params=params,
-            content=_coerce_bytes(data),
+            content=data,
             headers={"Content-Type": "application/octet-stream"},
         )
         return result

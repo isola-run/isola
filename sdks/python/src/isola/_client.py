@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
-from typing import Any, TypeVar
+from typing import Any, BinaryIO, TypeVar
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -28,7 +28,7 @@ class _SyncAPI:
         *,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
-        content: bytes | None = None,
+        content: bytes | BinaryIO | None = None,
         headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
@@ -59,7 +59,7 @@ class _SyncAPI:
         *,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
-        content: bytes | None = None,
+        content: bytes | BinaryIO | None = None,
         headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> ModelT:
@@ -95,7 +95,7 @@ class _SyncAPI:
         path: str,
         *,
         params: dict[str, Any] | None = None,
-        content: bytes | None = None,
+        content: bytes | BinaryIO | None = None,
         headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> None:
@@ -131,7 +131,7 @@ class _AsyncAPI:
         *,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
-        content: bytes | None = None,
+        content: bytes | BinaryIO | None = None,
         headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
@@ -162,7 +162,7 @@ class _AsyncAPI:
         *,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
-        content: bytes | None = None,
+        content: bytes | BinaryIO | None = None,
         headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> ModelT:
@@ -198,7 +198,7 @@ class _AsyncAPI:
         path: str,
         *,
         params: dict[str, Any] | None = None,
-        content: bytes | None = None,
+        content: bytes | BinaryIO | None = None,
         headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> None:
