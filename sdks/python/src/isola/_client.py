@@ -32,10 +32,11 @@ class _SyncAPI:
         headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
+        url = f"{self.base_url}{path}"
         try:
             response = self._client.request(
                 method,
-                self.url_for(path),
+                url,
                 params=params,
                 json=json_body,
                 content=content,
@@ -45,7 +46,9 @@ class _SyncAPI:
         except httpx.RequestError as exc:
             raise connection_error_from_request(exc) from exc
 
-        self.raise_for_status(response)
+        if response.status_code >= 400:
+            body = response.read()
+            raise error_from_http(response.status_code, response.reason_phrase, body)
         return response
 
     def request_model(
@@ -107,21 +110,10 @@ class _SyncAPI:
     ) -> AbstractContextManager[httpx.Response]:
         return self._client.stream(
             "GET",
-            self.url_for(path),
+            f"{self.base_url}{path}",
             params=params,
             timeout=timeout,
         )
-
-    def raise_for_status(self, response: httpx.Response) -> None:
-        if response.status_code < 400:
-            return
-        body = response.read()
-        raise error_from_http(response.status_code, response.reason_phrase, body)
-
-    def url_for(self, path: str) -> str:
-        if path.startswith("/"):
-            return f"{self.base_url}{path}"
-        return f"{self.base_url}/{path}"
 
 
 class _AsyncAPI:
@@ -143,10 +135,11 @@ class _AsyncAPI:
         headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
+        url = f"{self.base_url}{path}"
         try:
             response = await self._client.request(
                 method,
-                self.url_for(path),
+                url,
                 params=params,
                 json=json_body,
                 content=content,
@@ -156,7 +149,9 @@ class _AsyncAPI:
         except httpx.RequestError as exc:
             raise connection_error_from_request(exc) from exc
 
-        await self.raise_for_status(response)
+        if response.status_code >= 400:
+            body = await response.aread()
+            raise error_from_http(response.status_code, response.reason_phrase, body)
         return response
 
     async def request_model(
@@ -218,21 +213,10 @@ class _AsyncAPI:
     ) -> AbstractAsyncContextManager[httpx.Response]:
         return self._client.stream(
             "GET",
-            self.url_for(path),
+            f"{self.base_url}{path}",
             params=params,
             timeout=timeout,
         )
-
-    async def raise_for_status(self, response: httpx.Response) -> None:
-        if response.status_code < 400:
-            return
-        body = await response.aread()
-        raise error_from_http(response.status_code, response.reason_phrase, body)
-
-    def url_for(self, path: str) -> str:
-        if path.startswith("/"):
-            return f"{self.base_url}{path}"
-        return f"{self.base_url}/{path}"
 
 
 def _normalize_base_url(base_url: str) -> str:
