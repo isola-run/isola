@@ -78,10 +78,10 @@ check-manifests: manifests ## Verify generated manifests are up-to-date
 	fi
 
 .PHONY: check-all
-check-all: vet lint vulncheck check-openapi check-manifests python-sdk-check-all ## Run all checks (read-only, CI-safe)
+check-all: vet lint vulncheck check-openapi check-manifests sdk-python-check-all ## Run all checks (read-only, CI-safe)
 
 .PHONY: fix-all
-fix-all: fmt lint-fix python-sdk-fix-all ## Fix all auto-fixable issues
+fix-all: fmt lint-fix sdk-python-fix-all ## Fix all auto-fixable issues
 
 ##@ Testing
 
@@ -117,42 +117,42 @@ test-sidecar: ## Run sandbox-sidecar tests (supports FOCUS=pattern)
 
 ##@ Python SDK
 
-.PHONY: python-sdk-sync
-python-sdk-sync: ## Sync Python SDK dependencies from lockfile
+.PHONY: sdk-python-sync
+sdk-python-sync: ## Sync Python SDK dependencies from lockfile
 	cd sdks/python && uv sync --frozen --extra dev
 
-.PHONY: python-sdk-fmt
-python-sdk-fmt: ## Format Python SDK
+.PHONY: sdk-python-fmt
+sdk-python-fmt: ## Format Python SDK
 	cd sdks/python && uv run --frozen --extra dev ruff format .
 
-.PHONY: python-sdk-lint
-python-sdk-lint: ## Lint Python SDK
+.PHONY: sdk-python-lint
+sdk-python-lint: ## Lint Python SDK
 	cd sdks/python && uv run --frozen --extra dev ruff check .
 
-.PHONY: python-sdk-lint-fix
-python-sdk-lint-fix: ## Lint Python SDK with auto-fix
+.PHONY: sdk-python-lint-fix
+sdk-python-lint-fix: ## Lint Python SDK with auto-fix
 	cd sdks/python && uv run --frozen --extra dev ruff check --fix .
 
-.PHONY: python-sdk-typecheck
-python-sdk-typecheck: ## Type-check Python SDK
+.PHONY: sdk-python-typecheck
+sdk-python-typecheck: ## Type-check Python SDK
 	cd sdks/python && uv run --frozen --extra dev mypy src
 
-.PHONY: python-sdk-check-all
-python-sdk-check-all: ## Run all Python SDK checks (no tests)
-	$(MAKE) python-sdk-lint
-	$(MAKE) python-sdk-typecheck
+.PHONY: sdk-python-check-all
+sdk-python-check-all: ## Run all Python SDK checks (no tests)
+	$(MAKE) sdk-python-lint
+	$(MAKE) sdk-python-typecheck
 
-.PHONY: python-sdk-fix-all
-python-sdk-fix-all: ## Fix all auto-fixable Python SDK issues
-	$(MAKE) python-sdk-fmt
-	$(MAKE) python-sdk-lint-fix
+.PHONY: sdk-python-fix-all
+sdk-python-fix-all: ## Fix all auto-fixable Python SDK issues
+	$(MAKE) sdk-python-fmt
+	$(MAKE) sdk-python-lint-fix
 
-.PHONY: python-sdk-test
-python-sdk-test: ## Run Python SDK tests
+.PHONY: test-sdk-python
+test-sdk-python: ## Run Python SDK tests
 	cd sdks/python && uv run --frozen --extra dev pytest -q
 
-.PHONY: python-sdk-test-verbose
-python-sdk-test-verbose: ## Run Python SDK tests with verbose output
+.PHONY: test-sdk-python-verbose
+test-sdk-python-verbose: ## Run Python SDK tests with verbose output
 	cd sdks/python && uv run --frozen --extra dev pytest -v
 
 ##@ Build

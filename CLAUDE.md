@@ -18,8 +18,8 @@ make generate           # Regenerate DeepCopy methods after CRD changes
 make manifests          # Regenerate CRD YAML after CRD changes
 
 # Testing (Python SDK)
-make python-sdk-test    # Run Python SDK tests
-make python-sdk-test-verbose  # Run with verbose output
+make test-sdk-python    # Run Python SDK tests
+make test-sdk-python-verbose  # Run with verbose output
 
 # Build
 make build              # Build all binaries to bin/
