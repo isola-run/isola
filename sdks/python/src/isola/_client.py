@@ -14,18 +14,12 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 class _SyncAPI:
-    def __init__(self, base_url: str, client: httpx.Client | None = None) -> None:
+    def __init__(self, base_url: str) -> None:
         self.base_url = _normalize_base_url(base_url)
-        if client is None:
-            self._client = httpx.Client(timeout=DEFAULT_TIMEOUT)
-            self._owns_client = True
-        else:
-            self._client = client
-            self._owns_client = False
+        self._client = httpx.Client(timeout=DEFAULT_TIMEOUT)
 
     def close(self) -> None:
-        if self._owns_client:
-            self._client.close()
+        self._client.close()
 
     def request(
         self,
@@ -131,18 +125,12 @@ class _SyncAPI:
 
 
 class _AsyncAPI:
-    def __init__(self, base_url: str, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(self, base_url: str) -> None:
         self.base_url = _normalize_base_url(base_url)
-        if client is None:
-            self._client = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
-            self._owns_client = True
-        else:
-            self._client = client
-            self._owns_client = False
+        self._client = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
 
     async def close(self) -> None:
-        if self._owns_client:
-            await self._client.aclose()
+        await self._client.aclose()
 
     async def request(
         self,
@@ -255,8 +243,8 @@ def _normalize_base_url(base_url: str) -> str:
 
 
 class Isola:
-    def __init__(self, *, base_url: str, client: httpx.Client | None = None) -> None:
-        self._api = _SyncAPI(base_url, client=client)
+    def __init__(self, *, base_url: str) -> None:
+        self._api = _SyncAPI(base_url)
         from ._sandbox import Sandboxes
 
         self.sandboxes = Sandboxes(self._api)
@@ -272,8 +260,8 @@ class Isola:
 
 
 class AsyncIsola:
-    def __init__(self, *, base_url: str, client: httpx.AsyncClient | None = None) -> None:
-        self._api = _AsyncAPI(base_url, client=client)
+    def __init__(self, *, base_url: str) -> None:
+        self._api = _AsyncAPI(base_url)
         from ._sandbox import AsyncSandboxes
 
         self.sandboxes = AsyncSandboxes(self._api)

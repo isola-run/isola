@@ -309,3 +309,31 @@ async def test_async_stream_http_error_propagates(monkeypatch: pytest.MonkeyPatc
         async with stream as chunks:
             async for _ in chunks:
                 pass
+
+
+@pytest.mark.parametrize(
+    ("offset", "timeout", "match"),
+    [
+        (-1, None, "offset must be >= 0"),
+        (0, 0, "timeout must be > 0"),
+        (0, -5, "timeout must be > 0"),
+    ],
+    ids=["negative_offset", "zero_timeout", "negative_timeout"],
+)
+def test_sync_stream_rejects_invalid_params(offset: int, timeout: float | None, match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        CommandOutputStream(object(), "/path", offset=offset, timeout=timeout)
+
+
+@pytest.mark.parametrize(
+    ("offset", "timeout", "match"),
+    [
+        (-1, None, "offset must be >= 0"),
+        (0, 0, "timeout must be > 0"),
+        (0, -5, "timeout must be > 0"),
+    ],
+    ids=["negative_offset", "zero_timeout", "negative_timeout"],
+)
+def test_async_stream_rejects_invalid_params(offset: int, timeout: float | None, match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        AsyncCommandOutputStream(object(), "/path", offset=offset, timeout=timeout)

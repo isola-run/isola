@@ -4,7 +4,18 @@ import httpx
 import pytest
 import respx
 
-from isola import APIConnectionError, AsyncIsola, Isola, NotFoundError
+from isola import (
+    APIConnectionError,
+    AsyncIsola,
+    BadGatewayError,
+    BadRequestError,
+    ConflictError,
+    InternalError,
+    Isola,
+    IsolaError,
+    NotFoundError,
+    ValidationError,
+)
 
 
 @respx.mock
@@ -63,3 +74,97 @@ def test_transport_error_mapping() -> None:
 
     assert exc_info.value.status == 0
     assert "connect failed" in exc_info.value.detail
+
+
+@pytest.mark.parametrize(
+    ("status_code", "exc_type"),
+    [
+        (400, BadRequestError),
+        (404, NotFoundError),
+        (409, ConflictError),
+        (422, ValidationError),
+        (500, InternalError),
+        (502, BadGatewayError),
+    ],
+    ids=["400", "404", "409", "422", "500", "502"],
+)
+@respx.mock
+def test_error_status_code_mapping(status_code: int, exc_type: type[IsolaError]) -> None:
+    respx.get("http://localhost:8080/sandboxes/bad").mock(
+        return_value=httpx.Response(
+            status_code,
+            json={"status": status_code, "detail": "test error"},
+        )
+    )
+
+    with Isola(base_url="http://localhost:8080") as client, pytest.raises(exc_type) as exc_info:
+        client.sandboxes.get("bad")
+
+    assert exc_info.value.status == status_code
+    assert exc_info.value.detail == "test error"
+
+
+@respx.mock
+def test_unknown_status_code_raises_base_isola_error() -> None:
+    respx.get("http://localhost:8080/sandboxes/bad").mock(
+        return_value=httpx.Response(503, json={"detail": "service unavailable"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client, pytest.raises(IsolaError) as exc_info:
+        client.sandboxes.get("bad")
+
+    assert type(exc_info.value) is IsolaError
+    assert exc_info.value.status == 503
+
+
+@respx.mock
+def test_422_error_with_validation_errors_list() -> None:
+    respx.get("http://localhost:8080/sandboxes/bad").mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "status": 422,
+                "detail": "validation failed",
+                "errors": [
+                    {"location": "body.image", "message": "required", "value": None},
+                ],
+            },
+        )
+    )
+
+    with Isola(base_url="http://localhost:8080") as client, pytest.raises(ValidationError) as exc_info:
+        client.sandboxes.get("bad")
+
+    assert exc_info.value.errors is not None
+    assert len(exc_info.value.errors) == 1
+    assert exc_info.value.errors[0].location == "body.image"
+    assert exc_info.value.errors[0].message == "required"
+
+
+@respx.mock
+def test_invalid_json_response_raises_isola_error() -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, content=b"<html>not json</html>")
+    )
+
+    with Isola(base_url="http://localhost:8080") as client, pytest.raises(IsolaError) as exc_info:
+        client.sandboxes.get("sandbox-123")
+
+    assert exc_info.value.detail == "invalid response payload"
+
+
+@respx.mock
+def test_json_schema_mismatch_raises_isola_error() -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json={"unexpected": "schema"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client, pytest.raises(IsolaError) as exc_info:
+        client.sandboxes.get("sandbox-123")
+
+    assert exc_info.value.detail == "invalid response payload"
+
+
+def test_empty_base_url_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        Isola(base_url="")

@@ -54,7 +54,7 @@ class APIConnectionError(IsolaError):
         super().__init__(status=0, detail=detail, errors=None, raw=raw)
 
 
-class StreamTimeoutError(IsolaError):
+class StreamTimeoutError(IsolaError, TimeoutError):
     def __init__(self, detail: str) -> None:
         super().__init__(status=0, detail=detail, errors=None, raw=None)
 
