@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
-
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
@@ -23,21 +21,6 @@ class SandboxStatus(str, Enum):
     FAILED = "failed"
     STOPPED = "stopped"
     UNKNOWN = "unknown"
-
-
-class ErrorDetail(IsolaModel):
-    location: str | None = None
-    message: str | None = None
-    value: Any | None = None
-
-
-class ErrorResponse(IsolaModel):
-    detail: str | None = None
-    status: int | None = None
-    title: str | None = None
-    type: str | None = None
-    instance: str | None = None
-    errors: list[ErrorDetail] | None = None
 
 
 class NetworkSpec(IsolaModel):

@@ -6,17 +6,13 @@ from urllib.parse import quote
 from ._client import _AsyncAPI, _SyncAPI
 from ._models import FileWriteResult
 
-BytesLike = bytes | bytearray | memoryview
-
-
 def _filesystem_path(sandbox_id: str) -> str:
     return f"/sandboxes/{quote(sandbox_id, safe='')}/filesystem"
 
 
-def _coerce_bytes(data: BytesLike | BinaryIO) -> bytes:
-    if isinstance(data, (bytes, bytearray, memoryview)):
-        return bytes(data)
-
+def _coerce_bytes(data: bytes | BinaryIO) -> bytes:
+    if isinstance(data, bytes):
+        return data
     body = data.read()
     if isinstance(body, bytes):
         return body
@@ -28,7 +24,7 @@ class Filesystem:
         self._api = api
         self._sandbox_id = sandbox_id
 
-    def write(self, path: str, data: BytesLike | BinaryIO, *, container: str | None = None) -> FileWriteResult:
+    def write(self, path: str, data: bytes | BinaryIO, *, container: str | None = None) -> FileWriteResult:
         params = {"path": path}
         if container:
             params["container"] = container
@@ -56,7 +52,7 @@ class AsyncFilesystem:
         self._api = api
         self._sandbox_id = sandbox_id
 
-    async def write(self, path: str, data: BytesLike | BinaryIO, *, container: str | None = None) -> FileWriteResult:
+    async def write(self, path: str, data: bytes | BinaryIO, *, container: str | None = None) -> FileWriteResult:
         params = {"path": path}
         if container:
             params["container"] = container
