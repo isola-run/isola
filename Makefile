@@ -78,10 +78,10 @@ check-manifests: manifests ## Verify generated manifests are up-to-date
 	fi
 
 .PHONY: check-all
-check-all: vet lint vulncheck check-openapi check-manifests ## Run all checks (read-only, CI-safe)
+check-all: vet lint vulncheck check-openapi check-manifests python-sdk-check-all ## Run all checks (read-only, CI-safe)
 
 .PHONY: fix-all
-fix-all: fmt lint-fix ## Fix all auto-fixable issues
+fix-all: fmt lint-fix python-sdk-fix-all ## Fix all auto-fixable issues
 
 ##@ Testing
 
@@ -121,23 +121,39 @@ test-sidecar: ## Run sandbox-sidecar tests (supports FOCUS=pattern)
 python-sdk-sync: ## Sync Python SDK dependencies from lockfile
 	cd sdks/python && uv sync --frozen --extra dev
 
+.PHONY: python-sdk-fmt
+python-sdk-fmt: ## Format Python SDK
+	cd sdks/python && uv run --frozen --extra dev ruff format .
+
 .PHONY: python-sdk-lint
 python-sdk-lint: ## Lint Python SDK
 	cd sdks/python && uv run --frozen --extra dev ruff check .
+
+.PHONY: python-sdk-lint-fix
+python-sdk-lint-fix: ## Lint Python SDK with auto-fix
+	cd sdks/python && uv run --frozen --extra dev ruff check --fix .
 
 .PHONY: python-sdk-typecheck
 python-sdk-typecheck: ## Type-check Python SDK
 	cd sdks/python && uv run --frozen --extra dev mypy src
 
-.PHONY: python-sdk-test
-python-sdk-test: ## Test Python SDK
-	cd sdks/python && uv run --frozen --extra dev pytest -q
-
-.PHONY: python-sdk-check
-python-sdk-check: ## Run all Python SDK checks
+.PHONY: python-sdk-check-all
+python-sdk-check-all: ## Run all Python SDK checks (no tests)
 	$(MAKE) python-sdk-lint
 	$(MAKE) python-sdk-typecheck
-	$(MAKE) python-sdk-test
+
+.PHONY: python-sdk-fix-all
+python-sdk-fix-all: ## Fix all auto-fixable Python SDK issues
+	$(MAKE) python-sdk-fmt
+	$(MAKE) python-sdk-lint-fix
+
+.PHONY: python-sdk-test
+python-sdk-test: ## Run Python SDK tests
+	cd sdks/python && uv run --frozen --extra dev pytest -q
+
+.PHONY: python-sdk-test-verbose
+python-sdk-test-verbose: ## Run Python SDK tests with verbose output
+	cd sdks/python && uv run --frozen --extra dev pytest -v
 
 ##@ Build
 

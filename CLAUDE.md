@@ -4,18 +4,22 @@
 
 ```bash
 # Lint/format (from repo root)
-make check-all          # vet + lint + vulncheck + check-openapi + check-manifests (CI-safe)
-make fix-all            # Auto-fix formatting and lint issues
+make check-all          # All checks, no tests (Go + Python SDK, CI-safe)
+make fix-all            # Auto-fix formatting and lint issues (Go + Python SDK)
 
-# Testing
+# Testing (Go)
 make test               # Unit tests with coverage
-make test-verbose           # All tests with verbose output
+make test-verbose       # All tests with verbose output
 make test-operator FOCUS="TestName"  # Run focused operator test
-make test-gateway           # Run api-gateway tests
-make test-sidecar           # Run sandbox-sidecar tests
+make test-gateway       # Run api-gateway tests
+make test-sidecar       # Run sandbox-sidecar tests
 make test GO_TEST_FLAGS="-race"  # With race detector
 make generate           # Regenerate DeepCopy methods after CRD changes
 make manifests          # Regenerate CRD YAML after CRD changes
+
+# Testing (Python SDK)
+make python-sdk-test    # Run Python SDK tests
+make python-sdk-test-verbose  # Run with verbose output
 
 # Build
 make build              # Build all binaries to bin/
