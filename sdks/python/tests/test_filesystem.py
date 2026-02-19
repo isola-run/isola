@@ -119,6 +119,50 @@ def test_filesystem_write_from_str_file_like_raises_type_error(sandbox_response_
             sandbox.filesystem.write("/tmp/file.txt", io.StringIO("text"))
 
 
+class _ChunkedReadValidator(io.RawIOBase):
+    """File-like object that fails if .read() is ever called without a bounded size."""
+
+    def __init__(self, data: bytes, max_read_size: int) -> None:
+        self._buf = io.BytesIO(data)
+        self._max_read_size = max_read_size
+
+    def read(self, size: int = -1) -> bytes:  # type: ignore[override]
+        if size is None or size < 0:
+            raise AssertionError(
+                f"read() called without a bounded size (got {size!r}), "
+                "which would load the entire file into memory"
+            )
+        assert size <= self._max_read_size, f"read({size}) exceeds max {self._max_read_size}"
+        return self._buf.read(size)
+
+    def readinto(self, b: bytearray) -> int:
+        data = self._buf.read(len(b))
+        n = len(data)
+        b[:n] = data
+        return n
+
+    def readable(self) -> bool:
+        return True
+
+
+@respx.mock
+def test_filesystem_write_streams_without_full_buffering(sandbox_response_copy: dict[str, object]) -> None:
+    """Verify the SDK passes BinaryIO through to httpx without pre-reading it."""
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(201, json={"absolutePath": "/big.bin", "bytesWritten": 200_000})
+    )
+
+    # Payload larger than httpx's 64KB chunk size to ensure multiple reads
+    stream = _ChunkedReadValidator(b"x" * 200_000, max_read_size=128 * 1024)
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        sandbox.filesystem.write("/big.bin", stream)
+
+
 @respx.mock
 def test_filesystem_upload_real_file(sandbox_response_copy: dict[str, object], tmp_path: Path) -> None:
     local_file = tmp_path / "script.py"

@@ -87,9 +87,9 @@ class Command:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/stderr"
         return CommandOutputStream(self._api, path, offset=offset, timeout=timeout)
 
-    def get_status(self) -> CommandStatus:
+    def exit_code(self) -> int | None:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/status"
-        return self._api.request_model("GET", path, CommandStatus)
+        return self._api.request_model("GET", path, CommandStatus).exit_code
 
     def write_stdin(self, data: bytes) -> None:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/stdin"
@@ -123,9 +123,9 @@ class AsyncCommand:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/stderr"
         return AsyncCommandOutputStream(self._api, path, offset=offset, timeout=timeout)
 
-    async def get_status(self) -> CommandStatus:
+    async def exit_code(self) -> int | None:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/status"
-        return await self._api.request_model("GET", path, CommandStatus)
+        return (await self._api.request_model("GET", path, CommandStatus)).exit_code
 
     async def write_stdin(self, data: bytes) -> None:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/stdin"

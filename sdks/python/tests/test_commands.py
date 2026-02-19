@@ -37,12 +37,12 @@ def test_command_lifecycle(sandbox_response_copy: dict[str, object]) -> None:
             timeout=30,
             container="worker",
         )
-        status = cmd.get_status()
+        exit_code = cmd.exit_code()
         cmd.write_stdin(b"input\n")
         cmd.kill()
 
     assert cmd.id == "00000000-0000-0000-0000-000000000001"
-    assert status.exit_code is None
+    assert exit_code is None
 
     run_request = run_route.calls[0].request
     assert run_request.url.params["container"] == "worker"
@@ -75,10 +75,10 @@ async def test_async_command_run_and_status(sandbox_response_copy: dict[str, obj
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         cmd = await sandbox.commands.run(cmd="ls", args=["-la"])
-        status = await cmd.get_status()
+        exit_code = await cmd.exit_code()
 
     assert cmd.id == "00000000-0000-0000-0000-000000000002"
-    assert status.exit_code == 0
+    assert exit_code == 0
 
 
 @pytest.mark.asyncio

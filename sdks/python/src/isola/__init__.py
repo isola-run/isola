@@ -12,7 +12,7 @@ from ._exceptions import (
     ValidationError,
 )
 from ._filesystem import AsyncFilesystem, Filesystem
-from ._models import CommandResult, CommandStatus, FileWriteResult, NetworkSpec, SandboxStatus, SandboxSummary
+from ._models import CommandResult, FileWriteResult, NetworkSpec, SandboxStatus, SandboxSummary
 from ._sandbox import AsyncSandbox, Sandbox
 from ._streaming import AsyncCommandOutputStream, CommandOutputStream
 
@@ -29,7 +29,7 @@ __all__ = [
     "SandboxSummary",
     "NetworkSpec",
     "CommandResult",
-    "CommandStatus",
+
     "CommandOutputStream",
     "AsyncCommandOutputStream",
     "FileWriteResult",
