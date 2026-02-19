@@ -207,5 +207,5 @@ class AsyncCommandOutputStream:
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
                     raise connection_error_from_request(exc) from exc
-                time.sleep(backoff)
+                await asyncio.sleep(backoff)
                 backoff = min(backoff * BACKOFF_FACTOR, MAX_BACKOFF)

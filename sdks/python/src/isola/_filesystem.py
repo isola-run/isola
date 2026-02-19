@@ -6,6 +6,7 @@ from urllib.parse import quote
 from ._client import _AsyncAPI, _SyncAPI
 from ._models import FileWriteResult
 
+
 def _filesystem_path(sandbox_id: str) -> str:
     return f"/sandboxes/{quote(sandbox_id, safe='')}/filesystem"
 
