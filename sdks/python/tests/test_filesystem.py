@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import httpx
 import pytest
@@ -94,3 +95,43 @@ def test_filesystem_write_from_str_file_like_raises_type_error(sandbox_response_
 
         with pytest.raises(TypeError, match="file-like object must return bytes"):
             sandbox.filesystem.write("/tmp/file.txt", io.StringIO("text"))
+
+
+@respx.mock
+def test_filesystem_upload_real_file(sandbox_response_copy: dict[str, object], tmp_path: Path) -> None:
+    local_file = tmp_path / "script.py"
+    local_file.write_bytes(b"print('hello')\n")
+
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(201, json={"absolutePath": "/workspace/script.py", "bytesWritten": 15})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        with open(local_file, "rb") as f:
+            result = sandbox.filesystem.write("/workspace/script.py", f)
+
+    assert result.bytes_written == 15
+    assert write_route.calls[0].request.content == b"print('hello')\n"
+
+
+@respx.mock
+def test_filesystem_download_to_real_file(sandbox_response_copy: dict[str, object], tmp_path: Path) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.get("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(200, content=b"downloaded content")
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        data = sandbox.filesystem.read("/workspace/output.txt")
+
+    dest = tmp_path / "output.txt"
+    dest.write_bytes(data)
+
+    assert dest.read_bytes() == b"downloaded content"
