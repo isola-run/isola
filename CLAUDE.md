@@ -4,18 +4,22 @@
 
 ```bash
 # Lint/format (from repo root)
-make check-all          # vet + lint + vulncheck + check-openapi + check-manifests (CI-safe)
-make fix-all            # Auto-fix formatting and lint issues
+make check-all          # All checks, no tests (Go + Python SDK, CI-safe)
+make fix-all            # Auto-fix formatting and lint issues (Go + Python SDK)
 
-# Testing
+# Testing (Go)
 make test               # Unit tests with coverage
-make test-verbose           # All tests with verbose output
+make test-verbose       # All tests with verbose output
 make test-operator FOCUS="TestName"  # Run focused operator test
-make test-gateway           # Run api-gateway tests
-make test-sidecar           # Run sandbox-sidecar tests
+make test-gateway       # Run api-gateway tests
+make test-sidecar       # Run sandbox-sidecar tests
 make test GO_TEST_FLAGS="-race"  # With race detector
 make generate           # Regenerate DeepCopy methods after CRD changes
 make manifests          # Regenerate CRD YAML after CRD changes
+
+# Testing (Python SDK)
+make test-sdk-python    # Run Python SDK tests
+make test-sdk-python-verbose  # Run with verbose output
 
 # Build
 make build              # Build all binaries to bin/
@@ -75,6 +79,24 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 - `internal/sandbox-sidecar/proc/` - Procfs abstraction for container PID discovery and filesystem access via `/proc/<pid>/root`
 
 **Default namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
+
+## Python SDK (`sdks/python/`)
+
+**Package:** `isola` — thin client for the api-gateway REST API. Uses httpx for HTTP and pydantic for models. Managed with uv.
+
+**Dual sync/async pattern:** Every public class has a sync and async variant — `Isola`/`AsyncIsola`, `Sandbox`/`AsyncSandbox`, `Command`/`AsyncCommand`, `Filesystem`/`AsyncFilesystem`. Internal API clients follow the same split: `_SyncAPI`/`_AsyncAPI`.
+
+**Object hierarchy:** `Isola` → `client.sandboxes.create()` returns a `Sandbox` → `sandbox.commands` (Commands), `sandbox.filesystem` (Filesystem). Each resource object holds a reference to the underlying API client and the sandbox ID.
+
+**Pydantic models (`_models.py`):** All models extend `IsolaModel` which uses `to_camel` alias generator for Python snake_case ↔ API camelCase. Models accept both forms (`validate_by_name=True, validate_by_alias=True`). `extra="ignore"` so the server can add fields without breaking the client. `NetworkSpec` has manual `Field(alias=...)` overrides for acronyms (`allowClusterDNS`, `allowedEgressCIDRs`) that `to_camel` can't handle.
+
+**Streaming (`_streaming.py`):** `CommandOutputStream`/`AsyncCommandOutputStream` wrap SSE-style byte streams with auto-reconnect (exponential backoff, offset-based resume). Support text mode (default, UTF-8 incremental decoding) and binary mode.
+
+**Error hierarchy:** `IsolaError` base → status-specific subclasses (`BadRequestError`, `NotFoundError`, etc.) mapped from HTTP status codes. `APIConnectionError` and `StreamTimeoutError` for transport failures.
+
+**Testing:** pytest + pytest-asyncio (auto mode) + respx for HTTP mocking. Tests use fake API/response objects rather than respx routes for streaming tests. Strict mypy type checking enabled.
+
+**Linting:** ruff (format + lint), mypy (strict). Run `make sdk-python-check-all` for lint + typecheck, `make sdk-python-fix-all` for auto-fix.
 
 ## CRDs
 
@@ -159,6 +181,8 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 
 **API gateway tests** use `humatest.TestAPI` for HTTP request/response testing against a real envtest K8s backend. Tests use `Eventually()` for cache eventual consistency. Error injection tests use controller-runtime's `interceptor.Funcs` to inject fake K8s API errors.
 
+**Python SDK tests** use pytest + pytest-asyncio with `asyncio_mode = "auto"`. HTTP mocking via respx for client/sandbox/filesystem tests. Streaming tests use hand-rolled fake API/response objects (not respx) to simulate reconnects, network errors, and chunked delivery. Run with `make test-sdk-python`.
+
 ## Tooling Versions
 
 Tool versions are pinned and must be kept in sync:
@@ -173,6 +197,10 @@ Tool versions are pinned and must be kept in sync:
 | lefthook | `hack/setup.sh` | - |
 | controller-gen | `hack/setup.sh` | `.github/workflows/codegen.yml` |
 | gVisor | `hack/setup.sh` | `.github/workflows/e2e.yml` |
+| Python | `.python-version` | `sdks/python/pyproject.toml` `requires-python` |
+| uv | - | Manages `sdks/python/uv.lock` |
+| ruff | `sdks/python/pyproject.toml` | - |
+| mypy | `sdks/python/pyproject.toml` | - |
 
 ## Comment Policy
 

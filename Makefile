@@ -78,10 +78,10 @@ check-manifests: manifests ## Verify generated manifests are up-to-date
 	fi
 
 .PHONY: check-all
-check-all: vet lint vulncheck check-openapi check-manifests ## Run all checks (read-only, CI-safe)
+check-all: vet lint vulncheck check-openapi check-manifests sdk-python-check-all ## Run all checks (read-only, CI-safe)
 
 .PHONY: fix-all
-fix-all: fmt lint-fix ## Fix all auto-fixable issues
+fix-all: fmt lint-fix sdk-python-fix-all ## Fix all auto-fixable issues
 
 ##@ Testing
 
@@ -114,6 +114,46 @@ test-gateway: ## Run api-gateway tests (supports FOCUS=pattern)
 .PHONY: test-sidecar
 test-sidecar: ## Run sandbox-sidecar tests (supports FOCUS=pattern)
 	go test ./internal/sandbox-sidecar/... -v $(if $(FOCUS),-ginkgo.focus="$(FOCUS)") $(if $(SKIP),-ginkgo.skip="$(SKIP)") $(GO_TEST_FLAGS)
+
+##@ Python SDK
+
+.PHONY: sdk-python-sync
+sdk-python-sync: ## Sync Python SDK dependencies from lockfile
+	cd sdks/python && uv sync --frozen --extra dev
+
+.PHONY: sdk-python-fmt
+sdk-python-fmt: ## Format Python SDK
+	cd sdks/python && uv run --frozen --extra dev ruff format .
+
+.PHONY: sdk-python-lint
+sdk-python-lint: ## Lint Python SDK
+	cd sdks/python && uv run --frozen --extra dev ruff check .
+
+.PHONY: sdk-python-lint-fix
+sdk-python-lint-fix: ## Lint Python SDK with auto-fix
+	cd sdks/python && uv run --frozen --extra dev ruff check --fix .
+
+.PHONY: sdk-python-typecheck
+sdk-python-typecheck: ## Type-check Python SDK
+	cd sdks/python && uv run --frozen --extra dev mypy src
+
+.PHONY: sdk-python-check-all
+sdk-python-check-all: ## Run all Python SDK checks (no tests)
+	$(MAKE) sdk-python-lint
+	$(MAKE) sdk-python-typecheck
+
+.PHONY: sdk-python-fix-all
+sdk-python-fix-all: ## Fix all auto-fixable Python SDK issues
+	$(MAKE) sdk-python-fmt
+	$(MAKE) sdk-python-lint-fix
+
+.PHONY: test-sdk-python
+test-sdk-python: ## Run Python SDK tests
+	cd sdks/python && uv run --frozen --extra dev pytest -q
+
+.PHONY: test-sdk-python-verbose
+test-sdk-python-verbose: ## Run Python SDK tests with verbose output
+	cd sdks/python && uv run --frozen --extra dev pytest -v
 
 ##@ Build
 
