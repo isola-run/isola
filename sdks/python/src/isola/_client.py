@@ -6,7 +6,7 @@ from typing import Any, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from ._exceptions import APIConnectionError, IsolaError, connection_error_from_request, error_from_http
+from ._exceptions import IsolaError, connection_error_from_request, error_from_http
 
 DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
@@ -124,9 +124,6 @@ class _SyncAPI:
         body = response.read()
         raise error_from_http(response.status_code, response.reason_phrase, body)
 
-    def to_connection_error(self, exc: httpx.RequestError) -> APIConnectionError:
-        return connection_error_from_request(exc)
-
     def url_for(self, path: str) -> str:
         if path.startswith("/"):
             return f"{self.base_url}{path}"
@@ -243,9 +240,6 @@ class _AsyncAPI:
             return
         body = await response.aread()
         raise error_from_http(response.status_code, response.reason_phrase, body)
-
-    def to_connection_error(self, exc: httpx.RequestError) -> APIConnectionError:
-        return connection_error_from_request(exc)
 
     def url_for(self, path: str) -> str:
         if path.startswith("/"):

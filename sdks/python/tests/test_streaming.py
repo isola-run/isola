@@ -52,15 +52,6 @@ class _FakeSyncAPI:
         self.calls.append(params["offset"])
         return self._sequence.pop(0)
 
-    def raise_for_status(self, response: _FakeSyncResponse) -> None:
-        if response.status_code >= 400:
-            from isola._exceptions import error_from_http
-
-            raise error_from_http(response.status_code, None, response.read())
-
-    def to_connection_error(self, exc: httpx.RequestError) -> APIConnectionError:
-        return APIConnectionError(str(exc))
-
 
 class _FakeAsyncResponse:
     def __init__(
@@ -76,7 +67,7 @@ class _FakeAsyncResponse:
         if self._raise_after is not None:
             raise self._raise_after
 
-    def read(self) -> bytes:
+    async def aread(self) -> bytes:
         return b""
 
 
@@ -105,15 +96,6 @@ class _FakeAsyncAPI:
         assert params is not None
         self.calls.append(params["offset"])
         return self._sequence.pop(0)
-
-    async def raise_for_status(self, response: _FakeAsyncResponse) -> None:
-        if response.status_code >= 400:
-            from isola._exceptions import error_from_http
-
-            raise error_from_http(response.status_code, None, response.read())
-
-    def to_connection_error(self, exc: httpx.RequestError) -> APIConnectionError:
-        return APIConnectionError(str(exc))
 
 
 def test_sync_stream_reconnects_and_resumes_offset(monkeypatch: pytest.MonkeyPatch) -> None:

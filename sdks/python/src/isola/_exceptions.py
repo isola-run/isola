@@ -110,7 +110,10 @@ def error_from_http(status: int, reason: str | None, body: bytes | None = None) 
 
 
 def connection_error_from_request(exc: httpx.RequestError) -> APIConnectionError:
-    request_url = str(exc.request.url) if exc.request is not None else None
+    try:
+        request_url = str(exc.request.url)
+    except RuntimeError:
+        request_url = None
     detail = str(exc) or "failed to reach Isola API"
     raw: dict[str, Any] = {"type": type(exc).__name__}
     if request_url:

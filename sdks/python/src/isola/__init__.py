@@ -1,10 +1,10 @@
 from ._client import AsyncIsola, Isola
 from ._commands import AsyncCommand, Command
 from ._exceptions import (
+    APIConnectionError,
     BadGatewayError,
     BadRequestError,
     ConflictError,
-    APIConnectionError,
     InternalError,
     IsolaError,
     NotFoundError,
