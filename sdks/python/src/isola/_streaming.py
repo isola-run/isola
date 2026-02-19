@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import codecs
 import time
 from collections.abc import AsyncGenerator, AsyncIterator, Generator, Iterator
 from typing import Any, Protocol
@@ -46,6 +47,7 @@ class CommandOutputStream:
         *,
         offset: int = 0,
         timeout: float | None = None,
+        text: bool = True,
     ) -> None:
         if offset < 0:
             raise ValueError("offset must be >= 0")
@@ -55,15 +57,16 @@ class CommandOutputStream:
         self._api = api
         self._path = path
         self._offset = offset
+        self._text = text
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
             read=timeout,
             write=STREAM_WRITE_TIMEOUT,
             pool=STREAM_POOL_TIMEOUT,
         )
-        self._gen: Generator[bytes, None, None] | None = None
+        self._gen: Generator[str | bytes, None, None] | None = None
 
-    def __enter__(self) -> Iterator[bytes]:
+    def __enter__(self) -> Iterator[str | bytes]:
         self._gen = self._stream()
         return self._gen
 
@@ -77,7 +80,8 @@ class CommandOutputStream:
             self._gen.close()
             self._gen = None
 
-    def _stream(self) -> Generator[bytes, None, None]:
+    def _stream(self) -> Generator[str | bytes, None, None]:
+        decoder = codecs.getincrementaldecoder("utf-8")("replace") if self._text else None
         reconnects = 0
         backoff = INITIAL_BACKOFF
 
@@ -97,7 +101,17 @@ class CommandOutputStream:
                         self._offset += len(chunk)
                         reconnects = 0
                         backoff = INITIAL_BACKOFF
-                        yield chunk
+                        if decoder is not None:
+                            decoded = decoder.decode(chunk)
+                            if decoded:
+                                yield decoded
+                        else:
+                            yield chunk
+
+                    if decoder is not None:
+                        final = decoder.decode(b"", final=True)
+                        if final:
+                            yield final
 
                     return
 
@@ -107,8 +121,8 @@ class CommandOutputStream:
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
                     raise connection_error_from_request(exc) from exc
-                time.sleep(min(backoff, MAX_BACKOFF))
-                backoff *= BACKOFF_FACTOR
+                time.sleep(backoff)
+                backoff = min(backoff * BACKOFF_FACTOR, MAX_BACKOFF)
 
 
 class AsyncCommandOutputStream:
@@ -119,6 +133,7 @@ class AsyncCommandOutputStream:
         *,
         offset: int = 0,
         timeout: float | None = None,
+        text: bool = True,
     ) -> None:
         if offset < 0:
             raise ValueError("offset must be >= 0")
@@ -128,15 +143,16 @@ class AsyncCommandOutputStream:
         self._api = api
         self._path = path
         self._offset = offset
+        self._text = text
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
             read=timeout,
             write=STREAM_WRITE_TIMEOUT,
             pool=STREAM_POOL_TIMEOUT,
         )
-        self._gen: AsyncGenerator[bytes, None] | None = None
+        self._gen: AsyncGenerator[str | bytes, None] | None = None
 
-    async def __aenter__(self) -> AsyncIterator[bytes]:
+    async def __aenter__(self) -> AsyncIterator[str | bytes]:
         self._gen = self._stream()
         return self._gen
 
@@ -150,7 +166,8 @@ class AsyncCommandOutputStream:
             await self._gen.aclose()
             self._gen = None
 
-    async def _stream(self) -> AsyncGenerator[bytes, None]:
+    async def _stream(self) -> AsyncGenerator[str | bytes, None]:
+        decoder = codecs.getincrementaldecoder("utf-8")("replace") if self._text else None
         reconnects = 0
         backoff = INITIAL_BACKOFF
 
@@ -170,7 +187,17 @@ class AsyncCommandOutputStream:
                         self._offset += len(chunk)
                         reconnects = 0
                         backoff = INITIAL_BACKOFF
-                        yield chunk
+                        if decoder is not None:
+                            decoded = decoder.decode(chunk)
+                            if decoded:
+                                yield decoded
+                        else:
+                            yield chunk
+
+                    if decoder is not None:
+                        final = decoder.decode(b"", final=True)
+                        if final:
+                            yield final
 
                     return
 
@@ -180,5 +207,5 @@ class AsyncCommandOutputStream:
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
                     raise connection_error_from_request(exc) from exc
-                await asyncio.sleep(min(backoff, MAX_BACKOFF))
-                backoff *= BACKOFF_FACTOR
+                time.sleep(backoff)
+                backoff = min(backoff * BACKOFF_FACTOR, MAX_BACKOFF)

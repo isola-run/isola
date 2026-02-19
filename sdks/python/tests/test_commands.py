@@ -108,7 +108,7 @@ async def test_async_command_stdin_and_kill(sandbox_response_copy: dict[str, obj
 
 
 @respx.mock
-def test_command_stdout_streams_bytes(sandbox_response_copy: dict[str, object]) -> None:
+def test_command_stdout_streams_text(sandbox_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
@@ -123,14 +123,14 @@ def test_command_stdout_streams_bytes(sandbox_response_copy: dict[str, object]) 
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.run(cmd="echo", args=["hello world"])
         with cmd.stdout() as chunks:
-            output = b"".join(chunks)
+            output = "".join(chunks)
 
-    assert output == b"hello world\n"
+    assert output == "hello world\n"
     assert stdout_route.calls[0].request.url.params["offset"] == "0"
 
 
 @respx.mock
-def test_command_stderr_streams_bytes(sandbox_response_copy: dict[str, object]) -> None:
+def test_command_stderr_streams_text(sandbox_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
@@ -145,9 +145,9 @@ def test_command_stderr_streams_bytes(sandbox_response_copy: dict[str, object]) 
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.run(cmd="ls", args=["nonexistent"])
         with cmd.stderr() as chunks:
-            output = b"".join(chunks)
+            output = "".join(chunks)
 
-    assert output == b"error output\n"
+    assert output == "error output\n"
     assert stderr_route.calls[0].request.url.params["offset"] == "0"
 
 
@@ -167,15 +167,15 @@ def test_command_stdout_with_offset(sandbox_response_copy: dict[str, object]) ->
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.run(cmd="cat", args=["log.txt"])
         with cmd.stdout(offset=100) as chunks:
-            output = b"".join(chunks)
+            output = "".join(chunks)
 
-    assert output == b"resumed"
+    assert output == "resumed"
     assert stdout_route.calls[0].request.url.params["offset"] == "100"
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_async_command_stdout_streams_bytes(sandbox_response_copy: dict[str, object]) -> None:
+async def test_async_command_stdout_streams_text(sandbox_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
@@ -189,12 +189,56 @@ async def test_async_command_stdout_streams_bytes(sandbox_response_copy: dict[st
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         cmd = await sandbox.commands.run(cmd="echo", args=["test"])
-        chunks_list: list[bytes] = []
+        chunks_list: list[str] = []
         async with cmd.stdout() as chunks:
             async for chunk in chunks:
                 chunks_list.append(chunk)
 
-    assert b"".join(chunks_list) == b"async output\n"
+    assert "".join(chunks_list) == "async output\n"
+
+
+@respx.mock
+def test_command_stdout_binary_mode(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-bin"})
+    )
+    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-bin/stdout").mock(
+        return_value=httpx.Response(200, content=b"\x00\x01\x02\xff")
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        cmd = sandbox.commands.run(cmd="cat", args=["binary.dat"], text=False)
+        with cmd.stdout() as chunks:
+            output = b"".join(chunks)
+
+    assert output == b"\x00\x01\x02\xff"
+    assert isinstance(output, bytes)
+
+
+@respx.mock
+def test_command_stdout_text_mode_default(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-text"})
+    )
+    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-text/stdout").mock(
+        return_value=httpx.Response(200, content=b"hello text\n")
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        cmd = sandbox.commands.run(cmd="echo", args=["hello text"])
+        with cmd.stdout() as chunks:
+            output = "".join(chunks)
+
+    assert output == "hello text\n"
+    assert isinstance(output, str)
 
 
 @respx.mock

@@ -108,7 +108,7 @@ def test_sync_stream_reconnects_and_resumes_offset(monkeypatch: pytest.MonkeyPat
         ]
     )
 
-    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout")
+    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
 
     with stream as chunks:
         output = b"".join(chunks)
@@ -137,7 +137,7 @@ def test_sync_stream_reconnects_on_network_error(monkeypatch: pytest.MonkeyPatch
         ]
     )
 
-    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout")
+    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
 
     with stream as chunks:
         output = b"".join(chunks)
@@ -153,7 +153,7 @@ def test_sync_stream_timeout_raises(monkeypatch: pytest.MonkeyPatch) -> None:
         _FakeSyncCM(_FakeSyncResponse([], raise_after=httpx.ReadTimeout("idle"))),
     ])
 
-    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", timeout=60)
+    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", timeout=60, text=False)
 
     with pytest.raises(StreamTimeoutError), stream as chunks:
         list(chunks)
@@ -173,7 +173,7 @@ async def test_async_stream_reconnects_and_resumes_offset(monkeypatch: pytest.Mo
         ]
     )
 
-    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout")
+    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
 
     chunks_list: list[bytes] = []
     async with stream as chunks:
@@ -195,7 +195,7 @@ async def test_async_stream_timeout_raises(monkeypatch: pytest.MonkeyPatch) -> N
         _FakeAsyncCM(_FakeAsyncResponse([], raise_after=httpx.ReadTimeout("idle"))),
     ])
 
-    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", timeout=10)
+    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", timeout=10, text=False)
 
     with pytest.raises(StreamTimeoutError):
         async with stream as chunks:
@@ -210,7 +210,7 @@ def test_sync_stream_max_reconnects_exhausted(monkeypatch: pytest.MonkeyPatch) -
         [_FakeSyncCM(enter_exc=httpx.ConnectError("down")) for _ in range(MAX_RECONNECTS + 1)]
     )
 
-    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout")
+    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
 
     with pytest.raises(APIConnectionError), stream as chunks:
         list(chunks)
@@ -226,7 +226,7 @@ def test_sync_stream_connect_error_during_enter(monkeypatch: pytest.MonkeyPatch)
         ]
     )
 
-    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout")
+    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
 
     with stream as chunks:
         output = b"".join(chunks)
@@ -242,7 +242,7 @@ def test_sync_stream_http_error_propagates(monkeypatch: pytest.MonkeyPatch) -> N
         _FakeSyncCM(_FakeSyncResponse([], status_code=404)),
     ])
 
-    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout")
+    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
 
     with pytest.raises(NotFoundError), stream as chunks:
         list(chunks)
@@ -259,7 +259,7 @@ async def test_async_stream_max_reconnects_exhausted(monkeypatch: pytest.MonkeyP
         [_FakeAsyncCM(enter_exc=httpx.ConnectError("down")) for _ in range(MAX_RECONNECTS + 1)]
     )
 
-    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout")
+    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
 
     with pytest.raises(APIConnectionError):
         async with stream as chunks:
@@ -281,7 +281,7 @@ async def test_async_stream_connect_error_during_enter(monkeypatch: pytest.Monke
         ]
     )
 
-    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout")
+    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
 
     chunks_list: list[bytes] = []
     async with stream as chunks:
@@ -303,7 +303,7 @@ async def test_async_stream_http_error_propagates(monkeypatch: pytest.MonkeyPatc
         _FakeAsyncCM(_FakeAsyncResponse([], status_code=404)),
     ])
 
-    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout")
+    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
 
     with pytest.raises(NotFoundError):
         async with stream as chunks:
@@ -337,3 +337,113 @@ def test_sync_stream_rejects_invalid_params(offset: int, timeout: float | None, 
 def test_async_stream_rejects_invalid_params(offset: int, timeout: float | None, match: str) -> None:
     with pytest.raises(ValueError, match=match):
         AsyncCommandOutputStream(object(), "/path", offset=offset, timeout=timeout)
+
+
+# --- Text mode tests ---
+
+
+def test_sync_stream_text_mode_decodes_utf8() -> None:
+    api = _FakeSyncAPI([
+        _FakeSyncCM(_FakeSyncResponse([b"hello ", b"world"])),
+    ])
+
+    stream = CommandOutputStream(api, "/path", text=True)
+
+    with stream as chunks:
+        output = "".join(chunks)
+
+    assert output == "hello world"
+
+
+def test_sync_stream_text_mode_handles_split_multibyte() -> None:
+    # "café\n" in UTF-8: b"caf\xc3\xa9\n"
+    # Split the é (0xc3 0xa9) across two chunks
+    api = _FakeSyncAPI([
+        _FakeSyncCM(_FakeSyncResponse([b"caf\xc3", b"\xa9\n"])),
+    ])
+
+    stream = CommandOutputStream(api, "/path", text=True)
+
+    with stream as chunks:
+        output = "".join(chunks)
+
+    assert output == "caf\u00e9\n"
+
+
+def test_sync_stream_binary_mode_yields_bytes() -> None:
+    data = b"\x00\x01\x02\xff"
+    api = _FakeSyncAPI([
+        _FakeSyncCM(_FakeSyncResponse([data])),
+    ])
+
+    stream = CommandOutputStream(api, "/path", text=False)
+
+    with stream as chunks:
+        output = b"".join(chunks)
+
+    assert output == data
+
+
+@pytest.mark.asyncio
+async def test_async_stream_text_mode_decodes_utf8() -> None:
+    api = _FakeAsyncAPI([
+        _FakeAsyncCM(_FakeAsyncResponse([b"hello ", b"world"])),
+    ])
+
+    stream = AsyncCommandOutputStream(api, "/path", text=True)
+
+    chunks_list: list[str] = []
+    async with stream as chunks:
+        async for chunk in chunks:
+            chunks_list.append(chunk)
+
+    assert "".join(chunks_list) == "hello world"
+
+
+@pytest.mark.asyncio
+async def test_async_stream_text_mode_handles_split_multibyte() -> None:
+    # "café\n" in UTF-8: b"caf\xc3\xa9\n"
+    # Split the é (0xc3 0xa9) across two chunks
+    api = _FakeAsyncAPI([
+        _FakeAsyncCM(_FakeAsyncResponse([b"caf\xc3", b"\xa9\n"])),
+    ])
+
+    stream = AsyncCommandOutputStream(api, "/path", text=True)
+
+    chunks_list: list[str] = []
+    async with stream as chunks:
+        async for chunk in chunks:
+            chunks_list.append(chunk)
+
+    assert "".join(chunks_list) == "caf\u00e9\n"
+
+
+def test_sync_stream_text_mode_flushes_incomplete_sequence_at_eof() -> None:
+    # Stream ends with 0xc3 — the first byte of a 2-byte UTF-8 character
+    # with no second byte. The decoder should flush it as U+FFFD (replacement).
+    api = _FakeSyncAPI([
+        _FakeSyncCM(_FakeSyncResponse([b"hello\xc3"])),
+    ])
+
+    stream = CommandOutputStream(api, "/path", text=True)
+
+    with stream as chunks:
+        output = "".join(chunks)
+
+    assert output == "hello\ufffd"
+
+
+@pytest.mark.asyncio
+async def test_async_stream_text_mode_flushes_incomplete_sequence_at_eof() -> None:
+    api = _FakeAsyncAPI([
+        _FakeAsyncCM(_FakeAsyncResponse([b"hello\xc3"])),
+    ])
+
+    stream = AsyncCommandOutputStream(api, "/path", text=True)
+
+    chunks_list: list[str] = []
+    async with stream as chunks:
+        async for chunk in chunks:
+            chunks_list.append(chunk)
+
+    assert "".join(chunks_list) == "hello\ufffd"

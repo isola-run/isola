@@ -29,6 +29,7 @@ class Commands:
         cwd: str | None = None,
         timeout: int | None = None,
         container: str | None = None,
+        text: bool = True,
     ) -> Command:
         params = {"container": container} if container else None
         payload = CreateCommandPayload(cmd=cmd, args=args, env=env, cwd=cwd, timeout=timeout)
@@ -39,7 +40,7 @@ class Commands:
             params=params,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        return Command(self._api, self._sandbox_id, data.command_id)
+        return Command(self._api, self._sandbox_id, data.command_id, text=text)
 
 
 class AsyncCommands:
@@ -56,6 +57,7 @@ class AsyncCommands:
         cwd: str | None = None,
         timeout: int | None = None,
         container: str | None = None,
+        text: bool = True,
     ) -> AsyncCommand:
         params = {"container": container} if container else None
         payload = CreateCommandPayload(cmd=cmd, args=args, env=env, cwd=cwd, timeout=timeout)
@@ -66,14 +68,15 @@ class AsyncCommands:
             params=params,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        return AsyncCommand(self._api, self._sandbox_id, data.command_id)
+        return AsyncCommand(self._api, self._sandbox_id, data.command_id, text=text)
 
 
 class Command:
-    def __init__(self, api: _SyncAPI, sandbox_id: str, command_id: str) -> None:
+    def __init__(self, api: _SyncAPI, sandbox_id: str, command_id: str, *, text: bool = True) -> None:
         self._api = api
         self._sandbox_id = sandbox_id
         self._command_id = command_id
+        self._text = text
 
     @property
     def id(self) -> str:
@@ -81,11 +84,11 @@ class Command:
 
     def stdout(self, *, offset: int = 0, timeout: float | None = None) -> CommandOutputStream:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/stdout"
-        return CommandOutputStream(self._api, path, offset=offset, timeout=timeout)
+        return CommandOutputStream(self._api, path, offset=offset, timeout=timeout, text=self._text)
 
     def stderr(self, *, offset: int = 0, timeout: float | None = None) -> CommandOutputStream:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/stderr"
-        return CommandOutputStream(self._api, path, offset=offset, timeout=timeout)
+        return CommandOutputStream(self._api, path, offset=offset, timeout=timeout, text=self._text)
 
     def exit_code(self) -> int | None:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/status"
@@ -106,10 +109,11 @@ class Command:
 
 
 class AsyncCommand:
-    def __init__(self, api: _AsyncAPI, sandbox_id: str, command_id: str) -> None:
+    def __init__(self, api: _AsyncAPI, sandbox_id: str, command_id: str, *, text: bool = True) -> None:
         self._api = api
         self._sandbox_id = sandbox_id
         self._command_id = command_id
+        self._text = text
 
     @property
     def id(self) -> str:
@@ -117,11 +121,11 @@ class AsyncCommand:
 
     def stdout(self, *, offset: int = 0, timeout: float | None = None) -> AsyncCommandOutputStream:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/stdout"
-        return AsyncCommandOutputStream(self._api, path, offset=offset, timeout=timeout)
+        return AsyncCommandOutputStream(self._api, path, offset=offset, timeout=timeout, text=self._text)
 
     def stderr(self, *, offset: int = 0, timeout: float | None = None) -> AsyncCommandOutputStream:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/stderr"
-        return AsyncCommandOutputStream(self._api, path, offset=offset, timeout=timeout)
+        return AsyncCommandOutputStream(self._api, path, offset=offset, timeout=timeout, text=self._text)
 
     async def exit_code(self) -> int | None:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/status"
