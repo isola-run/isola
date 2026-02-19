@@ -97,7 +97,7 @@ class CreateCommandPayload(IsolaModel):
 
 
 class CommandResult(IsolaModel):
-    id: str = Field(alias="commandId")
+    command_id: str
 
 
 class CommandStatus(IsolaModel):

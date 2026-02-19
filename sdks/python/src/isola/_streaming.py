@@ -10,6 +10,8 @@ import httpx
 from ._exceptions import StreamTimeoutError, connection_error_from_request, error_from_http
 
 STREAM_CONNECT_TIMEOUT = 5.0
+STREAM_WRITE_TIMEOUT = 5.0
+STREAM_POOL_TIMEOUT = 5.0
 MAX_RECONNECTS = 5
 INITIAL_BACKOFF = 0.1
 BACKOFF_FACTOR = 2.0
@@ -56,8 +58,8 @@ class CommandOutputStream:
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
             read=timeout,
-            write=5.0,
-            pool=5.0,
+            write=STREAM_WRITE_TIMEOUT,
+            pool=STREAM_POOL_TIMEOUT,
         )
         self._gen: Generator[bytes, None, None] | None = None
 
@@ -129,8 +131,8 @@ class AsyncCommandOutputStream:
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
             read=timeout,
-            write=5.0,
-            pool=5.0,
+            write=STREAM_WRITE_TIMEOUT,
+            pool=STREAM_POOL_TIMEOUT,
         )
         self._gen: AsyncGenerator[bytes, None] | None = None
 

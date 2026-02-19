@@ -39,7 +39,7 @@ class Commands:
             params=params,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        return Command(self._api, self._sandbox_id, data.id)
+        return Command(self._api, self._sandbox_id, data.command_id)
 
 
 class AsyncCommands:
@@ -66,7 +66,7 @@ class AsyncCommands:
             params=params,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        return AsyncCommand(self._api, self._sandbox_id, data.id)
+        return AsyncCommand(self._api, self._sandbox_id, data.command_id)
 
 
 class Command:
