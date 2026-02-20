@@ -403,7 +403,7 @@ components:
       additionalProperties: false
       properties:
         activeDeadlineSeconds:
-          description: "Max snapshot job duration in seconds. Only used with SnapshotRootfs. Server default: 300"
+          description: "Max snapshot job duration in seconds. Only used with SnapshotRootfs. Operator default: 300"
           format: int64
           minimum: 1
           type: integer

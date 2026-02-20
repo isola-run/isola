@@ -49,7 +49,7 @@ type PodTemplate struct {
 
 type ShutdownPolicySpec struct {
 	Strategy              string `json:"strategy,omitempty" default:"Delete" enum:"Delete,SnapshotRootfs" doc:"Action on shutdown"`
-	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Max snapshot job duration in seconds. Only used with SnapshotRootfs. Server default: 300"`
+	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Max snapshot job duration in seconds. Only used with SnapshotRootfs. Operator default: 300"`
 }
 
 type CreateSandboxRequest struct {
