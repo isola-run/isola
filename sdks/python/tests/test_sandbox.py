@@ -21,7 +21,7 @@ import httpx
 import pytest
 import respx
 
-from isola import AsyncIsola, Isola, NetworkSpec, SandboxStatus
+from isola import AsyncIsola, ContainerSpec, Isola, NetworkSpec, SandboxStatus
 
 
 @respx.mock
@@ -45,7 +45,7 @@ def test_create_sandbox_maps_flat_resources(sandbox_response_copy: dict[str, obj
     assert sandbox.status == SandboxStatus.RUNNING
 
     payload = json.loads(create_route.calls[0].request.content)
-    assert payload["podTemplate"]["container"]["resources"] == {
+    assert payload["podTemplate"]["containers"][0]["resources"] == {
         "limits": {"cpu": "500m", "memory": "1Gi", "ephemeralStorage": "2Gi"},
         "requests": {"cpu": "500m", "memory": "1Gi", "ephemeralStorage": "2Gi"},
     }
@@ -61,7 +61,48 @@ def test_create_sandbox_without_resources_omits_key(sandbox_response_copy: dict[
         client.sandboxes.create(image="python:3.12")
 
     payload = json.loads(create_route.calls[0].request.content)
-    assert "resources" not in payload["podTemplate"]["container"]
+    assert "resources" not in payload["podTemplate"]["containers"][0]
+
+
+@respx.mock
+def test_create_sandbox_with_explicit_containers(sandbox_response_copy: dict[str, object]) -> None:
+    create_route = respx.post("http://localhost:8080/sandboxes").mock(
+        return_value=httpx.Response(201, json=sandbox_response_copy)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        client.sandboxes.create(
+            containers=[
+                ContainerSpec(name="app", image="python:3.12"),
+                ContainerSpec(name="worker", image="busybox:latest", command=["sleep", "infinity"]),
+            ]
+        )
+
+    payload = json.loads(create_route.calls[0].request.content)
+    assert payload["podTemplate"]["containers"] == [
+        {"name": "app", "image": "python:3.12"},
+        {"name": "worker", "image": "busybox:latest", "command": ["sleep", "infinity"]},
+    ]
+
+
+def test_create_sandbox_rejects_image_and_containers_together() -> None:
+    with Isola(base_url="http://localhost:8080") as client, pytest.raises(
+        ValueError, match="Exactly one of image or containers must be provided"
+    ):
+        client.sandboxes.create(
+            image="python:3.12",
+            containers=[ContainerSpec(name="app", image="busybox:latest")],
+        )
+
+
+def test_create_sandbox_rejects_resource_kwargs_with_containers() -> None:
+    with Isola(base_url="http://localhost:8080") as client, pytest.raises(
+        ValueError, match="not allowed when containers is provided"
+    ):
+        client.sandboxes.create(
+            containers=[ContainerSpec(name="app", image="python:3.12")],
+            cpu="500m",
+        )
 
 
 @respx.mock

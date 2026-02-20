@@ -32,20 +32,22 @@ import (
 var _ = Describe("Sandbox Endpoints", func() {
 	Describe("POST /sandboxes", func() {
 		It("creates a sandbox with minimal request", func() {
-			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"python:3.12"}]}}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var body SandboxResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
 			Expect(body.ID).To(HaveLen(22))
 			Expect(body.ID).To(MatchRegexp(`^[a-z][a-z0-9]{21}$`))
-			Expect(body.PodTemplate.Container.Image).To(Equal("python:3.12"))
+			Expect(body.PodTemplate.Containers).To(HaveLen(1))
+			Expect(body.PodTemplate.Containers[0].Name).To(Equal("sandbox"))
+			Expect(body.PodTemplate.Containers[0].Image).To(Equal("python:3.12"))
 			Expect(body.Status).To(Equal("unknown"))
 			_, err := time.Parse(time.RFC3339, body.CreationTimestamp)
 			Expect(err).NotTo(HaveOccurred())
 
 			// No defaults applied — gateway is a pure passthrough
-			Expect(body.PodTemplate.Container.Resources).To(BeNil())
+			Expect(body.PodTemplate.Containers[0].Resources).To(BeNil())
 
 			// Omitted fields not in response
 			Expect(body.ActiveDeadlineSeconds).To(BeNil())
@@ -55,14 +57,16 @@ var _ = Describe("Sandbox Endpoints", func() {
 		It("creates a sandbox with all fields", func() {
 			reqBody := `{
 				"podTemplate": {
-					"container": {
-						"image": "node:20",
-						"env": {"NODE_ENV": "production", "PORT": "3000"},
-						"resources": {
-							"limits": {"cpu": "2000m", "memory": "1Gi", "ephemeralStorage": "5Gi"},
-							"requests": {"cpu": "500m", "memory": "512Mi", "ephemeralStorage": "1Gi"}
+					"containers": [
+						{
+							"image": "node:20",
+							"env": {"NODE_ENV": "production", "PORT": "3000"},
+							"resources": {
+								"limits": {"cpu": "2000m", "memory": "1Gi", "ephemeralStorage": "5Gi"},
+								"requests": {"cpu": "500m", "memory": "512Mi", "ephemeralStorage": "1Gi"}
+							}
 						}
-					}
+					]
 				},
 				"activeDeadlineSeconds": 600,
 				"network": {
@@ -81,13 +85,14 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			var body SandboxResponse
 			Expect(json.Unmarshal(rawBytes, &body)).To(Succeed())
-			Expect(body.PodTemplate.Container.Image).To(Equal("node:20"))
-			Expect(body.PodTemplate.Container.Resources.Limits.CPU).To(Equal("2"))
-			Expect(body.PodTemplate.Container.Resources.Limits.Memory).To(Equal("1Gi"))
-			Expect(body.PodTemplate.Container.Resources.Limits.EphemeralStorage).To(Equal("5Gi"))
-			Expect(body.PodTemplate.Container.Resources.Requests.CPU).To(Equal("500m"))
-			Expect(body.PodTemplate.Container.Resources.Requests.Memory).To(Equal("512Mi"))
-			Expect(body.PodTemplate.Container.Resources.Requests.EphemeralStorage).To(Equal("1Gi"))
+			Expect(body.PodTemplate.Containers).To(HaveLen(1))
+			Expect(body.PodTemplate.Containers[0].Image).To(Equal("node:20"))
+			Expect(body.PodTemplate.Containers[0].Resources.Limits.CPU).To(Equal("2"))
+			Expect(body.PodTemplate.Containers[0].Resources.Limits.Memory).To(Equal("1Gi"))
+			Expect(body.PodTemplate.Containers[0].Resources.Limits.EphemeralStorage).To(Equal("5Gi"))
+			Expect(body.PodTemplate.Containers[0].Resources.Requests.CPU).To(Equal("500m"))
+			Expect(body.PodTemplate.Containers[0].Resources.Requests.Memory).To(Equal("512Mi"))
+			Expect(body.PodTemplate.Containers[0].Resources.Requests.EphemeralStorage).To(Equal("1Gi"))
 			Expect(*body.ActiveDeadlineSeconds).To(Equal(int64(600)))
 			Expect(body.Network).NotTo(BeNil())
 			Expect(*body.Network.AllowInternetEgress).To(BeTrue())
@@ -100,9 +105,10 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(json.Unmarshal(rawBytes, &raw)).To(Succeed())
 			var podTpl map[string]json.RawMessage
 			Expect(json.Unmarshal(raw["podTemplate"], &podTpl)).To(Succeed())
-			var container map[string]json.RawMessage
-			Expect(json.Unmarshal(podTpl["container"], &container)).To(Succeed())
-			Expect(container).NotTo(HaveKey("env"))
+			var containers []map[string]json.RawMessage
+			Expect(json.Unmarshal(podTpl["containers"], &containers)).To(Succeed())
+			Expect(containers).To(HaveLen(1))
+			Expect(containers[0]).NotTo(HaveKey("env"))
 
 			// Also verify via GET read-back (covers sandboxToResponse on the GET path)
 			Eventually(func() int {
@@ -113,37 +119,52 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(json.Unmarshal(getResp.Body.Bytes(), &getRaw)).To(Succeed())
 			var getPodTpl map[string]json.RawMessage
 			Expect(json.Unmarshal(getRaw["podTemplate"], &getPodTpl)).To(Succeed())
-			var getContainer map[string]json.RawMessage
-			Expect(json.Unmarshal(getPodTpl["container"], &getContainer)).To(Succeed())
-			Expect(getContainer).NotTo(HaveKey("env"))
+			var getContainers []map[string]json.RawMessage
+			Expect(json.Unmarshal(getPodTpl["containers"], &getContainers)).To(Succeed())
+			Expect(getContainers).To(HaveLen(1))
+			Expect(getContainers[0]).NotTo(HaveKey("env"))
 		})
 
-		It("round-trips command through create and get", func() {
-			reqBody := `{"podTemplate":{"container":{"image":"python:3.12","command":["python","-c","print('hello')"]}}}`
+		It("creates a sandbox with multiple containers", func() {
+			reqBody := `{
+				"podTemplate": {
+					"containers": [
+						{"name": "app", "image": "python:3.12"},
+						{"name": "worker", "image": "busybox:latest", "command": ["sleep", "infinity"]}
+					]
+				}
+			}`
 			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(201))
 
 			var body SandboxResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body.PodTemplate.Container.Command).To(Equal([]string{"python", "-c", "print('hello')"}))
-
-			// Verify via GET read-back
-			Eventually(func() int {
-				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
-			}).Should(Equal(200))
-			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
-			var got SandboxResponse
-			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
-			Expect(got.PodTemplate.Container.Command).To(Equal([]string{"python", "-c", "print('hello')"}))
+			Expect(body.PodTemplate.Containers).To(HaveLen(2))
+			Expect(body.PodTemplate.Containers[0].Name).To(Equal("app"))
+			Expect(body.PodTemplate.Containers[0].Image).To(Equal("python:3.12"))
+			Expect(body.PodTemplate.Containers[1].Name).To(Equal("worker"))
+			Expect(body.PodTemplate.Containers[1].Image).To(Equal("busybox:latest"))
+			Expect(body.PodTemplate.Containers[1].Command).To(Equal([]string{"sleep", "infinity"}))
 		})
 
-		It("omits command from response when not specified", func() {
-			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
+		It("defaults single unnamed container to sandbox", func() {
+			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"alpine:latest"}]}}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var body SandboxResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body.PodTemplate.Container.Command).To(BeNil())
+			Expect(body.PodTemplate.Containers).To(HaveLen(1))
+			Expect(body.PodTemplate.Containers[0].Name).To(Equal("sandbox"))
+		})
+
+		It("round-trips command through create and get", func() {
+			reqBody := `{"podTemplate":{"containers":[{"image":"python:3.12","command":["python","-c","print('hello')"]}]}}`
+			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(201))
+
+			var body SandboxResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.PodTemplate.Containers[0].Command).To(Equal([]string{"python", "-c", "print('hello')"}))
 
 			// Verify via GET read-back
 			Eventually(func() int {
@@ -152,7 +173,25 @@ var _ = Describe("Sandbox Endpoints", func() {
 			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
 			var got SandboxResponse
 			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
-			Expect(got.PodTemplate.Container.Command).To(BeNil())
+			Expect(got.PodTemplate.Containers[0].Command).To(Equal([]string{"python", "-c", "print('hello')"}))
+		})
+
+		It("omits command from response when not specified", func() {
+			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"alpine:latest"}]}}`))
+			Expect(resp.Code).To(Equal(201))
+
+			var body SandboxResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.PodTemplate.Containers[0].Command).To(BeNil())
+
+			// Verify via GET read-back
+			Eventually(func() int {
+				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
+			}).Should(Equal(200))
+			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
+			var got SandboxResponse
+			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
+			Expect(got.PodTemplate.Containers[0].Command).To(BeNil())
 		})
 
 		It("rejects missing podTemplate with 422", func() {
@@ -161,31 +200,57 @@ var _ = Describe("Sandbox Endpoints", func() {
 		})
 
 		It("rejects invalid resource quantity with 400", func() {
-			reqBody := `{"podTemplate":{"container":{"image":"x","resources":{"limits":{"cpu":"banana"}}}}}`
+			reqBody := `{"podTemplate":{"containers":[{"image":"x","resources":{"limits":{"cpu":"banana"}}}]}}`
 			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(400))
 		})
 
 		It("rejects empty image with 422", func() {
-			reqBody := `{"podTemplate":{"container":{"image":""}}}`
+			reqBody := `{"podTemplate":{"containers":[{"image":""}]}}`
 			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})
 
 		It("rejects more than 3 nameservers with 422", func() {
-			reqBody := `{"podTemplate":{"container":{"image":"alpine"}},"network":{"nameservers":["1.1.1.1","8.8.8.8","9.9.9.9","208.67.222.222"]}}`
+			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"nameservers":["1.1.1.1","8.8.8.8","9.9.9.9","208.67.222.222"]}}`
 			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})
 
+		It("rejects duplicate container names with 400", func() {
+			reqBody := `{
+				"podTemplate": {
+					"containers": [
+						{"name":"app","image":"python:3.12"},
+						{"name":"app","image":"busybox:latest"}
+					]
+				}
+			}`
+			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(400))
+		})
+
+		It("rejects missing name in multi-container request with 400", func() {
+			reqBody := `{
+				"podTemplate": {
+					"containers": [
+						{"name":"app","image":"python:3.12"},
+						{"image":"busybox:latest"}
+					]
+				}
+			}`
+			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(400))
+		})
+
 		It("rejects activeDeadlineSeconds of 0", func() {
-			reqBody := `{"podTemplate":{"container":{"image":"x"}},"activeDeadlineSeconds":0}`
+			reqBody := `{"podTemplate":{"containers":[{"image":"x"}]},"activeDeadlineSeconds":0}`
 			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})
 
 		It("accepts omitted activeDeadlineSeconds as no timeout", func() {
-			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
+			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"alpine:latest"}]}}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var body SandboxResponse
@@ -201,7 +266,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 		})
 
 		It("omits network from response when not specified", func() {
-			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
+			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"alpine:latest"}]}}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var body SandboxResponse
@@ -219,7 +284,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 	Describe("GET /sandboxes/{id}", func() {
 		It("returns sandbox details", func() {
 			// Create a sandbox first
-			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"redis:7"}}}`))
+			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"redis:7"}]}}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var created SandboxResponse
@@ -234,7 +299,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			var got SandboxResponse
 			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
 			Expect(got.ID).To(Equal(created.ID))
-			Expect(got.PodTemplate.Container.Image).To(Equal("redis:7"))
+			Expect(got.PodTemplate.Containers[0].Image).To(Equal("redis:7"))
 		})
 
 		It("returns 404 for nonexistent sandbox", func() {
@@ -246,7 +311,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 	Describe("GET /sandboxes", func() {
 		It("returns sandbox summaries", func() {
 			// Create a sandbox
-			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"nginx:latest"}}}`))
+			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"nginx:latest"}]}}`))
 			Expect(createResp.Code).To(Equal(201))
 
 			var created SandboxResponse
@@ -274,7 +339,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 	Describe("DELETE /sandboxes/{id}", func() {
 		It("deletes a sandbox and returns 204", func() {
-			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"busybox:latest"}}}`))
+			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"busybox:latest"}]}}`))
 			Expect(createResp.Code).To(Equal(201))
 
 			var created SandboxResponse

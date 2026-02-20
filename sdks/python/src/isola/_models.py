@@ -58,6 +58,7 @@ class ResourcesSpec(IsolaModel):
 
 
 class ContainerSpec(IsolaModel):
+    name: str | None = None
     image: str
     command: list[str] | None = None
     env: dict[str, str] | None = None
@@ -65,17 +66,18 @@ class ContainerSpec(IsolaModel):
 
 
 class ContainerInfo(IsolaModel):
+    name: str
     image: str
     command: list[str] | None = None
     resources: ResourcesSpec | None = None
 
 
 class PodTemplate(IsolaModel):
-    container: ContainerSpec
+    containers: list[ContainerSpec]
 
 
 class PodTemplateInfo(IsolaModel):
-    container: ContainerInfo
+    containers: list[ContainerInfo]
 
 
 class CreateSandboxPayload(IsolaModel):

@@ -46,6 +46,47 @@ def _build_resources(cpu: str | None, memory: str | None, ephemeral_storage: str
     return ResourcesSpec(limits=resource_list, requests=resource_list)
 
 
+def _build_container_specs(
+    *,
+    image: str | None,
+    containers: list[ContainerSpec] | None,
+    command: list[str] | None,
+    env: dict[str, str] | None,
+    cpu: str | None,
+    memory: str | None,
+    ephemeral_storage: str | None,
+) -> list[ContainerSpec]:
+    if (image is None) == (containers is None):
+        raise ValueError("Exactly one of image or containers must be provided")
+
+    if containers is not None:
+        if len(containers) == 0:
+            raise ValueError("containers must not be empty")
+
+        if (
+            command is not None
+            or env is not None
+            or cpu is not None
+            or memory is not None
+            or ephemeral_storage is not None
+        ):
+            raise ValueError("command/env/cpu/memory/ephemeral_storage are not allowed when containers is provided")
+        return containers
+
+    if image is None:
+        raise ValueError("image is required when containers is not provided")
+
+    resources = _build_resources(cpu, memory, ephemeral_storage)
+    return [
+        ContainerSpec(
+            image=image,
+            command=command,
+            env=env,
+            resources=resources,
+        )
+    ]
+
+
 class Sandboxes:
     def __init__(self, api: _SyncAPI) -> None:
         self._api = api
@@ -53,7 +94,8 @@ class Sandboxes:
     def create(
         self,
         *,
-        image: str,
+        image: str | None = None,
+        containers: list[ContainerSpec] | None = None,
         command: list[str] | None = None,
         env: dict[str, str] | None = None,
         cpu: str | None = None,
@@ -62,16 +104,17 @@ class Sandboxes:
         active_deadline_seconds: int | None = None,
         network: NetworkSpec | None = None,
     ) -> Sandbox:
-        resources = _build_resources(cpu, memory, ephemeral_storage)
+        container_specs = _build_container_specs(
+            image=image,
+            containers=containers,
+            command=command,
+            env=env,
+            cpu=cpu,
+            memory=memory,
+            ephemeral_storage=ephemeral_storage,
+        )
         payload = CreateSandboxPayload(
-            pod_template=PodTemplate(
-                container=ContainerSpec(
-                    image=image,
-                    command=command,
-                    env=env,
-                    resources=resources,
-                )
-            ),
+            pod_template=PodTemplate(containers=container_specs),
             active_deadline_seconds=active_deadline_seconds,
             network=network,
         )
@@ -100,7 +143,8 @@ class AsyncSandboxes:
     async def create(
         self,
         *,
-        image: str,
+        image: str | None = None,
+        containers: list[ContainerSpec] | None = None,
         command: list[str] | None = None,
         env: dict[str, str] | None = None,
         cpu: str | None = None,
@@ -109,16 +153,17 @@ class AsyncSandboxes:
         active_deadline_seconds: int | None = None,
         network: NetworkSpec | None = None,
     ) -> AsyncSandbox:
-        resources = _build_resources(cpu, memory, ephemeral_storage)
+        container_specs = _build_container_specs(
+            image=image,
+            containers=containers,
+            command=command,
+            env=env,
+            cpu=cpu,
+            memory=memory,
+            ephemeral_storage=ephemeral_storage,
+        )
         payload = CreateSandboxPayload(
-            pod_template=PodTemplate(
-                container=ContainerSpec(
-                    image=image,
-                    command=command,
-                    env=env,
-                    resources=resources,
-                )
-            ),
+            pod_template=PodTemplate(containers=container_specs),
             active_deadline_seconds=active_deadline_seconds,
             network=network,
         )

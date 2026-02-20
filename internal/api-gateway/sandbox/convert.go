@@ -27,8 +27,6 @@ import (
 	apigateway "github.com/isola-ai/isola/internal/api-gateway"
 )
 
-const containerName = "sandbox"
-
 func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 	resp := SandboxResponse{
 		ID:                sb.Name,
@@ -36,12 +34,14 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 		CreationTimestamp: sb.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 
-	// todo benl: change to support multiple containers
-	if len(sb.Spec.PodTemplate.Spec.Containers) > 0 {
-		c := sb.Spec.PodTemplate.Spec.Containers[0]
-		resp.PodTemplate.Container.Image = c.Image
-		resp.PodTemplate.Container.Command = c.Command
-		resp.PodTemplate.Container.Resources = containerResourcesToSpec(c.Resources)
+	resp.PodTemplate.Containers = make([]ContainerInfo, len(sb.Spec.PodTemplate.Spec.Containers))
+	for i, c := range sb.Spec.PodTemplate.Spec.Containers {
+		resp.PodTemplate.Containers[i] = ContainerInfo{
+			Name:      c.Name,
+			Image:     c.Image,
+			Command:   c.Command,
+			Resources: containerResourcesToSpec(c.Resources),
+		}
 	}
 
 	resp.ActiveDeadlineSeconds = sb.Spec.ActiveDeadlineSeconds
@@ -126,29 +126,52 @@ func crdNetworkToREST(n *sandboxv1alpha1.NetworkSpec) *NetworkSpec {
 }
 
 func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sandboxv1alpha1.Sandbox, error) {
-	c := req.PodTemplate.Container
-	container := corev1.Container{
-		Name:    containerName,
-		Image:   c.Image,
-		Command: c.Command,
+	if len(req.PodTemplate.Containers) == 0 {
+		return nil, fmt.Errorf("at least one container is required")
 	}
 
-	if c.Resources != nil {
-		limits, err := restResourceListToK8s(c.Resources.Limits)
-		if err != nil {
-			return nil, fmt.Errorf("invalid resource limits: %w", err)
-		}
-		requests, err := restResourceListToK8s(c.Resources.Requests)
-		if err != nil {
-			return nil, fmt.Errorf("invalid resource requests: %w", err)
-		}
-		container.Resources = corev1.ResourceRequirements{
-			Limits:   limits,
-			Requests: requests,
-		}
-	}
+	containers := make([]corev1.Container, 0, len(req.PodTemplate.Containers))
+	seenNames := make(map[string]struct{}, len(req.PodTemplate.Containers))
 
-	container.Env = mapToEnvVars(c.Env)
+	for _, c := range req.PodTemplate.Containers {
+		containerName := c.Name
+		if containerName == "" {
+			if len(req.PodTemplate.Containers) == 1 {
+				containerName = "sandbox"
+			} else {
+				return nil, fmt.Errorf("container name is required when specifying multiple containers")
+			}
+		}
+
+		if _, exists := seenNames[containerName]; exists {
+			return nil, fmt.Errorf("duplicate container name %q", containerName)
+		}
+		seenNames[containerName] = struct{}{}
+
+		container := corev1.Container{
+			Name:    containerName,
+			Image:   c.Image,
+			Command: c.Command,
+		}
+
+		if c.Resources != nil {
+			limits, err := restResourceListToK8s(c.Resources.Limits)
+			if err != nil {
+				return nil, fmt.Errorf("invalid resource limits for container %q: %w", containerName, err)
+			}
+			requests, err := restResourceListToK8s(c.Resources.Requests)
+			if err != nil {
+				return nil, fmt.Errorf("invalid resource requests for container %q: %w", containerName, err)
+			}
+			container.Resources = corev1.ResourceRequirements{
+				Limits:   limits,
+				Requests: requests,
+			}
+		}
+
+		container.Env = mapToEnvVars(c.Env)
+		containers = append(containers, container)
+	}
 
 	sb := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
@@ -158,7 +181,7 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 		Spec: sandboxv1alpha1.SandboxSpec{
 			PodTemplate: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{container},
+					Containers: containers,
 				},
 			},
 			ActiveDeadlineSeconds: req.ActiveDeadlineSeconds,

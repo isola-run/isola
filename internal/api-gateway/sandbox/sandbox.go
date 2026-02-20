@@ -37,6 +37,7 @@ type CreateSandboxInput struct {
 }
 
 type ContainerSpec struct {
+	Name      string            `json:"name,omitempty" maxLength:"63" doc:"Container name. Defaults to 'sandbox' for single-container pods."`
 	Image     string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
 	Command   []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
 	Env       map[string]string `json:"env,omitempty" doc:"Environment variables"`
@@ -44,7 +45,7 @@ type ContainerSpec struct {
 }
 
 type PodTemplate struct {
-	Container ContainerSpec `json:"container" required:"true" doc:"Primary sandbox container"`
+	Containers []ContainerSpec `json:"containers" required:"true" minItems:"1" doc:"Sandbox containers"`
 }
 
 type CreateSandboxRequest struct {
@@ -83,13 +84,14 @@ type DeleteSandboxInput struct {
 // Response types omit env vars (write-only) to avoid leaking secrets.
 
 type ContainerInfo struct {
+	Name      string         `json:"name" doc:"Container name"`
 	Image     string         `json:"image" doc:"Container image"`
 	Command   []string       `json:"command,omitempty" doc:"Container entrypoint override"`
 	Resources *ResourcesSpec `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
 
 type PodTemplateInfo struct {
-	Container ContainerInfo `json:"container" doc:"Primary sandbox container"`
+	Containers []ContainerInfo `json:"containers" doc:"Sandbox containers"`
 }
 
 type CreateSandboxOutput struct {

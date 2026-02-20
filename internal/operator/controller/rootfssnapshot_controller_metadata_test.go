@@ -140,7 +140,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 	})
 
 	Context("Container Selection", func() {
-		It("should fail when containerNames is empty", func() {
+		It("auto-discovers all containers when containerNames is empty", func() {
 			snapName := "snap-auto"
 			sandboxName := "sandbox-auto"
 			podName := sandboxName + "-pod"
@@ -163,6 +163,8 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			createRootfsSnapshotCR(ctx, snapName, sandboxName, nil) // nil = no containers specified
 			defer deleteRootfsSnapshotCR(ctx, snapName)
+			defer deleteSnapshotJob(ctx, snapName+"-app")
+			defer deleteSnapshotJob(ctx, snapName+"-sidecar")
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
@@ -171,15 +173,16 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			snap := getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
+			Expect(snap.Status.ContainerSnapshots).To(HaveLen(2))
+			Expect(snap.Status.ContainerSnapshots[0].ContainerName).To(Or(Equal("app"), Equal("sidecar")))
+			Expect(snap.Status.ContainerSnapshots[1].ContainerName).To(Or(Equal("app"), Equal("sidecar")))
+			Expect(snap.Status.ContainerSnapshots[0].ContainerName).NotTo(Equal(snap.Status.ContainerSnapshots[1].ContainerName))
 
-			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
-			Expect(failedCond).NotTo(BeNil())
-			Expect(failedCond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(failedCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
-			Expect(failedCond.Message).To(ContainSubstring("No containers found"))
+			Expect(getSnapshotJob(ctx, snapName+"-app")).NotTo(BeNil())
+			Expect(getSnapshotJob(ctx, snapName+"-sidecar")).NotTo(BeNil())
 		})
 
-		It("should use first specified container when containerNames is provided", func() {
+		It("snapshots all specified containers", func() {
 			snapName := "snap-specified"
 			sandboxName := "sandbox-specified"
 			podName := sandboxName + "-pod"
@@ -200,10 +203,11 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			// Request specific containers - controller uses first one
+			// Request specific containers - controller snapshots both
 			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"b", "a"})
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 			defer deleteSnapshotJob(ctx, snapName+"-b")
+			defer deleteSnapshotJob(ctx, snapName+"-a")
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
@@ -212,8 +216,133 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			snap := getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
-			Expect(snap.Status.ContainerSnapshots).To(HaveLen(1))
+			Expect(snap.Status.ContainerSnapshots).To(HaveLen(2))
 			Expect(snap.Status.ContainerSnapshots[0].ContainerName).To(Equal("b"))
+			Expect(snap.Status.ContainerSnapshots[1].ContainerName).To(Equal("a"))
+		})
+
+		It("marks complete when all container snapshots succeed", func() {
+			snapName := "snap-all-success"
+			sandboxName := "sandbox-all-success"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-all-success"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{
+					{Name: "app", Image: "busybox"},
+					{Name: "worker", Image: "busybox"},
+				},
+				[]corev1.ContainerStatus{
+					{Name: "app", ContainerID: "containerd://appsuccess", Ready: true},
+					{Name: "worker", ContainerID: "containerd://workersuccess", Ready: true},
+				},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"app", "worker"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+			defer deleteSnapshotJob(ctx, snapName+"-app")
+			defer deleteSnapshotJob(ctx, snapName+"-worker")
+			defer deleteSnapshotJobPod(ctx, snapName+"-app")
+			defer deleteSnapshotJobPod(ctx, snapName+"-worker")
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			createSnapshotJobPodWithTerminationMessage(ctx, snapName+"-app", &snapshotpkg.UploadResult{
+				SnapshotKey:  "snapshots/" + testNamespace + "/" + sandboxName + "/rev-00004/app.tar",
+				Revision:     4,
+				BytesWritten: 1024,
+			})
+			setSnapshotJobComplete(ctx, snapName+"-app")
+
+			createSnapshotJobPodWithTerminationMessage(ctx, snapName+"-worker", &snapshotpkg.UploadResult{
+				SnapshotKey:  "snapshots/" + testNamespace + "/" + sandboxName + "/rev-00007/worker.tar",
+				Revision:     7,
+				BytesWritten: 2048,
+			})
+			setSnapshotJobComplete(ctx, snapName+"-worker")
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+			Expect(snap.Status.Revision).To(Equal(int32(7)))
+
+			completeCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+			Expect(completeCond).NotTo(BeNil())
+			Expect(completeCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(completeCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotSucceeded))
+		})
+
+		It("marks failed when one container fails and preserves successful snapshot key", func() {
+			snapName := "snap-partial-fail"
+			sandboxName := "sandbox-partial-fail"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-partial-fail"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{
+					{Name: "app", Image: "busybox"},
+					{Name: "worker", Image: "busybox"},
+				},
+				[]corev1.ContainerStatus{
+					{Name: "app", ContainerID: "containerd://apppartial", Ready: true},
+					{Name: "worker", ContainerID: "containerd://workerpartial", Ready: true},
+				},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"app", "worker"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+			defer deleteSnapshotJob(ctx, snapName+"-app")
+			defer deleteSnapshotJob(ctx, snapName+"-worker")
+			defer deleteSnapshotJobPod(ctx, snapName+"-app")
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			createSnapshotJobPodWithTerminationMessage(ctx, snapName+"-app", &snapshotpkg.UploadResult{
+				SnapshotKey:  "snapshots/" + testNamespace + "/" + sandboxName + "/rev-00003/app.tar",
+				Revision:     3,
+				BytesWritten: 1024,
+			})
+			setSnapshotJobComplete(ctx, snapName+"-app")
+			setSnapshotJobFailed(ctx, snapName+"-worker", "upload failed")
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+
+			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
+			Expect(failedCond).NotTo(BeNil())
+			Expect(failedCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(failedCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
+
+			var appSnapshotKey string
+			for _, containerSnapshot := range snap.Status.ContainerSnapshots {
+				if containerSnapshot.ContainerName == "app" {
+					appSnapshotKey = containerSnapshot.SnapshotKey
+				}
+			}
+			Expect(appSnapshotKey).To(ContainSubstring("/app.tar"))
 		})
 	})
 })

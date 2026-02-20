@@ -251,6 +251,9 @@ spec:
                   - containerName
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - containerName
+                x-kubernetes-list-type: map
               revision:
                 description: Revision is the snapshot revision number for this sandbox
                 format: int32

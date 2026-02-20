@@ -120,6 +120,8 @@ type RootfsSnapshotStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// ContainerSnapshots tracks the status of each container being snapshotted
+	// +listType=map
+	// +listMapKey=containerName
 	// +optional
 	ContainerSnapshots []ContainerSnapshotStatus `json:"containerSnapshots,omitempty"`
 

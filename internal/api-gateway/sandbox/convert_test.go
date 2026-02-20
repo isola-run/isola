@@ -37,9 +37,11 @@ var _ = Describe("Conversion functions", func() {
 		It("passes command through to the container", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Container: ContainerSpec{
-						Image:   "python:3.12",
-						Command: []string{"python", "-c", "print('hello')"},
+					Containers: []ContainerSpec{
+						{
+							Image:   "python:3.12",
+							Command: []string{"python", "-c", "print('hello')"},
+						},
 					},
 				},
 			}
@@ -51,14 +53,59 @@ var _ = Describe("Conversion functions", func() {
 		It("leaves command nil when not specified", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Container: ContainerSpec{
-						Image: "alpine:latest",
+					Containers: []ContainerSpec{
+						{
+							Image: "alpine:latest",
+						},
 					},
 				},
 			}
 			sb, err := requestToSandboxCR(req, "test-sb", "default")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Command).To(BeNil())
+		})
+
+		It("defaults unnamed single container to sandbox", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Containers: []ContainerSpec{
+						{
+							Image: "alpine:latest",
+						},
+					},
+				},
+			}
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Name).To(Equal("sandbox"))
+		})
+
+		It("rejects duplicate container names", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Containers: []ContainerSpec{
+						{Name: "app", Image: "python:3.12"},
+						{Name: "app", Image: "busybox:latest"},
+					},
+				},
+			}
+			_, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("duplicate container name"))
+		})
+
+		It("rejects missing names for multi-container requests", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Containers: []ContainerSpec{
+						{Name: "app", Image: "python:3.12"},
+						{Image: "busybox:latest"},
+					},
+				},
+			}
+			_, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("container name is required"))
 		})
 	})
 
@@ -80,7 +127,7 @@ var _ = Describe("Conversion functions", func() {
 				},
 			}
 			resp := sandboxToResponse(sb)
-			Expect(resp.PodTemplate.Container.Command).To(Equal([]string{"python", "-c", "print('hello')"}))
+			Expect(resp.PodTemplate.Containers[0].Command).To(Equal([]string{"python", "-c", "print('hello')"}))
 		})
 
 		It("returns nil command when not set on container", func() {
@@ -99,7 +146,7 @@ var _ = Describe("Conversion functions", func() {
 				},
 			}
 			resp := sandboxToResponse(sb)
-			Expect(resp.PodTemplate.Container.Command).To(BeNil())
+			Expect(resp.PodTemplate.Containers[0].Command).To(BeNil())
 		})
 	})
 
