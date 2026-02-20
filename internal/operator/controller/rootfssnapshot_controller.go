@@ -179,18 +179,13 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			containersToSnapshot = append(containersToSnapshot, c.Name)
 		}
 	}
+	containersToSnapshot = deduplicateContainerNames(containersToSnapshot)
 	if len(containersToSnapshot) == 0 {
 		return r.setFailed(ctx, baseSnap, snap, "No containers found to snapshot")
 	}
 
 	refs := make([]snapshotContainerRef, 0, len(containersToSnapshot))
-	seenContainerNames := make(map[string]struct{}, len(containersToSnapshot))
 	for _, containerName := range containersToSnapshot {
-		if _, exists := seenContainerNames[containerName]; exists {
-			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Duplicate container name %q in snapshot request", containerName))
-		}
-		seenContainerNames[containerName] = struct{}{}
-
 		containerID, err := podutil.ExtractContainerID(sandboxPod, containerName)
 		if err != nil {
 			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Failed to extract container ID for %q: %v", containerName, err))
@@ -661,6 +656,24 @@ func collectFailedContainerMessages(containerSnapshots []sandboxv1alpha1.Contain
 		)
 	}
 	return failedMessages
+}
+
+func deduplicateContainerNames(containerNames []string) []string {
+	if len(containerNames) < 2 {
+		return containerNames
+	}
+
+	deduped := make([]string, 0, len(containerNames))
+	seen := make(map[string]struct{}, len(containerNames))
+	for _, containerName := range containerNames {
+		if _, exists := seen[containerName]; exists {
+			continue
+		}
+		seen[containerName] = struct{}{}
+		deduped = append(deduped, containerName)
+	}
+
+	return deduped
 }
 
 func (r *RootfsSnapshotReconciler) setInProgress(
