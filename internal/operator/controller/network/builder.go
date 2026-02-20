@@ -12,6 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/*
+Package network provides custom NetworkPolicy building for sandboxes with advanced
+network configurations (custom CIDRs or custom DNS).
+
+# Architecture
+
+Most sandboxes use static Helm-installed NetworkPolicies based on pod labels:
+  - sandbox-default-deny: Denies all traffic for pods with app.kubernetes.io/name=isola-sandbox
+  - sandbox-allow-internet-egress: Allows internet egress for pods with isola.run/allow-internet-egress=true
+  - sandbox-allow-cluster-dns: Allows cluster DNS for pods with isola.run/allow-cluster-dns=true
+
+This package builds custom NetworkPolicies only when needed (and allowInternetEgress is not true):
+  - Custom egress CIDRs are specified
+  - Custom nameservers are specified
+*/
 package network
 
 import (
