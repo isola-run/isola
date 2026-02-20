@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
+	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
 )
 
 var (

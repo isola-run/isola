@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/isola-ai/isola-sb/internal/constants"
+	"github.com/isola-ai/isola/internal/constants"
 )
 
 // ErrContainerNotFound is returned when the marked container PID cannot be found.

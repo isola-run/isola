@@ -14,9 +14,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	sandboxsidecar "github.com/isola-ai/isola-sb/internal/sandbox-sidecar"
-	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
-	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
+	sandboxsidecar "github.com/isola-ai/isola/internal/sandbox-sidecar"
+	"github.com/isola-ai/isola/internal/sandbox-sidecar/proc"
+	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
 )
 
 var _ = Describe("Filesystem", func() {

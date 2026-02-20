@@ -14,9 +14,9 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	apigateway "github.com/isola-ai/isola-sb/internal/api-gateway"
-	"github.com/isola-ai/isola-sb/internal/constants"
-	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
+	apigateway "github.com/isola-ai/isola/internal/api-gateway"
+	"github.com/isola-ai/isola/internal/constants"
+	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
 )
 
 // --- Types ---

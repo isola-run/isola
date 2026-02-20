@@ -54,8 +54,8 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/isola-ai/isola-sb/internal/logging"
-	"github.com/isola-ai/isola-sb/internal/snapshot"
+	"github.com/isola-ai/isola/internal/logging"
+	"github.com/isola-ai/isola/internal/snapshot"
 	"gocloud.dev/blob"
 
 	// Import blob drivers - they register themselves via init()

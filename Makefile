@@ -1,4 +1,4 @@
-# Root Makefile for isola-sb
+# Root Makefile for isola
 
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec

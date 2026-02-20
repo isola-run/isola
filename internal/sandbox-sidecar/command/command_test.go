@@ -18,9 +18,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/isola-ai/isola-sb/internal/constants"
-	sandboxsidecar "github.com/isola-ai/isola-sb/internal/sandbox-sidecar"
-	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
+	"github.com/isola-ai/isola/internal/constants"
+	sandboxsidecar "github.com/isola-ai/isola/internal/sandbox-sidecar"
+	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
 )
 
 var _ = Describe("Command Handlers", func() {

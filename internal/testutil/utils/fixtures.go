@@ -22,7 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 )
 
 // SandboxOption is a functional option for configuring Sandbox

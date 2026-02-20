@@ -8,7 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 )
 
 type HealthResponse struct {

@@ -13,7 +13,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	sandboxsidecar "github.com/isola-ai/isola-sb/internal/sandbox-sidecar"
+	sandboxsidecar "github.com/isola-ai/isola/internal/sandbox-sidecar"
 )
 
 var (
