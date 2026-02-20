@@ -139,7 +139,7 @@ components:
           description: Pod template
         shutdownPolicy:
           $ref: "#/components/schemas/ShutdownPolicySpec"
-          description: Shutdown policy config
+          description: What to do when the sandbox is deleted. Omit for a plain delete with no extra action.
       required:
         - podTemplate
       type: object
@@ -365,7 +365,7 @@ components:
           description: Pod template
         shutdownPolicy:
           $ref: "#/components/schemas/ShutdownPolicySpec"
-          description: Shutdown policy config
+          description: What to do when the sandbox is deleted. Omit for a plain delete with no extra action.
         status:
           description: Sandbox status
           enum:
@@ -403,15 +403,14 @@ components:
       additionalProperties: false
       properties:
         activeDeadlineSeconds:
-          description: "Max snapshot job duration in seconds. Only used with SnapshotRootfs. Operator default: 300"
+          description: "Maximum time in seconds the shutdown action may take before it is terminated by Kubernetes. Operator default: 300"
           format: int64
           minimum: 1
           type: integer
         strategy:
-          default: Delete
-          description: Action on shutdown
+          default: SnapshotRootfs
+          description: Shutdown strategy. SnapshotRootfs saves the container rootfs before the sandbox is deleted.
           enum:
-            - Delete
             - SnapshotRootfs
           type: string
       type: object

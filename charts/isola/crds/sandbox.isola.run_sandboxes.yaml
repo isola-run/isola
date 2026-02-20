@@ -112,26 +112,23 @@ spec:
                 x-kubernetes-preserve-unknown-fields: true
               shutdownPolicy:
                 description: ShutdownPolicy defines what to do when the sandbox ends
-                  (defaults to Delete if unspecified)
+                  (defaults to plain deletion if unspecified)
                 properties:
                   activeDeadlineSeconds:
                     default: 300
                     description: |-
                       ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
                       that the snapshot job may be active before the system tries to terminate it.
-                      Only used when Strategy is SnapshotRootfs.
                     format: int64
                     minimum: 1
                     type: integer
                   strategy:
                     allOf:
                     - enum:
-                      - Delete
                       - SnapshotRootfs
                     - enum:
-                      - Delete
                       - SnapshotRootfs
-                    default: Delete
+                    default: SnapshotRootfs
                     description: Strategy determines the action taken when the sandbox
                       shuts down
                     type: string

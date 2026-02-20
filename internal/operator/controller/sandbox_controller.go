@@ -816,7 +816,7 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	if sandbox.Spec.ShutdownPolicy == nil || sandbox.Spec.ShutdownPolicy.Strategy == sandboxv1alpha1.ShutdownStrategyDelete {
+	if sandbox.Spec.ShutdownPolicy == nil {
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxReadyCondition,

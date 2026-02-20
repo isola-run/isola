@@ -206,11 +206,6 @@ var _ = Describe("Conversion functions", func() {
 			Expect(*result.ActiveDeadlineSeconds).To(Equal(int64(120)))
 		})
 
-		It("preserves zero-value strategy", func() {
-			result := crdShutdownPolicyToREST(&sandboxv1alpha1.ShutdownPolicy{})
-			Expect(result).NotTo(BeNil())
-			Expect(result.Strategy).To(Equal(""))
-		})
 	})
 
 	Describe("conditionsToStatus", func() {

@@ -38,11 +38,10 @@ const (
 )
 
 // SandboxShutdownStrategy defines the policy for handling sandbox termination
-// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
+// +kubebuilder:validation:Enum=SnapshotRootfs
 type SandboxShutdownStrategy string
 
 const (
-	ShutdownStrategyDelete         SandboxShutdownStrategy = "Delete"
 	ShutdownStrategySnapshotRootfs SandboxShutdownStrategy = "SnapshotRootfs"
 )
 
@@ -50,13 +49,12 @@ const (
 type ShutdownPolicy struct {
 	// Strategy determines the action taken when the sandbox shuts down
 	// +optional
-	// +kubebuilder:default=Delete
-	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
+	// +kubebuilder:default=SnapshotRootfs
+	// +kubebuilder:validation:Enum=SnapshotRootfs
 	Strategy SandboxShutdownStrategy `json:"strategy,omitempty"`
 
 	// ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
 	// that the snapshot job may be active before the system tries to terminate it.
-	// Only used when Strategy is SnapshotRootfs.
 	// +optional
 	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=1
@@ -115,7 +113,7 @@ type SandboxSpec struct {
 	// +optional
 	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
 
-	// ShutdownPolicy defines what to do when the sandbox ends (defaults to Delete if unspecified)
+	// ShutdownPolicy defines what to do when the sandbox ends (defaults to plain deletion if unspecified)
 	// +optional
 	ShutdownPolicy *ShutdownPolicy `json:"shutdownPolicy,omitempty"`
 

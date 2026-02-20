@@ -245,27 +245,10 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(*got.ShutdownPolicy.ActiveDeadlineSeconds).To(Equal(int64(120)))
 		})
 
-		It("round-trips Delete shutdownPolicy through create and get", func() {
+		It("rejects Delete strategy with 422", func() {
 			reqBody := `{"podTemplate":{"container":{"image":"alpine:latest"}},"shutdownPolicy":{"strategy":"Delete"}}`
 			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
-			Expect(resp.Code).To(Equal(201))
-
-			var body SandboxResponse
-			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body.ShutdownPolicy).NotTo(BeNil())
-			Expect(body.ShutdownPolicy.Strategy).To(Equal("Delete"))
-			// CRD default (kubebuilder:default=300) is applied by K8s admission
-			Expect(*body.ShutdownPolicy.ActiveDeadlineSeconds).To(Equal(int64(300)))
-
-			Eventually(func() int {
-				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
-			}).Should(Equal(200))
-			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
-			var got SandboxResponse
-			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
-			Expect(got.ShutdownPolicy).NotTo(BeNil())
-			Expect(got.ShutdownPolicy.Strategy).To(Equal("Delete"))
-			Expect(*got.ShutdownPolicy.ActiveDeadlineSeconds).To(Equal(int64(300)))
+			Expect(resp.Code).To(Equal(422))
 		})
 
 		It("omits shutdownPolicy from response when not specified", func() {

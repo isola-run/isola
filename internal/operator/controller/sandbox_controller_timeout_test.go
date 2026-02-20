@@ -116,42 +116,13 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(sandbox.Status.TimeoutAt.Time).To(BeTemporally("~", expectedTimeout, time.Second))
 		})
 
-		It("should delete sandbox with Delete policy when timeout exceeded and set TimedOut reason", func() {
-			sandboxName := "sandbox-timeout-delete"
-
-			timeout := int64(1) // 1 second timeout
-			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategyDelete,
-				}
-			})
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			fakeClock.Advance(2 * time.Second)
-
-			// Reconcile triggers timeout handling - removes finalizer and deletes
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			sandbox := &sandboxv1alpha1.Sandbox{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, sandbox)
-			Expect(err).To(Satisfy(errors.IsNotFound))
-		})
-
 		It("should set TimedOut condition reason before deleting sandbox", func() {
 			sandboxName := "sandbox-timeout-condition"
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.ActiveDeadlineSeconds = &timeout
-				// Default policy is Delete when nil
+				// Nil shutdown policy means plain deletion (default behavior)
 			})
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")

@@ -48,15 +48,15 @@ type PodTemplate struct {
 }
 
 type ShutdownPolicySpec struct {
-	Strategy              string `json:"strategy,omitempty" default:"Delete" enum:"Delete,SnapshotRootfs" doc:"Action on shutdown"`
-	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Max snapshot job duration in seconds. Only used with SnapshotRootfs. Operator default: 300"`
+	Strategy              string `json:"strategy,omitempty" default:"SnapshotRootfs" enum:"SnapshotRootfs" doc:"Shutdown strategy. SnapshotRootfs saves the container rootfs before the sandbox is deleted."`
+	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Maximum time in seconds the shutdown action may take before it is terminated by Kubernetes. Operator default: 300"`
 }
 
 type CreateSandboxRequest struct {
 	PodTemplate           PodTemplate         `json:"podTemplate" required:"true" doc:"Pod template"`
 	ActiveDeadlineSeconds *int64              `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
 	Network               *NetworkSpec        `json:"network,omitempty" doc:"Network isolation config"`
-	ShutdownPolicy        *ShutdownPolicySpec `json:"shutdownPolicy,omitempty" doc:"Shutdown policy config"`
+	ShutdownPolicy        *ShutdownPolicySpec `json:"shutdownPolicy,omitempty" doc:"What to do when the sandbox is deleted. Omit for a plain delete with no extra action."`
 }
 
 type ResourcesSpec struct {
@@ -115,7 +115,7 @@ type SandboxResponse struct {
 	PodTemplate           PodTemplateInfo     `json:"podTemplate" doc:"Pod template"`
 	ActiveDeadlineSeconds *int64              `json:"activeDeadlineSeconds,omitempty" doc:"Max lifetime in seconds"`
 	Network               *NetworkSpec        `json:"network,omitempty" doc:"Network isolation config"`
-	ShutdownPolicy        *ShutdownPolicySpec `json:"shutdownPolicy,omitempty" doc:"Shutdown policy config"`
+	ShutdownPolicy        *ShutdownPolicySpec `json:"shutdownPolicy,omitempty" doc:"What to do when the sandbox is deleted. Omit for a plain delete with no extra action."`
 	Status                string              `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
 	CreationTimestamp     string              `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
