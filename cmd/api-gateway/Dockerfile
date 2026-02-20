@@ -35,7 +35,6 @@ FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /
 COPY --from=builder /workspace/api-gateway .
-COPY LICENSE /LICENSE
 USER 65532:65532
 
 EXPOSE 8080

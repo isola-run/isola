@@ -62,7 +62,6 @@ FROM gcr.io/distroless/static
 WORKDIR /
 COPY --from=nsenter-builder /util-linux/nsenter.static /usr/bin/nsenter
 COPY --from=builder /workspace/sandbox-sidecar .
-COPY LICENSE /LICENSE
 
 EXPOSE 10032
 

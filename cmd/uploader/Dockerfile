@@ -31,7 +31,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o uploader ./cmd/uploade
 FROM gcr.io/distroless/static:nonroot
 
 COPY --from=builder /workspace/uploader /uploader
-COPY LICENSE /LICENSE
 
 USER 65532:65532
 
