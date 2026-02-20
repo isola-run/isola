@@ -137,6 +137,9 @@ components:
         podTemplate:
           $ref: "#/components/schemas/PodTemplate"
           description: Pod template
+        shutdownPolicy:
+          $ref: "#/components/schemas/ShutdownPolicySpec"
+          description: Shutdown policy config
       required:
         - podTemplate
       type: object
@@ -360,6 +363,9 @@ components:
         podTemplate:
           $ref: "#/components/schemas/PodTemplateInfo"
           description: Pod template
+        shutdownPolicy:
+          $ref: "#/components/schemas/ShutdownPolicySpec"
+          description: Shutdown policy config
         status:
           description: Sandbox status
           enum:
@@ -392,6 +398,22 @@ components:
         - id
         - status
         - creationTimestamp
+      type: object
+    ShutdownPolicySpec:
+      additionalProperties: false
+      properties:
+        activeDeadlineSeconds:
+          description: "Max snapshot job duration in seconds. Only used with SnapshotRootfs. Server default: 300"
+          format: int64
+          minimum: 1
+          type: integer
+        strategy:
+          default: Delete
+          description: Action on shutdown
+          enum:
+            - Delete
+            - SnapshotRootfs
+          type: string
       type: object
 info:
   description: API for managing sandboxes

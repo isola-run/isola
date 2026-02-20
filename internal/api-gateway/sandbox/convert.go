@@ -46,6 +46,7 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 
 	resp.ActiveDeadlineSeconds = sb.Spec.ActiveDeadlineSeconds
 	resp.Network = crdNetworkToREST(sb.Spec.Network)
+	resp.ShutdownPolicy = crdShutdownPolicyToREST(sb.Spec.ShutdownPolicy)
 
 	return resp
 }
@@ -166,6 +167,7 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 	}
 
 	sb.Spec.Network = restNetworkToCRD(req.Network)
+	sb.Spec.ShutdownPolicy = restShutdownPolicyToCRD(req.ShutdownPolicy)
 
 	return sb, nil
 }
@@ -217,5 +219,27 @@ func restNetworkToCRD(n *NetworkSpec) *sandboxv1alpha1.NetworkSpec {
 		AllowClusterDNS:     n.AllowClusterDNS,
 		AllowedEgressCIDRs:  n.AllowedEgressCIDRs,
 		Nameservers:         n.Nameservers,
+	}
+}
+
+func restShutdownPolicyToCRD(s *ShutdownPolicySpec) *sandboxv1alpha1.ShutdownPolicy {
+	if s == nil {
+		return nil
+	}
+
+	return &sandboxv1alpha1.ShutdownPolicy{
+		Strategy:              sandboxv1alpha1.SandboxShutdownStrategy(s.Strategy),
+		ActiveDeadlineSeconds: s.ActiveDeadlineSeconds,
+	}
+}
+
+func crdShutdownPolicyToREST(s *sandboxv1alpha1.ShutdownPolicy) *ShutdownPolicySpec {
+	if s == nil {
+		return nil
+	}
+
+	return &ShutdownPolicySpec{
+		Strategy:              string(s.Strategy),
+		ActiveDeadlineSeconds: s.ActiveDeadlineSeconds,
 	}
 }

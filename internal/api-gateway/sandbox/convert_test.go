@@ -175,6 +175,44 @@ var _ = Describe("Conversion functions", func() {
 		})
 	})
 
+	Describe("restShutdownPolicyToCRD", func() {
+		It("returns nil for nil input", func() {
+			Expect(restShutdownPolicyToCRD(nil)).To(BeNil())
+		})
+
+		It("converts valid input to CRD struct", func() {
+			result := restShutdownPolicyToCRD(&ShutdownPolicySpec{
+				Strategy:              "SnapshotRootfs",
+				ActiveDeadlineSeconds: ptr.To(int64(120)),
+			})
+			Expect(result).NotTo(BeNil())
+			Expect(result.Strategy).To(Equal(sandboxv1alpha1.ShutdownStrategySnapshotRootfs))
+			Expect(*result.ActiveDeadlineSeconds).To(Equal(int64(120)))
+		})
+	})
+
+	Describe("crdShutdownPolicyToREST", func() {
+		It("returns nil for nil input", func() {
+			Expect(crdShutdownPolicyToREST(nil)).To(BeNil())
+		})
+
+		It("converts valid input to REST struct", func() {
+			result := crdShutdownPolicyToREST(&sandboxv1alpha1.ShutdownPolicy{
+				Strategy:              sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				ActiveDeadlineSeconds: ptr.To(int64(120)),
+			})
+			Expect(result).NotTo(BeNil())
+			Expect(result.Strategy).To(Equal("SnapshotRootfs"))
+			Expect(*result.ActiveDeadlineSeconds).To(Equal(int64(120)))
+		})
+
+		It("preserves zero-value strategy", func() {
+			result := crdShutdownPolicyToREST(&sandboxv1alpha1.ShutdownPolicy{})
+			Expect(result).NotTo(BeNil())
+			Expect(result.Strategy).To(Equal(""))
+		})
+	})
+
 	Describe("conditionsToStatus", func() {
 		It("maps unrecognized reason to unknown", func() {
 			conditions := []metav1.Condition{

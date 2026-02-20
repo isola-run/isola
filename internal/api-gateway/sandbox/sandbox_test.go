@@ -50,6 +50,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			// Omitted fields not in response
 			Expect(body.ActiveDeadlineSeconds).To(BeNil())
 			Expect(body.Network).To(BeNil())
+			Expect(body.ShutdownPolicy).To(BeNil())
 		})
 
 		It("creates a sandbox with all fields", func() {
@@ -70,6 +71,10 @@ var _ = Describe("Sandbox Endpoints", func() {
 					"allowClusterDNS": true,
 					"allowedEgressCIDRs": ["10.0.0.0/8"],
 					"nameservers": ["8.8.8.8"]
+				},
+				"shutdownPolicy": {
+					"strategy": "SnapshotRootfs",
+					"activeDeadlineSeconds": 120
 				}
 			}`
 
@@ -94,6 +99,9 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(*body.Network.AllowClusterDNS).To(BeTrue())
 			Expect(body.Network.AllowedEgressCIDRs).To(ConsistOf("10.0.0.0/8"))
 			Expect(body.Network.Nameservers).To(ConsistOf("8.8.8.8"))
+			Expect(body.ShutdownPolicy).NotTo(BeNil())
+			Expect(body.ShutdownPolicy.Strategy).To(Equal("SnapshotRootfs"))
+			Expect(*body.ShutdownPolicy.ActiveDeadlineSeconds).To(Equal(int64(120)))
 
 			// Env vars are write-only — response must not leak them
 			var raw map[string]json.RawMessage
@@ -213,6 +221,66 @@ var _ = Describe("Sandbox Endpoints", func() {
 				return k8sClient.Get(ctx, keyFor(body.ID), sb)
 			}).Should(Succeed())
 			Expect(sb.Spec.Network).To(BeNil())
+		})
+
+		It("round-trips SnapshotRootfs shutdownPolicy through create and get", func() {
+			reqBody := `{"podTemplate":{"container":{"image":"alpine:latest"}},"shutdownPolicy":{"strategy":"SnapshotRootfs","activeDeadlineSeconds":120}}`
+			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(201))
+
+			var body SandboxResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.ShutdownPolicy).NotTo(BeNil())
+			Expect(body.ShutdownPolicy.Strategy).To(Equal("SnapshotRootfs"))
+			Expect(*body.ShutdownPolicy.ActiveDeadlineSeconds).To(Equal(int64(120)))
+
+			Eventually(func() int {
+				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
+			}).Should(Equal(200))
+			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
+			var got SandboxResponse
+			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
+			Expect(got.ShutdownPolicy).NotTo(BeNil())
+			Expect(got.ShutdownPolicy.Strategy).To(Equal("SnapshotRootfs"))
+			Expect(*got.ShutdownPolicy.ActiveDeadlineSeconds).To(Equal(int64(120)))
+		})
+
+		It("round-trips Delete shutdownPolicy through create and get", func() {
+			reqBody := `{"podTemplate":{"container":{"image":"alpine:latest"}},"shutdownPolicy":{"strategy":"Delete"}}`
+			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(201))
+
+			var body SandboxResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.ShutdownPolicy).NotTo(BeNil())
+			Expect(body.ShutdownPolicy.Strategy).To(Equal("Delete"))
+			// CRD default (kubebuilder:default=300) is applied by K8s admission
+			Expect(*body.ShutdownPolicy.ActiveDeadlineSeconds).To(Equal(int64(300)))
+
+			Eventually(func() int {
+				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
+			}).Should(Equal(200))
+			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
+			var got SandboxResponse
+			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
+			Expect(got.ShutdownPolicy).NotTo(BeNil())
+			Expect(got.ShutdownPolicy.Strategy).To(Equal("Delete"))
+			Expect(*got.ShutdownPolicy.ActiveDeadlineSeconds).To(Equal(int64(300)))
+		})
+
+		It("omits shutdownPolicy from response when not specified", func() {
+			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
+			Expect(resp.Code).To(Equal(201))
+
+			var body SandboxResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.ShutdownPolicy).To(BeNil())
+
+			sb := &sandboxv1alpha1.Sandbox{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, keyFor(body.ID), sb)
+			}).Should(Succeed())
+			Expect(sb.Spec.ShutdownPolicy).To(BeNil())
 		})
 	})
 
