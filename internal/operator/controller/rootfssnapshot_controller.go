@@ -173,7 +173,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "Runtime does not support rootfs snapshotting")
 	}
 
-	containersToSnapshot := append([]string(nil), snap.Spec.ContainerNames...)
+	containersToSnapshot := append([]string(nil), snap.Spec.TargetContainerNames...)
 	if len(containersToSnapshot) == 0 {
 		for _, c := range sandboxPod.Spec.Containers {
 			containersToSnapshot = append(containersToSnapshot, c.Name)

@@ -140,7 +140,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 	})
 
 	Context("Container Selection", func() {
-		It("auto-discovers all containers when containerNames is empty", func() {
+		It("auto-discovers all containers when targetContainerNames is empty", func() {
 			snapName := "snap-auto"
 			sandboxName := "sandbox-auto"
 			podName := sandboxName + "-pod"

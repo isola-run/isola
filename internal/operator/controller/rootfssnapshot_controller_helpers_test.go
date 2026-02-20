@@ -95,15 +95,15 @@ func deleteSnapshotPod(ctx context.Context, name string) {
 	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, pod))).NotTo(HaveOccurred())
 }
 
-func createRootfsSnapshotCR(ctx context.Context, name, sandboxName string, containerNames []string) {
+func createRootfsSnapshotCR(ctx context.Context, name, sandboxName string, targetContainerNames []string) {
 	snap := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: testNamespace,
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
-			SandboxName:    sandboxName,
-			ContainerNames: containerNames,
+			SandboxName:          sandboxName,
+			TargetContainerNames: targetContainerNames,
 		},
 	}
 	ExpectWithOffset(1, k8sClient.Create(ctx, snap)).To(Succeed())

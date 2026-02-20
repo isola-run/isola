@@ -68,20 +68,20 @@ spec:
                 format: int64
                 minimum: 1
                 type: integer
-              containerNames:
-                description: |-
-                  ContainerNames optionally specifies which containers to snapshot.
-                  Each name must match a non-init container in the pod.
-                  If empty, all non-init containers in the pod are snapshotted.
-                items:
-                  type: string
-                type: array
               sandboxName:
                 description: |-
                   SandboxName is the name of the sandbox to snapshot.
                   The sandbox must be in the same namespace as this RootfsSnapshot.
                 minLength: 1
                 type: string
+              targetContainerNames:
+                description: |-
+                  TargetContainerNames optionally specifies which containers to snapshot.
+                  Each name must match a non-init container in the pod.
+                  If empty, all non-init containers in the pod are snapshotted.
+                items:
+                  type: string
+                type: array
               ttlSecondsAfterFinished:
                 default: 300
                 description: |-

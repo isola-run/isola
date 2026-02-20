@@ -65,11 +65,11 @@ type RootfsSnapshotSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	SandboxName string `json:"sandboxName"`
 
-	// ContainerNames optionally specifies which containers to snapshot.
+	// TargetContainerNames optionally specifies which containers to snapshot.
 	// Each name must match a non-init container in the pod.
 	// If empty, all non-init containers in the pod are snapshotted.
 	// +optional
-	ContainerNames []string `json:"containerNames,omitempty"`
+	TargetContainerNames []string `json:"targetContainerNames,omitempty"`
 
 	// ActiveDeadlineSeconds specifies the duration in seconds for each snapshot job.
 	// If a job does not complete within this time, it will be terminated.
