@@ -93,12 +93,12 @@ GO_TEST_FLAGS ?=
 .PHONY: test
 test: ## Run all tests
 	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
-		go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out $(GO_TEST_FLAGS)
+		go test ./... -coverprofile cover.out $(GO_TEST_FLAGS)
 
 .PHONY: test-verbose
 test-verbose: ## Run all tests with verbose output
 	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
-		go test $$(go list ./... | grep -v /e2e) -v -coverprofile cover.out $(GO_TEST_FLAGS)
+		go test ./... -v -coverprofile cover.out $(GO_TEST_FLAGS)
 
 .PHONY: test-operator
 test-operator: ## Run operator tests (supports FOCUS=pattern)
