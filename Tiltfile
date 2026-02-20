@@ -75,7 +75,7 @@ k8s_yaml(helm(
     values=['charts/isola/values-dev.yaml'],
 ))
 
-k8s_resource('isola-operator', resource_deps=['localstack'], labels=['isola'])
+k8s_resource('isola-operator', port_forwards=[port_forward(8082, 8080, name='operator-metrics')], resource_deps=['localstack'], labels=['isola'])
 k8s_resource('isola-api-gateway', port_forwards=[port_forward(8080, 8080, name='api-gateway')], resource_deps=['isola-operator'], labels=['isola'])
 
 # ==============================================================================
