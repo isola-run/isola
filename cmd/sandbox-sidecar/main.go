@@ -13,14 +13,14 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog/v2"
 
-	"github.com/isola-ai/isola-sb/internal/constants"
-	"github.com/isola-ai/isola-sb/internal/env"
-	"github.com/isola-ai/isola-sb/internal/logging"
-	sandboxsidecar "github.com/isola-ai/isola-sb/internal/sandbox-sidecar"
-	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/command"
-	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/filesystem"
-	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/health"
-	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
+	"github.com/isola-ai/isola/internal/constants"
+	"github.com/isola-ai/isola/internal/env"
+	"github.com/isola-ai/isola/internal/logging"
+	sandboxsidecar "github.com/isola-ai/isola/internal/sandbox-sidecar"
+	"github.com/isola-ai/isola/internal/sandbox-sidecar/command"
+	"github.com/isola-ai/isola/internal/sandbox-sidecar/filesystem"
+	"github.com/isola-ai/isola/internal/sandbox-sidecar/health"
+	"github.com/isola-ai/isola/internal/sandbox-sidecar/proc"
 )
 
 type config struct {

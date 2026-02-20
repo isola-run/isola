@@ -35,11 +35,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
-	"github.com/isola-ai/isola-sb/internal/constants"
-	netbuilder "github.com/isola-ai/isola-sb/internal/operator/controller/network"
-	"github.com/isola-ai/isola-sb/internal/operator/controller/podutil"
-	"github.com/isola-ai/isola-sb/internal/operator/controller/snapshot"
+	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
+	"github.com/isola-ai/isola/internal/constants"
+	netbuilder "github.com/isola-ai/isola/internal/operator/controller/network"
+	"github.com/isola-ai/isola/internal/operator/controller/podutil"
+	"github.com/isola-ai/isola/internal/operator/controller/snapshot"
 	"k8s.io/client-go/tools/events"
 )
 

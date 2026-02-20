@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 	"k8s.io/utils/ptr"
 )
 

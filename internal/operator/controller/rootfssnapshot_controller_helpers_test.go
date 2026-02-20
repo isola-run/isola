@@ -29,8 +29,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
-	snapshotpkg "github.com/isola-ai/isola-sb/internal/snapshot"
+	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
+	snapshotpkg "github.com/isola-ai/isola/internal/snapshot"
 )
 
 // Helper functions for rootfssnapshot controller tests

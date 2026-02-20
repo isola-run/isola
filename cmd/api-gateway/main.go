@@ -25,13 +25,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
-	"github.com/isola-ai/isola-sb/internal/api-gateway/command"
-	"github.com/isola-ai/isola-sb/internal/api-gateway/filesystem"
-	"github.com/isola-ai/isola-sb/internal/api-gateway/health"
-	"github.com/isola-ai/isola-sb/internal/api-gateway/sandbox"
-	"github.com/isola-ai/isola-sb/internal/env"
-	"github.com/isola-ai/isola-sb/internal/logging"
+	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
+	"github.com/isola-ai/isola/internal/api-gateway/command"
+	"github.com/isola-ai/isola/internal/api-gateway/filesystem"
+	"github.com/isola-ai/isola/internal/api-gateway/health"
+	"github.com/isola-ai/isola/internal/api-gateway/sandbox"
+	"github.com/isola-ai/isola/internal/env"
+	"github.com/isola-ai/isola/internal/logging"
 )
 
 const shutdownGracePeriod = 30 * time.Second

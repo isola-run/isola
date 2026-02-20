@@ -9,8 +9,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
-	apigateway "github.com/isola-ai/isola-sb/internal/api-gateway"
+	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
+	apigateway "github.com/isola-ai/isola/internal/api-gateway"
 )
 
 const containerName = "sandbox"

@@ -14,9 +14,9 @@ keywords:
   - operator
   - security
   - gvisor
-home: https://github.com/isola-ai/isola-sb
+home: https://github.com/isola-ai/isola
 sources:
-  - https://github.com/isola-ai/isola-sb
+  - https://github.com/isola-ai/isola
 maintainers:
   - name: Isola Team
     url: https://github.com/isola-ai

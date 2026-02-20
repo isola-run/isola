@@ -1,4 +1,4 @@
-module github.com/isola-ai/isola-sb
+module github.com/isola-ai/isola
 
 go 1.26.0
 

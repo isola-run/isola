@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	networkingv1 "k8s.io/api/networking/v1"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 	"k8s.io/utils/ptr"
 )
 
