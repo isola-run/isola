@@ -264,6 +264,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	}
 
 	log.Info("Pod created")
+	sandboxCreatedTotal.Inc()
 
 	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "PodCreated", "Created", "Sandbox Pod created")
 
@@ -499,6 +500,14 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod)
 	conditions = append(conditions, readyCondition)
 
+	// Observe ready duration on the transition to Ready=True
+	if readyCondition.Status == metav1.ConditionTrue {
+		prevReady := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+		if prevReady == nil || prevReady.Status != metav1.ConditionTrue {
+			sandboxReadyDurationSeconds.Observe(r.clock().Since(sandbox.CreationTimestamp.Time).Seconds())
+		}
+	}
+
 	return r.patchStatus(ctx, baseSandbox, sandbox, conditions)
 }
 
@@ -722,6 +731,13 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if optionalTimeoutAt != nil && r.clock().Now().After(optionalTimeoutAt.Time) {
 		log.Info("Sandbox timed out")
 
+		// Only count the timeout once — skip if cleanup was already initiated on a previous reconcile
+		readyCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+		alreadyCleaning := readyCond != nil && (readyCond.Reason == CondReasonDeleting || readyCond.Reason == CondReasonRootfsSnapshottingInProgress)
+		if !alreadyCleaning {
+			sandboxTimedOutTotal.Inc()
+		}
+
 		res, cleanupDone, err := r.finalizeSandbox(ctx, sandbox, baseSandbox)
 		if err != nil {
 			return res, err
@@ -801,6 +817,7 @@ func (r *SandboxReconciler) finalizeSandbox(
 		log.Error(err, "Failed to remove finalizer")
 		return ctrl.Result{}, false, err
 	}
+	sandboxDeletedTotal.Inc()
 
 	return ctrl.Result{}, true, nil
 }

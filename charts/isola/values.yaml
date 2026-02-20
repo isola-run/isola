@@ -35,6 +35,30 @@ operator:
 
   replicaCount: 1
 
+  metrics:
+    # Port for the Prometheus metrics endpoint
+    port: 8080
+
+    service:
+      # Create a Service for the metrics endpoint (needed for ServiceMonitor)
+      enabled: true
+
+    serviceMonitor:
+      # Create a ServiceMonitor for Prometheus Operator
+      enabled: false
+      # Override namespace for ServiceMonitor (defaults to release namespace)
+      namespace: ""
+      # Scrape interval (leave empty for Prometheus default)
+      interval: ""
+      # Scrape timeout
+      scrapeTimeout: ""
+      # Additional labels for ServiceMonitor (e.g. for Prometheus selector matching)
+      labels: {}
+      # Relabeling rules applied before ingestion
+      relabelings: []
+      # Metric relabeling rules applied to scraped samples
+      metricRelabelings: []
+
   resources:
     requests:
       cpu: 50m

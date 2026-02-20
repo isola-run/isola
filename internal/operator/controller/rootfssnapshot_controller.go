@@ -201,6 +201,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		rootfsSnapshotCreatedTotal.Inc()
 
 		log.Info("Created snapshot job", "job", jobName)
 		r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "JobCreated", "Created", "Created snapshot job for container %s", containerName)
@@ -522,6 +523,8 @@ func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap
 }
 
 func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, result *snapshotpkg.UploadResult) (ctrl.Result, error) {
+	rootfsSnapshotCompletedTotal.WithLabelValues("succeeded").Inc()
+
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletionTime = &now
 
@@ -548,6 +551,8 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap 
 }
 
 func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, message string) (ctrl.Result, error) {
+	rootfsSnapshotCompletedTotal.WithLabelValues("failed").Inc()
+
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletionTime = &now
 
