@@ -36,7 +36,7 @@ class BadGatewayError(IsolaError):
     pass
 
 
-class APIConnectionError(IsolaError):
+class APIConnectionError(IsolaError, ConnectionError):
     def __init__(self, detail: str) -> None:
         super().__init__(status=0, detail=detail)
 
@@ -56,7 +56,14 @@ _STATUS_TO_EXCEPTION: dict[int, type[IsolaError]] = {
 }
 
 
-def error_from_http(status: int, reason: str | None, body: bytes | None = None) -> IsolaError:
+def error_from_http(
+    status: int,
+    reason: str | None,
+    body: bytes | None = None,
+    *,
+    method: str | None = None,
+    path: str | None = None,
+) -> IsolaError:
     detail = reason or f"HTTP {status}"
 
     if body:
@@ -70,10 +77,20 @@ def error_from_http(status: int, reason: str | None, body: bytes | None = None) 
             if isinstance(maybe_detail, str) and maybe_detail:
                 detail = maybe_detail
 
+    if method and path:
+        detail = f"{method} {path}: {detail}"
+
     exc_type = _STATUS_TO_EXCEPTION.get(status, IsolaError)
     return exc_type(status=status, detail=detail)
 
 
-def connection_error_from_request(exc: httpx.RequestError) -> APIConnectionError:
+def connection_error_from_request(
+    exc: httpx.RequestError,
+    *,
+    method: str | None = None,
+    path: str | None = None,
+) -> APIConnectionError:
     detail = str(exc) or "failed to reach Isola API"
+    if method and path:
+        detail = f"{method} {path}: {detail}"
     return APIConnectionError(detail=detail)

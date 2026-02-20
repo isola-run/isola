@@ -61,7 +61,7 @@ def test_error_mapping_for_problem_details() -> None:
         client.sandboxes.get("missing")
 
     assert exc_info.value.status == 404
-    assert exc_info.value.detail == "sandbox not found"
+    assert "sandbox not found" in exc_info.value.detail
 
 
 @respx.mock
@@ -74,6 +74,7 @@ def test_transport_error_mapping() -> None:
 
     assert exc_info.value.status == 0
     assert "connect failed" in exc_info.value.detail
+    assert "GET /sandboxes" in exc_info.value.detail
 
 
 @pytest.mark.parametrize(
@@ -101,7 +102,7 @@ def test_error_status_code_mapping(status_code: int, exc_type: type[IsolaError])
         client.sandboxes.get("bad")
 
     assert exc_info.value.status == status_code
-    assert exc_info.value.detail == "test error"
+    assert "test error" in exc_info.value.detail
 
 
 @respx.mock

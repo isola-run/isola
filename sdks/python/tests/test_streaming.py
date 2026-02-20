@@ -124,8 +124,9 @@ def test_sync_stream_reconnects_and_resumes_offset(monkeypatch: pytest.MonkeyPat
         httpx.ReadError("server dropped"),
         httpx.WriteError("broken pipe"),
         httpx.CloseError("close failed"),
+        httpx.ConnectTimeout("connect timed out"),
     ],
-    ids=["ConnectError", "ReadError", "WriteError", "CloseError"],
+    ids=["ConnectError", "ReadError", "WriteError", "CloseError", "ConnectTimeout"],
 )
 def test_sync_stream_reconnects_on_network_error(monkeypatch: pytest.MonkeyPatch, error: Exception) -> None:
     monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
@@ -235,6 +236,38 @@ def test_sync_stream_connect_error_during_enter(monkeypatch: pytest.MonkeyPatch)
     assert api.calls == [0, 0]
 
 
+def test_sync_stream_connect_timeout_during_enter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
+
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(enter_exc=httpx.ConnectTimeout("connect timed out")),
+            _FakeSyncCM(_FakeSyncResponse([b"hello"])),
+        ]
+    )
+
+    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+
+    with stream as chunks:
+        output = b"".join(chunks)
+
+    assert output == b"hello"
+    assert api.calls == [0, 0]
+
+
+def test_sync_stream_connect_timeout_max_reconnects_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
+
+    api = _FakeSyncAPI(
+        [_FakeSyncCM(enter_exc=httpx.ConnectTimeout("down")) for _ in range(MAX_RECONNECTS + 1)]
+    )
+
+    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+
+    with pytest.raises(APIConnectionError), stream as chunks:
+        list(chunks)
+
+
 def test_sync_stream_http_error_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
 
@@ -290,6 +323,50 @@ async def test_async_stream_connect_error_during_enter(monkeypatch: pytest.Monke
 
     assert b"".join(chunks_list) == b"hello"
     assert api.calls == [0, 0]
+
+
+@pytest.mark.asyncio
+async def test_async_stream_connect_timeout_during_enter(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
+
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(enter_exc=httpx.ConnectTimeout("connect timed out")),
+            _FakeAsyncCM(_FakeAsyncResponse([b"hello"])),
+        ]
+    )
+
+    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+
+    chunks_list: list[bytes] = []
+    async with stream as chunks:
+        async for chunk in chunks:
+            chunks_list.append(chunk)
+
+    assert b"".join(chunks_list) == b"hello"
+    assert api.calls == [0, 0]
+
+
+@pytest.mark.asyncio
+async def test_async_stream_connect_timeout_max_reconnects_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
+
+    api = _FakeAsyncAPI(
+        [_FakeAsyncCM(enter_exc=httpx.ConnectTimeout("down")) for _ in range(MAX_RECONNECTS + 1)]
+    )
+
+    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+
+    with pytest.raises(APIConnectionError):
+        async with stream as chunks:
+            async for _ in chunks:
+                pass
 
 
 @pytest.mark.asyncio

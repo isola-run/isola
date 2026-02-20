@@ -1,5 +1,5 @@
 from ._client import AsyncIsola, Isola
-from ._commands import AsyncCommand, Command
+from ._commands import AsyncCommand, AsyncCommands, Command, Commands
 from ._exceptions import (
     APIConnectionError,
     BadGatewayError,
@@ -13,7 +13,7 @@ from ._exceptions import (
 )
 from ._filesystem import AsyncFilesystem, Filesystem
 from ._models import FileWriteResult, NetworkSpec, SandboxStatus, SandboxSummary
-from ._sandbox import AsyncSandbox, Sandbox
+from ._sandbox import AsyncSandbox, AsyncSandboxes, Sandbox, Sandboxes
 from ._streaming import AsyncCommandOutputStream, CommandOutputStream
 
 __all__ = [
@@ -21,8 +21,12 @@ __all__ = [
     "AsyncIsola",
     "Sandbox",
     "AsyncSandbox",
+    "Sandboxes",
+    "AsyncSandboxes",
     "Command",
     "AsyncCommand",
+    "Commands",
+    "AsyncCommands",
     "Filesystem",
     "AsyncFilesystem",
     "SandboxStatus",

@@ -16,6 +16,3 @@ isola = { path = "../../sdks/python", editable = true }
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 timeout = 120
-markers = [
-    "smoke: fast subset for quick validation",
-]

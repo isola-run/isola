@@ -14,7 +14,7 @@ from isola import (
     SandboxStatus,
 )
 
-from conftest import wait_for_running
+from conftest import wait_for_exit, wait_for_running
 
 POLL_INTERVAL = 0.5
 
@@ -44,12 +44,7 @@ def test_operations_on_creating_sandbox_return_conflict(
     # Now wait for running and verify it works normally
     running = wait_for_running(isola_client, sb.id)
     cmd = running.commands.run(cmd="echo", args=["now ok"])
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
-        if cmd.exit_code() is not None:
-            break
-        time.sleep(0.3)
-    assert cmd.exit_code() == 0
+    assert wait_for_exit(cmd, timeout=15) == 0
 
 
 @pytest.mark.timeout(120)

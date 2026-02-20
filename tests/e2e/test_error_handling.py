@@ -17,7 +17,7 @@ from isola import (
 from isola._commands import Commands
 from isola._filesystem import Filesystem
 
-from conftest import wait_for_running
+from conftest import wait_for_exit, wait_for_running
 
 FAKE_SANDBOX_ID = "nonexistent-sandbox-xyz"
 
@@ -134,29 +134,29 @@ def test_commands_on_deleted_sandbox(
     # Delete the sandbox
     running.delete()
 
-    # Wait briefly for the pod to start terminating
-    time.sleep(2)
+    # Poll until the sandbox is gone or no longer running
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        try:
+            current = isola_client.sandboxes.get(running.id)
+            if current.status != SandboxStatus.RUNNING:
+                break
+        except NotFoundError:
+            break
+        time.sleep(0.5)
 
     with pytest.raises(IsolaError):
         commands.run(cmd="echo", args=["should fail"])
 
 
 @pytest.mark.timeout(90)
-def test_invalid_command_nonzero_exit(shared_sandbox: Sandbox) -> None:
+def test_invalid_command_nonzero_exit(session_sandbox: Sandbox) -> None:
     """Running a binary that does not exist inside the sandbox should produce a non-zero exit code.
 
     The sidecar accepts the command (202), but nsenter fails to exec the binary,
     resulting in a non-zero exit code.
     """
-    cmd = shared_sandbox.commands.run(cmd="/usr/bin/nonexistent_binary_xyz")
+    cmd = session_sandbox.commands.run(cmd="/usr/bin/nonexistent_binary_xyz")
 
-    deadline = time.monotonic() + 30
-    exit_code = None
-    while time.monotonic() < deadline:
-        exit_code = cmd.exit_code()
-        if exit_code is not None:
-            break
-        time.sleep(0.5)
-
-    assert exit_code is not None, "Command did not exit within 30s"
+    exit_code = wait_for_exit(cmd, timeout=30)
     assert exit_code != 0, f"Expected non-zero exit code, got {exit_code}"

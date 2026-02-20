@@ -53,13 +53,13 @@ def test_internet_egress_enabled(
     exit_code, output = _run_and_collect_stdout(
         running,
         cmd="wget",
-        args=["-q", "-O-", "--timeout=5", "http://example.com"],
+        args=["-q", "-O-", "--timeout=5", "http://1.1.1.1"],
         timeout=10,
         wait_timeout=20,
     )
 
     assert exit_code == 0, f"wget should succeed with internet egress enabled, got exit code {exit_code}"
-    assert len(output) > 0, "Expected some HTML content from example.com"
+    assert len(output) > 0, "Expected some content from 1.1.1.1"
 
 
 @pytest.mark.timeout(90)

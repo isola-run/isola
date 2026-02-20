@@ -242,6 +242,80 @@ def test_command_stdout_text_mode_default(sandbox_response_copy: dict[str, objec
 
 
 @respx.mock
+def test_command_write_stdin_text_mode(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-stdin-text"})
+    )
+    stdin_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-stdin-text/stdin").mock(
+        return_value=httpx.Response(204)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        cmd = sandbox.commands.run(cmd="cat", text=True)
+        cmd.write_stdin("hello\n")
+
+    assert stdin_route.calls[0].request.content == b"hello\n"
+
+
+@respx.mock
+def test_command_write_stdin_binary_mode_rejects_str(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-stdin-bin"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        cmd = sandbox.commands.run(cmd="cat", text=False)
+        with pytest.raises(TypeError, match="binary mode"):
+            cmd.write_stdin("hello\n")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_command_write_stdin_text_mode(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-async-stdin-text"})
+    )
+    stdin_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-async-stdin-text/stdin").mock(
+        return_value=httpx.Response(204)
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        cmd = await sandbox.commands.run(cmd="cat", text=True)
+        await cmd.write_stdin("hello\n")
+
+    assert stdin_route.calls[0].request.content == b"hello\n"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_command_write_stdin_binary_mode_rejects_str(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-async-stdin-bin"})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        cmd = await sandbox.commands.run(cmd="cat", text=False)
+        with pytest.raises(TypeError, match="binary mode"):
+            await cmd.write_stdin("hello\n")
+
+
+@respx.mock
 def test_command_run_minimal_payload(sandbox_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)

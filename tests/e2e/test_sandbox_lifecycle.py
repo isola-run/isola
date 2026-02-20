@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from isola import Isola, NetworkSpec, Sandbox, SandboxStatus, SandboxSummary
 
-from conftest import wait_for_running
+from conftest import wait_for_exit, wait_for_running
 
 
-@pytest.mark.smoke
 @pytest.mark.timeout(90)
 def test_create_minimal_sandbox_reaches_running(
     isola_client: Isola,
@@ -52,12 +49,12 @@ def test_create_sandbox_with_full_config(
 
 def test_get_sandbox_returns_correct_fields(
     isola_client: Isola,
-    shared_sandbox: Sandbox,
+    session_sandbox: Sandbox,
 ) -> None:
     """Getting a sandbox by ID returns all expected fields."""
-    sb = isola_client.sandboxes.get(shared_sandbox.id)
+    sb = isola_client.sandboxes.get(session_sandbox.id)
 
-    assert sb.id == shared_sandbox.id
+    assert sb.id == session_sandbox.id
     assert sb.status == SandboxStatus.RUNNING
     assert sb.creation_timestamp is not None
     # The response includes the pod template with container image info
@@ -68,7 +65,7 @@ def test_get_sandbox_returns_correct_fields(
 
 def test_list_sandboxes_includes_created_sandbox(
     isola_client: Isola,
-    shared_sandbox: Sandbox,
+    session_sandbox: Sandbox,
 ) -> None:
     """Listing sandboxes includes the shared sandbox."""
     summaries = isola_client.sandboxes.list()
@@ -76,9 +73,9 @@ def test_list_sandboxes_includes_created_sandbox(
     assert len(summaries) > 0
 
     sandbox_ids = [s.id for s in summaries]
-    assert shared_sandbox.id in sandbox_ids
+    assert session_sandbox.id in sandbox_ids
 
-    matching = next(s for s in summaries if s.id == shared_sandbox.id)
+    matching = next(s for s in summaries if s.id == session_sandbox.id)
     assert isinstance(matching, SandboxSummary)
     assert matching.status == SandboxStatus.RUNNING
     assert matching.creation_timestamp is not None
@@ -141,14 +138,7 @@ def test_default_command_keeps_sandbox_alive(
 
     # Prove the sandbox is alive by executing a command inside it
     cmd = running.commands.run(cmd="echo", args=["hello"])
-    # Wait for the command to finish
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        ec = cmd.exit_code()
-        if ec is not None:
-            break
-        time.sleep(0.5)
-    assert cmd.exit_code() == 0
+    assert wait_for_exit(cmd) == 0
 
 
 @pytest.mark.timeout(90)

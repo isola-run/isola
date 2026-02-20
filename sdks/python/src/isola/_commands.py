@@ -94,12 +94,18 @@ class Command:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/status"
         return self._api.request_model("GET", path, CommandStatus).exit_code
 
-    def write_stdin(self, data: bytes) -> None:
+    def write_stdin(self, data: str | bytes) -> None:
+        if isinstance(data, str):
+            if not self._text:
+                raise TypeError("cannot write str to stdin in binary mode; pass bytes instead")
+            raw = data.encode("utf-8")
+        else:
+            raw = data
         path = f"{_command_path(self._sandbox_id, self._command_id)}/stdin"
         self._api.request_no_content(
             "POST",
             path,
-            content=data,
+            content=raw,
             headers={"Content-Type": "application/octet-stream"},
         )
 
@@ -131,12 +137,18 @@ class AsyncCommand:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/status"
         return (await self._api.request_model("GET", path, CommandStatus)).exit_code
 
-    async def write_stdin(self, data: bytes) -> None:
+    async def write_stdin(self, data: str | bytes) -> None:
+        if isinstance(data, str):
+            if not self._text:
+                raise TypeError("cannot write str to stdin in binary mode; pass bytes instead")
+            raw = data.encode("utf-8")
+        else:
+            raw = data
         path = f"{_command_path(self._sandbox_id, self._command_id)}/stdin"
         await self._api.request_no_content(
             "POST",
             path,
-            content=data,
+            content=raw,
             headers={"Content-Type": "application/octet-stream"},
         )
 

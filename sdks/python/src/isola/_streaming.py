@@ -117,7 +117,7 @@ class CommandOutputStream:
 
             except httpx.ReadTimeout as exc:
                 raise StreamTimeoutError(f"No data received for {self._httpx_timeout.read}s") from exc
-            except httpx.NetworkError as exc:
+            except (httpx.NetworkError, httpx.ConnectTimeout) as exc:
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
                     raise connection_error_from_request(exc) from exc
@@ -203,7 +203,7 @@ class AsyncCommandOutputStream:
 
             except httpx.ReadTimeout as exc:
                 raise StreamTimeoutError(f"No data received for {self._httpx_timeout.read}s") from exc
-            except httpx.NetworkError as exc:
+            except (httpx.NetworkError, httpx.ConnectTimeout) as exc:
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
                     raise connection_error_from_request(exc) from exc

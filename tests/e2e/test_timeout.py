@@ -21,28 +21,30 @@ def test_active_deadline_sandbox_stops(
     # Wait up to 60s beyond when the sandbox became running for it to reach a
     # terminal state (stopped, failed) or be deleted entirely (NotFoundError).
     deadline = time.monotonic() + 60
+    last_status = None
     while time.monotonic() < deadline:
         try:
             current = isola_client.sandboxes.get(sb.id)
         except NotFoundError:
             return
+        last_status = current.status
         if current.status in (SandboxStatus.STOPPED, SandboxStatus.FAILED):
             return
         time.sleep(1.0)
 
     pytest.fail(
         f"Sandbox {sb.id} did not stop or disappear within 60s after reaching running "
-        f"(last status: {current.status.value})"
+        f"(last status: {last_status})"
     )
 
 
 @pytest.mark.timeout(60)
 def test_command_timeout(
     isola_client: Isola,
-    shared_sandbox: Sandbox,
+    session_sandbox: Sandbox,
 ) -> None:
     """A command with timeout=3 should be killed after ~3 seconds with a non-zero exit code."""
-    cmd = shared_sandbox.commands.run(cmd="sleep", args=["300"], timeout=3)
+    cmd = session_sandbox.commands.run(cmd="sleep", args=["300"], timeout=3)
 
     # The command should still be running immediately after creation.
     assert cmd.exit_code() is None
@@ -57,12 +59,12 @@ def test_command_timeout(
 @pytest.mark.timeout(30)
 def test_no_deadline_stays_alive(
     isola_client: Isola,
-    shared_sandbox: Sandbox,
+    session_sandbox: Sandbox,
 ) -> None:
     """A sandbox created without active_deadline_seconds should remain running after a brief wait."""
     time.sleep(5)
 
-    sb = isola_client.sandboxes.get(shared_sandbox.id)
+    sb = isola_client.sandboxes.get(session_sandbox.id)
     assert sb.status == SandboxStatus.RUNNING, (
         f"Expected sandbox without deadline to stay running, but status is {sb.status.value}"
     )
@@ -80,12 +82,14 @@ def test_operations_on_timed_out_sandbox(
     # Wait for the sandbox to stop or be deleted.
     deadline = time.monotonic() + 60
     sandbox_gone = False
+    last_status = None
     while time.monotonic() < deadline:
         try:
             current = isola_client.sandboxes.get(sb.id)
         except NotFoundError:
             sandbox_gone = True
             break
+        last_status = current.status
         if current.status in (SandboxStatus.STOPPED, SandboxStatus.FAILED):
             sandbox_gone = True
             break
@@ -93,7 +97,7 @@ def test_operations_on_timed_out_sandbox(
 
     assert sandbox_gone, (
         f"Sandbox {sb.id} did not reach a terminal state within 60s "
-        f"(last status: {current.status.value})"
+        f"(last status: {last_status})"
     )
 
     # Attempting to run a command on the stopped/deleted sandbox should raise an error.

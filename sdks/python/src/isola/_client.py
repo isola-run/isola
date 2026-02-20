@@ -44,11 +44,11 @@ class _SyncAPI:
                 timeout=timeout,
             )
         except httpx.RequestError as exc:
-            raise connection_error_from_request(exc) from exc
+            raise connection_error_from_request(exc, method=method, path=path) from exc
 
         if response.status_code >= 400:
             body = response.read()
-            raise error_from_http(response.status_code, response.reason_phrase, body)
+            raise error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
         return response
 
     def request_model(
@@ -147,11 +147,11 @@ class _AsyncAPI:
                 timeout=timeout,
             )
         except httpx.RequestError as exc:
-            raise connection_error_from_request(exc) from exc
+            raise connection_error_from_request(exc, method=method, path=path) from exc
 
         if response.status_code >= 400:
             body = await response.aread()
-            raise error_from_http(response.status_code, response.reason_phrase, body)
+            raise error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
         return response
 
     async def request_model(
