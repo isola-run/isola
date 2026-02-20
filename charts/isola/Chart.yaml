@@ -20,3 +20,5 @@ sources:
 maintainers:
   - name: Isola Team
     url: https://github.com/isola-ai
+annotations:
+  artifacthub.io/license: Apache-2.0
