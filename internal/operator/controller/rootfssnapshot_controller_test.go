@@ -229,5 +229,71 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
 			Expect(readyCond.Message).To(ContainSubstring("Sandbox pod is not ready"))
 		})
+
+		It("should deduplicate targetContainerNames", func() {
+			snapName := "snap-duplicate-targets"
+			sandboxName := "sandbox-duplicate-targets"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-duplicate-targets"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://dup123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main", "main"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+			Expect(snap.Status.ContainerSnapshots).To(HaveLen(1))
+			Expect(snap.Status.ContainerSnapshots[0].ContainerName).To(Equal("main"))
+
+			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
+			Expect(failedCond).To(BeNil())
+			Expect(getSnapshotJob(ctx, snapName+"-main")).NotTo(BeNil())
+		})
+
+		It("should fail when container ID cannot be extracted", func() {
+			snapName := "snap-missing-container-id"
+			sandboxName := "sandbox-missing-container-id"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-missing-container-id"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", Ready: true}}, // empty ContainerID
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+
+			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
+			Expect(failedCond).NotTo(BeNil())
+			Expect(failedCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(failedCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
+			Expect(failedCond.Message).To(ContainSubstring("Failed to extract container ID for \"main\""))
+		})
 	})
 })

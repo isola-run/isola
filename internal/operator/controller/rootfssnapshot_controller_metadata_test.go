@@ -344,5 +344,79 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			}
 			Expect(appSnapshotKey).To(ContainSubstring("/app.tar"))
 		})
+
+		It("does not recreate failed container jobs while other containers are still running", func() {
+			snapName := "snap-no-recreate-failed"
+			sandboxName := "sandbox-no-recreate-failed"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-no-recreate-failed"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{
+					{Name: "app", Image: "busybox"},
+					{Name: "worker", Image: "busybox"},
+				},
+				[]corev1.ContainerStatus{
+					{Name: "app", ContainerID: "containerd://app-no-recreate", Ready: true},
+					{Name: "worker", ContainerID: "containerd://worker-no-recreate", Ready: true},
+				},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"app", "worker"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+			defer deleteSnapshotJob(ctx, snapName+"-app")
+			defer deleteSnapshotJob(ctx, snapName+"-worker")
+
+			// First reconcile creates both jobs and in-progress status.
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Mark app as failed; worker stays running (no completion/failure condition yet).
+			setSnapshotJobFailed(ctx, snapName+"-app", "simulated failure")
+
+			// Second reconcile records app failure and deletes failed app job.
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(getSnapshotJob(ctx, snapName+"-app")).To(BeNil())
+			Expect(getSnapshotJob(ctx, snapName+"-worker")).NotTo(BeNil())
+
+			// Third reconcile must NOT recreate app job while worker is still running.
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(getSnapshotJob(ctx, snapName+"-app")).To(BeNil())
+			Expect(getSnapshotJob(ctx, snapName+"-worker")).NotTo(BeNil())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+
+			var appCond *metav1.Condition
+			for i := range snap.Status.ContainerSnapshots {
+				if snap.Status.ContainerSnapshots[i].ContainerName != "app" {
+					continue
+				}
+				appCond = meta.FindStatusCondition(
+					snap.Status.ContainerSnapshots[i].Conditions,
+					string(sandboxv1alpha1.ContainerSnapshotComplete),
+				)
+				break
+			}
+			Expect(appCond).NotTo(BeNil())
+			Expect(appCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(appCond.Reason).To(Equal(sandboxv1alpha1.ReasonContainerFailed))
+
+			// Overall snapshot should not be terminal yet because worker is still running.
+			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
+			Expect(failedCond).To(BeNil())
+		})
 	})
 })
