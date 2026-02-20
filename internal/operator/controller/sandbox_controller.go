@@ -126,8 +126,13 @@ func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 		RestartPolicy: &rp,
 		// RunAsUser 0 (root) is needed to read /proc/<pid>/environ of other users' processes
 		// and to access /proc/<pid>/root when using shared PID namespace.
+		// CAP_SYS_ADMIN is required for nsenter's setns(2) calls to enter the target
+		// container's mount namespace (gVisor checks this capability explicitly).
 		SecurityContext: &corev1.SecurityContext{
 			RunAsUser: ptr.To(int64(0)),
+			Capabilities: &corev1.Capabilities{
+				Add: []corev1.Capability{"SYS_ADMIN"},
+			},
 		},
 	}
 }

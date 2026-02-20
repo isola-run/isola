@@ -44,23 +44,30 @@ func (b *NsenterCommandBuilder) Build(ctx context.Context, pid int, req sidecara
 	args := []string{
 		// https://man7.org/linux/man-pages/man1/nsenter.1.html
 		"--target", strconv.Itoa(pid), // target process to get namespaces from
-		"--all",     // enter all usable namespaces (see nsenter.c is_usable_namespace())
+		// Enter specific namespaces rather than --all because:
+		// - --all uses is_usable_namespace() (nsenter.c:429) which checks /proc/self/ns/<type>
+		//   ino vs target ino to skip same-namespace cases, but gVisor virtualizes inos so
+		//   the user namespace appears different even though it's shared, causing setns()
+		//   to fail with EINVAL.
+		// - gVisor's setns(2) requires CAP_SYS_ADMIN (granted via sidecar SecurityContext).
+		"--mount", // each container has its own mount namespace (filesystem view)
+		"--uts",   // hostname/domainname
+		"--ipc",   // System V IPC
+		"--net",   // network stack
+		// Namespaces intentionally excluded:
+		// --pid:    pod has shareProcessNamespace:true, PID namespace is already shared.
+		// --user:   gVisor's is_usable_namespace() falsely detects it as different (ino mismatch),
+		//           but setns() into the user namespace fails with EINVAL in gVisor.
+		// --cgroup: gVisor does not support CLONE_NEWCGROUP (/proc/<pid>/ns/cgroup absent).
+		// --time:   gVisor does not support CLONE_NEWTIME (/proc/<pid>/ns/time absent).
 		"--no-fork", // prevent nsenter's implicit fork when entering PID namespace (execvp directly)
 		"--root",    // chroot to /proc/<pid>/root
-		// Execute as root:
 		"--setuid=0",
 		"--setgid=0",
 		// --no-fork is critical: without it, nsenter forks when entering a PID namespace,
 		// creating an intermediate parent in a waitpid loop. SIGKILL would kill that parent
 		// and orphan the actual command. With --no-fork, nsenter calls execvp() directly,
 		// so SIGKILL reaches the user's process.
-		//
-		// --no-fork means the exec'd process itself doesn't join the target PID namespace (only its children would).
-		// This is safe because the sandbox pod has shareProcessNamespace: true,
-		// so caller and target already share the same PID namespace.
-		//
-		// --all (vs explicit flags) gracefully handles namespaces that can't be entered
-		// (e.g. the caller's own user namespace, which setns(2) forbids reentering).
 		// No --env: we build the env ourselves and must not inherit the sidecar's.
 	}
 	if req.Cwd != "" {

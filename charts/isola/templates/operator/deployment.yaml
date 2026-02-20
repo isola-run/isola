@@ -35,7 +35,6 @@ spec:
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081
-        - "--sidecar-image={{ include "isola.operator.sidecarImage" . }}"
         {{- $runtimeClass := include "isola.operator.runtimeClassName" . }}
         {{- if $runtimeClass }}
         - "--runtime-class={{ $runtimeClass }}"
@@ -59,7 +58,6 @@ spec:
         - "--rootfssnapshot-credential-secret={{ $credentialSecretName }}"
         {{- end }}
         {{- end }}
-        - "--rootfssnapshot-uploader-image={{ include "isola.operator.uploaderImage" . }}"
         - "--rootfssnapshot-service-account={{ include "isola.operator.rootfssnapshotServiceAccountName" . }}"
         - "--gvisor-runsc-path={{ include "isola.operator.gvisorRunscPath" . }}"
         - "--gvisor-runsc-root={{ include "isola.operator.gvisorRunscRoot" . }}"
@@ -68,6 +66,11 @@ spec:
         {{- if $imagePullSecretNames }}
         - "--image-pull-secrets={{ $imagePullSecretNames }}"
         {{- end }}
+        env:
+        - name: SIDECAR_IMAGE
+          value: "{{ include "isola.operator.sidecarImage" . }}"
+        - name: ROOTFSSNAPSHOT_UPLOADER_IMAGE
+          value: "{{ include "isola.operator.uploaderImage" . }}"
         ports:
         - name: health
           containerPort: 8081

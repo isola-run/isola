@@ -155,6 +155,16 @@ test-sdk-python: ## Run Python SDK tests
 test-sdk-python-verbose: ## Run Python SDK tests with verbose output
 	cd sdks/python && uv run --frozen --extra dev pytest -v
 
+##@ E2E Testing
+
+.PHONY: test-e2e
+test-e2e: ## Run E2E tests (requires running cluster: tilt up)
+	cd tests/e2e && uv run --frozen pytest -q $(if $(FOCUS),-k "$(FOCUS)")
+
+.PHONY: test-e2e-verbose
+test-e2e-verbose: ## Run E2E tests with verbose output
+	cd tests/e2e && uv run --frozen pytest -v $(if $(FOCUS),-k "$(FOCUS)")
+
 ##@ Build
 
 .PHONY: build
