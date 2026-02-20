@@ -14,7 +14,7 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # IPv4: allow 0.0.0.0/0 minus every non-public prefix
+    # IPv4: allow 0.0.0.0/0 minus non-public
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -43,7 +43,7 @@ spec:
               - 199.36.153.8/30     # GCP: private.googleapis.com
               - 34.126.0.0/18       # GCP: DirectPath gRPC direct connectivity (functional only from GCE VMs)
               - 168.63.129.16/32    # Azure: Wire Server (VM Agent, DHCP, DNS, health probes)
-    # IPv6: allow ::/0 minus every non-public prefix
+    # IPv6: allow ::/0 minus non-public
     - to:
         - ipBlock:
             cidr: ::/0
