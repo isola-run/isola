@@ -9,19 +9,32 @@ from conftest import wait_for_exit
 
 @pytest.mark.timeout(60)
 def test_incremental_stdout(session_sandbox: Sandbox) -> None:
-    """Output produced in stages arrives as a complete stream."""
+    """Output arrives progressively while the command is still running.
+
+    The sleeps create observable time windows: the first chunk must arrive
+    while the command is still sleeping (exit_code() is None), proving the
+    stream does not buffer and flush only at exit.
+    """
     cmd = session_sandbox.commands.run(
         cmd="sh",
         args=["-c", "echo line1; sleep 0.5; echo line2; sleep 0.5; echo line3"],
         text=True,
     )
 
-    with cmd.stdout(timeout=30.0) as stream:
-        output = "".join(chunk for chunk in stream)
+    received_while_running = False
+    collected: list[str] = []
 
+    with cmd.stdout(timeout=30.0) as stream:
+        for chunk in stream:
+            collected.append(chunk)
+            if not received_while_running and cmd.exit_code() is None:
+                received_while_running = True
+
+    output = "".join(collected)
     assert "line1\n" in output
     assert "line2\n" in output
     assert "line3\n" in output
+    assert received_while_running, "Expected to receive output while command was still running"
     assert wait_for_exit(cmd) == 0
 
 

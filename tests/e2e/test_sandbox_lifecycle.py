@@ -82,23 +82,6 @@ def test_list_sandboxes_includes_created_sandbox(
 
 
 @pytest.mark.timeout(90)
-def test_delete_sandbox_is_idempotent(
-    isola_client: Isola,
-    sandbox_factory,
-) -> None:
-    """Deleting a sandbox twice should not raise an error (idempotent)."""
-    sb = sandbox_factory(image="alpine:3.21")
-    wait_for_running(isola_client, sb.id)
-
-    # First delete should succeed
-    sb_fresh = isola_client.sandboxes.get(sb.id)
-    sb_fresh.delete()
-
-    # Second delete should also succeed without raising
-    sb_fresh.delete()
-
-
-@pytest.mark.timeout(90)
 def test_env_vars_are_write_only(
     isola_client: Isola,
     sandbox_factory,

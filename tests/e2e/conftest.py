@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+import warnings
 
 import pytest
 import pytest_asyncio
 
-from isola import AsyncIsola, AsyncSandbox, Isola, Sandbox, SandboxStatus
+from isola import AsyncCommand, AsyncIsola, AsyncSandbox, Isola, Sandbox, SandboxStatus
 
 ISOLA_BASE_URL = os.environ.get("ISOLA_BASE_URL", "http://localhost:8080")
 
@@ -79,7 +80,7 @@ async def wait_for_running_async(
     pytest.fail(f"Sandbox {sandbox_id} did not reach running within {timeout}s (last status: {last_status})")
 
 
-async def wait_for_exit_async(cmd: AsyncSandbox, *, timeout: float = 30) -> int:
+async def wait_for_exit_async(cmd: AsyncCommand, *, timeout: float = 30) -> int:
     """Poll exit_code() until the command finishes or timeout is reached."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -87,7 +88,7 @@ async def wait_for_exit_async(cmd: AsyncSandbox, *, timeout: float = 30) -> int:
         if code is not None:
             return code
         await asyncio.sleep(0.5)
-    raise TimeoutError(f"Command did not exit within {timeout}s")
+    raise TimeoutError(f"Command {cmd.id} did not exit within {timeout}s")
 
 
 # --- Sync fixtures ---
@@ -116,8 +117,8 @@ def sandbox_factory(isola_client: Isola):
     for sid in created:
         try:
             isola_client.sandboxes.get(sid).delete()
-        except Exception:
-            pass
+        except Exception as e:
+            warnings.warn(f"Failed to delete sandbox {sid} during teardown: {e}")
 
 
 @pytest.fixture(scope="session")
@@ -153,8 +154,8 @@ async def async_sandbox_factory(async_isola_client: AsyncIsola):
         try:
             sb = await async_isola_client.sandboxes.get(sid)
             await sb.delete()
-        except Exception:
-            pass
+        except Exception as e:
+            warnings.warn(f"Failed to delete sandbox {sid} during teardown: {e}")
 
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")

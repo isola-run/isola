@@ -61,12 +61,13 @@ def test_no_deadline_stays_alive(
     isola_client: Isola,
     session_sandbox: Sandbox,
 ) -> None:
-    """A sandbox created without active_deadline_seconds should remain running after a brief wait."""
-    time.sleep(5)
-
+    """A sandbox created without active_deadline_seconds should remain running and have no deadline."""
     sb = isola_client.sandboxes.get(session_sandbox.id)
     assert sb.status == SandboxStatus.RUNNING, (
         f"Expected sandbox without deadline to stay running, but status is {sb.status.value}"
+    )
+    assert sb.active_deadline_seconds is None, (
+        f"Expected no deadline on session sandbox, got {sb.active_deadline_seconds}"
     )
 
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 
 import pytest
 
@@ -113,13 +112,17 @@ def test_stdout_readable_after_kill(session_sandbox: Sandbox) -> None:
         args=["-c", "echo before_kill; sleep 300"],
     )
 
-    # Give the echo command time to flush (it completes in microseconds;
-    # 1s is conservative insurance before we kill the long-running sleep).
-    time.sleep(1)
+    # Read stdout until "before_kill" appears, confirming the echo flushed,
+    # then break early to avoid blocking on sleep 300.
+    with cmd.stdout(timeout=30.0) as stream:
+        for chunk in stream:
+            if "before_kill" in chunk:
+                break
+
     cmd.kill()
     wait_for_exit(cmd, timeout=10)
 
-    # Read stdout after kill -- the output file should still exist
+    # Output file persists after kill -- verify the content is still readable.
     with cmd.stdout(timeout=10.0) as stream:
         output = "".join(chunk for chunk in stream)
     assert "before_kill" in output
