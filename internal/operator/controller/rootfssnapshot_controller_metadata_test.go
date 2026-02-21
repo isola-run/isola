@@ -418,5 +418,79 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
 			Expect(failedCond).To(BeNil())
 		})
+
+		It("records failure correctly when missing container status entries are appended during reconcile", func() {
+			snapName := "snap-append-status-regression"
+			sandboxName := "sandbox-append-status-regression"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-append-status-regression"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{
+					{Name: "app", Image: "busybox"},
+					{Name: "worker", Image: "busybox"},
+				},
+				[]corev1.ContainerStatus{
+					{Name: "app", ContainerID: "containerd://app-regression", Ready: true},
+					{Name: "worker", ContainerID: "containerd://worker-regression", Ready: true},
+				},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"app", "worker"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+			defer deleteSnapshotJob(ctx, snapName+"-app")
+			defer deleteSnapshotJob(ctx, snapName+"-worker")
+			defer deleteSnapshotJobPod(ctx, snapName+"-worker")
+
+			// First reconcile creates jobs and initializes status with both containers.
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Force an inconsistent status: keep only "app" so reconcile must append "worker".
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+			snap.Status.ContainerSnapshots = []sandboxv1alpha1.ContainerSnapshotStatus{
+				{
+					ContainerName: "app",
+					ContainerID:   "app-regression",
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
+
+			// Prepare terminal job states for a single reconcile pass:
+			// app failed, worker succeeded.
+			setSnapshotJobFailed(ctx, snapName+"-app", "simulated app failure")
+			createSnapshotJobPodWithTerminationMessage(ctx, snapName+"-worker", &snapshotpkg.UploadResult{
+				SnapshotKey:  "snapshots/" + testNamespace + "/" + sandboxName + "/rev-00009/worker.tar",
+				Revision:     9,
+				BytesWritten: 1024,
+			})
+			setSnapshotJobComplete(ctx, snapName+"-worker")
+
+			// Second reconcile appends missing worker status and processes both jobs.
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap = getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+
+			// Regression assertion: overall snapshot must be Failed (not incorrectly Succeeded).
+			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
+			Expect(failedCond).NotTo(BeNil())
+			Expect(failedCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(failedCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
+			Expect(failedCond.Message).To(ContainSubstring("container \"app\""))
+
+			completeCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
+			Expect(completeCond).To(BeNil())
+		})
 	})
 })

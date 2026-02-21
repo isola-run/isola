@@ -219,15 +219,17 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Ensure all requested containers are tracked in status.
-	snapshotsByName := make(map[string]*sandboxv1alpha1.ContainerSnapshotStatus, len(snap.Status.ContainerSnapshots))
+	//
+	// Keep name->index instead of name->pointer so later appends cannot stale pointers if the
+	// slice backing array is reallocated.
+	snapshotIndexesByName := make(map[string]int, len(snap.Status.ContainerSnapshots))
 	for i := range snap.Status.ContainerSnapshots {
-		status := &snap.Status.ContainerSnapshots[i]
-		snapshotsByName[status.ContainerName] = status
+		snapshotIndexesByName[snap.Status.ContainerSnapshots[i].ContainerName] = i
 	}
 	for _, ref := range refs {
-		if existing, ok := snapshotsByName[ref.containerName]; ok {
-			if existing.ContainerID == "" {
-				existing.ContainerID = ref.containerID
+		if idx, ok := snapshotIndexesByName[ref.containerName]; ok {
+			if snap.Status.ContainerSnapshots[idx].ContainerID == "" {
+				snap.Status.ContainerSnapshots[idx].ContainerID = ref.containerID
 			}
 			continue
 		}
@@ -235,8 +237,14 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			ContainerName: ref.containerName,
 			ContainerID:   ref.containerID,
 		})
-		status := &snap.Status.ContainerSnapshots[len(snap.Status.ContainerSnapshots)-1]
-		snapshotsByName[status.ContainerName] = status
+		snapshotIndexesByName[ref.containerName] = len(snap.Status.ContainerSnapshots) - 1
+	}
+	getSnapshotStatus := func(containerName string) *sandboxv1alpha1.ContainerSnapshotStatus {
+		idx, ok := snapshotIndexesByName[containerName]
+		if !ok {
+			return nil
+		}
+		return &snap.Status.ContainerSnapshots[idx]
 	}
 
 	results := make(map[string]*snapshotpkg.UploadResult, len(refs))
@@ -249,7 +257,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: snap.Namespace}, job)
 		if apierrors.IsNotFound(err) {
 			// If the snapshot key is already present, this container already completed in a prior reconcile.
-			if snapshotStatus, ok := snapshotsByName[ref.containerName]; ok {
+			if snapshotStatus := getSnapshotStatus(ref.containerName); snapshotStatus != nil {
 				if snapshotStatus.SnapshotKey != "" || containerSnapshotHasFailed(snapshotStatus) {
 					continue
 				}
@@ -257,7 +265,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			if err := r.createSnapshotJob(ctx, snap, sandboxPod, ref.containerName, ref.containerID); err != nil {
 				return ctrl.Result{}, err
 			}
-			if snapshotStatus, ok := snapshotsByName[ref.containerName]; ok {
+			if snapshotStatus := getSnapshotStatus(ref.containerName); snapshotStatus != nil {
 				setContainerSnapshotCondition(
 					snap,
 					snapshotStatus,
@@ -283,7 +291,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				containerLog.Error(err, "Failed to read upload result from termination message")
 				r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "TerminationLogReadFailed", "ReadFailed", "%s", err.Error())
 				r.deleteJob(ctx, job)
-				if snapshotStatus, ok := snapshotsByName[ref.containerName]; ok {
+				if snapshotStatus := getSnapshotStatus(ref.containerName); snapshotStatus != nil {
 					setContainerSnapshotCondition(
 						snap,
 						snapshotStatus,
@@ -296,7 +304,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			}
 
 			results[ref.containerName] = result
-			if snapshotStatus, ok := snapshotsByName[ref.containerName]; ok {
+			if snapshotStatus := getSnapshotStatus(ref.containerName); snapshotStatus != nil {
 				setContainerSnapshotCondition(
 					snap,
 					snapshotStatus,
@@ -318,7 +326,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			containerLog.Info(message, "job", jobName)
 			r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "SnapshotFailed", "Failed", "Container %s: %s", ref.containerName, message)
 			r.deleteJob(ctx, job)
-			if snapshotStatus, ok := snapshotsByName[ref.containerName]; ok {
+			if snapshotStatus := getSnapshotStatus(ref.containerName); snapshotStatus != nil {
 				setContainerSnapshotCondition(
 					snap,
 					snapshotStatus,
@@ -330,7 +338,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			continue
 		}
 
-		if snapshotStatus, ok := snapshotsByName[ref.containerName]; ok {
+		if snapshotStatus := getSnapshotStatus(ref.containerName); snapshotStatus != nil {
 			setContainerSnapshotCondition(
 				snap,
 				snapshotStatus,
