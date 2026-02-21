@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from typing import Any, BinaryIO, TypeVar
 
@@ -227,7 +228,12 @@ def _normalize_base_url(base_url: str) -> str:
 
 
 class Isola:
-    def __init__(self, *, base_url: str) -> None:
+    def __init__(self, *, base_url: str | None = None) -> None:
+        base_url = base_url or os.environ.get("ISOLA_BASE_URL")
+        if not base_url:
+            raise ValueError(
+                "base_url must be provided either as argument or via the ISOLA_BASE_URL environment variable"
+            )
         self._api = _SyncAPI(base_url)
         from ._sandbox import Sandboxes
 
@@ -244,7 +250,12 @@ class Isola:
 
 
 class AsyncIsola:
-    def __init__(self, *, base_url: str) -> None:
+    def __init__(self, *, base_url: str | None = None) -> None:
+        base_url = base_url or os.environ.get("ISOLA_BASE_URL")
+        if not base_url:
+            raise ValueError(
+                "base_url must be provided either as argument or via the ISOLA_BASE_URL environment variable"
+            )
         self._api = _AsyncAPI(base_url)
         from ._sandbox import AsyncSandboxes
 

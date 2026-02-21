@@ -143,5 +143,25 @@ def test_json_schema_mismatch_raises_isola_error() -> None:
 
 
 def test_empty_base_url_raises_value_error() -> None:
-    with pytest.raises(ValueError, match="must not be empty"):
+    with pytest.raises(ValueError, match="ISOLA_BASE_URL"):
         Isola(base_url="")
+
+
+def test_no_base_url_raises_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ISOLA_BASE_URL", raising=False)
+    with pytest.raises(ValueError, match="ISOLA_BASE_URL"):
+        Isola()
+
+
+def test_base_url_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ISOLA_BASE_URL", "http://from-env:9090")
+    client = Isola()
+    assert client._api.base_url == "http://from-env:9090"
+    client.close()
+
+
+def test_explicit_base_url_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ISOLA_BASE_URL", "http://from-env:9090")
+    client = Isola(base_url="http://explicit:8080")
+    assert client._api.base_url == "http://explicit:8080"
+    client.close()
