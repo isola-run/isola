@@ -38,6 +38,8 @@ operator:
   metrics:
     # Port for the Prometheus metrics endpoint
     port: 8080
+    # Serve metrics over HTTP. Set to true to enable HTTPS (requires cert setup).
+    secure: false
 
     service:
       # Create a Service for the metrics endpoint (needed for ServiceMonitor)
@@ -46,7 +48,8 @@ operator:
     serviceMonitor:
       # Create a ServiceMonitor for Prometheus Operator
       enabled: false
-      # Override namespace for ServiceMonitor (defaults to release namespace)
+      # Override namespace for ServiceMonitor (defaults to release namespace).
+      # Useful when Prometheus Operator watches a dedicated monitoring namespace.
       namespace: ""
       # Scrape interval (leave empty for Prometheus default)
       interval: ""

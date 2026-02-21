@@ -13,6 +13,12 @@ spec:
   selector:
     matchLabels:
       {{- include "isola.operator.selectorLabels" . | nindent 6 }}
+  # Restrict scraping to the namespace where the metrics Service lives,
+  # regardless of which namespace this ServiceMonitor is deployed to.
+  # Matches the pattern used by cert-manager and external-secrets operators.
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
   endpoints:
     - port: metrics
       {{- with .Values.operator.metrics.serviceMonitor.interval }}

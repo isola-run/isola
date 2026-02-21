@@ -22,8 +22,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
+	snapshotpkg "github.com/isola-ai/isola/internal/snapshot"
 )
 
 var _ = Describe("Metrics", func() {
@@ -120,6 +124,46 @@ var _ = Describe("Metrics", func() {
 			Expect(testutil.ToFloat64(sandboxDeletedTotal)).To(Equal(before + 1))
 		})
 
+		It("should not increment sandboxTimedOutTotal on subsequent reconciles after cleanup begins", func() {
+			sandboxName := "metrics-timed-out-idempotent"
+			timeout := int64(60)
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.ActiveDeadlineSeconds = &timeout
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			pod.Status.Phase = corev1.PodRunning
+			pod.Status.StartTime = &metav1.Time{Time: fakeClock.Now()}
+			pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			fakeClock.Advance(61 * time.Second)
+
+			// First timeout reconcile — fires the counter
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			after := testutil.ToFloat64(sandboxTimedOutTotal)
+
+			// Second timeout reconcile — cleanup already started, counter must not fire again
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(testutil.ToFloat64(sandboxTimedOutTotal)).To(Equal(after))
+		})
+
 		It("should increment sandboxTimedOutTotal when sandbox times out", func() {
 			sandboxName := "metrics-timed-out"
 			timeout := int64(60)
@@ -158,6 +202,141 @@ var _ = Describe("Metrics", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(testutil.ToFloat64(sandboxTimedOutTotal)).To(Equal(before + 1))
+		})
+	})
+
+	Context("Snapshot lifecycle", func() {
+		var (
+			snapReconciler *RootfsSnapshotReconciler
+			recorder       *events.FakeRecorder
+		)
+
+		BeforeEach(func() {
+			recorder = events.NewFakeRecorder(10)
+			snapReconciler = &RootfsSnapshotReconciler{
+				Client:                 k8sClient,
+				Scheme:                 k8sClient.Scheme(),
+				Recorder:               recorder,
+				Clock:                  NewFakeClock(time.Now()),
+				BucketURL:              "s3://test-bucket?region=us-east-1",
+				UploaderImage:          "isola-uploader:test",
+				SnapshotServiceAccount: "test-snapshot-sa",
+				Enabled:                true,
+				GvisorRunscPath:        "/usr/local/bin/runsc",
+				GvisorRunscRoot:        "/run/containerd/runsc/k8s.io",
+			}
+		})
+
+		It("should increment rootfsSnapshotCreatedTotal when a snapshot job is created", func() {
+			snapName := "metrics-snap-created"
+			sandboxName := "metrics-sandbox-snap-created"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-metrics-snap-created"
+
+			before := testutil.ToFloat64(rootfsSnapshotCreatedTotal)
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "sandbox", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"sandbox"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+			defer deleteSnapshotJob(ctx, snapName+"-sandbox")
+
+			_, err := snapReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(testutil.ToFloat64(rootfsSnapshotCreatedTotal)).To(Equal(before + 1))
+		})
+
+		It("should increment rootfsSnapshotCompletedTotal{result=succeeded} when job succeeds", func() {
+			snapName := "metrics-snap-succeeded"
+			sandboxName := "metrics-sandbox-snap-succeeded"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-metrics-snap-succeeded"
+			jobName := snapName + "-sandbox"
+
+			before := testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("succeeded"))
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "sandbox", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "sandbox", ContainerID: "containerd://abc456", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"sandbox"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+			defer deleteSnapshotJob(ctx, jobName)
+			defer deleteSnapshotJobPod(ctx, jobName)
+
+			// First reconcile: creates the job
+			_, err := snapReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			createSnapshotJobPodWithTerminationMessage(ctx, jobName, &snapshotpkg.UploadResult{
+				SnapshotKey: "snapshots/test/rev-00001/sandbox.tar",
+				Revision:    1,
+			})
+			setSnapshotJobComplete(ctx, jobName)
+
+			// Second reconcile: processes the completed job
+			_, err = snapReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("succeeded"))).To(Equal(before + 1))
+		})
+
+		It("should increment rootfsSnapshotCompletedTotal{result=failed} when job fails", func() {
+			snapName := "metrics-snap-failed"
+			sandboxName := "metrics-sandbox-snap-failed"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-metrics-snap-failed"
+			jobName := snapName + "-sandbox"
+
+			before := testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("failed"))
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "sandbox", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "sandbox", ContainerID: "containerd://abc789", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"sandbox"})
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+			defer deleteSnapshotJob(ctx, jobName)
+
+			// First reconcile: creates the job
+			_, err := snapReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			setSnapshotJobFailed(ctx, jobName, "upload failed: connection refused")
+
+			// Second reconcile: processes the failed job
+			_, err = snapReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("failed"))).To(Equal(before + 1))
 		})
 	})
 })

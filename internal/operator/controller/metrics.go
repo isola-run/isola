@@ -21,34 +21,47 @@ import (
 
 var (
 	sandboxCreatedTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "isola_sandbox_created_total",
-		Help: "Total number of sandbox pods created by the operator.",
+		Namespace: "isola",
+		Subsystem: "sandbox",
+		Name:      "created_total",
+		Help:      "Total number of sandbox pods created by the operator.",
 	})
 
 	sandboxDeletedTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "isola_sandbox_deleted_total",
-		Help: "Total number of sandboxes deleted (finalizer completed).",
+		Namespace: "isola",
+		Subsystem: "sandbox",
+		Name:      "deleted_total",
+		Help:      "Total number of sandboxes deleted (finalizer completed).",
 	})
 
 	sandboxTimedOutTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "isola_sandbox_timed_out_total",
-		Help: "Total number of sandboxes that hit their activeDeadlineSeconds timeout.",
+		Namespace: "isola",
+		Subsystem: "sandbox",
+		Name:      "timed_out_total",
+		Help:      "Total number of sandboxes that hit their activeDeadlineSeconds timeout.",
 	})
 
 	sandboxReadyDurationSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "isola_sandbox_ready_duration_seconds",
-		Help:    "Time from sandbox creation to Ready condition becoming True.",
-		Buckets: []float64{1, 2, 5, 10, 15, 30, 60, 120},
+		Namespace: "isola",
+		Subsystem: "sandbox",
+		Name:      "ready_duration_seconds",
+		Help:      "Time from sandbox creation to Ready condition becoming True.",
+		// ExponentialBuckets(0.5, 2, 9) → 0.5s, 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s
+		Buckets: prometheus.ExponentialBuckets(0.5, 2, 9),
 	})
 
 	rootfsSnapshotCreatedTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "isola_rootfssnapshot_created_total",
-		Help: "Total number of rootfs snapshot jobs created.",
+		Namespace: "isola",
+		Subsystem: "rootfssnapshot",
+		Name:      "created_total",
+		Help:      "Total number of rootfs snapshot jobs created.",
 	})
 
 	rootfsSnapshotCompletedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "isola_rootfssnapshot_completed_total",
-		Help: "Total number of rootfs snapshots that reached a terminal state.",
+		Namespace: "isola",
+		Subsystem: "rootfssnapshot",
+		Name:      "completed_total",
+		Help:      "Total number of rootfs snapshots that reached a terminal state.",
 	}, []string{"result"})
 )
 

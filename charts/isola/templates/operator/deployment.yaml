@@ -36,7 +36,7 @@ spec:
         - --leader-elect
         - --health-probe-bind-address=:8081
         - "--metrics-bind-address=:{{ .Values.operator.metrics.port }}"
-        - --metrics-secure=false
+        - "--metrics-secure={{ .Values.operator.metrics.secure }}"
         - "--sidecar-image={{ include "isola.operator.sidecarImage" . }}"
         {{- $runtimeClass := include "isola.operator.runtimeClassName" . }}
         {{- if $runtimeClass }}
