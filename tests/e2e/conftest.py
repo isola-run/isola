@@ -8,7 +8,7 @@ import warnings
 import pytest
 import pytest_asyncio
 
-from isola import AsyncCommand, AsyncIsola, AsyncSandbox, Isola, Sandbox, SandboxStatus
+from isola import AsyncIsola, AsyncSandbox, Isola, Sandbox, SandboxStatus
 
 ISOLA_BASE_URL = os.environ.get("ISOLA_BASE_URL", "http://localhost:8080")
 
@@ -50,17 +50,6 @@ def wait_for_status(
     pytest.fail(f"Sandbox {sandbox_id} did not reach {target.value} within {timeout}s (last: {last_status})")
 
 
-def wait_for_exit(cmd, *, timeout: float = 30) -> int:
-    """Poll exit_code() until the command finishes or timeout is reached."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        code = cmd.exit_code()
-        if code is not None:
-            return code
-        time.sleep(0.5)
-    raise TimeoutError(f"Command {cmd.id} did not exit within {timeout}s")
-
-
 # --- Async helpers ---
 
 
@@ -78,17 +67,6 @@ async def wait_for_running_async(
             pytest.fail(f"Sandbox {sandbox_id} reached terminal status: {sb.status.value}")
         await asyncio.sleep(POLL_INTERVAL)
     pytest.fail(f"Sandbox {sandbox_id} did not reach running within {timeout}s (last status: {last_status})")
-
-
-async def wait_for_exit_async(cmd: AsyncCommand, *, timeout: float = 30) -> int:
-    """Poll exit_code() until the command finishes or timeout is reached."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        code = await cmd.exit_code()
-        if code is not None:
-            return code
-        await asyncio.sleep(0.5)
-    raise TimeoutError(f"Command {cmd.id} did not exit within {timeout}s")
 
 
 # --- Sync fixtures ---

@@ -14,7 +14,7 @@ from isola import (
     SandboxStatus,
 )
 
-from conftest import wait_for_exit, wait_for_running
+from conftest import wait_for_running
 
 POLL_INTERVAL = 0.5
 
@@ -34,7 +34,7 @@ def test_operations_on_creating_sandbox_return_conflict(
     # The sandbox might already be running if scheduling is very fast,
     # so we also accept the command succeeding (no error) as valid.
     try:
-        sb.commands.run(cmd="echo", args=["too early"])
+        sb.commands.spawn("echo", "too early")
     except ConflictError:
         pass  # expected: sandbox is still creating
     except IsolaError as e:
@@ -43,8 +43,8 @@ def test_operations_on_creating_sandbox_return_conflict(
 
     # Now wait for running and verify it works normally
     running = wait_for_running(isola_client, sb.id)
-    cmd = running.commands.run(cmd="echo", args=["now ok"])
-    assert wait_for_exit(cmd, timeout=15) == 0
+    cmd = running.commands.run("echo", "now ok")
+    assert cmd.exit_code() == 0
 
 
 @pytest.mark.timeout(120)
@@ -82,7 +82,7 @@ def test_delete_sandbox_with_running_command(
     running = wait_for_running(isola_client, sb.id)
 
     # Start a long-running command
-    running.commands.run(cmd="sleep", args=["300"])
+    running.commands.spawn("sleep", "300")
 
     # Delete the sandbox without killing the command
     running.delete()

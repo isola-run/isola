@@ -17,7 +17,7 @@ from isola import (
 from isola._commands import Commands
 from isola._filesystem import Filesystem
 
-from conftest import wait_for_exit, wait_for_running
+from conftest import wait_for_running
 
 FAKE_SANDBOX_ID = "nonexistent-sandbox-xyz"
 
@@ -38,7 +38,7 @@ def test_commands_on_nonexistent_sandbox(isola_client: Isola) -> None:
     commands = Commands(isola_client._api, FAKE_SANDBOX_ID)
 
     with pytest.raises(IsolaError) as exc_info:
-        commands.run(cmd="echo", args=["hello"])
+        commands.spawn("echo", "hello")
 
     assert exc_info.value.status >= 400
 
@@ -146,7 +146,7 @@ def test_commands_on_deleted_sandbox(
         time.sleep(0.5)
 
     with pytest.raises(IsolaError):
-        commands.run(cmd="echo", args=["should fail"])
+        commands.spawn("echo", "should fail")
 
 
 @pytest.mark.timeout(90)
@@ -156,7 +156,7 @@ def test_invalid_command_nonzero_exit(session_sandbox: Sandbox) -> None:
     The sidecar accepts the command (202), but nsenter fails to exec the binary,
     resulting in a non-zero exit code.
     """
-    cmd = session_sandbox.commands.run(cmd="/usr/bin/nonexistent_binary_xyz")
+    cmd = session_sandbox.commands.run("/usr/bin/nonexistent_binary_xyz")
 
-    exit_code = wait_for_exit(cmd, timeout=30)
-    assert exit_code != 0, f"Expected non-zero exit code, got {exit_code}"
+    code = cmd.exit_code()
+    assert code != 0, f"Expected non-zero exit code, got {code}"

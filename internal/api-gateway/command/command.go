@@ -71,6 +71,11 @@ type PostSandboxCommandStdinInput struct {
 	apigateway.BodyStream
 }
 
+type CloseSandboxCommandStdinInput struct {
+	ID    string `path:"id" doc:"Sandbox identifier"`
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+}
+
 type DeleteSandboxCommandInput struct {
 	ID    string `path:"id" doc:"Sandbox identifier"`
 	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
@@ -273,6 +278,34 @@ func (h *Handlers) PostCommandStdin(ctx context.Context, input *PostSandboxComma
 	return nil, nil
 }
 
+func (h *Handlers) CloseCommandStdin(ctx context.Context, input *CloseSandboxCommandStdinInput) (*struct{}, error) {
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	if err != nil {
+		return nil, err
+	}
+
+	sidecarURL := fmt.Sprintf("http://%s:%d/commands/%s/stdin/close", sb.Status.PodIP, h.sidecarPort, input.CmdID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, nil)
+	if err != nil {
+		h.logger.Error("failed to build sidecar request", "error", err)
+		return nil, huma.Error500InternalServerError("failed to build sidecar request")
+	}
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
+		return nil, huma.Error502BadGateway("failed to reach sidecar")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 400 {
+		return nil, apigateway.HandleSidecarError(resp, input.ID, h.logger)
+	}
+
+	return nil, nil
+}
+
 func (h *Handlers) DeleteCommand(ctx context.Context, input *DeleteSandboxCommandInput) (*struct{}, error) {
 	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
 	if err != nil {
@@ -382,6 +415,17 @@ func Register(api huma.API, h *Handlers) {
 		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.PostCommandStdin)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "closeSandboxCommandStdin",
+		Method:        http.MethodPost,
+		Path:          "/sandboxes/{id}/commands/{cmdId}/stdin/close",
+		Summary:       "Close command stdin",
+		Description:   "Closes the command's stdin pipe, sending EOF to the process",
+		Tags:          []string{"sandboxes", "commands"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.CloseCommandStdin)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "deleteSandboxCommand",

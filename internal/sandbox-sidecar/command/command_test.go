@@ -228,6 +228,99 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
+	Describe("POST /commands/{cmdId}/stdin/close", func() {
+		It("closes stdin and sends EOF", func() {
+			code, result := postCommand(`{"cmd": "cat"}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			// Write some data to stdin
+			resp := commandAPI.Post(
+				fmt.Sprintf("/commands/%s/stdin", result.CommandID),
+				"Content-Type: application/octet-stream",
+				strings.NewReader("hello"),
+			)
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+
+			// Close stdin — cat should see EOF and exit
+			resp = commandAPI.Post(
+				fmt.Sprintf("/commands/%s/stdin/close", result.CommandID),
+				"",
+			)
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+
+			// cat should exit with 0 after receiving EOF
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status", result.CommandID))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				return status.ExitCode
+			}).Should(HaveValue(Equal(0)))
+
+			// Verify the data was echoed
+			resp = commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+			Expect(resp.Body.String()).To(Equal("hello"))
+		})
+
+		It("returns 409 when closing already closed stdin", func() {
+			code, result := postCommand(`{"cmd": "cat"}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			resp := commandAPI.Post(
+				fmt.Sprintf("/commands/%s/stdin/close", result.CommandID),
+				"",
+			)
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+
+			// Second close should return 409
+			resp = commandAPI.Post(
+				fmt.Sprintf("/commands/%s/stdin/close", result.CommandID),
+				"",
+			)
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+
+		It("returns 409 for exited command", func() {
+			code, result := postCommand(`{"cmd": "true"}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status", result.CommandID))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				return status.ExitCode
+			}).ShouldNot(BeNil())
+
+			resp := commandAPI.Post(
+				fmt.Sprintf("/commands/%s/stdin/close", result.CommandID),
+				"",
+			)
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+
+		It("write after close returns 409", func() {
+			code, result := postCommand(`{"cmd": "cat"}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			resp := commandAPI.Post(
+				fmt.Sprintf("/commands/%s/stdin/close", result.CommandID),
+				"",
+			)
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+
+			resp = commandAPI.Post(
+				fmt.Sprintf("/commands/%s/stdin", result.CommandID),
+				"Content-Type: application/octet-stream",
+				strings.NewReader("data"),
+			)
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+
+		It("returns 404 for unknown command", func() {
+			resp := commandAPI.Post("/commands/00000000-0000-0000-0000-000000000000/stdin/close", "")
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+	})
+
 	Describe("DELETE /commands/{cmdId}", func() {
 		It("kills a running process", func() {
 			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)

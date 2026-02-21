@@ -4,7 +4,7 @@ import pytest
 
 from isola import Isola, NetworkSpec, Sandbox, SandboxStatus, SandboxSummary
 
-from conftest import wait_for_exit, wait_for_running
+from conftest import wait_for_running
 
 
 @pytest.mark.timeout(90)
@@ -120,8 +120,8 @@ def test_default_command_keeps_sandbox_alive(
     assert running.status == SandboxStatus.RUNNING
 
     # Prove the sandbox is alive by executing a command inside it
-    cmd = running.commands.run(cmd="echo", args=["hello"])
-    assert wait_for_exit(cmd) == 0
+    cmd = running.commands.run("echo", "hello")
+    assert cmd.exit_code() == 0
 
 
 @pytest.mark.timeout(90)

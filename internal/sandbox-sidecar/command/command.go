@@ -40,6 +40,7 @@ type CommandBuilder interface {
 // NsenterCommandBuilder constructs nsenter commands that enter the target container's namespaces.
 type NsenterCommandBuilder struct{}
 
+// TODO BENL: change to /bin/sh -c instead of nsenter
 func (b *NsenterCommandBuilder) Build(ctx context.Context, pid int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
 	args := []string{
 		// https://man7.org/linux/man-pages/man1/nsenter.1.html
@@ -116,6 +117,10 @@ type PostCommandStdinInput struct {
 	sandboxsidecar.BodyStream
 }
 
+type CloseCommandStdinInput struct {
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+}
+
 type DeleteCommandInput struct {
 	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
@@ -123,14 +128,15 @@ type DeleteCommandInput struct {
 // --- Handlers ---
 
 type commandEntry struct {
-	cmdID     string
-	cmd       *exec.Cmd
-	cancel    context.CancelFunc
-	stdinPipe io.WriteCloser
-	stdinMu   sync.Mutex // serialize concurrent stdin writes
-	exitCode  int        // only valid after done is closed
-	done      chan struct{}
-	outputDir string
+	cmdID       string
+	cmd         *exec.Cmd
+	cancel      context.CancelFunc
+	stdinPipe   io.WriteCloser
+	stdinMu     sync.Mutex // serialize concurrent stdin writes
+	stdinClosed bool
+	exitCode    int // only valid after done is closed
+	done        chan struct{}
+	outputDir   string
 }
 
 type Handlers struct {
@@ -407,6 +413,10 @@ func (h *Handlers) PostCommandStdin(_ context.Context, input *PostCommandStdinIn
 	}
 
 	entry.stdinMu.Lock()
+	if entry.stdinClosed {
+		entry.stdinMu.Unlock()
+		return nil, huma.Error409Conflict("stdin is already closed")
+	}
 	written, err := io.Copy(entry.stdinPipe, input.Stream)
 	entry.stdinMu.Unlock()
 
@@ -420,6 +430,34 @@ func (h *Handlers) PostCommandStdin(_ context.Context, input *PostCommandStdinIn
 	}
 
 	h.logger.Debug("stdin write", "cmdID", input.CmdID, "bytes", written)
+	return nil, nil
+}
+
+func (h *Handlers) CloseCommandStdin(_ context.Context, input *CloseCommandStdinInput) (*struct{}, error) {
+	entry, err := h.getCommandEntry(input.CmdID)
+	if err != nil {
+		return nil, err
+	}
+
+	select {
+	case <-entry.done:
+		return nil, huma.Error409Conflict("command has already exited")
+	default:
+	}
+
+	entry.stdinMu.Lock()
+	defer entry.stdinMu.Unlock()
+
+	if entry.stdinClosed {
+		return nil, huma.Error409Conflict("stdin is already closed")
+	}
+
+	if err := entry.stdinPipe.Close(); err != nil {
+		h.logger.Error("failed to close stdin", "error", err, "cmdID", input.CmdID)
+	}
+	entry.stdinClosed = true
+
+	h.logger.Debug("stdin closed", "cmdID", input.CmdID)
 	return nil, nil
 }
 
@@ -543,6 +581,17 @@ func Register(api huma.API, h *Handlers) {
 		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusNotFound, http.StatusConflict},
 	}, h.PostCommandStdin)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "closeCommandStdin",
+		Method:        http.MethodPost,
+		Path:          "/commands/{cmdId}/stdin/close",
+		Summary:       "Close command stdin",
+		Description:   "Closes the command's stdin pipe, sending EOF to the process",
+		Tags:          []string{"commands"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusNotFound, http.StatusConflict},
+	}, h.CloseCommandStdin)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "deleteCommand",

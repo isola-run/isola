@@ -6,7 +6,6 @@ import pytest
 
 from isola import BadRequestError, FileWriteResult, IsolaError, NotFoundError, Sandbox
 
-from conftest import wait_for_exit
 
 
 def _unique_path(prefix: str, ext: str = ".txt") -> str:
@@ -115,8 +114,6 @@ def test_file_written_is_executable_by_command(session_sandbox: Sandbox) -> None
     path = f"/tmp/test_{unique}.sh"
     session_sandbox.filesystem.write(path, b"#!/bin/sh\necho cross_subsystem_works\n")
 
-    cmd = session_sandbox.commands.run(cmd="sh", args=[path])
-    assert wait_for_exit(cmd, timeout=15) == 0
-    with cmd.stdout() as stream:
-        output = "".join(chunk for chunk in stream)
-    assert "cross_subsystem_works" in output
+    cmd = session_sandbox.commands.run("sh", path)
+    assert cmd.exit_code() == 0
+    assert "cross_subsystem_works" in cmd.stdout.read()

@@ -407,6 +407,49 @@ paths:
       summary: Write to command stdin
       tags:
         - commands
+  /commands/{cmdId}/stdin/close:
+    post:
+      description: Closes the command's stdin pipe, sending EOF to the process
+      operationId: closeCommandStdin
+      parameters:
+        - description: Command identifier
+          in: path
+          name: cmdId
+          required: true
+          schema:
+            description: Command identifier
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+      summary: Close command stdin
+      tags:
+        - commands
   /commands/{cmdId}/stdout:
     get:
       description: Streams the command's stdout as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.

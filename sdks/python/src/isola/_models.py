@@ -97,11 +97,11 @@ class CreateCommandPayload(IsolaModel):
     timeout: int | None = None
 
 
-class CommandResult(IsolaModel):
+class CreateCommandResponse(IsolaModel):
     command_id: str
 
 
-class CommandStatus(IsolaModel):
+class CommandStatusResponse(IsolaModel):
     exit_code: int | None = None
 
 

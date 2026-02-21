@@ -14,7 +14,7 @@ from ._exceptions import (
 from ._filesystem import AsyncFilesystem, Filesystem
 from ._models import FileWriteResult, NetworkSpec, SandboxStatus, SandboxSummary
 from ._sandbox import AsyncSandbox, AsyncSandboxes, Sandbox, Sandboxes
-from ._streaming import AsyncCommandOutputStream, CommandOutputStream
+from ._streaming import AsyncStreamReader, StreamReader
 
 __all__ = [
     "Isola",
@@ -32,8 +32,8 @@ __all__ = [
     "SandboxStatus",
     "SandboxSummary",
     "NetworkSpec",
-    "CommandOutputStream",
-    "AsyncCommandOutputStream",
+    "StreamReader",
+    "AsyncStreamReader",
     "FileWriteResult",
     "IsolaError",
     "BadRequestError",

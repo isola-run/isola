@@ -6,7 +6,7 @@ import pytest
 
 from isola import Isola, IsolaError, NotFoundError, Sandbox, SandboxStatus
 
-from conftest import wait_for_exit, wait_for_running
+from conftest import wait_for_running
 
 
 @pytest.mark.timeout(180)
@@ -44,13 +44,13 @@ def test_command_timeout(
     session_sandbox: Sandbox,
 ) -> None:
     """A command with timeout=3 should be killed after ~3 seconds with a non-zero exit code."""
-    cmd = session_sandbox.commands.run(cmd="sleep", args=["300"], timeout=3)
+    cmd = session_sandbox.commands.spawn("sleep", "300", timeout=3)
 
     # The command should still be running immediately after creation.
     assert cmd.exit_code() is None
 
     # Wait for the sidecar to kill the command after the timeout expires.
-    code = wait_for_exit(cmd, timeout=15)
+    code = cmd.wait(timeout=15)
 
     # A signal-killed process should have a non-zero exit code (typically 128+signal).
     assert code != 0, f"Expected non-zero exit code for timed-out command, got {code}"
@@ -103,4 +103,4 @@ def test_operations_on_timed_out_sandbox(
 
     # Attempting to run a command on the stopped/deleted sandbox should raise an error.
     with pytest.raises((NotFoundError, IsolaError)):
-        running.commands.run(cmd="echo", args=["should fail"])
+        running.commands.spawn("echo", "should fail")

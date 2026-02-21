@@ -322,6 +322,67 @@ var _ = Describe("Command Proxy", func() {
 		})
 	})
 
+	Describe("POST /sandboxes/{id}/commands/{cmdId}/stdin/close", func() {
+		It("proxies close to sidecar", func() {
+			var capturedMethod string
+			var capturedPath string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedMethod = r.Method
+				capturedPath = r.URL.Path
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close", sbName),
+				"",
+			)
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			Expect(capturedMethod).To(Equal(http.MethodPost))
+			Expect(capturedPath).To(Equal("/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close"))
+		})
+
+		It("forwards sidecar 409 conflict", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"detail": "stdin is already closed",
+				})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close", sbName),
+				"",
+			)
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+
+		It("returns 502 when sidecar is unreachable", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			mockSidecar.Close()
+
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close", sbName),
+				"",
+			)
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+	})
+
 	Describe("DELETE /sandboxes/{id}/commands/{cmdId}", func() {
 		It("proxies kill request", func() {
 			var capturedMethod string

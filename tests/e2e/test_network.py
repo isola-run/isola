@@ -1,21 +1,16 @@
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from isola import Isola, NetworkSpec, Sandbox
 
-from conftest import wait_for_exit, wait_for_running
+from conftest import wait_for_running
 
 
-def _run_and_collect_stdout(sandbox: Sandbox, *, cmd: str, args: list[str] | None = None, timeout: int | None = None, wait_timeout: float = 30) -> tuple[int, str]:
-    """Run a command in a sandbox, wait for it to finish, and return (exit_code, stdout)."""
-    command = sandbox.commands.run(cmd=cmd, args=args, timeout=timeout)
-    exit_code = wait_for_exit(command, timeout=wait_timeout)
-    with command.stdout() as stream:
-        output = "".join(chunk for chunk in stream)
-    return exit_code, output
+def _run_and_collect_stdout(sandbox: Sandbox, *args: str, timeout: int | None = None) -> tuple[int, str]:
+    """Run a command in a sandbox and return (exit_code, stdout)."""
+    cmd = sandbox.commands.run(*args, timeout=timeout)
+    return cmd.exit_code(), cmd.stdout.read()
 
 
 @pytest.mark.timeout(90)
@@ -29,10 +24,8 @@ def test_default_no_internet(
 
     exit_code, _ = _run_and_collect_stdout(
         running,
-        cmd="wget",
-        args=["-q", "-O-", "--timeout=3", "http://1.1.1.1"],
+        "wget", "-q", "-O-", "--timeout=3", "http://1.1.1.1",
         timeout=5,
-        wait_timeout=15,
     )
 
     assert exit_code != 0, "wget should fail when network is blocked by default"
@@ -52,10 +45,8 @@ def test_internet_egress_enabled(
 
     exit_code, output = _run_and_collect_stdout(
         running,
-        cmd="wget",
-        args=["-q", "-O-", "--timeout=5", "http://1.1.1.1"],
+        "wget", "-q", "-O-", "--timeout=5", "http://1.1.1.1",
         timeout=10,
-        wait_timeout=20,
     )
 
     assert exit_code == 0, f"wget should succeed with internet egress enabled, got exit code {exit_code}"
@@ -79,8 +70,7 @@ def test_custom_nameservers(
 
     exit_code, output = _run_and_collect_stdout(
         running,
-        cmd="cat",
-        args=["/etc/resolv.conf"],
+        "cat", "/etc/resolv.conf",
     )
 
     assert exit_code == 0
@@ -106,10 +96,8 @@ def test_allowed_egress_cidrs(
     # Use --tries=3 because the per-sandbox NetworkPolicy may take a moment to propagate.
     exit_code, output = _run_and_collect_stdout(
         running,
-        cmd="wget",
-        args=["-q", "-O-", "--timeout=5", "--tries=3", "http://1.1.1.1"],
+        "wget", "-q", "-O-", "--timeout=5", "--tries=3", "http://1.1.1.1",
         timeout=20,
-        wait_timeout=30,
     )
 
     # With the CIDR allowlisted, we expect wget to at least reach the server.
@@ -131,8 +119,7 @@ def test_dns_sink_default(
 
     exit_code, output = _run_and_collect_stdout(
         running,
-        cmd="cat",
-        args=["/etc/resolv.conf"],
+        "cat", "/etc/resolv.conf",
     )
 
     assert exit_code == 0
@@ -179,8 +166,7 @@ def test_allow_cluster_dns(
 
     exit_code, output = _run_and_collect_stdout(
         running,
-        cmd="cat",
-        args=["/etc/resolv.conf"],
+        "cat", "/etc/resolv.conf",
     )
 
     assert exit_code == 0
