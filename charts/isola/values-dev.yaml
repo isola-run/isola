@@ -7,7 +7,7 @@ operator:
     tag: "dev"
     pullPolicy: IfNotPresent
 
-  sidecar:
+  sandboxSidecar:
     image:
       registry: ""
       repository: sandbox-sidecar

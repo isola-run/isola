@@ -67,9 +67,9 @@ spec:
         - "--image-pull-secrets={{ $imagePullSecretNames }}"
         {{- end }}
         env:
-        - name: SIDECAR_IMAGE
-          value: "{{ include "isola.operator.sidecarImage" . }}"
-        - name: ROOTFSSNAPSHOT_UPLOADER_IMAGE
+        - name: ISOLA_SANDBOX_SIDECAR_IMAGE
+          value: "{{ include "isola.operator.sandboxSidecarImage" . }}"
+        - name: ISOLA_UPLOADER_IMAGE
           value: "{{ include "isola.operator.uploaderImage" . }}"
         ports:
         - name: health
