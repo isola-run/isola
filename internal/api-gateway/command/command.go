@@ -50,9 +50,9 @@ type CreateSandboxCommandOutput struct {
 }
 
 type GetSandboxCommandStatusInput struct {
-	ID             string `path:"id" doc:"Sandbox identifier"`
-	CmdID          string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
-	TimeoutSeconds int    `query:"timeoutSeconds,omitempty" minimum:"0" maximum:"600" doc:"Max seconds to wait for the command to exit. 0 or absent returns immediately."`
+	ID          string `path:"id" doc:"Sandbox identifier"`
+	CmdID       string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	WaitSeconds int    `query:"waitSeconds,omitempty" minimum:"0" maximum:"600" doc:"Max seconds to wait for the command to exit. 0 or absent returns immediately."`
 }
 
 type GetSandboxCommandStatusOutput struct {
@@ -157,8 +157,8 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetSandboxComman
 	}
 
 	sidecarURL := fmt.Sprintf("http://%s:%d/commands/%s/status", sb.Status.PodIP, h.sidecarPort, input.CmdID)
-	if input.TimeoutSeconds > 0 {
-		sidecarURL += fmt.Sprintf("?timeoutSeconds=%d", input.TimeoutSeconds)
+	if input.WaitSeconds > 0 {
+		sidecarURL += fmt.Sprintf("?waitSeconds=%d", input.WaitSeconds)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarURL, nil)
@@ -354,7 +354,7 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/sandboxes/{id}/commands/{cmdId}/status",
 		Summary:     "Get command status",
-		Description: "Returns the exit code of the command, or null if still running. Supports long-polling via ?timeoutSeconds=N to block until the command exits or the timeout expires.",
+		Description: "Returns the exit code of the command, or null if still running. Supports long-polling via ?waitSeconds=N to block until the command exits or the wait expires.",
 		Tags:        []string{"sandboxes", "commands"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.GetCommandStatus)
@@ -423,7 +423,7 @@ func Register(api huma.API, h *Handlers) {
 		Method:        http.MethodPost,
 		Path:          "/sandboxes/{id}/commands/{cmdId}/stdin/close",
 		Summary:       "Close command stdin",
-		Description:   "Closes the command's stdin pipe, sending EOF to the process",
+		Description:   "Closes the command's stdin pipe",
 		Tags:          []string{"sandboxes", "commands"},
 		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},

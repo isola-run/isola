@@ -113,12 +113,12 @@ var _ = Describe("Command Handlers", func() {
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 
-		It("blocks until process exits when timeoutSeconds is set", func() {
+		It("blocks until process exits when waitSeconds is set", func() {
 			code, result := postCommand(`{"args": ["/bin/sh", "-c", "sleep 0.3"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			start := time.Now()
-			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status?timeoutSeconds=5", result.CommandID))
+			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status?waitSeconds=5", result.CommandID))
 			elapsed := time.Since(start)
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
@@ -128,7 +128,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(elapsed).To(BeNumerically(">=", 200*time.Millisecond))
 		})
 
-		It("returns immediately when timeoutSeconds is set and process already exited", func() {
+		It("returns immediately when waitSeconds is set and process already exited", func() {
 			code, result := postCommand(`{"args": ["true"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
@@ -140,7 +140,7 @@ var _ = Describe("Command Handlers", func() {
 			}).ShouldNot(BeNil())
 
 			start := time.Now()
-			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status?timeoutSeconds=5", result.CommandID))
+			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status?waitSeconds=5", result.CommandID))
 			elapsed := time.Since(start)
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
@@ -150,7 +150,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(elapsed).To(BeNumerically("<", 100*time.Millisecond))
 		})
 
-		It("returns null exitCode when timeoutSeconds expires", func() {
+		It("returns null exitCode when waitSeconds expires", func() {
 			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			DeferCleanup(func() {
@@ -158,7 +158,7 @@ var _ = Describe("Command Handlers", func() {
 			})
 
 			start := time.Now()
-			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status?timeoutSeconds=1", result.CommandID))
+			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status?waitSeconds=1", result.CommandID))
 			elapsed := time.Since(start)
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
@@ -176,7 +176,7 @@ var _ = Describe("Command Handlers", func() {
 			})
 
 			ctx, cancel := context.WithCancel(context.Background())
-			req := httptest.NewRequest("GET", fmt.Sprintf("/commands/%s/status?timeoutSeconds=60", result.CommandID), nil).WithContext(ctx)
+			req := httptest.NewRequest("GET", fmt.Sprintf("/commands/%s/status?waitSeconds=60", result.CommandID), nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 
 			done := make(chan struct{})

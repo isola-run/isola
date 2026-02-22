@@ -249,10 +249,10 @@ var _ = Describe("Command Proxy", func() {
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 
-		It("forwards timeoutSeconds query param to sidecar", func() {
+		It("forwards waitSeconds query param to sidecar", func() {
 			var capturedTimeout string
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				capturedTimeout = r.URL.Query().Get("timeoutSeconds")
+				capturedTimeout = r.URL.Query().Get("waitSeconds")
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(CommandStatusResponse{ExitCode: nil})
 			}))
@@ -262,15 +262,15 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status?timeoutSeconds=30", sbName))
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status?waitSeconds=30", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(capturedTimeout).To(Equal("30"))
 		})
 
-		It("does not send timeoutSeconds when not specified", func() {
+		It("does not send waitSeconds when not specified", func() {
 			var capturedTimeout string
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				capturedTimeout = r.URL.Query().Get("timeoutSeconds")
+				capturedTimeout = r.URL.Query().Get("waitSeconds")
 				w.Header().Set("Content-Type", "application/json")
 				exitCode := 0
 				_ = json.NewEncoder(w).Encode(CommandStatusResponse{ExitCode: &exitCode})

@@ -262,7 +262,7 @@ paths:
         - commands
   /commands/{cmdId}/status:
     get:
-      description: Returns the exit code of the command, or null if still running. Supports long-polling via ?timeoutSeconds=N to block until the command exits or the timeout expires.
+      description: Returns the exit code of the command, or null if still running. Supports long-polling via ?waitSeconds=N to block until the command exits or the wait expires.
       operationId: getCommandStatus
       parameters:
         - description: Command identifier
@@ -276,7 +276,7 @@ paths:
         - description: Max seconds to wait for the command to exit. 0 or absent returns immediately.
           explode: false
           in: query
-          name: timeoutSeconds
+          name: waitSeconds
           schema:
             description: Max seconds to wait for the command to exit. 0 or absent returns immediately.
             format: int64
@@ -416,7 +416,7 @@ paths:
         - commands
   /commands/{cmdId}/stdin/close:
     post:
-      description: Closes the command's stdin pipe, sending EOF to the process
+      description: Closes the command's stdin pipe
       operationId: closeCommandStdin
       parameters:
         - description: Command identifier

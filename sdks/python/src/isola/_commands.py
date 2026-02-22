@@ -66,14 +66,14 @@ class Command:
         if self._deadline is not None:
             remaining = max(1, math.ceil(self._deadline - time.monotonic()))
             result = self._api.request_model(
-                "GET", path, CommandStatusResponse, params={"timeoutSeconds": remaining}, timeout=None
+                "GET", path, CommandStatusResponse, params={"waitSeconds": remaining}, timeout=None
             )
             if result.exit_code is None:
                 raise TimeoutError(f"Command {self._command_id} did not exit in time")
             return result.exit_code
         while True:
             result = self._api.request_model(
-                "GET", path, CommandStatusResponse, params={"timeoutSeconds": _LONG_POLL_SECONDS}, timeout=None
+                "GET", path, CommandStatusResponse, params={"waitSeconds": _LONG_POLL_SECONDS}, timeout=None
             )
             if result.exit_code is not None:
                 return result.exit_code
@@ -142,14 +142,14 @@ class AsyncCommand:
         if self._deadline is not None:
             remaining = max(1, math.ceil(self._deadline - time.monotonic()))
             result = await self._api.request_model(
-                "GET", path, CommandStatusResponse, params={"timeoutSeconds": remaining}, timeout=None
+                "GET", path, CommandStatusResponse, params={"waitSeconds": remaining}, timeout=None
             )
             if result.exit_code is None:
                 raise TimeoutError(f"Command {self._command_id} did not exit in time")
             return result.exit_code
         while True:
             result = await self._api.request_model(
-                "GET", path, CommandStatusResponse, params={"timeoutSeconds": _LONG_POLL_SECONDS}, timeout=None
+                "GET", path, CommandStatusResponse, params={"waitSeconds": _LONG_POLL_SECONDS}, timeout=None
             )
             if result.exit_code is not None:
                 return result.exit_code

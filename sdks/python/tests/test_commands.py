@@ -443,7 +443,7 @@ def test_wait_sends_long_poll_request(sandbox_response_copy: dict[str, object]) 
 
     assert code == 0
     assert status_route.call_count == 1
-    assert status_route.calls[0].request.url.params["timeoutSeconds"] == "300"
+    assert status_route.calls[0].request.url.params["waitSeconds"] == "300"
 
 
 @respx.mock
@@ -488,7 +488,7 @@ def test_wait_with_deadline_sends_timeout_seconds(sandbox_response_copy: dict[st
         code = cmd.wait()
 
     assert code == 0
-    ts = int(status_route.calls[0].request.url.params["timeoutSeconds"])
+    ts = int(status_route.calls[0].request.url.params["waitSeconds"])
     # deadline = now + 30 + 5 (buffer), so remaining should be roughly 30-35
     assert 28 <= ts <= 36
 
@@ -532,7 +532,7 @@ async def test_async_wait_sends_long_poll_request(sandbox_response_copy: dict[st
 
     assert code == 0
     assert status_route.call_count == 1
-    assert status_route.calls[0].request.url.params["timeoutSeconds"] == "300"
+    assert status_route.calls[0].request.url.params["waitSeconds"] == "300"
 
 
 @pytest.mark.asyncio

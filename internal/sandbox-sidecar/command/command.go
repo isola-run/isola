@@ -99,8 +99,8 @@ type CreateCommandOutput struct {
 }
 
 type GetCommandStatusInput struct {
-	CmdID          string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
-	TimeoutSeconds int    `query:"timeoutSeconds,omitempty" minimum:"0" maximum:"600" doc:"Max seconds to wait for the command to exit. 0 or absent returns immediately."`
+	CmdID       string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	WaitSeconds int    `query:"waitSeconds,omitempty" minimum:"0" maximum:"600" doc:"Max seconds to wait for the command to exit. 0 or absent returns immediately."`
 }
 
 type GetCommandStatusOutput struct {
@@ -309,8 +309,8 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetCommandStatus
 		return nil, err
 	}
 
-	if input.TimeoutSeconds > 0 {
-		timer := time.NewTimer(time.Duration(input.TimeoutSeconds) * time.Second)
+	if input.WaitSeconds > 0 {
+		timer := time.NewTimer(time.Duration(input.WaitSeconds) * time.Second)
 		defer timer.Stop()
 		select {
 		case <-entry.done:
@@ -531,7 +531,7 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/commands/{cmdId}/status",
 		Summary:     "Get command status",
-		Description: "Returns the exit code of the command, or null if still running. Supports long-polling via ?timeoutSeconds=N to block until the command exits or the timeout expires.",
+		Description: "Returns the exit code of the command, or null if still running. Supports long-polling via ?waitSeconds=N to block until the command exits or the wait expires.",
 		Tags:        []string{"commands"},
 		Errors:      []int{http.StatusNotFound},
 	}, h.GetCommandStatus)
@@ -600,7 +600,7 @@ func Register(api huma.API, h *Handlers) {
 		Method:        http.MethodPost,
 		Path:          "/commands/{cmdId}/stdin/close",
 		Summary:       "Close command stdin",
-		Description:   "Closes the command's stdin pipe, sending EOF to the process",
+		Description:   "Closes the command's stdin pipe",
 		Tags:          []string{"commands"},
 		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusNotFound, http.StatusConflict},
