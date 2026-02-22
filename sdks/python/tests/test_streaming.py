@@ -545,3 +545,26 @@ async def test_async_stream_read_text() -> None:
 
     stream = AsyncStreamReader(api, "/path")
     assert await stream.read() == "hello world"
+
+
+# --- Stream natural termination tests ---
+
+
+def test_sync_stream_read_completes_on_response_end() -> None:
+    """read() completes when the HTTP response body ends naturally (no error)."""
+    api = _FakeSyncAPI([
+        _FakeSyncCM(_FakeSyncResponse([b"hello"])),
+    ])
+
+    stream = StreamReader(api, "/path")
+    assert stream.read() == "hello"
+
+
+def test_sync_stream_iter_completes_on_response_end() -> None:
+    """Iteration completes when the HTTP response body ends naturally."""
+    api = _FakeSyncAPI([
+        _FakeSyncCM(_FakeSyncResponse([b"hello"])),
+    ])
+
+    stream = StreamReader(api, "/path")
+    assert list(stream) == ["hello"]

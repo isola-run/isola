@@ -120,8 +120,8 @@ def test_default_command_keeps_sandbox_alive(
     assert running.status == SandboxStatus.RUNNING
 
     # Prove the sandbox is alive by executing a command inside it
-    cmd = running.commands.run("echo", "hello")
-    assert cmd.exit_code() == 0
+    result = running.commands.run("echo", "hello")
+    assert result.exit_code == 0
 
 
 @pytest.mark.timeout(90)

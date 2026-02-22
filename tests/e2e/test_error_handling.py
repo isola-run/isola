@@ -156,7 +156,6 @@ def test_invalid_command_nonzero_exit(session_sandbox: Sandbox) -> None:
     The sidecar accepts the command (202), but nsenter fails to exec the binary,
     resulting in a non-zero exit code.
     """
-    cmd = session_sandbox.commands.run("/usr/bin/nonexistent_binary_xyz")
+    result = session_sandbox.commands.run("/usr/bin/nonexistent_binary_xyz")
 
-    code = cmd.exit_code()
-    assert code != 0, f"Expected non-zero exit code, got {code}"
+    assert result.exit_code != 0, f"Expected non-zero exit code, got {result.exit_code}"

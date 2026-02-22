@@ -5,7 +5,7 @@ import time
 from urllib.parse import quote
 
 from ._client import _AsyncAPI, _SyncAPI
-from ._models import CommandStatusResponse, CreateCommandPayload, CreateCommandResponse
+from ._models import CommandResult, CommandStatusResponse, CreateCommandPayload, CreateCommandResponse
 from ._streaming import AsyncStreamReader, StreamReader
 
 
@@ -182,13 +182,16 @@ class Commands:
         cwd: str | None = None,
         timeout: int | None = None,
         container: str | None = None,
-    ) -> Command:
+    ) -> CommandResult:
         cmd = self.spawn(*args, env=env, cwd=cwd, timeout=timeout, container=container)
         if input is not None:
             cmd.write_stdin(input)
             cmd.close_stdin()
-        cmd.wait()
-        return cmd
+        stdout = cmd.stdout.read()
+        stderr = cmd.stderr.read()
+        exit_code = cmd.exit_code()
+        assert exit_code is not None, "process exited but exit_code() returned None"
+        return CommandResult(command_id=cmd.id, stdout=stdout, stderr=stderr, exit_code=exit_code)
 
 
 class AsyncCommands:
@@ -226,10 +229,15 @@ class AsyncCommands:
         cwd: str | None = None,
         timeout: int | None = None,
         container: str | None = None,
-    ) -> AsyncCommand:
+    ) -> CommandResult:
         cmd = await self.spawn(*args, env=env, cwd=cwd, timeout=timeout, container=container)
         if input is not None:
             await cmd.write_stdin(input)
             await cmd.close_stdin()
-        await cmd.wait()
-        return cmd
+        stdout, stderr = await asyncio.gather(
+            cmd.stdout.read(),
+            cmd.stderr.read(),
+        )
+        exit_code = await cmd.exit_code()
+        assert exit_code is not None, "process exited but exit_code() returned None"
+        return CommandResult(command_id=cmd.id, stdout=stdout, stderr=stderr, exit_code=exit_code)

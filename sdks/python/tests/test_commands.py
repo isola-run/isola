@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from isola import AsyncIsola, Isola
+from isola import AsyncIsola, CommandResult, Isola
 
 
 @respx.mock
@@ -107,7 +107,7 @@ async def test_async_spawn_stdin_and_kill(sandbox_response_copy: dict[str, objec
 
 
 @respx.mock
-def test_run_returns_command(sandbox_response_copy: dict[str, object]) -> None:
+def test_run_returns_command_result(sandbox_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
@@ -126,14 +126,12 @@ def test_run_returns_command(sandbox_response_copy: dict[str, object]) -> None:
 
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
-        cmd = sandbox.commands.run("echo", "hello world")
-        code = cmd.exit_code()
-        stdout = cmd.stdout.read()
-        stderr = cmd.stderr.read()
+        result = sandbox.commands.run("echo", "hello world")
 
-    assert code == 0
-    assert stdout == "hello world\n"
-    assert stderr == ""
+    assert isinstance(result, CommandResult)
+    assert result.exit_code == 0
+    assert result.stdout == "hello world\n"
+    assert result.stderr == ""
 
 
 @respx.mock
@@ -315,7 +313,7 @@ def test_command_exit_code_method(sandbox_response_copy: dict[str, object]) -> N
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_async_run_returns_command(sandbox_response_copy: dict[str, object]) -> None:
+async def test_async_run_returns_command_result(sandbox_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
@@ -334,14 +332,12 @@ async def test_async_run_returns_command(sandbox_response_copy: dict[str, object
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
-        cmd = await sandbox.commands.run("echo", "async result")
-        code = await cmd.exit_code()
-        stdout = await cmd.stdout.read()
-        stderr = await cmd.stderr.read()
+        result = await sandbox.commands.run("echo", "async result")
 
-    assert code == 0
-    assert stdout == "async result\n"
-    assert stderr == ""
+    assert isinstance(result, CommandResult)
+    assert result.exit_code == 0
+    assert result.stdout == "async result\n"
+    assert result.stderr == ""
 
 
 @respx.mock
@@ -381,15 +377,21 @@ def test_run_with_input(sandbox_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/status").mock(
         return_value=httpx.Response(200, json={"exitCode": 0})
     )
+    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/stdout").mock(
+        return_value=httpx.Response(200, content=b"hello\n")
+    )
+    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/stderr").mock(
+        return_value=httpx.Response(200, content=b"")
+    )
 
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
-        cmd = sandbox.commands.run("cat", input="hello\n")
-        code = cmd.exit_code()
+        result = sandbox.commands.run("cat", input="hello\n")
 
     assert stdin_route.calls[0].request.content == b"hello\n"
     assert close_route.called
-    assert code == 0
+    assert result.exit_code == 0
+    assert result.stdout == "hello\n"
 
 
 @pytest.mark.asyncio
@@ -411,3 +413,11 @@ async def test_async_close_stdin_sends_post(sandbox_response_copy: dict[str, obj
         await cmd.close_stdin()
 
     assert close_route.called
+
+
+def test_command_result_repr() -> None:
+    result = CommandResult(command_id="cmd-1", stdout="hello", stderr="world", exit_code=0)
+    r = repr(result)
+    assert "hello" in r
+    assert "world" in r
+    assert "exit_code=0" in r

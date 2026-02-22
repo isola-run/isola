@@ -9,8 +9,8 @@ from conftest import wait_for_running
 
 def _run_and_collect_stdout(sandbox: Sandbox, *args: str, timeout: int | None = None) -> tuple[int, str]:
     """Run a command in a sandbox and return (exit_code, stdout)."""
-    cmd = sandbox.commands.run(*args, timeout=timeout)
-    return cmd.exit_code(), cmd.stdout.read()
+    result = sandbox.commands.run(*args, timeout=timeout)
+    return result.exit_code, result.stdout
 
 
 @pytest.mark.timeout(90)

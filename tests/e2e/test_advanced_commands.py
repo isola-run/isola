@@ -24,9 +24,9 @@ def test_container_env_accessible_in_command(
     )
     running = wait_for_running(isola_client, sb.id)
 
-    cmd = running.commands.run("sh", "-c", "echo $E2E_SECRET")
+    result = running.commands.run("sh", "-c", "echo $E2E_SECRET")
 
-    assert "expected_value" in cmd.stdout.read()
+    assert "expected_value" in result.stdout
 
 
 @pytest.mark.timeout(90)
@@ -44,14 +44,13 @@ def test_command_env_overrides_container_env(
     )
     running = wait_for_running(isola_client, sb.id)
 
-    cmd = running.commands.run(
+    result = running.commands.run(
         "sh", "-c", "echo $MY_VAR",
         env={"MY_VAR": "overridden"},
     )
 
-    output = cmd.stdout.read()
-    assert "overridden" in output
-    assert "original" not in output
+    assert "overridden" in result.stdout
+    assert "original" not in result.stdout
 
 
 @pytest.mark.timeout(60)
@@ -117,10 +116,10 @@ def test_stdout_readable_after_kill(session_sandbox: Sandbox) -> None:
 @pytest.mark.timeout(30)
 def test_default_cwd_is_container_root(session_sandbox: Sandbox) -> None:
     """With no cwd specified, the command runs in the container's default directory."""
-    cmd = session_sandbox.commands.run("pwd")
+    result = session_sandbox.commands.run("pwd")
 
     # Alpine's default WORKDIR is /
-    assert cmd.stdout.read().strip() == "/"
+    assert result.stdout.strip() == "/"
 
 
 @pytest.mark.timeout(60)
@@ -187,10 +186,7 @@ async def test_concurrent_stdin_writes_are_non_interleaved(async_session_sandbox
 @pytest.mark.timeout(60)
 def test_close_stdin_unblocks_cat(session_sandbox: Sandbox) -> None:
     """Closing stdin sends EOF, allowing cat to exit."""
-    cmd = session_sandbox.commands.spawn("cat")
-    cmd.write_stdin("hello\n")
-    cmd.close_stdin()
-    code = cmd.wait(timeout=10)
+    result = session_sandbox.commands.run("cat", input="hello\n")
 
-    assert code == 0
-    assert cmd.stdout.read() == "hello\n"
+    assert result.exit_code == 0
+    assert result.stdout == "hello\n"

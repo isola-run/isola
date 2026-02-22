@@ -114,6 +114,6 @@ def test_file_written_is_executable_by_command(session_sandbox: Sandbox) -> None
     path = f"/tmp/test_{unique}.sh"
     session_sandbox.filesystem.write(path, b"#!/bin/sh\necho cross_subsystem_works\n")
 
-    cmd = session_sandbox.commands.run("sh", path)
-    assert cmd.exit_code() == 0
-    assert "cross_subsystem_works" in cmd.stdout.read()
+    result = session_sandbox.commands.run("sh", path)
+    assert result.exit_code == 0
+    assert "cross_subsystem_works" in result.stdout

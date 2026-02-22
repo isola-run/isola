@@ -43,8 +43,8 @@ def test_operations_on_creating_sandbox_return_conflict(
 
     # Now wait for running and verify it works normally
     running = wait_for_running(isola_client, sb.id)
-    cmd = running.commands.run("echo", "now ok")
-    assert cmd.exit_code() == 0
+    result = running.commands.run("echo", "now ok")
+    assert result.exit_code == 0
 
 
 @pytest.mark.timeout(120)

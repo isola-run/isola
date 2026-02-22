@@ -62,9 +62,42 @@ def test_stream_completes_on_exit(session_sandbox: Sandbox) -> None:
 @pytest.mark.timeout(60)
 def test_concurrent_stdout_stderr(session_sandbox: Sandbox) -> None:
     """Both stdout and stderr can be read from the same command."""
-    cmd = session_sandbox.commands.run(
+    result = session_sandbox.commands.run(
         "sh", "-c", "echo out; echo err >&2",
     )
 
-    assert "out\n" in cmd.stdout.read()
-    assert "err\n" in cmd.stderr.read()
+    assert "out\n" in result.stdout
+    assert "err\n" in result.stderr
+
+
+@pytest.mark.timeout(10)
+def test_stdout_read_completes_after_exit(session_sandbox: Sandbox) -> None:
+    """stdout.read() completes when the process exits and the stream closes."""
+    cmd = session_sandbox.commands.spawn("echo", "done")
+    output = cmd.stdout.read()
+    assert output == "done\n"
+
+
+@pytest.mark.timeout(10)
+def test_stderr_read_completes_after_exit(session_sandbox: Sandbox) -> None:
+    """stderr.read() completes when the process exits and the stream closes."""
+    cmd = session_sandbox.commands.spawn("sh", "-c", "echo err >&2")
+    output = cmd.stderr.read()
+    assert output == "err\n"
+
+
+@pytest.mark.timeout(10)
+def test_read_after_wait_returns_immediately(session_sandbox: Sandbox) -> None:
+    """After wait(), stdout.read() returns immediately since the stream delivers all data and closes."""
+    cmd = session_sandbox.commands.spawn("echo", "fast")
+    cmd.wait()
+    output = cmd.stdout.read()
+    assert output == "fast\n"
+
+
+@pytest.mark.timeout(10)
+def test_empty_output_read_completes(session_sandbox: Sandbox) -> None:
+    """stdout.read() for a command that produces no output completes without hanging."""
+    cmd = session_sandbox.commands.spawn("true")
+    output = cmd.stdout.read()
+    assert output == ""

@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    """Result of a completed command execution."""
+
+    command_id: str
+    stdout: str
+    stderr: str
+    exit_code: int
 
 
 class IsolaModel(BaseModel):

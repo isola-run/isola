@@ -417,6 +417,77 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
+	Describe("stream termination on process exit", func() {
+		It("stream response closes when process exits", func() {
+			code, result := postCommand(`{"cmd": "echo", "args": ["-n", "hello"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			// Start streaming stdout via ServeHTTP directly (like client disconnect test)
+			req := httptest.NewRequest("GET", fmt.Sprintf("/commands/%s/stdout", result.CommandID), nil)
+			w := httptest.NewRecorder()
+
+			done := make(chan struct{})
+			go func() {
+				defer GinkgoRecover()
+				commandHandler.ServeHTTP(w, req)
+				close(done)
+			}()
+
+			// The goroutine should complete once the process exits and the stream closes
+			Eventually(done, "2s").Should(BeClosed())
+			Expect(w.Body.String()).To(Equal("hello"))
+		})
+
+		It("stream delivers final output written just before exit", func() {
+			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "sleep 0.2; echo -n final"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			// Start streaming immediately while the process is still sleeping
+			req := httptest.NewRequest("GET", fmt.Sprintf("/commands/%s/stdout", result.CommandID), nil)
+			w := httptest.NewRecorder()
+
+			done := make(chan struct{})
+			go func() {
+				defer GinkgoRecover()
+				commandHandler.ServeHTTP(w, req)
+				close(done)
+			}()
+
+			Eventually(done, "5s").Should(BeClosed())
+			Expect(w.Body.String()).To(Equal("final"))
+		})
+
+		It("concurrent stdout and stderr streams both close on exit", func() {
+			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "echo -n out; echo -n err >&2"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			stdoutReq := httptest.NewRequest("GET", fmt.Sprintf("/commands/%s/stdout", result.CommandID), nil)
+			stdoutW := httptest.NewRecorder()
+
+			stderrReq := httptest.NewRequest("GET", fmt.Sprintf("/commands/%s/stderr", result.CommandID), nil)
+			stderrW := httptest.NewRecorder()
+
+			stdoutDone := make(chan struct{})
+			go func() {
+				defer GinkgoRecover()
+				commandHandler.ServeHTTP(stdoutW, stdoutReq)
+				close(stdoutDone)
+			}()
+
+			stderrDone := make(chan struct{})
+			go func() {
+				defer GinkgoRecover()
+				commandHandler.ServeHTTP(stderrW, stderrReq)
+				close(stderrDone)
+			}()
+
+			Eventually(stdoutDone, "2s").Should(BeClosed())
+			Eventually(stderrDone, "2s").Should(BeClosed())
+			Expect(stdoutW.Body.String()).To(Equal("out"))
+			Expect(stderrW.Body.String()).To(Equal("err"))
+		})
+	})
+
 	Describe("output directory creation failure", func() {
 		It("returns 500 when MkdirAll fails", func() {
 			// Create a separate mock whose rootDir has a file blocking the path.

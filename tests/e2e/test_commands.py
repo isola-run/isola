@@ -7,34 +7,34 @@ from isola import Sandbox
 
 def test_echo_stdout(session_sandbox: Sandbox) -> None:
     """Run echo and verify stdout contains the expected output."""
-    cmd = session_sandbox.commands.run("echo", "hello world")
+    result = session_sandbox.commands.run("echo", "hello world")
 
-    assert "hello world" in cmd.stdout.read()
-    assert cmd.exit_code() == 0
+    assert "hello world" in result.stdout
+    assert result.exit_code == 0
 
 
 def test_command_with_args(session_sandbox: Sandbox) -> None:
     """Run printf with format args and verify exact stdout."""
-    cmd = session_sandbox.commands.run("printf", "%s-%s", "foo", "bar")
+    result = session_sandbox.commands.run("printf", "%s-%s", "foo", "bar")
 
-    assert cmd.stdout.read() == "foo-bar"
+    assert result.stdout == "foo-bar"
 
 
 def test_command_with_env(session_sandbox: Sandbox) -> None:
     """Run a shell command that reads an environment variable."""
-    cmd = session_sandbox.commands.run(
+    result = session_sandbox.commands.run(
         "sh", "-c", "echo $MY_VAR",
         env={"MY_VAR": "test_value"},
     )
 
-    assert "test_value" in cmd.stdout.read()
+    assert "test_value" in result.stdout
 
 
 def test_command_with_cwd(session_sandbox: Sandbox) -> None:
     """Run pwd with a specific working directory and verify output."""
-    cmd = session_sandbox.commands.run("pwd", cwd="/tmp")
+    result = session_sandbox.commands.run("pwd", cwd="/tmp")
 
-    assert cmd.stdout.read().strip() == "/tmp"
+    assert result.stdout.strip() == "/tmp"
 
 
 @pytest.mark.parametrize(
@@ -50,9 +50,9 @@ def test_command_with_cwd(session_sandbox: Sandbox) -> None:
 )
 def test_exit_code(session_sandbox: Sandbox, exit_arg: str, expected_code: int) -> None:
     """Verify exit codes are faithfully propagated through sidecar -> gateway -> SDK."""
-    cmd = session_sandbox.commands.run("sh", "-c", exit_arg)
+    result = session_sandbox.commands.run("sh", "-c", exit_arg)
 
-    assert cmd.exit_code() == expected_code
+    assert result.exit_code == expected_code
 
 
 def test_exit_code_null_while_running(session_sandbox: Sandbox) -> None:
@@ -104,13 +104,13 @@ def test_kill_is_idempotent(session_sandbox: Sandbox) -> None:
 
 def test_stderr_output(session_sandbox: Sandbox) -> None:
     """Run a command that writes to stderr and verify the stderr stream."""
-    cmd = session_sandbox.commands.run("sh", "-c", "echo error_msg >&2")
+    result = session_sandbox.commands.run("sh", "-c", "echo error_msg >&2")
 
-    assert "error_msg" in cmd.stderr.read()
+    assert "error_msg" in result.stderr
 
 
 def test_run_with_input(session_sandbox: Sandbox) -> None:
     """Run a command with input= and verify it receives the data on stdin."""
-    cmd = session_sandbox.commands.run("cat", input="hello\n")
-    assert cmd.exit_code() == 0
-    assert cmd.stdout.read() == "hello\n"
+    result = session_sandbox.commands.run("cat", input="hello\n")
+    assert result.exit_code == 0
+    assert result.stdout == "hello\n"

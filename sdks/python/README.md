@@ -23,9 +23,9 @@ client = Isola()
 sandbox = client.sandboxes.create(image="alpine:3.21")
 
 # Run a command and get output
-cmd = sandbox.commands.run("echo", "hello world")
-print(cmd.stdout.read())   # "hello world\n"
-print(cmd.exit_code())     # 0
+result = sandbox.commands.run("echo", "hello world")
+print(result.stdout)      # "hello world\n"
+print(result.exit_code)   # 0
 
 sandbox.delete()
 ```
@@ -43,8 +43,8 @@ cmd.wait()
 
 ```python
 # Pipe input to a command
-cmd = sandbox.commands.run("cat", input="hello from stdin\n")
-print(cmd.stdout.read())  # "hello from stdin\n"
+result = sandbox.commands.run("cat", input="hello from stdin\n")
+print(result.stdout)  # "hello from stdin\n"
 
 # Manual stdin control
 cmd = sandbox.commands.spawn("cat")
@@ -68,8 +68,8 @@ from isola import AsyncIsola
 
 async with AsyncIsola() as client:
     sandbox = await client.sandboxes.create(image="alpine:3.21")
-    cmd = await sandbox.commands.run("echo", "hello")
-    print(await cmd.stdout.read())
+    result = await sandbox.commands.run("echo", "hello")
+    print(result.stdout)
     await sandbox.delete()
 ```
 
