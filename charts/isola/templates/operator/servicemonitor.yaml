@@ -21,6 +21,12 @@ spec:
       - {{ .Release.Namespace }}
   endpoints:
     - port: metrics
+      {{- if .Values.operator.metrics.secure }}
+      scheme: https
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tlsConfig:
+        insecureSkipVerify: true
+      {{- end }}
       {{- with .Values.operator.metrics.serviceMonitor.interval }}
       interval: {{ . }}
       {{- end }}
