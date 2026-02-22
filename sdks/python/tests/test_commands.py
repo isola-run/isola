@@ -116,7 +116,7 @@ def test_run_returns_command_result(sandbox_response_copy: dict[str, object]) ->
     respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-1"})
     )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-1/status").mock(
+    respx.get(url__regex=r".*/commands/cmd-1/status.*").mock(
         return_value=httpx.Response(200, json={"exitCode": 0})
     )
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-1/stdout").mock(
@@ -322,7 +322,7 @@ async def test_async_run_returns_command_result(sandbox_response_copy: dict[str,
     respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-ar"})
     )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-ar/status").mock(
+    respx.get(url__regex=r".*/commands/cmd-ar/status.*").mock(
         return_value=httpx.Response(200, json={"exitCode": 0})
     )
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-ar/stdout").mock(
@@ -376,7 +376,7 @@ def test_run_with_input(sandbox_response_copy: dict[str, object]) -> None:
     close_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/stdin/close").mock(
         return_value=httpx.Response(204)
     )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/status").mock(
+    respx.get(url__regex=r".*/commands/cmd-input/status.*").mock(
         return_value=httpx.Response(200, json={"exitCode": 0})
     )
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/stdout").mock(
@@ -423,3 +423,136 @@ def test_command_result_repr() -> None:
     assert "hello" in r
     assert "world" in r
     assert "exit_code=0" in r
+
+
+@respx.mock
+def test_wait_sends_long_poll_request(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-lp"})
+    )
+    status_route = respx.get(url__regex=r".*/commands/cmd-lp/status.*").mock(
+        return_value=httpx.Response(200, json={"exitCode": 0})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        cmd = sandbox.commands.spawn("echo", "hi")
+        code = cmd.wait()
+
+    assert code == 0
+    assert status_route.call_count == 1
+    assert status_route.calls[0].request.url.params["timeoutSeconds"] == "300"
+
+
+@respx.mock
+def test_wait_retries_on_null_exit_code(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-retry"})
+    )
+    status_route = respx.get(url__regex=r".*/commands/cmd-retry/status.*").mock(
+        side_effect=[
+            httpx.Response(200, json={"exitCode": None}),
+            httpx.Response(200, json={"exitCode": 0}),
+        ]
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        cmd = sandbox.commands.spawn("sleep", "1")
+        code = cmd.wait()
+
+    assert code == 0
+    assert status_route.call_count == 2
+
+
+@respx.mock
+def test_wait_with_deadline_sends_timeout_seconds(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-dl"})
+    )
+    status_route = respx.get(url__regex=r".*/commands/cmd-dl/status.*").mock(
+        return_value=httpx.Response(200, json={"exitCode": 0})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        cmd = sandbox.commands.spawn("echo", "hi", timeout=30)
+        code = cmd.wait()
+
+    assert code == 0
+    ts = int(status_route.calls[0].request.url.params["timeoutSeconds"])
+    # deadline = now + 30 + 5 (buffer), so remaining should be roughly 30-35
+    assert 28 <= ts <= 36
+
+
+@respx.mock
+def test_wait_with_deadline_raises_on_null_exit_code(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-to"})
+    )
+    respx.get(url__regex=r".*/commands/cmd-to/status.*").mock(
+        return_value=httpx.Response(200, json={"exitCode": None})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        cmd = sandbox.commands.spawn("sleep", "60", timeout=1)
+        with pytest.raises(TimeoutError, match="did not exit in time"):
+            cmd.wait()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_wait_sends_long_poll_request(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-alp"})
+    )
+    status_route = respx.get(url__regex=r".*/commands/cmd-alp/status.*").mock(
+        return_value=httpx.Response(200, json={"exitCode": 0})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        cmd = await sandbox.commands.spawn("echo", "hi")
+        code = await cmd.wait()
+
+    assert code == 0
+    assert status_route.call_count == 1
+    assert status_route.calls[0].request.url.params["timeoutSeconds"] == "300"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_wait_with_deadline_raises_on_null_exit_code(
+    sandbox_response_copy: dict[str, object],
+) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-ato"})
+    )
+    respx.get(url__regex=r".*/commands/cmd-ato/status.*").mock(
+        return_value=httpx.Response(200, json={"exitCode": None})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        cmd = await sandbox.commands.spawn("sleep", "60", timeout=1)
+        with pytest.raises(TimeoutError, match="did not exit in time"):
+            await cmd.wait()

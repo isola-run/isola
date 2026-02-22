@@ -249,6 +249,43 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/00000000-0000-0000-0000-000000000000/status", sbName))
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
+
+		It("forwards timeoutSeconds query param to sidecar", func() {
+			var capturedTimeout string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedTimeout = r.URL.Query().Get("timeoutSeconds")
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(CommandStatusResponse{ExitCode: nil})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status?timeoutSeconds=30", sbName))
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(capturedTimeout).To(Equal("30"))
+		})
+
+		It("does not send timeoutSeconds when not specified", func() {
+			var capturedTimeout string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedTimeout = r.URL.Query().Get("timeoutSeconds")
+				w.Header().Set("Content-Type", "application/json")
+				exitCode := 0
+				_ = json.NewEncoder(w).Encode(CommandStatusResponse{ExitCode: &exitCode})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(capturedTimeout).To(BeEmpty())
+		})
 	})
 
 	Describe("GET /sandboxes/{id}/commands/{cmdId}/stdout", func() {

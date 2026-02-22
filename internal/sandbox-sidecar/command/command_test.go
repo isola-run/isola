@@ -112,6 +112,85 @@ var _ = Describe("Command Handlers", func() {
 			resp := commandAPI.Get("/commands/not-a-uuid/status")
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
+
+		It("blocks until process exits when timeoutSeconds is set", func() {
+			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "sleep 0.3"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			start := time.Now()
+			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status?timeoutSeconds=5", result.CommandID))
+			elapsed := time.Since(start)
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var status sidecarapi.CommandStatusResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+			Expect(status.ExitCode).To(HaveValue(Equal(0)))
+			Expect(elapsed).To(BeNumerically(">=", 200*time.Millisecond))
+		})
+
+		It("returns immediately when timeoutSeconds is set and process already exited", func() {
+			code, result := postCommand(`{"cmd": "true"}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status", result.CommandID))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				return status.ExitCode
+			}).ShouldNot(BeNil())
+
+			start := time.Now()
+			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status?timeoutSeconds=5", result.CommandID))
+			elapsed := time.Since(start)
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var status sidecarapi.CommandStatusResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+			Expect(status.ExitCode).To(HaveValue(Equal(0)))
+			Expect(elapsed).To(BeNumerically("<", 100*time.Millisecond))
+		})
+
+		It("returns null exitCode when timeoutSeconds expires", func() {
+			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+			DeferCleanup(func() {
+				commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
+			})
+
+			start := time.Now()
+			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status?timeoutSeconds=1", result.CommandID))
+			elapsed := time.Since(start)
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var status sidecarapi.CommandStatusResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+			Expect(status.ExitCode).To(BeNil())
+			Expect(elapsed).To(BeNumerically(">=", 900*time.Millisecond))
+		})
+
+		It("stops blocking when client disconnects", func() {
+			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+			DeferCleanup(func() {
+				commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
+			})
+
+			ctx, cancel := context.WithCancel(context.Background())
+			req := httptest.NewRequest("GET", fmt.Sprintf("/commands/%s/status?timeoutSeconds=60", result.CommandID), nil).WithContext(ctx)
+			w := httptest.NewRecorder()
+
+			done := make(chan struct{})
+			go func() {
+				defer GinkgoRecover()
+				commandHandler.ServeHTTP(w, req)
+				close(done)
+			}()
+
+			time.Sleep(100 * time.Millisecond)
+			cancel()
+
+			Eventually(done, "1s").Should(BeClosed())
+		})
 	})
 
 	Describe("GET /commands/{cmdId}/stdout", func() {

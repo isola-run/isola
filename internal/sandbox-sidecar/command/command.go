@@ -100,7 +100,8 @@ type CreateCommandOutput struct {
 }
 
 type GetCommandStatusInput struct {
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	CmdID          string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	TimeoutSeconds int    `query:"timeoutSeconds,omitempty" minimum:"0" maximum:"600" doc:"Max seconds to wait for the command to exit. 0 or absent returns immediately."`
 }
 
 type GetCommandStatusOutput struct {
@@ -303,19 +304,32 @@ func (h *Handlers) getCommandEntry(cmdID string) (*commandEntry, error) {
 	return entry, nil
 }
 
-func (h *Handlers) GetCommandStatus(_ context.Context, input *GetCommandStatusInput) (*GetCommandStatusOutput, error) {
+func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetCommandStatusInput) (*GetCommandStatusOutput, error) {
 	entry, err := h.getCommandEntry(input.CmdID)
 	if err != nil {
 		return nil, err
 	}
 
-	select {
-	case <-entry.done:
-		exitCode := entry.exitCode
-		return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: &exitCode}}, nil
-	default: // return immediately if cmd not done, indicating "still running"
-		return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: nil}}, nil
+	if input.TimeoutSeconds > 0 {
+		timer := time.NewTimer(time.Duration(input.TimeoutSeconds) * time.Second)
+		defer timer.Stop()
+		select {
+		case <-entry.done:
+		case <-timer.C:
+			return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: nil}}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	} else {
+		select {
+		case <-entry.done:
+		default:
+			return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: nil}}, nil
+		}
 	}
+
+	exitCode := entry.exitCode
+	return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: &exitCode}}, nil
 }
 
 func (h *Handlers) GetCommandStdout(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
@@ -518,7 +532,7 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/commands/{cmdId}/status",
 		Summary:     "Get command status",
-		Description: "Returns the exit code of the command, or null if still running",
+		Description: "Returns the exit code of the command, or null if still running. Supports long-polling via ?timeoutSeconds=N to block until the command exits or the timeout expires.",
 		Tags:        []string{"commands"},
 		Errors:      []int{http.StatusNotFound},
 	}, h.GetCommandStatus)

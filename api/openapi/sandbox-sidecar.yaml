@@ -265,7 +265,7 @@ paths:
         - commands
   /commands/{cmdId}/status:
     get:
-      description: Returns the exit code of the command, or null if still running
+      description: Returns the exit code of the command, or null if still running. Supports long-polling via ?timeoutSeconds=N to block until the command exits or the timeout expires.
       operationId: getCommandStatus
       parameters:
         - description: Command identifier
@@ -276,6 +276,16 @@ paths:
             description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
+        - description: Max seconds to wait for the command to exit. 0 or absent returns immediately.
+          explode: false
+          in: query
+          name: timeoutSeconds
+          schema:
+            description: Max seconds to wait for the command to exit. 0 or absent returns immediately.
+            format: int64
+            maximum: 600
+            minimum: 0
+            type: integer
       responses:
         "200":
           content:

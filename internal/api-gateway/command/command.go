@@ -25,6 +25,7 @@ import (
 // --- Types ---
 
 type CreateCommandRequest struct {
+	// todo benl: remove Cmd, keep only args
 	Cmd     string            `json:"cmd" required:"true" minLength:"1" doc:"Executable path"`
 	Args    []string          `json:"args,omitempty" doc:"Arguments to the executable"`
 	Env     map[string]string `json:"env,omitempty" doc:"Environment variable overrides"`
@@ -51,8 +52,9 @@ type CreateSandboxCommandOutput struct {
 }
 
 type GetSandboxCommandStatusInput struct {
-	ID    string `path:"id" doc:"Sandbox identifier"`
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	ID             string `path:"id" doc:"Sandbox identifier"`
+	CmdID          string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	TimeoutSeconds int    `query:"timeoutSeconds,omitempty" minimum:"0" maximum:"600" doc:"Max seconds to wait for the command to exit. 0 or absent returns immediately."`
 }
 
 type GetSandboxCommandStatusOutput struct {
@@ -157,6 +159,9 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetSandboxComman
 	}
 
 	sidecarURL := fmt.Sprintf("http://%s:%d/commands/%s/status", sb.Status.PodIP, h.sidecarPort, input.CmdID)
+	if input.TimeoutSeconds > 0 {
+		sidecarURL += fmt.Sprintf("?timeoutSeconds=%d", input.TimeoutSeconds)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarURL, nil)
 	if err != nil {
@@ -346,13 +351,12 @@ func Register(api huma.API, h *Handlers) {
 		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.PostCommand)
 
-	// todo benl: add long polling wait param (or just default to long poll)
 	huma.Register(api, huma.Operation{
 		OperationID: "getSandboxCommandStatus",
 		Method:      http.MethodGet,
 		Path:        "/sandboxes/{id}/commands/{cmdId}/status",
 		Summary:     "Get command status",
-		Description: "Returns the exit code of the command, or null if still running",
+		Description: "Returns the exit code of the command, or null if still running. Supports long-polling via ?timeoutSeconds=N to block until the command exits or the timeout expires.",
 		Tags:        []string{"sandboxes", "commands"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.GetCommandStatus)
