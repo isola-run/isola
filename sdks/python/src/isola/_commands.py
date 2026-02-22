@@ -66,7 +66,7 @@ class Command:
         if self._deadline is not None:
             remaining = max(1, math.ceil(self._deadline - time.monotonic()))
             result = self._api.request_model(
-                "GET", path, CommandStatusResponse, params={"waitSeconds": remaining}, timeout=None
+            "GET", path, CommandStatusResponse, params={"waitSeconds": remaining}, timeout=None
             )
             if result.exit_code is None:
                 raise TimeoutError(f"Command {self._command_id} did not exit in time")

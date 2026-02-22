@@ -92,18 +92,17 @@ def test_allowed_egress_cidrs(
     )
     running = wait_for_running(isola_client, sb.id)
 
-    # Try to connect to the allowed CIDR (1.1.1.1 is Cloudflare DNS, responds on HTTP).
-    # Use --tries=3 because the per-sandbox NetworkPolicy may take a moment to propagate.
-    exit_code, output = _run_and_collect_stdout(
+    # Raw TCP check to the allowed CIDR. We avoid HTTP because Cloudflare redirects
+    # http://1.1.1.1 → https://one.one.one.one/ whose DNS resolves to both 1.1.1.1
+    # and 1.0.0.1, and the latter is outside the allowed CIDR.
+    exit_code, _ = _run_and_collect_stdout(
         running,
-        "wget", "-q", "-O-", "--timeout=5", "--tries=3", "http://1.1.1.1",
-        timeout=20,
+        "sh", "-c", "echo | nc -w 5 1.1.1.1 53",
+        timeout=10,
     )
 
-    # With the CIDR allowlisted, we expect wget to at least reach the server.
-    # Cloudflare returns a redirect or page, so exit code 0 is expected.
     assert exit_code == 0, (
-        f"wget to 1.1.1.1 should succeed with allowed_egress_cidrs=['1.1.1.1/32'], "
+        f"TCP to 1.1.1.1:53 should succeed with allowed_egress_cidrs=['1.1.1.1/32'], "
         f"got exit code {exit_code}"
     )
 
