@@ -93,7 +93,7 @@ def test_allowed_egress_cidrs(
     running = wait_for_running(isola_client, sb.id)
 
     # Raw TCP check to the allowed CIDR. We avoid HTTP because Cloudflare redirects
-    # http://1.1.1.1 → https://one.one.one.one/ whose DNS resolves to both 1.1.1.1
+    # http://1.1.1.1 -> https://one.one.one.one/ whose DNS resolves to both 1.1.1.1
     # and 1.0.0.1, and the latter is outside the allowed CIDR.
     exit_code, _ = _run_and_collect_stdout(
         running,
