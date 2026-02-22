@@ -48,8 +48,7 @@ def test_spawn_and_command_lifecycle(sandbox_response_copy: dict[str, object]) -
     run_request = run_route.calls[0].request
     assert run_request.url.params["container"] == "worker"
     assert json.loads(run_request.content) == {
-        "cmd": "python",
-        "args": ["-c", "print('hello')"],
+        "args": ["python", "-c", "print('hello')"],
         "env": {"DEBUG": "1"},
         "cwd": "/workspace",
         "timeout": 30,
@@ -277,7 +276,7 @@ def test_spawn_minimal_payload(sandbox_response_copy: dict[str, object]) -> None
         sandbox.commands.spawn("ls")
 
     payload = json.loads(run_route.calls[0].request.content)
-    assert payload == {"cmd": "ls"}
+    assert payload == {"args": ["ls"]}
     assert "container" not in run_route.calls[0].request.url.params
 
 

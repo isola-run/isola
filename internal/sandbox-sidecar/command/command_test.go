@@ -54,13 +54,13 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("POST /commands", func() {
 		It("returns 202 with commandId", func() {
-			code, result := postCommand(`{"cmd": "echo", "args": ["hello"]}`)
+			code, result := postCommand(`{"args": ["echo", "hello"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			Expect(result.CommandID).NotTo(BeEmpty())
 		})
 
-		It("returns 422 on empty cmd", func() {
-			resp := commandAPI.Post("/commands", "Content-Type: application/json", strings.NewReader(`{"cmd": ""}`))
+		It("returns 422 on missing args", func() {
+			resp := commandAPI.Post("/commands", "Content-Type: application/json", strings.NewReader(`{}`))
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 
@@ -68,7 +68,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("GET /commands/{cmdId}/status", func() {
 		It("returns null exitCode while running", func() {
-			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
+			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status", result.CommandID))
@@ -80,7 +80,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("returns 0 exit code on success", func() {
-			code, result := postCommand(`{"cmd": "true"}`)
+			code, result := postCommand(`{"args": ["true"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
@@ -92,7 +92,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("returns non-zero exit code on failure", func() {
-			code, result := postCommand(`{"cmd": "false"}`)
+			code, result := postCommand(`{"args": ["false"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
@@ -114,7 +114,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("blocks until process exits when timeoutSeconds is set", func() {
-			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "sleep 0.3"]}`)
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "sleep 0.3"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			start := time.Now()
@@ -129,7 +129,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("returns immediately when timeoutSeconds is set and process already exited", func() {
-			code, result := postCommand(`{"cmd": "true"}`)
+			code, result := postCommand(`{"args": ["true"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
@@ -151,7 +151,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("returns null exitCode when timeoutSeconds expires", func() {
-			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
+			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			DeferCleanup(func() {
 				commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
@@ -169,7 +169,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("stops blocking when client disconnects", func() {
-			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
+			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			DeferCleanup(func() {
 				commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
@@ -195,7 +195,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("GET /commands/{cmdId}/stdout", func() {
 		It("streams stdout output", func() {
-			code, result := postCommand(`{"cmd": "echo", "args": ["-n", "hello world"]}`)
+			code, result := postCommand(`{"args": ["echo", "-n", "hello world"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
@@ -205,7 +205,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("sets correct streaming headers", func() {
-			code, result := postCommand(`{"cmd": "echo", "args": ["test"]}`)
+			code, result := postCommand(`{"args": ["echo", "test"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
@@ -220,7 +220,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("supports resume via offset", func() {
-			code, result := postCommand(`{"cmd": "echo", "args": ["-n", "hello world"]}`)
+			code, result := postCommand(`{"args": ["echo", "-n", "hello world"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
@@ -233,7 +233,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("preserves binary data", func() {
-			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "printf 'a\\0b\\rc'"]}`)
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "printf 'a\\0b\\rc'"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() []byte {
@@ -250,7 +250,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("GET /commands/{cmdId}/stderr", func() {
 		It("routes stderr separately from stdout", func() {
-			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "echo -n err >&2; echo -n out"]}`)
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "echo -n err >&2; echo -n out"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
@@ -265,7 +265,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("POST /commands/{cmdId}/stdin", func() {
 		It("writes to process stdin", func() {
-			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "head -c 5"]}`)
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "head -c 5"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			resp := commandAPI.Post(
@@ -288,7 +288,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("returns 409 for exited command", func() {
-			code, result := postCommand(`{"cmd": "true"}`)
+			code, result := postCommand(`{"args": ["true"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
@@ -309,7 +309,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("POST /commands/{cmdId}/stdin/close", func() {
 		It("closes stdin and sends EOF", func() {
-			code, result := postCommand(`{"cmd": "cat"}`)
+			code, result := postCommand(`{"args": ["cat"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			// Write some data to stdin
@@ -341,7 +341,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("returns 409 when closing already closed stdin", func() {
-			code, result := postCommand(`{"cmd": "cat"}`)
+			code, result := postCommand(`{"args": ["cat"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			resp := commandAPI.Post(
@@ -359,7 +359,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("returns 409 for exited command", func() {
-			code, result := postCommand(`{"cmd": "true"}`)
+			code, result := postCommand(`{"args": ["true"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
@@ -377,7 +377,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("write after close returns 409", func() {
-			code, result := postCommand(`{"cmd": "cat"}`)
+			code, result := postCommand(`{"args": ["cat"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			resp := commandAPI.Post(
@@ -402,7 +402,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("DELETE /commands/{cmdId}", func() {
 		It("kills a running process", func() {
-			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
+			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			resp := commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
@@ -417,7 +417,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("is idempotent for exited commands", func() {
-			code, result := postCommand(`{"cmd": "true"}`)
+			code, result := postCommand(`{"args": ["true"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
@@ -439,7 +439,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("Timeout", func() {
 		It("kills the process after timeout expires", func() {
-			code, result := postCommand(`{"cmd": "sleep", "args": ["60"], "timeout": 1}`)
+			code, result := postCommand(`{"args": ["sleep", "60"], "timeout": 1}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
@@ -452,8 +452,7 @@ var _ = Describe("Command Handlers", func() {
 
 		It("preserves partial output and reports kill exit code", func() {
 			code, result := postCommand(`{
-				"cmd": "/bin/sh",
-				"args": ["-c", "echo -n before-timeout; sleep 60"],
+				"args": ["/bin/sh", "-c", "echo -n before-timeout; sleep 60"],
 				"timeout": 1
 			}`)
 			Expect(code).To(Equal(http.StatusAccepted))
@@ -478,7 +477,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("Immediate exit", func() {
 		It("output is available for already-exited commands", func() {
-			code, result := postCommand(`{"cmd": "echo", "args": ["-n", "fast"]}`)
+			code, result := postCommand(`{"args": ["echo", "-n", "fast"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			// Wait for it to fully exit
@@ -498,7 +497,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("stream termination on process exit", func() {
 		It("stream response closes when process exits", func() {
-			code, result := postCommand(`{"cmd": "echo", "args": ["-n", "hello"]}`)
+			code, result := postCommand(`{"args": ["echo", "-n", "hello"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			// Start streaming stdout via ServeHTTP directly (like client disconnect test)
@@ -518,7 +517,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("stream delivers final output written just before exit", func() {
-			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "sleep 0.2; echo -n final"]}`)
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "sleep 0.2; echo -n final"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			// Start streaming immediately while the process is still sleeping
@@ -537,7 +536,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 
 		It("concurrent stdout and stderr streams both close on exit", func() {
-			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "echo -n out; echo -n err >&2"]}`)
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "echo -n out; echo -n err >&2"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			stdoutReq := httptest.NewRequest("GET", fmt.Sprintf("/commands/%s/stdout", result.CommandID), nil)
@@ -584,14 +583,14 @@ var _ = Describe("Command Handlers", func() {
 			Register(blockedAPI, blockedHandlers)
 
 			resp := blockedAPI.Post("/commands", "Content-Type: application/json",
-				strings.NewReader(`{"cmd": "echo", "args": ["hello"]}`))
+				strings.NewReader(`{"args": ["echo", "hello"]}`))
 			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
 		})
 	})
 
 	Describe("streaming file read errors", func() {
 		It("aborts streaming on file read error instead of spinning", func() {
-			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
+			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			DeferCleanup(func() {
 				commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
@@ -637,7 +636,7 @@ var _ = Describe("Command Handlers", func() {
 			Register(isolatedAPI, isolatedHandlers)
 
 			resp := isolatedAPI.Post("/commands", "Content-Type: application/json",
-				strings.NewReader(`{"cmd": "/nonexistent/binary"}`))
+				strings.NewReader(`{"args": ["/nonexistent/binary"]}`))
 			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
 
 			// Directory may not exist (RemoveAll removed it) or may be empty — either is acceptable
@@ -654,7 +653,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("offset beyond file size", func() {
 		It("returns empty body when offset exceeds output size for exited command", func() {
-			code, result := postCommand(`{"cmd": "echo", "args": ["-n", "short"]}`)
+			code, result := postCommand(`{"args": ["echo", "-n", "short"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
@@ -672,7 +671,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("multiple stdin writes", func() {
 		It("delivers sequential writes in order", func() {
-			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "head -c 10"]}`)
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "head -c 10"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			resp := commandAPI.Post(
@@ -698,7 +697,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("client disconnect", func() {
 		It("stops streaming when request context is cancelled", func() {
-			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
+			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			DeferCleanup(func() {
 				commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
@@ -726,7 +725,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("working directory", func() {
 		It("runs command in specified cwd", func() {
-			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "pwd"], "cwd": "/tmp"}`)
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "pwd"], "cwd": "/tmp"}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
@@ -738,7 +737,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("environment variables", func() {
 		It("makes user-specified env vars available to the process", func() {
-			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "echo -n $MY_VAR"], "env": {"MY_VAR": "hello"}}`)
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "echo -n $MY_VAR"], "env": {"MY_VAR": "hello"}}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
@@ -749,7 +748,7 @@ var _ = Describe("Command Handlers", func() {
 
 		It("inherits container environment variables", func() {
 			// MockProcFS.GetEnviron returns PATH=/usr/bin:/bin and HOME=/root
-			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "echo -n $HOME"]}`)
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "echo -n $HOME"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
@@ -769,7 +768,7 @@ var _ = Describe("Command Handlers", func() {
 			cmds := make([]cmdResult, n)
 
 			for i := range n {
-				body := fmt.Sprintf(`{"cmd": "echo", "args": ["-n", "cmd-%d"]}`, i)
+				body := fmt.Sprintf(`{"args": ["echo", "-n", "cmd-%d"]}`, i)
 				code, result := postCommand(body)
 				Expect(code).To(Equal(http.StatusAccepted))
 				cmds[i] = cmdResult{id: result.CommandID, want: fmt.Sprintf("cmd-%d", i)}
@@ -796,14 +795,14 @@ var _ = Describe("Command Handlers", func() {
 			Register(failingAPI, failingHandlers)
 
 			resp := failingAPI.Post("/commands", "Content-Type: application/json",
-				strings.NewReader(`{"cmd": "echo"}`))
+				strings.NewReader(`{"args": ["echo"]}`))
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
 		})
 	})
 
 	Describe("stderr offset", func() {
 		It("supports resume via offset on stderr", func() {
-			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "echo -n 'hello world' >&2"]}`)
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "echo -n 'hello world' >&2"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
@@ -818,7 +817,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("kill exit code", func() {
 		It("reports signal kill exit code as -1", func() {
-			code, result := postCommand(`{"cmd": "sleep", "args": ["60"]}`)
+			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			resp := commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
@@ -840,7 +839,7 @@ var _ = Describe("Command Handlers", func() {
 	Describe("large output", func() {
 		It("streams large output without data loss", func() {
 			// Generate 1MB of output via dd
-			code, result := postCommand(`{"cmd": "/bin/sh", "args": ["-c", "dd if=/dev/zero bs=1024 count=1024 2>/dev/null"]}`)
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "dd if=/dev/zero bs=1024 count=1024 2>/dev/null"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
@@ -868,7 +867,7 @@ var _ = Describe("Command Handlers", func() {
 			Register(isolatedAPI, isolatedHandlers)
 
 			resp := isolatedAPI.Post("/commands", "Content-Type: application/json",
-				strings.NewReader(`{"cmd": "echo"}`))
+				strings.NewReader(`{"args": ["echo"]}`))
 			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
 
 			// Verify cleanup happened
@@ -895,7 +894,7 @@ var _ = Describe("Command Handlers", func() {
 			Register(envFailAPI, envFailHandlers)
 
 			resp := envFailAPI.Post("/commands", "Content-Type: application/json",
-				strings.NewReader(`{"cmd": "echo", "args": ["-n", "ok"]}`))
+				strings.NewReader(`{"args": ["echo", "-n", "ok"]}`))
 			Expect(resp.Code).To(Equal(http.StatusAccepted))
 
 			var result sidecarapi.CreateCommandResponse

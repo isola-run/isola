@@ -77,7 +77,6 @@ func (b *NsenterCommandBuilder) Build(ctx context.Context, pid int, req sidecara
 		args = append(args, "--wd") // effectively /proc/<pid>/cwd
 	}
 	args = append(args, "--")
-	args = append(args, req.Cmd)
 	args = append(args, req.Args...)
 
 	cmd := exec.CommandContext(ctx, "nsenter", args...) //nolint:gosec // args are constructed from validated request
@@ -248,7 +247,7 @@ func (h *Handlers) startCommand(pid int, input *CreateCommandInput) (*commandEnt
 	}
 
 	if err := cmd.Start(); err != nil {
-		h.logger.Error("failed to start command", "error", err, "cmd", input.Body.Cmd)
+		h.logger.Error("failed to start command", "error", err, "args", input.Body.Args)
 		return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to start command: %s", err.Error()))
 	}
 

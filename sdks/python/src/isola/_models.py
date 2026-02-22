@@ -101,8 +101,7 @@ class SandboxData(IsolaModel):
 
 
 class CreateCommandPayload(IsolaModel):
-    cmd: str
-    args: list[str] | None = None
+    args: list[str]
     env: dict[str, str] | None = None
     cwd: str | None = None
     timeout: int | None = None

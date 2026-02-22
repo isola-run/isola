@@ -188,9 +188,8 @@ class Commands:
     ) -> Command:
         if not args:
             raise ValueError("at least one argument (the command) is required")
-        cmd, cmd_args = args[0], list(args[1:]) or None
         params = {"container": container} if container else None
-        payload = CreateCommandPayload(cmd=cmd, args=cmd_args, env=env, cwd=cwd, timeout=timeout)
+        payload = CreateCommandPayload(args=list(args), env=env, cwd=cwd, timeout=timeout)
         data = self._api.request_model(
             "POST",
             _command_base_path(self._sandbox_id),
@@ -235,9 +234,8 @@ class AsyncCommands:
     ) -> AsyncCommand:
         if not args:
             raise ValueError("at least one argument (the command) is required")
-        cmd, cmd_args = args[0], list(args[1:]) or None
         params = {"container": container} if container else None
-        payload = CreateCommandPayload(cmd=cmd, args=cmd_args, env=env, cwd=cwd, timeout=timeout)
+        payload = CreateCommandPayload(args=list(args), env=env, cwd=cwd, timeout=timeout)
         data = await self._api.request_model(
             "POST",
             _command_base_path(self._sandbox_id),

@@ -139,7 +139,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo","args":["hello"]}`),
+				strings.NewReader(`{"args":["echo","hello"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusAccepted))
 
@@ -151,8 +151,7 @@ var _ = Describe("Command Proxy", func() {
 
 			var capturedReq CreateCommandRequest
 			Expect(json.Unmarshal(capturedBody, &capturedReq)).To(Succeed())
-			Expect(capturedReq.Cmd).To(Equal("echo"))
-			Expect(capturedReq.Args).To(Equal([]string{"hello"}))
+			Expect(capturedReq.Args).To(Equal([]string{"echo", "hello"}))
 		})
 
 		It("forwards container query param", func() {
@@ -172,7 +171,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands?container=main", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusAccepted))
 			Expect(capturedContainer).To(Equal("main"))
@@ -181,7 +180,7 @@ var _ = Describe("Command Proxy", func() {
 		It("returns 404 for nonexistent sandbox", func() {
 			api := newCommandTestAPI(&http.Client{}, 0)
 			resp := api.Post("/sandboxes/nonexistent/commands", "Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`))
+				strings.NewReader(`{"args":["echo"]}`))
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 
@@ -191,7 +190,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusConflict))
 		})
@@ -207,7 +206,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
@@ -553,7 +552,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
@@ -575,7 +574,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
 		})
@@ -593,7 +592,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
@@ -605,7 +604,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
 		})

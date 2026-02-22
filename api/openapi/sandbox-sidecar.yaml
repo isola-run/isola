@@ -30,16 +30,13 @@ components:
           readOnly: true
           type: string
         args:
-          description: Arguments to the executable
+          description: "Argument vector: Args[0] is the executable path, Args[1:] are its arguments"
           items:
             type: string
+          minItems: 1
           type:
             - array
             - "null"
-        cmd:
-          description: Executable path
-          minLength: 1
-          type: string
         cwd:
           description: Working directory inside the sandbox. Defaults to the target container process's working directory if omitted.
           type: string
@@ -54,7 +51,7 @@ components:
           minimum: 1
           type: integer
       required:
-        - cmd
+        - args
       type: object
     CreateCommandResponse:
       additionalProperties: false
