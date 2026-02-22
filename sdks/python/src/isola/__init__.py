@@ -8,7 +8,6 @@ from ._exceptions import (
     InternalError,
     IsolaError,
     NotFoundError,
-    StreamTimeoutError,
     ValidationError,
 )
 from ._filesystem import AsyncFilesystem, Filesystem
@@ -44,5 +43,4 @@ __all__ = [
     "InternalError",
     "BadGatewayError",
     "APIConnectionError",
-    "StreamTimeoutError",
 ]

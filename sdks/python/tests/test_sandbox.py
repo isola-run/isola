@@ -24,7 +24,7 @@ def test_create_sandbox_maps_flat_resources(sandbox_response_copy: dict[str, obj
             cpu="500m",
             memory="1Gi",
             ephemeral_storage="2Gi",
-            active_deadline_seconds=3600,
+            timeout=3600,
         )
 
     assert sandbox.id == "sandbox-123"
@@ -52,9 +52,7 @@ def test_create_sandbox_without_resources_omits_key(sandbox_response_copy: dict[
 
 @respx.mock
 def test_list_sandboxes(sandbox_summary_response: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes").mock(
-        return_value=httpx.Response(200, json=sandbox_summary_response)
-    )
+    respx.get("http://localhost:8080/sandboxes").mock(return_value=httpx.Response(200, json=sandbox_summary_response))
 
     with Isola(base_url="http://localhost:8080") as client:
         sandboxes = client.sandboxes.list()
@@ -67,9 +65,7 @@ def test_get_and_delete_sandbox(sandbox_response_copy: dict[str, object]) -> Non
     respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    delete_route = respx.delete("http://localhost:8080/sandboxes/sandbox-123").mock(
-        return_value=httpx.Response(204)
-    )
+    delete_route = respx.delete("http://localhost:8080/sandboxes/sandbox-123").mock(return_value=httpx.Response(204))
 
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
@@ -118,22 +114,18 @@ def test_network_spec_acronym_aliases_round_trip(sandbox_response_copy: dict[str
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_create_properties_and_delete(sandbox_response_copy: dict[str, object]) -> None:
-    respx.post("http://localhost:8080/sandboxes").mock(
-        return_value=httpx.Response(201, json=sandbox_response_copy)
-    )
-    delete_route = respx.delete("http://localhost:8080/sandboxes/sandbox-123").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.post("http://localhost:8080/sandboxes").mock(return_value=httpx.Response(201, json=sandbox_response_copy))
+    delete_route = respx.delete("http://localhost:8080/sandboxes/sandbox-123").mock(return_value=httpx.Response(204))
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
-        sandbox = await client.sandboxes.create(image="python:3.12", active_deadline_seconds=3600)
+        sandbox = await client.sandboxes.create(image="python:3.12", timeout=3600)
 
         assert sandbox.id == "sandbox-123"
         assert sandbox.status == SandboxStatus.RUNNING
         assert sandbox.creation_timestamp == datetime(2026, 2, 18, tzinfo=timezone.utc)
         assert sandbox.network is not None
         assert sandbox.network.allow_internet_egress is True
-        assert sandbox.active_deadline_seconds == 3600
+        assert sandbox.timeout == 3600
 
         await sandbox.delete()
 

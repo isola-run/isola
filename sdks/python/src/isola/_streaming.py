@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from ._exceptions import StreamTimeoutError, connection_error_from_request, error_from_http
+from ._exceptions import connection_error_from_request, error_from_http
 
 STREAM_CONNECT_TIMEOUT = 5.0
 STREAM_WRITE_TIMEOUT = 5.0
@@ -42,25 +42,13 @@ class _AsyncStreamAPI(Protocol):
 class StreamReader:
     """Single-use iterable stream with transparent reconnect."""
 
-    def __init__(
-        self,
-        api: _SyncStreamAPI,
-        path: str,
-        *,
-        offset: int = 0,
-        timeout: float | None = None,
-    ) -> None:
-        if offset < 0:
-            raise ValueError("offset must be >= 0")
-        if timeout is not None and timeout <= 0:
-            raise ValueError("timeout must be > 0")
-
+    def __init__(self, api: _SyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
-        self._offset = offset
+        self._offset = 0
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
-            read=timeout,
+            read=None,
             write=STREAM_WRITE_TIMEOUT,
             pool=STREAM_POOL_TIMEOUT,
         )
@@ -106,8 +94,6 @@ class StreamReader:
 
                     return
 
-            except httpx.ReadTimeout as exc:
-                raise StreamTimeoutError(f"No data received for {self._httpx_timeout.read}s") from exc
             except (httpx.NetworkError, httpx.ConnectTimeout) as exc:
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
@@ -119,25 +105,13 @@ class StreamReader:
 class AsyncStreamReader:
     """Single-use async iterable stream with transparent reconnect."""
 
-    def __init__(
-        self,
-        api: _AsyncStreamAPI,
-        path: str,
-        *,
-        offset: int = 0,
-        timeout: float | None = None,
-    ) -> None:
-        if offset < 0:
-            raise ValueError("offset must be >= 0")
-        if timeout is not None and timeout <= 0:
-            raise ValueError("timeout must be > 0")
-
+    def __init__(self, api: _AsyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
-        self._offset = offset
+        self._offset = 0
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
-            read=timeout,
+            read=None,
             write=STREAM_WRITE_TIMEOUT,
             pool=STREAM_POOL_TIMEOUT,
         )
@@ -178,8 +152,6 @@ class AsyncStreamReader:
 
                     return
 
-            except httpx.ReadTimeout as exc:
-                raise StreamTimeoutError(f"No data received for {self._httpx_timeout.read}s") from exc
             except (httpx.NetworkError, httpx.ConnectTimeout) as exc:
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:

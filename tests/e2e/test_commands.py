@@ -81,22 +81,22 @@ def test_write_stdin(session_sandbox: Sandbox) -> None:
 
 def test_kill_running_command(session_sandbox: Sandbox) -> None:
     """Kill a long-running command and verify it terminates with a non-None exit code."""
-    cmd = session_sandbox.commands.spawn("sleep", "300")
+    cmd = session_sandbox.commands.spawn("sleep", "300", timeout=15)
 
     # Verify the command is running
     assert cmd.exit_code() is None
 
     cmd.kill()
 
-    code = cmd.wait(timeout=10)
+    code = cmd.wait()
     assert code is not None
 
 
 def test_kill_is_idempotent(session_sandbox: Sandbox) -> None:
     """Kill a command twice to verify idempotency -- second kill must not raise."""
-    cmd = session_sandbox.commands.spawn("sleep", "300")
+    cmd = session_sandbox.commands.spawn("sleep", "300", timeout=15)
     cmd.kill()
-    cmd.wait(timeout=10)
+    cmd.wait()
 
     # Second kill should not raise
     cmd.kill()

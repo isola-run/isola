@@ -17,20 +17,22 @@ def test_spawn_and_command_lifecycle(sandbox_response_copy: dict[str, object]) -
     run_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "00000000-0000-0000-0000-000000000001"})
     )
-    status_route = respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001/status").mock(
-        return_value=httpx.Response(200, json={"exitCode": None})
-    )
-    stdin_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001/stdin").mock(
-        return_value=httpx.Response(204)
-    )
-    kill_route = respx.delete("http://localhost:8080/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001").mock(
-        return_value=httpx.Response(204)
-    )
+    status_route = respx.get(
+        "http://localhost:8080/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001/status"
+    ).mock(return_value=httpx.Response(200, json={"exitCode": None}))
+    stdin_route = respx.post(
+        "http://localhost:8080/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001/stdin"
+    ).mock(return_value=httpx.Response(204))
+    kill_route = respx.delete(
+        "http://localhost:8080/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001"
+    ).mock(return_value=httpx.Response(204))
 
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.spawn(
-            "python", "-c", "print('hello')",
+            "python",
+            "-c",
+            "print('hello')",
             env={"DEBUG": "1"},
             cwd="/workspace",
             timeout=30,

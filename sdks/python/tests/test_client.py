@@ -20,9 +20,7 @@ from isola import (
 
 @respx.mock
 def test_sync_client_uses_base_url_with_trailing_slash() -> None:
-    route = respx.get("http://localhost:8080/sandboxes").mock(
-        return_value=httpx.Response(200, json={"sandboxes": []})
-    )
+    route = respx.get("http://localhost:8080/sandboxes").mock(return_value=httpx.Response(200, json={"sandboxes": []}))
 
     with Isola(base_url="http://localhost:8080/") as client:
         assert client.sandboxes.list() == []
@@ -33,9 +31,7 @@ def test_sync_client_uses_base_url_with_trailing_slash() -> None:
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_client_list() -> None:
-    route = respx.get("http://localhost:8080/sandboxes").mock(
-        return_value=httpx.Response(200, json={"sandboxes": []})
-    )
+    route = respx.get("http://localhost:8080/sandboxes").mock(return_value=httpx.Response(200, json={"sandboxes": []}))
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         sandboxes = await client.sandboxes.list()

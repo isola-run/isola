@@ -14,8 +14,8 @@ def test_active_deadline_sandbox_stops(
     isola_client: Isola,
     sandbox_factory,
 ) -> None:
-    """A sandbox with active_deadline_seconds should stop or be deleted after the deadline passes."""
-    sb = sandbox_factory(image="alpine:3.21", active_deadline_seconds=30)
+    """A sandbox with timeout should stop or be deleted after the deadline passes."""
+    sb = sandbox_factory(image="alpine:3.21", timeout=30)
     wait_for_running(isola_client, sb.id)
 
     # Wait up to 60s beyond when the sandbox became running for it to reach a
@@ -50,7 +50,7 @@ def test_command_timeout(
     assert cmd.exit_code() is None
 
     # Wait for the sidecar to kill the command after the timeout expires.
-    code = cmd.wait(timeout=15)
+    code = cmd.wait()
 
     # A signal-killed process should have a non-zero exit code (typically 128+signal).
     assert code != 0, f"Expected non-zero exit code for timed-out command, got {code}"
@@ -61,13 +61,13 @@ def test_no_deadline_stays_alive(
     isola_client: Isola,
     session_sandbox: Sandbox,
 ) -> None:
-    """A sandbox created without active_deadline_seconds should remain running and have no deadline."""
+    """A sandbox created without timeout should remain running and have no deadline."""
     sb = isola_client.sandboxes.get(session_sandbox.id)
     assert sb.status == SandboxStatus.RUNNING, (
         f"Expected sandbox without deadline to stay running, but status is {sb.status.value}"
     )
-    assert sb.active_deadline_seconds is None, (
-        f"Expected no deadline on session sandbox, got {sb.active_deadline_seconds}"
+    assert sb.timeout is None, (
+        f"Expected no deadline on session sandbox, got {sb.timeout}"
     )
 
 
@@ -77,7 +77,7 @@ def test_operations_on_timed_out_sandbox(
     sandbox_factory,
 ) -> None:
     """After a sandbox times out and stops/disappears, running a command on it should fail."""
-    sb = sandbox_factory(image="alpine:3.21", active_deadline_seconds=30)
+    sb = sandbox_factory(image="alpine:3.21", timeout=30)
     running = wait_for_running(isola_client, sb.id)
 
     # Wait for the sandbox to stop or be deleted.

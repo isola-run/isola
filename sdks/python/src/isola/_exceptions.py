@@ -41,11 +41,6 @@ class APIConnectionError(IsolaError, ConnectionError):
         super().__init__(status=0, detail=detail)
 
 
-class StreamTimeoutError(IsolaError, TimeoutError):
-    def __init__(self, detail: str) -> None:
-        super().__init__(status=0, detail=detail)
-
-
 _STATUS_TO_EXCEPTION: dict[int, type[IsolaError]] = {
     400: BadRequestError,
     404: NotFoundError,

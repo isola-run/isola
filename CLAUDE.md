@@ -92,7 +92,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **Streaming (`_streaming.py`):** `CommandOutputStream`/`AsyncCommandOutputStream` wrap SSE-style byte streams with auto-reconnect (exponential backoff, offset-based resume). Support text mode (default, UTF-8 incremental decoding) and binary mode.
 
-**Error hierarchy:** `IsolaError` base → status-specific subclasses (`BadRequestError`, `NotFoundError`, etc.) mapped from HTTP status codes. `APIConnectionError` and `StreamTimeoutError` for transport failures.
+**Error hierarchy:** `IsolaError` base → status-specific subclasses (`BadRequestError`, `NotFoundError`, etc.) mapped from HTTP status codes. `APIConnectionError` for transport failures.
 
 **Testing:** pytest + pytest-asyncio (auto mode) + respx for HTTP mocking. Tests use fake API/response objects rather than respx routes for streaming tests. Strict mypy type checking enabled.
 

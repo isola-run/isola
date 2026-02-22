@@ -8,6 +8,8 @@ from ._client import _AsyncAPI, _SyncAPI
 from ._models import CommandResult, CommandStatusResponse, CreateCommandPayload, CreateCommandResponse
 from ._streaming import AsyncStreamReader, StreamReader
 
+_EXEC_TIMEOUT_BUFFER = 5  # extra seconds for client deadline beyond server-side kill
+
 
 def _command_base_path(sandbox_id: str) -> str:
     return f"/sandboxes/{quote(sandbox_id, safe='')}/commands"
@@ -25,10 +27,13 @@ class Command:
         api: _SyncAPI,
         sandbox_id: str,
         command_id: str,
+        *,
+        deadline: float | None = None,
     ) -> None:
         self._api = api
         self._sandbox_id = sandbox_id
         self._command_id = command_id
+        self._deadline = deadline
         self._stdout: StreamReader | None = None
         self._stderr: StreamReader | None = None
 
@@ -54,14 +59,13 @@ class Command:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/status"
         return self._api.request_model("GET", path, CommandStatusResponse).exit_code
 
-    def wait(self, *, timeout: float | None = None) -> int:
-        deadline = None if timeout is None else time.monotonic() + timeout
-        while deadline is None or time.monotonic() < deadline:
+    def wait(self) -> int:
+        while self._deadline is None or time.monotonic() < self._deadline:
             code = self.exit_code()
             if code is not None:
                 return code
             time.sleep(0.5)
-        raise TimeoutError(f"Command {self._command_id} did not exit within {timeout}s")
+        raise TimeoutError(f"Command {self._command_id} did not exit in time")
 
     def write_stdin(self, data: str | bytes) -> None:
         raw = data.encode("utf-8") if isinstance(data, str) else data
@@ -90,10 +94,13 @@ class AsyncCommand:
         api: _AsyncAPI,
         sandbox_id: str,
         command_id: str,
+        *,
+        deadline: float | None = None,
     ) -> None:
         self._api = api
         self._sandbox_id = sandbox_id
         self._command_id = command_id
+        self._deadline = deadline
         self._stdout: AsyncStreamReader | None = None
         self._stderr: AsyncStreamReader | None = None
 
@@ -119,14 +126,13 @@ class AsyncCommand:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/status"
         return (await self._api.request_model("GET", path, CommandStatusResponse)).exit_code
 
-    async def wait(self, *, timeout: float | None = None) -> int:
-        deadline = None if timeout is None else time.monotonic() + timeout
-        while deadline is None or time.monotonic() < deadline:
+    async def wait(self) -> int:
+        while self._deadline is None or time.monotonic() < self._deadline:
             code = await self.exit_code()
             if code is not None:
                 return code
             await asyncio.sleep(0.5)
-        raise TimeoutError(f"Command {self._command_id} did not exit within {timeout}s")
+        raise TimeoutError(f"Command {self._command_id} did not exit in time")
 
     async def write_stdin(self, data: str | bytes) -> None:
         raw = data.encode("utf-8") if isinstance(data, str) else data
@@ -172,7 +178,8 @@ class Commands:
             params=params,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        return Command(self._api, self._sandbox_id, data.command_id)
+        deadline = time.monotonic() + timeout + _EXEC_TIMEOUT_BUFFER if timeout is not None else None
+        return Command(self._api, self._sandbox_id, data.command_id, deadline=deadline)
 
     def run(
         self,
@@ -187,10 +194,9 @@ class Commands:
         if input is not None:
             cmd.write_stdin(input)
             cmd.close_stdin()
+        exit_code = cmd.wait()
         stdout = cmd.stdout.read()
         stderr = cmd.stderr.read()
-        exit_code = cmd.exit_code()
-        assert exit_code is not None, "process exited but exit_code() returned None"
         return CommandResult(command_id=cmd.id, stdout=stdout, stderr=stderr, exit_code=exit_code)
 
 
@@ -219,7 +225,8 @@ class AsyncCommands:
             params=params,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        return AsyncCommand(self._api, self._sandbox_id, data.command_id)
+        deadline = time.monotonic() + timeout + _EXEC_TIMEOUT_BUFFER if timeout is not None else None
+        return AsyncCommand(self._api, self._sandbox_id, data.command_id, deadline=deadline)
 
     async def run(
         self,
@@ -234,10 +241,9 @@ class AsyncCommands:
         if input is not None:
             await cmd.write_stdin(input)
             await cmd.close_stdin()
+        exit_code = await cmd.wait()
         stdout, stderr = await asyncio.gather(
             cmd.stdout.read(),
             cmd.stderr.read(),
         )
-        exit_code = await cmd.exit_code()
-        assert exit_code is not None, "process exited but exit_code() returned None"
         return CommandResult(command_id=cmd.id, stdout=stdout, stderr=stderr, exit_code=exit_code)

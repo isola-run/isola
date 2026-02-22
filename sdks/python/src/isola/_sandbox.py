@@ -45,7 +45,7 @@ class Sandboxes:
         cpu: str | None = None,
         memory: str | None = None,
         ephemeral_storage: str | None = None,
-        active_deadline_seconds: int | None = None,
+        timeout: int | None = None,
         network: NetworkSpec | None = None,
     ) -> Sandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
@@ -58,7 +58,7 @@ class Sandboxes:
                     resources=resources,
                 )
             ),
-            active_deadline_seconds=active_deadline_seconds,
+            timeout=timeout,
             network=network,
         )
 
@@ -92,7 +92,7 @@ class AsyncSandboxes:
         cpu: str | None = None,
         memory: str | None = None,
         ephemeral_storage: str | None = None,
-        active_deadline_seconds: int | None = None,
+        timeout: int | None = None,
         network: NetworkSpec | None = None,
     ) -> AsyncSandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
@@ -105,7 +105,7 @@ class AsyncSandboxes:
                     resources=resources,
                 )
             ),
-            active_deadline_seconds=active_deadline_seconds,
+            timeout=timeout,
             network=network,
         )
 
@@ -150,8 +150,8 @@ class Sandbox:
         return self._data.network
 
     @property
-    def active_deadline_seconds(self) -> int | None:
-        return self._data.active_deadline_seconds
+    def timeout(self) -> int | None:
+        return self._data.timeout
 
     def delete(self) -> None:
         self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
@@ -181,8 +181,8 @@ class AsyncSandbox:
         return self._data.network
 
     @property
-    def active_deadline_seconds(self) -> int | None:
-        return self._data.active_deadline_seconds
+    def timeout(self) -> int | None:
+        return self._data.timeout
 
     async def delete(self) -> None:
         await self._api.request_no_content("DELETE", _sandbox_path(self._data.id))

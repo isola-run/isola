@@ -77,7 +77,7 @@ class PodTemplateInfo(IsolaModel):
 
 class CreateSandboxPayload(IsolaModel):
     pod_template: PodTemplate
-    active_deadline_seconds: int | None = None
+    timeout: int | None = Field(None, alias="activeDeadlineSeconds")
     network: NetworkSpec | None = None
 
 
@@ -96,7 +96,7 @@ class SandboxData(IsolaModel):
     pod_template: PodTemplateInfo
     status: SandboxStatus
     creation_timestamp: datetime
-    active_deadline_seconds: int | None = None
+    timeout: int | None = Field(None, alias="activeDeadlineSeconds")
     network: NetworkSpec | None = None
 
 
