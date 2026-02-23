@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator, Iterator
 import httpx
 import pytest
 
-from isola import APIConnectionError, NotFoundError
+from isola import APIConnectionError, IsolaError, NotFoundError
 from isola._streaming import MAX_RECONNECTS, AsyncStreamReader, StreamReader
 
 
@@ -501,6 +501,93 @@ async def test_async_stream_read_text() -> None:
 
 
 # --- Stream natural termination tests ---
+
+
+@pytest.mark.parametrize("status", [502, 503, 504], ids=["502", "503", "504"])
+def test_sync_stream_retries_transient_http_error_on_reconnect(monkeypatch: pytest.MonkeyPatch, status: int) -> None:
+    """A transient HTTP error during stream reconnect should be retried, not raised."""
+    monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
+
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([b"ab"], raise_after=httpx.ReadError("connection reset"))),
+            _FakeSyncCM(_FakeSyncResponse([], status_code=status)),
+            _FakeSyncCM(_FakeSyncResponse([b"cd"])),
+        ]
+    )
+
+    stream = StreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    output = "".join(stream)
+
+    assert output == "abcd"
+    assert api.calls == [0, 2, 2]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [502, 503, 504], ids=["502", "503", "504"])
+async def test_async_stream_retries_transient_http_error_on_reconnect(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    """A transient HTTP error during async stream reconnect should be retried, not raised."""
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
+
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([b"ab"], raise_after=httpx.ReadError("connection reset"))),
+            _FakeAsyncCM(_FakeAsyncResponse([], status_code=status)),
+            _FakeAsyncCM(_FakeAsyncResponse([b"cd"])),
+        ]
+    )
+
+    stream = AsyncStreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    chunks_list: list[str] = []
+    async for chunk in stream:
+        chunks_list.append(chunk)
+
+    assert "".join(chunks_list) == "abcd"
+    assert api.calls == [0, 2, 2]
+
+
+@pytest.mark.parametrize("status", [502, 503, 504], ids=["502", "503", "504"])
+def test_sync_stream_transient_http_error_max_reconnects_exhausted(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    """Repeated transient HTTP errors should eventually give up after MAX_RECONNECTS."""
+    monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
+
+    api = _FakeSyncAPI([_FakeSyncCM(_FakeSyncResponse([], status_code=status)) for _ in range(MAX_RECONNECTS + 1)])
+
+    stream = StreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    with pytest.raises(IsolaError):
+        list(stream)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [502, 503, 504], ids=["502", "503", "504"])
+async def test_async_stream_transient_http_error_max_reconnects_exhausted(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    """Repeated transient HTTP errors should eventually give up after MAX_RECONNECTS."""
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
+
+    api = _FakeAsyncAPI([_FakeAsyncCM(_FakeAsyncResponse([], status_code=status)) for _ in range(MAX_RECONNECTS + 1)])
+
+    stream = AsyncStreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    with pytest.raises(IsolaError):
+        async for _ in stream:
+            pass
 
 
 def test_sync_stream_read_completes_on_response_end() -> None:

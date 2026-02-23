@@ -115,9 +115,7 @@ def test_run_returns_command_result(sandbox_response_copy: dict[str, object]) ->
     respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-1"})
     )
-    respx.get(url__regex=r".*/commands/cmd-1/status.*").mock(
-        return_value=httpx.Response(200, json={"exitCode": 0})
-    )
+    respx.get(url__regex=r".*/commands/cmd-1/status.*").mock(return_value=httpx.Response(200, json={"exitCode": 0}))
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-1/stdout").mock(
         return_value=httpx.Response(200, content=b"hello world\n")
     )
@@ -321,9 +319,7 @@ async def test_async_run_returns_command_result(sandbox_response_copy: dict[str,
     respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-ar"})
     )
-    respx.get(url__regex=r".*/commands/cmd-ar/status.*").mock(
-        return_value=httpx.Response(200, json={"exitCode": 0})
-    )
+    respx.get(url__regex=r".*/commands/cmd-ar/status.*").mock(return_value=httpx.Response(200, json={"exitCode": 0}))
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-ar/stdout").mock(
         return_value=httpx.Response(200, content=b"async result\n")
     )
@@ -375,9 +371,7 @@ def test_run_with_input(sandbox_response_copy: dict[str, object]) -> None:
     close_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/stdin/close").mock(
         return_value=httpx.Response(204)
     )
-    respx.get(url__regex=r".*/commands/cmd-input/status.*").mock(
-        return_value=httpx.Response(200, json={"exitCode": 0})
-    )
+    respx.get(url__regex=r".*/commands/cmd-input/status.*").mock(return_value=httpx.Response(200, json={"exitCode": 0}))
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/stdout").mock(
         return_value=httpx.Response(200, content=b"hello\n")
     )
@@ -501,9 +495,7 @@ def test_wait_with_deadline_raises_on_null_exit_code(sandbox_response_copy: dict
     respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-to"})
     )
-    respx.get(url__regex=r".*/commands/cmd-to/status.*").mock(
-        return_value=httpx.Response(200, json={"exitCode": None})
-    )
+    respx.get(url__regex=r".*/commands/cmd-to/status.*").mock(return_value=httpx.Response(200, json={"exitCode": None}))
 
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
