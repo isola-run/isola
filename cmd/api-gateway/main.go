@@ -145,8 +145,9 @@ func main() {
 	command.Register(api, command.New(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient))
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.httpPort),
-		Handler: r,
+		Addr:     fmt.Sprintf(":%d", cfg.httpPort),
+		Handler:  r,
+		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError),
 	}
 
 	go func() {

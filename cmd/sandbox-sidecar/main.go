@@ -67,8 +67,9 @@ func main() {
 	command.Register(api, command.New(logger, procFS, pidResolver, &command.NsenterCommandBuilder{}))
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", constants.SidecarPort),
-		Handler: r,
+		Addr:     fmt.Sprintf(":%d", constants.SidecarPort),
+		Handler:  r,
+		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError),
 	}
 
 	// currently no graceful shutdown, but it might make sense to have a short grace period
