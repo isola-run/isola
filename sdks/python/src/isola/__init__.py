@@ -2,6 +2,7 @@ from ._client import AsyncIsola, Isola
 from ._commands import AsyncCommand, AsyncCommands, Command, Commands
 from ._exceptions import (
     APIConnectionError,
+    APIError,
     BadGatewayError,
     BadRequestError,
     ConflictError,
@@ -36,6 +37,7 @@ __all__ = [
     "AsyncStreamReader",
     "FileWriteResult",
     "IsolaError",
+    "APIError",
     "BadRequestError",
     "NotFoundError",
     "ConflictError",

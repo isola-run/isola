@@ -6,42 +6,46 @@ import httpx
 
 
 class IsolaError(Exception):
-    def __init__(self, *, status: int, detail: str) -> None:
-        self.status = status
-        self.detail = detail
-        super().__init__(f"{status}: {detail}")
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
 
 
-class BadRequestError(IsolaError):
+class APIError(IsolaError):
+    def __init__(self, *, status_code: int, message: str) -> None:
+        self.status_code = status_code
+        super().__init__(f"{status_code}: {message}")
+
+
+class BadRequestError(APIError):
     pass
 
 
-class NotFoundError(IsolaError):
+class NotFoundError(APIError):
     pass
 
 
-class ConflictError(IsolaError):
+class ConflictError(APIError):
     pass
 
 
-class ValidationError(IsolaError):
+class ValidationError(APIError):
     pass
 
 
-class InternalError(IsolaError):
+class InternalError(APIError):
     pass
 
 
-class BadGatewayError(IsolaError):
+class BadGatewayError(APIError):
     pass
 
 
 class APIConnectionError(IsolaError, ConnectionError):
-    def __init__(self, detail: str) -> None:
-        super().__init__(status=0, detail=detail)
+    pass
 
 
-_STATUS_TO_EXCEPTION: dict[int, type[IsolaError]] = {
+_STATUS_TO_EXCEPTION: dict[int, type[APIError]] = {
     400: BadRequestError,
     404: NotFoundError,
     409: ConflictError,
@@ -58,8 +62,8 @@ def error_from_http(
     *,
     method: str | None = None,
     path: str | None = None,
-) -> IsolaError:
-    detail = reason or f"HTTP {status}"
+) -> APIError:
+    message = reason or f"HTTP {status}"
 
     if body:
         try:
@@ -70,13 +74,13 @@ def error_from_http(
         if isinstance(payload, dict):
             maybe_detail = payload.get("detail")
             if isinstance(maybe_detail, str) and maybe_detail:
-                detail = maybe_detail
+                message = maybe_detail
 
     if method and path:
-        detail = f"{method} {path}: {detail}"
+        message = f"{method} {path}: {message}"
 
-    exc_type = _STATUS_TO_EXCEPTION.get(status, IsolaError)
-    return exc_type(status=status, detail=detail)
+    exc_type = _STATUS_TO_EXCEPTION.get(status, APIError)
+    return exc_type(status_code=status, message=message)
 
 
 def connection_error_from_request(
@@ -85,7 +89,7 @@ def connection_error_from_request(
     method: str | None = None,
     path: str | None = None,
 ) -> APIConnectionError:
-    detail = str(exc) or "failed to reach Isola API"
+    message = str(exc) or "failed to reach Isola API"
     if method and path:
-        detail = f"{method} {path}: {detail}"
-    return APIConnectionError(detail=detail)
+        message = f"{method} {path}: {message}"
+    return APIConnectionError(message)

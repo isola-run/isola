@@ -7,7 +7,7 @@ from typing import Any, BinaryIO, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from ._exceptions import IsolaError, connection_error_from_request, error_from_http
+from ._exceptions import APIConnectionError, APIError, connection_error_from_request, error_from_http
 
 DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
@@ -46,6 +46,10 @@ class _SyncAPI:
             )
         except httpx.RequestError as exc:
             raise connection_error_from_request(exc, method=method, path=path) from exc
+        except (TypeError, ValueError, AttributeError, KeyError):
+            raise
+        except Exception as exc:
+            raise APIConnectionError(f"{method} {path}: {exc}") from exc
 
         if response.status_code >= 400:
             body = response.read()
@@ -77,7 +81,7 @@ class _SyncAPI:
             payload = response.json()
             return model.model_validate(payload)
         except (ValueError, ValidationError) as exc:
-            raise IsolaError(status=response.status_code, detail="invalid response payload") from exc
+            raise APIError(status_code=response.status_code, message="invalid response payload") from exc
 
     def request_bytes(
         self,
@@ -149,6 +153,10 @@ class _AsyncAPI:
             )
         except httpx.RequestError as exc:
             raise connection_error_from_request(exc, method=method, path=path) from exc
+        except (TypeError, ValueError, AttributeError, KeyError):
+            raise
+        except Exception as exc:
+            raise APIConnectionError(f"{method} {path}: {exc}") from exc
 
         if response.status_code >= 400:
             body = await response.aread()
@@ -180,7 +188,7 @@ class _AsyncAPI:
             payload = response.json()
             return model.model_validate(payload)
         except (ValueError, ValidationError) as exc:
-            raise IsolaError(status=response.status_code, detail="invalid response payload") from exc
+            raise APIError(status_code=response.status_code, message="invalid response payload") from exc
 
     async def request_bytes(
         self,

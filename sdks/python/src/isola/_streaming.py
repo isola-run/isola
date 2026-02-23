@@ -94,7 +94,7 @@ class StreamReader:
 
                     return
 
-            except (httpx.NetworkError, httpx.ConnectTimeout) as exc:
+            except (httpx.NetworkError, httpx.TimeoutException) as exc:
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
                     raise connection_error_from_request(exc) from exc
@@ -152,7 +152,7 @@ class AsyncStreamReader:
 
                     return
 
-            except (httpx.NetworkError, httpx.ConnectTimeout) as exc:
+            except (httpx.NetworkError, httpx.TimeoutException) as exc:
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
                     raise connection_error_from_request(exc) from exc
