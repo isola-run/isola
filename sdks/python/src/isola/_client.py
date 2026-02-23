@@ -46,8 +46,6 @@ class _SyncAPI:
             )
         except httpx.RequestError as exc:
             raise connection_error_from_request(exc, method=method, path=path) from exc
-        except (TypeError, ValueError, AttributeError, KeyError):
-            raise
         except Exception as exc:
             raise APIConnectionError(f"{method} {path}: {exc}") from exc
 
@@ -153,8 +151,6 @@ class _AsyncAPI:
             )
         except httpx.RequestError as exc:
             raise connection_error_from_request(exc, method=method, path=path) from exc
-        except (TypeError, ValueError, AttributeError, KeyError):
-            raise
         except Exception as exc:
             raise APIConnectionError(f"{method} {path}: {exc}") from exc
 
