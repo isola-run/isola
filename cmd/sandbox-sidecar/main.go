@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -21,6 +22,14 @@ import (
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/filesystem"
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/health"
 	"github.com/isola-ai/isola-sb/internal/sandbox-sidecar/proc"
+)
+
+const (
+	serverReadHeaderTimeout = 10 * time.Second
+	serverReadTimeout       = 60 * time.Second
+	serverIdleTimeout       = 120 * time.Second
+	// have the sandbox-sidecar's WriteTimeout longer than its client's (api-gateway - 45 seconds).
+	serverWriteTimeout = 75 * time.Second
 )
 
 type config struct {
@@ -67,9 +76,13 @@ func main() {
 	command.Register(api, command.New(logger, procFS, pidResolver, &command.NsenterCommandBuilder{}))
 
 	srv := &http.Server{
-		Addr:     fmt.Sprintf(":%d", constants.SidecarPort),
-		Handler:  r,
-		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		Addr:              fmt.Sprintf(":%d", constants.SidecarPort),
+		Handler:           r,
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		ReadHeaderTimeout: serverReadHeaderTimeout,
+		ReadTimeout:       serverReadTimeout,
+		WriteTimeout:      serverWriteTimeout,
+		IdleTimeout:       serverIdleTimeout,
 	}
 
 	// currently no graceful shutdown, but it might make sense to have a short grace period

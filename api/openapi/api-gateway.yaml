@@ -766,7 +766,7 @@ paths:
           schema:
             description: Max seconds to wait for the command to exit. 0 or absent returns immediately.
             format: int64
-            maximum: 600
+            maximum: 25
             minimum: 0
             type: integer
       responses:

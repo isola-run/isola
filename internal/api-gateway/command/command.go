@@ -50,9 +50,12 @@ type CreateSandboxCommandOutput struct {
 }
 
 type GetSandboxCommandStatusInput struct {
-	ID          string `path:"id" doc:"Sandbox identifier"`
-	CmdID       string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
-	WaitSeconds int    `query:"waitSeconds,omitempty" minimum:"0" maximum:"600" doc:"Max seconds to wait for the command to exit. 0 or absent returns immediately."`
+	ID    string `path:"id" doc:"Sandbox identifier"`
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	// Lower than the sandbox-sidecar's max (30 seconds) so the gateway always terminates first
+	// also aligns with the safe (assuming possible proxies etc) long polling value according to https://datatracker.ietf.org/doc/html/rfc6202
+	// and of course it must be lower than the server's WriteTimeout.
+	WaitSeconds int `query:"waitSeconds,omitempty" minimum:"0" maximum:"25" doc:"Max seconds to wait for the command to exit. 0 or absent returns immediately."`
 }
 
 type GetSandboxCommandStatusOutput struct {

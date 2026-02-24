@@ -99,8 +99,11 @@ type CreateCommandOutput struct {
 }
 
 type GetCommandStatusInput struct {
-	CmdID       string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
-	WaitSeconds int    `query:"waitSeconds,omitempty" minimum:"0" maximum:"600" doc:"Max seconds to wait for the command to exit. 0 or absent returns immediately."`
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	// Higher than the api-gateway's max (25s) so the gateway always terminates first
+	// also aligns with the safe (assuming possible proxies etc) long polling value according to https://datatracker.ietf.org/doc/html/rfc6202
+	// and of course it must be lower than the server's WriteTimeout.
+	WaitSeconds int `query:"waitSeconds,omitempty" minimum:"0" maximum:"30" doc:"Max seconds to wait for the command to exit. 0 or absent returns immediately."`
 }
 
 type GetCommandStatusOutput struct {

@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,7 +35,20 @@ import (
 	"github.com/isola-ai/isola-sb/internal/logging"
 )
 
-const shutdownGracePeriod = 30 * time.Second
+const (
+	shutdownGracePeriod        = 30 * time.Second
+	managerShutdownGracePeriod = 25 * time.Second // < shutdownGracePeriod
+
+	serverReadHeaderTimeout = 10 * time.Second
+	serverReadTimeout       = 60 * time.Second
+	serverIdleTimeout       = 120 * time.Second
+	// have the api-gateway writeTimeout > maximal allowed api-gateway long poll interval (waitSeconds) == 25 seconds.
+	// have the api-gateway writeTimeout < upstream server timeouts:
+	// kube-apiserver - 60 seconds by default (but we limit to k8sClientTimeout below),
+	// sandbox-sidecar - 75 seconds writeTimeout.
+	serverWriteTimeout = 45 * time.Second
+	k8sClientTimeout   = 30 * time.Second
+)
 
 var scheme = runtime.NewScheme()
 
@@ -55,9 +69,14 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 		return nil, errors.New("sandbox namespace is required")
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:  scheme,
-		Metrics: metricsserver.Options{BindAddress: "0"},
+	restConfig := ctrl.GetConfigOrDie()
+	restConfig.Timeout = k8sClientTimeout
+
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
+		Scheme:                  scheme,
+		Logger:                  logr.FromSlogHandler(logger.Handler()),
+		Metrics:                 metricsserver.Options{BindAddress: "0"},
+		GracefulShutdownTimeout: ptr.To(managerShutdownGracePeriod),
 		Cache: cache.Options{
 			DefaultNamespaces: map[string]cache.Config{
 				cfg.sandboxNamespace: {},
@@ -145,9 +164,13 @@ func main() {
 	command.Register(api, command.New(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient))
 
 	srv := &http.Server{
-		Addr:     fmt.Sprintf(":%d", cfg.httpPort),
-		Handler:  r,
-		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		Addr:              fmt.Sprintf(":%d", cfg.httpPort),
+		Handler:           r,
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		ReadHeaderTimeout: serverReadHeaderTimeout,
+		ReadTimeout:       serverReadTimeout,
+		WriteTimeout:      serverWriteTimeout,
+		IdleTimeout:       serverIdleTimeout,
 	}
 
 	go func() {

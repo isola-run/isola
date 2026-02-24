@@ -262,9 +262,9 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status?waitSeconds=30", sbName))
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status?waitSeconds=25", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
-			Expect(capturedTimeout).To(Equal("30"))
+			Expect(capturedTimeout).To(Equal("25"))
 		})
 
 		It("does not send waitSeconds when not specified", func() {

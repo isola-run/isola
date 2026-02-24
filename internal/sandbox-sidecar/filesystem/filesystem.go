@@ -206,8 +206,6 @@ func (h *Handlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) 
 		return nil, huma.Error500InternalServerError("failed to open file")
 	}
 
-	// in the future, we might want to examine sendfile to optimize this
-	// for now its definitely a premature optimization
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
 			defer func() { _ = f.Close() }()
