@@ -143,8 +143,7 @@ class _ChunkedReadValidator(io.RawIOBase):
     def read(self, size: int = -1) -> bytes:  # type: ignore[override]
         if size is None or size < 0:
             raise AssertionError(
-                f"read() called without a bounded size (got {size!r}), "
-                "which would load the entire file into memory"
+                f"read() called without a bounded size (got {size!r}), which would load the entire file into memory"
             )
         assert size <= self._max_read_size, f"read({size}) exceeds max {self._max_read_size}"
         return self._buf.read(size)
@@ -394,9 +393,7 @@ async def test_async_filesystem_remove(sandbox_response_copy: dict[str, object])
     respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.delete("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.delete("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(return_value=httpx.Response(204))
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")

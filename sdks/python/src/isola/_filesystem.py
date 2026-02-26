@@ -114,9 +114,7 @@ class AsyncFilesystem:
         )
 
     async def read(self, path: str, *, container: str | None = None) -> bytes:
-        return await self._api.request_bytes(
-            "GET", _filesystem_path(self._sandbox_id), params=_params(path, container)
-        )
+        return await self._api.request_bytes("GET", _filesystem_path(self._sandbox_id), params=_params(path, container))
 
     async def list(self, path: str, *, container: str | None = None) -> list[FileInfo]:
         result = await self._api.request_model(
