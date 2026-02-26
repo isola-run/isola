@@ -57,6 +57,73 @@ type FilesystemReadInput struct {
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 }
 
+type FileInfo struct {
+	Name  string `json:"name" example:"file.txt" doc:"Base name of the file or directory"`
+	Path  string `json:"path" example:"/workspace/file.txt" doc:"Absolute path"`
+	IsDir bool   `json:"isDir" doc:"True if the entry is a directory"`
+	Size  int64  `json:"size" example:"1024" doc:"Size in bytes (0 for directories)"`
+	Mode  string `json:"mode" example:"-rw-r--r--" doc:"Unix file mode string"`
+}
+
+type FilesystemListInput struct {
+	ID        string `path:"id" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Directory path (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemListResponse struct {
+	Entries []FileInfo `json:"entries" doc:"List of directory entries"`
+}
+
+type FilesystemListOutput struct {
+	Body FilesystemListResponse
+}
+
+type FilesystemStatInput struct {
+	ID        string `path:"id" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Path to stat (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemStatOutput struct {
+	Body FileInfo
+}
+
+type FilesystemMkdirInput struct {
+	ID        string `path:"id" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Directory path to create (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemMkdirResponse struct {
+	AbsolutePath string `json:"absolutePath" example:"/workspace/new-dir" doc:"Absolute path of created directory"`
+}
+
+type FilesystemMkdirOutput struct {
+	Body FilesystemMkdirResponse
+}
+
+type FilesystemRenameInput struct {
+	ID        string `path:"id" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Source path (absolute or relative to container cwd)"`
+	NewPath   string `query:"newPath" required:"true" minLength:"1" doc:"Destination path (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemRenameResponse struct {
+	AbsolutePath string `json:"absolutePath" example:"/workspace/new-name.txt" doc:"New absolute path after rename"`
+}
+
+type FilesystemRenameOutput struct {
+	Body FilesystemRenameResponse
+}
+
+type FilesystemRemoveInput struct {
+	ID        string `path:"id" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Path to remove (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
 // --- Handlers ---
 
 type Handlers struct {
@@ -184,6 +251,172 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 	}, nil
 }
 
+func (h *Handlers) sidecarURL(podIP, sidecarPath string, params url.Values) string {
+	return fmt.Sprintf("http://%s:%d%s?%s", podIP, h.sidecarPort, sidecarPath, params.Encode())
+}
+
+func filesystemParams(path, container string) url.Values {
+	params := url.Values{}
+	params.Set("path", path)
+	if container != "" {
+		params.Set("container", container)
+	}
+	return params
+}
+
+// proxyJSONGet proxies a GET request to the sidecar and decodes a JSON response.
+func (h *Handlers) proxyJSONGet(ctx context.Context, sandboxID, sidecarURL string, dest any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarURL, nil)
+	if err != nil {
+		h.logger.Error("failed to build sidecar request", "error", err)
+		return huma.Error500InternalServerError("failed to build sidecar request")
+	}
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		h.logger.Error("sidecar request failed", "error", err, "id", sandboxID)
+		return huma.Error502BadGateway("failed to reach sidecar")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 400 {
+		return apigateway.HandleSidecarError(resp, sandboxID, h.logger)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(dest); err != nil {
+		h.logger.Error("failed to decode sidecar response", "error", err, "id", sandboxID, "status", resp.StatusCode)
+		return huma.Error502BadGateway("invalid sidecar response")
+	}
+	return nil
+}
+
+// proxySimple proxies a request with no body to the sidecar and decodes an optional JSON response.
+func (h *Handlers) proxySimple(ctx context.Context, method, sandboxID, sidecarURL string, dest any) error {
+	req, err := http.NewRequestWithContext(ctx, method, sidecarURL, nil)
+	if err != nil {
+		h.logger.Error("failed to build sidecar request", "error", err)
+		return huma.Error500InternalServerError("failed to build sidecar request")
+	}
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		h.logger.Error("sidecar request failed", "error", err, "id", sandboxID)
+		return huma.Error502BadGateway("failed to reach sidecar")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 400 {
+		return apigateway.HandleSidecarError(resp, sandboxID, h.logger)
+	}
+
+	if dest != nil {
+		if err := json.NewDecoder(resp.Body).Decode(dest); err != nil {
+			h.logger.Error("failed to decode sidecar response", "error", err, "id", sandboxID, "status", resp.StatusCode)
+			return huma.Error502BadGateway("invalid sidecar response")
+		}
+	}
+	return nil
+}
+
+func (h *Handlers) ListFilesystem(ctx context.Context, input *FilesystemListInput) (*FilesystemListOutput, error) {
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	if err != nil {
+		return nil, err
+	}
+
+	u := h.sidecarURL(sb.Status.PodIP, "/filesystem/list", filesystemParams(input.Path, input.Container))
+
+	_ = sidecarapi.FilesystemListResponse(FilesystemListResponse{}) // assert field compatibility
+	var sidecarResp sidecarapi.FilesystemListResponse
+	if err := h.proxyJSONGet(ctx, input.ID, u, &sidecarResp); err != nil {
+		return nil, err
+	}
+
+	entries := make([]FileInfo, len(sidecarResp.Entries))
+	for i, e := range sidecarResp.Entries {
+		_ = sidecarapi.FileInfo(FileInfo{}) // assert field compatibility
+		entries[i] = FileInfo(e)
+	}
+
+	return &FilesystemListOutput{
+		Body: FilesystemListResponse{Entries: entries},
+	}, nil
+}
+
+func (h *Handlers) StatFilesystem(ctx context.Context, input *FilesystemStatInput) (*FilesystemStatOutput, error) {
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	if err != nil {
+		return nil, err
+	}
+
+	u := h.sidecarURL(sb.Status.PodIP, "/filesystem/stat", filesystemParams(input.Path, input.Container))
+
+	_ = sidecarapi.FileInfo(FileInfo{}) // assert field compatibility
+	var sidecarResp sidecarapi.FileInfo
+	if err := h.proxyJSONGet(ctx, input.ID, u, &sidecarResp); err != nil {
+		return nil, err
+	}
+
+	return &FilesystemStatOutput{
+		Body: FileInfo(sidecarResp),
+	}, nil
+}
+
+func (h *Handlers) MkdirFilesystem(ctx context.Context, input *FilesystemMkdirInput) (*FilesystemMkdirOutput, error) {
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	if err != nil {
+		return nil, err
+	}
+
+	u := h.sidecarURL(sb.Status.PodIP, "/filesystem/mkdir", filesystemParams(input.Path, input.Container))
+
+	_ = sidecarapi.FilesystemMkdirResponse(FilesystemMkdirResponse{}) // assert field compatibility
+	var sidecarResp sidecarapi.FilesystemMkdirResponse
+	if err := h.proxySimple(ctx, http.MethodPost, input.ID, u, &sidecarResp); err != nil {
+		return nil, err
+	}
+
+	return &FilesystemMkdirOutput{
+		Body: FilesystemMkdirResponse{AbsolutePath: sidecarResp.AbsolutePath},
+	}, nil
+}
+
+func (h *Handlers) RenameFilesystem(ctx context.Context, input *FilesystemRenameInput) (*FilesystemRenameOutput, error) {
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	if err != nil {
+		return nil, err
+	}
+
+	params := filesystemParams(input.Path, input.Container)
+	params.Set("newPath", input.NewPath)
+	u := h.sidecarURL(sb.Status.PodIP, "/filesystem/rename", params)
+
+	_ = sidecarapi.FilesystemRenameResponse(FilesystemRenameResponse{}) // assert field compatibility
+	var sidecarResp sidecarapi.FilesystemRenameResponse
+	if err := h.proxySimple(ctx, http.MethodPost, input.ID, u, &sidecarResp); err != nil {
+		return nil, err
+	}
+
+	return &FilesystemRenameOutput{
+		Body: FilesystemRenameResponse{AbsolutePath: sidecarResp.AbsolutePath},
+	}, nil
+}
+
+func (h *Handlers) RemoveFilesystem(ctx context.Context, input *FilesystemRemoveInput) (*struct{}, error) {
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	if err != nil {
+		return nil, err
+	}
+
+	u := h.sidecarURL(sb.Status.PodIP, "/filesystem", filesystemParams(input.Path, input.Container))
+
+	if err := h.proxySimple(ctx, http.MethodDelete, input.ID, u, nil); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "writeSandboxFilesystem",
@@ -225,4 +458,56 @@ func Register(api huma.API, h *Handlers) {
 		},
 		Errors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.GetFilesystem)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "listSandboxFilesystem",
+		Method:      http.MethodGet,
+		Path:        "/sandboxes/{id}/filesystem/list",
+		Summary:     "List directory contents",
+		Description: "Lists files and directories at the specified path in the sandbox container",
+		Tags:        []string{"sandboxes", "filesystem"},
+		Errors:      []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.ListFilesystem)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "statSandboxFilesystem",
+		Method:      http.MethodGet,
+		Path:        "/sandboxes/{id}/filesystem/stat",
+		Summary:     "Get file or directory info",
+		Description: "Returns metadata about a file or directory in the sandbox container",
+		Tags:        []string{"sandboxes", "filesystem"},
+		Errors:      []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.StatFilesystem)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "mkdirSandboxFilesystem",
+		Method:        http.MethodPost,
+		Path:          "/sandboxes/{id}/filesystem/mkdir",
+		Summary:       "Create a directory",
+		Description:   "Creates a directory and all parent directories at the specified path in the sandbox container",
+		Tags:          []string{"sandboxes", "filesystem"},
+		DefaultStatus: http.StatusCreated,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.MkdirFilesystem)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "renameSandboxFilesystem",
+		Method:      http.MethodPost,
+		Path:        "/sandboxes/{id}/filesystem/rename",
+		Summary:     "Rename or move a file or directory",
+		Description: "Renames or moves a file or directory within the sandbox container",
+		Tags:        []string{"sandboxes", "filesystem"},
+		Errors:      []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.RenameFilesystem)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "removeSandboxFilesystem",
+		Method:        http.MethodDelete,
+		Path:          "/sandboxes/{id}/filesystem",
+		Summary:       "Remove a file or directory",
+		Description:   "Removes a file or directory (recursively) from the sandbox container",
+		Tags:          []string{"sandboxes", "filesystem"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.RemoveFilesystem)
 }

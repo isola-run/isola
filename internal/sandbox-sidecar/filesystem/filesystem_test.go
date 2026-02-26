@@ -313,6 +313,245 @@ var _ = Describe("Filesystem", func() {
 	})
 })
 
+	Describe("GET /filesystem/list", func() {
+		It("lists directory contents", func() {
+			dir := filepath.Join(testRootDir, "/tmp/listdir")
+			Expect(os.MkdirAll(dir, 0750)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(dir, "a.txt"), []byte("aaa"), 0600)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(dir, "b.txt"), []byte("bb"), 0600)).To(Succeed())
+			Expect(os.Mkdir(filepath.Join(dir, "subdir"), 0750)).To(Succeed())
+
+			resp := doGet("/filesystem/list?path=/tmp/listdir")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var body sidecarapi.FilesystemListResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.Entries).To(HaveLen(3))
+
+			names := make([]string, len(body.Entries))
+			for i, e := range body.Entries {
+				names[i] = e.Name
+			}
+			Expect(names).To(ContainElements("a.txt", "b.txt", "subdir"))
+		})
+
+		It("returns entries with correct metadata", func() {
+			dir := filepath.Join(testRootDir, "/tmp/listmeta")
+			Expect(os.MkdirAll(dir, 0750)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(dir, "file.txt"), []byte("hello"), 0600)).To(Succeed())
+			Expect(os.Mkdir(filepath.Join(dir, "dir"), 0750)).To(Succeed())
+
+			resp := doGet("/filesystem/list?path=/tmp/listmeta")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var body sidecarapi.FilesystemListResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+
+			for _, e := range body.Entries {
+				if e.Name == "file.txt" {
+					Expect(e.IsDir).To(BeFalse())
+					Expect(e.Size).To(Equal(int64(5)))
+					Expect(e.Path).To(Equal("/tmp/listmeta/file.txt"))
+				}
+				if e.Name == "dir" {
+					Expect(e.IsDir).To(BeTrue())
+					Expect(e.Path).To(Equal("/tmp/listmeta/dir"))
+				}
+			}
+		})
+
+		It("returns empty list for empty directory", func() {
+			dir := filepath.Join(testRootDir, "/tmp/emptydir")
+			Expect(os.MkdirAll(dir, 0750)).To(Succeed())
+
+			resp := doGet("/filesystem/list?path=/tmp/emptydir")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var body sidecarapi.FilesystemListResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.Entries).To(BeEmpty())
+		})
+
+		It("returns 404 for nonexistent directory", func() {
+			resp := doGet("/filesystem/list?path=/tmp/nonexistent-dir")
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("returns 400 when path is a file", func() {
+			hostPath := filepath.Join(testRootDir, "/tmp/list-not-dir.txt")
+			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(hostPath, []byte("content"), 0600)).To(Succeed())
+
+			resp := doGet("/filesystem/list?path=/tmp/list-not-dir.txt")
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("supports relative paths", func() {
+			dir := filepath.Join(testRootDir, testCwd, "rellistdir")
+			Expect(os.MkdirAll(dir, 0750)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(dir, "rel.txt"), []byte("r"), 0600)).To(Succeed())
+
+			resp := doGet("/filesystem/list?path=rellistdir")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var body sidecarapi.FilesystemListResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.Entries).To(HaveLen(1))
+			Expect(body.Entries[0].Name).To(Equal("rel.txt"))
+		})
+	})
+
+	Describe("GET /filesystem/stat", func() {
+		It("returns info for a regular file", func() {
+			hostPath := filepath.Join(testRootDir, "/tmp/statfile.txt")
+			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(hostPath, []byte("stat content"), 0600)).To(Succeed())
+
+			resp := doGet("/filesystem/stat?path=/tmp/statfile.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var body sidecarapi.FileInfo
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.Name).To(Equal("statfile.txt"))
+			Expect(body.Path).To(Equal("/tmp/statfile.txt"))
+			Expect(body.IsDir).To(BeFalse())
+			Expect(body.Size).To(Equal(int64(12)))
+		})
+
+		It("returns info for a directory", func() {
+			dir := filepath.Join(testRootDir, "/tmp/statdir")
+			Expect(os.MkdirAll(dir, 0750)).To(Succeed())
+
+			resp := doGet("/filesystem/stat?path=/tmp/statdir")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var body sidecarapi.FileInfo
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.Name).To(Equal("statdir"))
+			Expect(body.IsDir).To(BeTrue())
+		})
+
+		It("returns 404 for nonexistent path", func() {
+			resp := doGet("/filesystem/stat?path=/tmp/nonexistent-stat")
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+	})
+
+	Describe("POST /filesystem/mkdir", func() {
+		It("creates a new directory", func() {
+			resp := doPost("/filesystem/mkdir?path=/tmp/newmkdir", nil)
+
+			Expect(resp.Code).To(Equal(http.StatusCreated))
+			var body sidecarapi.FilesystemMkdirResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.AbsolutePath).To(Equal("/tmp/newmkdir"))
+
+			hostPath := filepath.Join(testRootDir, "/tmp/newmkdir")
+			info, err := os.Stat(hostPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.IsDir()).To(BeTrue())
+		})
+
+		It("creates nested directories", func() {
+			resp := doPost("/filesystem/mkdir?path=/tmp/nested/deep/dir", nil)
+
+			Expect(resp.Code).To(Equal(http.StatusCreated))
+
+			hostPath := filepath.Join(testRootDir, "/tmp/nested/deep/dir")
+			info, err := os.Stat(hostPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.IsDir()).To(BeTrue())
+		})
+
+		It("succeeds if directory already exists", func() {
+			dir := filepath.Join(testRootDir, "/tmp/existing-mkdir")
+			Expect(os.MkdirAll(dir, 0750)).To(Succeed())
+
+			resp := doPost("/filesystem/mkdir?path=/tmp/existing-mkdir", nil)
+			Expect(resp.Code).To(Equal(http.StatusCreated))
+		})
+	})
+
+	Describe("POST /filesystem/rename", func() {
+		It("renames a file", func() {
+			hostPath := filepath.Join(testRootDir, "/tmp/rename-src.txt")
+			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(hostPath, []byte("rename me"), 0600)).To(Succeed())
+
+			resp := doPost("/filesystem/rename?path=/tmp/rename-src.txt&newPath=/tmp/rename-dst.txt", nil)
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var body sidecarapi.FilesystemRenameResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.AbsolutePath).To(Equal("/tmp/rename-dst.txt"))
+
+			// Old path should not exist
+			_, err := os.Stat(hostPath)
+			Expect(os.IsNotExist(err)).To(BeTrue())
+
+			// New path should exist
+			dstPath := filepath.Join(testRootDir, "/tmp/rename-dst.txt")
+			content, err := os.ReadFile(dstPath) //nolint:gosec
+			Expect(err).NotTo(HaveOccurred())
+			Expect(content).To(Equal([]byte("rename me")))
+		})
+
+		It("moves a file to a new directory", func() {
+			srcPath := filepath.Join(testRootDir, "/tmp/move-file.txt")
+			Expect(os.MkdirAll(filepath.Dir(srcPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(srcPath, []byte("move me"), 0600)).To(Succeed())
+
+			resp := doPost("/filesystem/rename?path=/tmp/move-file.txt&newPath=/tmp/move-dest/file.txt", nil)
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+
+			dstPath := filepath.Join(testRootDir, "/tmp/move-dest/file.txt")
+			content, err := os.ReadFile(dstPath) //nolint:gosec
+			Expect(err).NotTo(HaveOccurred())
+			Expect(content).To(Equal([]byte("move me")))
+		})
+
+		It("returns 404 for nonexistent source", func() {
+			resp := doPost("/filesystem/rename?path=/tmp/nonexistent-rename.txt&newPath=/tmp/dest.txt", nil)
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+	})
+
+	Describe("DELETE /filesystem", func() {
+		It("removes a file", func() {
+			hostPath := filepath.Join(testRootDir, "/tmp/remove-file.txt")
+			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(hostPath, []byte("remove me"), 0600)).To(Succeed())
+
+			resp := testAPI.Delete("/filesystem?path=/tmp/remove-file.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+
+			_, err := os.Stat(hostPath)
+			Expect(os.IsNotExist(err)).To(BeTrue())
+		})
+
+		It("removes a directory recursively", func() {
+			dir := filepath.Join(testRootDir, "/tmp/remove-dir")
+			Expect(os.MkdirAll(filepath.Join(dir, "subdir"), 0750)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(dir, "file.txt"), []byte("content"), 0600)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(dir, "subdir/nested.txt"), []byte("nested"), 0600)).To(Succeed())
+
+			resp := testAPI.Delete("/filesystem?path=/tmp/remove-dir")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+
+			_, err := os.Stat(dir)
+			Expect(os.IsNotExist(err)).To(BeTrue())
+		})
+
+		It("returns 404 for nonexistent path", func() {
+			resp := testAPI.Delete("/filesystem?path=/tmp/nonexistent-remove")
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+	})
+})
+
 // errorMockProcFS returns errors for FindMarkedPID.
 type errorMockProcFS struct {
 	findPIDError error

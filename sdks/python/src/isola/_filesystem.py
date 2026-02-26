@@ -18,11 +18,18 @@ from typing import BinaryIO
 from urllib.parse import quote
 
 from ._client import _AsyncAPI, _SyncAPI
-from ._models import FileWriteResult
+from ._models import FileInfo, FileListResult, FileWriteResult, MkdirResult, RenameResult
 
 
 def _filesystem_path(sandbox_id: str) -> str:
     return f"/sandboxes/{quote(sandbox_id, safe='')}/filesystem"
+
+
+def _params(path: str, container: str | None = None) -> dict[str, str]:
+    params: dict[str, str] = {"path": path}
+    if container:
+        params["container"] = container
+    return params
 
 
 class Filesystem:
@@ -31,26 +38,64 @@ class Filesystem:
         self._sandbox_id = sandbox_id
 
     def write(self, path: str, data: bytes | BinaryIO, *, container: str | None = None) -> FileWriteResult:
-        params = {"path": path}
-        if container:
-            params["container"] = container
-
-        result = self._api.request_model(
+        return self._api.request_model(
             "POST",
             _filesystem_path(self._sandbox_id),
             FileWriteResult,
-            params=params,
+            params=_params(path, container),
             content=data,
             headers={"Content-Type": "application/octet-stream"},
         )
-        return result
 
     def read(self, path: str, *, container: str | None = None) -> bytes:
-        params = {"path": path}
-        if container:
-            params["container"] = container
+        return self._api.request_bytes("GET", _filesystem_path(self._sandbox_id), params=_params(path, container))
 
-        return self._api.request_bytes("GET", _filesystem_path(self._sandbox_id), params=params)
+    def list(self, path: str, *, container: str | None = None) -> list[FileInfo]:
+        result = self._api.request_model(
+            "GET",
+            _filesystem_path(self._sandbox_id) + "/list",
+            FileListResult,
+            params=_params(path, container),
+        )
+        return result.entries
+
+    def stat(self, path: str, *, container: str | None = None) -> FileInfo:
+        return self._api.request_model(
+            "GET",
+            _filesystem_path(self._sandbox_id) + "/stat",
+            FileInfo,
+            params=_params(path, container),
+        )
+
+    def exists(self, path: str, *, container: str | None = None) -> bool:
+        from ._exceptions import NotFoundError
+
+        try:
+            self.stat(path, container=container)
+            return True
+        except NotFoundError:
+            return False
+
+    def mkdir(self, path: str, *, container: str | None = None) -> MkdirResult:
+        return self._api.request_model(
+            "POST",
+            _filesystem_path(self._sandbox_id) + "/mkdir",
+            MkdirResult,
+            params=_params(path, container),
+        )
+
+    def rename(self, path: str, new_path: str, *, container: str | None = None) -> RenameResult:
+        params = _params(path, container)
+        params["newPath"] = new_path
+        return self._api.request_model(
+            "POST",
+            _filesystem_path(self._sandbox_id) + "/rename",
+            RenameResult,
+            params=params,
+        )
+
+    def remove(self, path: str, *, container: str | None = None) -> None:
+        self._api.request_no_content("DELETE", _filesystem_path(self._sandbox_id), params=_params(path, container))
 
 
 class AsyncFilesystem:
@@ -59,23 +104,65 @@ class AsyncFilesystem:
         self._sandbox_id = sandbox_id
 
     async def write(self, path: str, data: bytes | BinaryIO, *, container: str | None = None) -> FileWriteResult:
-        params = {"path": path}
-        if container:
-            params["container"] = container
-
-        result = await self._api.request_model(
+        return await self._api.request_model(
             "POST",
             _filesystem_path(self._sandbox_id),
             FileWriteResult,
-            params=params,
+            params=_params(path, container),
             content=data,
             headers={"Content-Type": "application/octet-stream"},
         )
-        return result
 
     async def read(self, path: str, *, container: str | None = None) -> bytes:
-        params = {"path": path}
-        if container:
-            params["container"] = container
+        return await self._api.request_bytes(
+            "GET", _filesystem_path(self._sandbox_id), params=_params(path, container)
+        )
 
-        return await self._api.request_bytes("GET", _filesystem_path(self._sandbox_id), params=params)
+    async def list(self, path: str, *, container: str | None = None) -> list[FileInfo]:
+        result = await self._api.request_model(
+            "GET",
+            _filesystem_path(self._sandbox_id) + "/list",
+            FileListResult,
+            params=_params(path, container),
+        )
+        return result.entries
+
+    async def stat(self, path: str, *, container: str | None = None) -> FileInfo:
+        return await self._api.request_model(
+            "GET",
+            _filesystem_path(self._sandbox_id) + "/stat",
+            FileInfo,
+            params=_params(path, container),
+        )
+
+    async def exists(self, path: str, *, container: str | None = None) -> bool:
+        from ._exceptions import NotFoundError
+
+        try:
+            await self.stat(path, container=container)
+            return True
+        except NotFoundError:
+            return False
+
+    async def mkdir(self, path: str, *, container: str | None = None) -> MkdirResult:
+        return await self._api.request_model(
+            "POST",
+            _filesystem_path(self._sandbox_id) + "/mkdir",
+            MkdirResult,
+            params=_params(path, container),
+        )
+
+    async def rename(self, path: str, new_path: str, *, container: str | None = None) -> RenameResult:
+        params = _params(path, container)
+        params["newPath"] = new_path
+        return await self._api.request_model(
+            "POST",
+            _filesystem_path(self._sandbox_id) + "/rename",
+            RenameResult,
+            params=params,
+        )
+
+    async def remove(self, path: str, *, container: str | None = None) -> None:
+        await self._api.request_no_content(
+            "DELETE", _filesystem_path(self._sandbox_id), params=_params(path, container)
+        )

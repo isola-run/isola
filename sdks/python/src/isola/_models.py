@@ -122,3 +122,23 @@ class CommandStatus(IsolaModel):
 class FileWriteResult(IsolaModel):
     absolute_path: str
     bytes_written: int
+
+
+class FileInfo(IsolaModel):
+    name: str
+    path: str
+    is_dir: bool
+    size: int
+    mode: str
+
+
+class FileListResult(IsolaModel):
+    entries: list[FileInfo]
+
+
+class MkdirResult(IsolaModel):
+    absolute_path: str
+
+
+class RenameResult(IsolaModel):
+    absolute_path: str

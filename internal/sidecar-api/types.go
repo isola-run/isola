@@ -36,3 +36,26 @@ type CreateCommandResponse struct {
 type CommandStatusResponse struct {
 	ExitCode *int `json:"exitCode" doc:"Process exit code, null if still running"`
 }
+
+// FileInfo represents metadata about a file or directory.
+type FileInfo struct {
+	Name  string `json:"name" example:"file.txt" doc:"Base name of the file or directory"`
+	Path  string `json:"path" example:"/workspace/file.txt" doc:"Absolute path"`
+	IsDir bool   `json:"isDir" doc:"True if the entry is a directory"`
+	Size  int64  `json:"size" example:"1024" doc:"Size in bytes (0 for directories)"`
+	Mode  string `json:"mode" example:"-rw-r--r--" doc:"Unix file mode string"`
+}
+
+type FilesystemListResponse struct {
+	Entries []FileInfo `json:"entries" doc:"List of directory entries"`
+}
+
+type FilesystemStatResponse = FileInfo
+
+type FilesystemMkdirResponse struct {
+	AbsolutePath string `json:"absolutePath" example:"/workspace/new-dir" doc:"Absolute path of created directory"`
+}
+
+type FilesystemRenameResponse struct {
+	AbsolutePath string `json:"absolutePath" example:"/workspace/new-name.txt" doc:"New absolute path after rename"`
+}

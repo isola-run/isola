@@ -215,3 +215,189 @@ def test_filesystem_download_to_real_file(sandbox_response_copy: dict[str, objec
     dest.write_bytes(data)
 
     assert dest.read_bytes() == b"downloaded content"
+
+
+@respx.mock
+def test_filesystem_list(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    list_route = respx.get("http://localhost:8080/sandboxes/sandbox-123/filesystem/list").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "entries": [
+                    {"name": "a.txt", "path": "/workspace/a.txt", "isDir": False, "size": 10, "mode": "-rw-r--r--"},
+                    {"name": "subdir", "path": "/workspace/subdir", "isDir": True, "size": 0, "mode": "drwxr-xr-x"},
+                ]
+            },
+        )
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        entries = sandbox.filesystem.list("/workspace")
+
+    assert len(entries) == 2
+    assert entries[0].name == "a.txt"
+    assert entries[0].is_dir is False
+    assert entries[0].size == 10
+    assert entries[1].name == "subdir"
+    assert entries[1].is_dir is True
+    assert list_route.calls[0].request.url.params["path"] == "/workspace"
+
+
+@respx.mock
+def test_filesystem_stat(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    stat_route = respx.get("http://localhost:8080/sandboxes/sandbox-123/filesystem/stat").mock(
+        return_value=httpx.Response(
+            200,
+            json={"name": "file.txt", "path": "/workspace/file.txt", "isDir": False, "size": 42, "mode": "-rw-r--r--"},
+        )
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        info = sandbox.filesystem.stat("/workspace/file.txt")
+
+    assert info.name == "file.txt"
+    assert info.path == "/workspace/file.txt"
+    assert info.size == 42
+    assert info.is_dir is False
+    assert stat_route.calls[0].request.url.params["path"] == "/workspace/file.txt"
+
+
+@respx.mock
+def test_filesystem_exists_true(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.get("http://localhost:8080/sandboxes/sandbox-123/filesystem/stat").mock(
+        return_value=httpx.Response(
+            200,
+            json={"name": "file.txt", "path": "/workspace/file.txt", "isDir": False, "size": 1, "mode": "-rw-r--r--"},
+        )
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        assert sandbox.filesystem.exists("/workspace/file.txt") is True
+
+
+@respx.mock
+def test_filesystem_exists_false(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.get("http://localhost:8080/sandboxes/sandbox-123/filesystem/stat").mock(
+        return_value=httpx.Response(404, json={"status": 404, "detail": "path not found"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        assert sandbox.filesystem.exists("/workspace/nope.txt") is False
+
+
+@respx.mock
+def test_filesystem_mkdir(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    mkdir_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem/mkdir").mock(
+        return_value=httpx.Response(201, json={"absolutePath": "/workspace/newdir"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        result = sandbox.filesystem.mkdir("/workspace/newdir")
+
+    assert result.absolute_path == "/workspace/newdir"
+    assert mkdir_route.calls[0].request.url.params["path"] == "/workspace/newdir"
+
+
+@respx.mock
+def test_filesystem_rename(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    rename_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem/rename").mock(
+        return_value=httpx.Response(200, json={"absolutePath": "/workspace/new-name.txt"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        result = sandbox.filesystem.rename("/workspace/old.txt", "/workspace/new-name.txt")
+
+    assert result.absolute_path == "/workspace/new-name.txt"
+    assert rename_route.calls[0].request.url.params["path"] == "/workspace/old.txt"
+    assert rename_route.calls[0].request.url.params["newPath"] == "/workspace/new-name.txt"
+
+
+@respx.mock
+def test_filesystem_remove(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    remove_route = respx.delete("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(204)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        sandbox.filesystem.remove("/workspace/remove-me.txt")
+
+    assert remove_route.calls[0].request.url.params["path"] == "/workspace/remove-me.txt"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_filesystem_list(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.get("http://localhost:8080/sandboxes/sandbox-123/filesystem/list").mock(
+        return_value=httpx.Response(
+            200,
+            json={"entries": [{"name": "f.txt", "path": "/f.txt", "isDir": False, "size": 5, "mode": "-rw-r--r--"}]},
+        )
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        entries = await sandbox.filesystem.list("/")
+
+    assert len(entries) == 1
+    assert entries[0].name == "f.txt"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_filesystem_exists(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.get("http://localhost:8080/sandboxes/sandbox-123/filesystem/stat").mock(
+        return_value=httpx.Response(404, json={"status": 404, "detail": "not found"})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        assert await sandbox.filesystem.exists("/nope") is False
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_filesystem_remove(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.delete("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(204)
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        await sandbox.filesystem.remove("/tmp/gone")

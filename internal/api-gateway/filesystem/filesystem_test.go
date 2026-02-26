@@ -452,4 +452,169 @@ var _ = Describe("Filesystem Proxy", func() {
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 	})
+
+	Describe("GET /sandboxes/{id}/filesystem/list", func() {
+		It("proxies list request and returns entries", func() {
+			var capturedPath string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedPath = r.URL.Query().Get("path")
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(sidecarapi.FilesystemListResponse{
+					Entries: []sidecarapi.FileInfo{
+						{Name: "a.txt", Path: "/workspace/a.txt", IsDir: false, Size: 10, Mode: "-rw-r--r--"},
+						{Name: "subdir", Path: "/workspace/subdir", IsDir: true, Size: 0, Mode: "drwxr-xr-x"},
+					},
+				})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem/list?path=/workspace", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(capturedPath).To(Equal("/workspace"))
+
+			var body FilesystemListResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.Entries).To(HaveLen(2))
+			Expect(body.Entries[0].Name).To(Equal("a.txt"))
+			Expect(body.Entries[1].IsDir).To(BeTrue())
+		})
+
+		It("returns 404 for nonexistent sandbox", func() {
+			api := newFilesystemTestAPI(&http.Client{}, 0)
+			resp := api.Get("/sandboxes/nonexistent/filesystem/list?path=/tmp")
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+	})
+
+	Describe("GET /sandboxes/{id}/filesystem/stat", func() {
+		It("proxies stat request and returns file info", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(sidecarapi.FileInfo{
+					Name: "test.txt", Path: "/tmp/test.txt", IsDir: false, Size: 42, Mode: "-rw-r--r--",
+				})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem/stat?path=/tmp/test.txt", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var body FileInfo
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.Name).To(Equal("test.txt"))
+			Expect(body.Size).To(Equal(int64(42)))
+		})
+	})
+
+	Describe("POST /sandboxes/{id}/filesystem/mkdir", func() {
+		It("proxies mkdir request and returns created path", func() {
+			var capturedPath string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedPath = r.URL.Query().Get("path")
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(w).Encode(sidecarapi.FilesystemMkdirResponse{
+					AbsolutePath: "/workspace/newdir",
+				})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(fmt.Sprintf("/sandboxes/%s/filesystem/mkdir?path=/workspace/newdir", sbName), "", nil)
+
+			Expect(resp.Code).To(Equal(http.StatusCreated))
+			Expect(capturedPath).To(Equal("/workspace/newdir"))
+
+			var body FilesystemMkdirResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.AbsolutePath).To(Equal("/workspace/newdir"))
+		})
+	})
+
+	Describe("POST /sandboxes/{id}/filesystem/rename", func() {
+		It("proxies rename request with both paths", func() {
+			var capturedPath, capturedNewPath string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedPath = r.URL.Query().Get("path")
+				capturedNewPath = r.URL.Query().Get("newPath")
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(sidecarapi.FilesystemRenameResponse{
+					AbsolutePath: "/workspace/new-name.txt",
+				})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(fmt.Sprintf("/sandboxes/%s/filesystem/rename?path=/workspace/old.txt&newPath=/workspace/new-name.txt", sbName), "", nil)
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(capturedPath).To(Equal("/workspace/old.txt"))
+			Expect(capturedNewPath).To(Equal("/workspace/new-name.txt"))
+		})
+	})
+
+	Describe("DELETE /sandboxes/{id}/filesystem", func() {
+		It("proxies remove request", func() {
+			var capturedPath string
+			var capturedMethod string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedPath = r.URL.Query().Get("path")
+				capturedMethod = r.Method
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/filesystem?path=/workspace/remove-me.txt", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			Expect(capturedPath).To(Equal("/workspace/remove-me.txt"))
+			Expect(capturedMethod).To(Equal(http.MethodDelete))
+		})
+
+		It("returns 404 for nonexistent sandbox", func() {
+			api := newFilesystemTestAPI(&http.Client{}, 0)
+			resp := api.Delete("/sandboxes/nonexistent/filesystem?path=/tmp/test.txt")
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("forwards sidecar 404 errors", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"detail": "path not found: /tmp/missing.txt",
+				})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/missing.txt", sbName))
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+	})
 })

@@ -26,7 +26,16 @@ from ._exceptions import (
     ValidationError,
 )
 from ._filesystem import AsyncFilesystem, Filesystem
-from ._models import FileWriteResult, NetworkSpec, SandboxStatus, SandboxSummary
+from ._models import (
+    FileInfo,
+    FileListResult,
+    FileWriteResult,
+    MkdirResult,
+    NetworkSpec,
+    RenameResult,
+    SandboxStatus,
+    SandboxSummary,
+)
 from ._sandbox import AsyncSandbox, Sandbox
 from ._streaming import AsyncCommandOutputStream, CommandOutputStream
 
@@ -44,7 +53,11 @@ __all__ = [
     "NetworkSpec",
     "CommandOutputStream",
     "AsyncCommandOutputStream",
+    "FileInfo",
+    "FileListResult",
     "FileWriteResult",
+    "MkdirResult",
+    "RenameResult",
     "IsolaError",
     "BadRequestError",
     "NotFoundError",
