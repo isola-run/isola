@@ -47,9 +47,7 @@ export function SandboxesPage() {
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(
-        (s) =>
-          s.id.toLowerCase().includes(q) ||
-          s.podTemplate.container.image.toLowerCase().includes(q),
+        (s) => s.id.toLowerCase().includes(q),
       )
     }
     return list.sort(
@@ -82,7 +80,7 @@ export function SandboxesPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or image..."
+              placeholder="Search by name..."
               className="pl-9 h-8 text-xs"
             />
           </div>

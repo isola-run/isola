@@ -30,10 +30,9 @@ export const commandApi = {
   },
 
   writeStdin: async (sandboxId: string, cmdId: string, data: string): Promise<void> => {
-    const encoder = new TextEncoder()
     await getApiClient().upload(
       `/sandboxes/${sandboxId}/commands/${cmdId}/stdin`,
-      encoder.encode(data),
+      new Blob([data]),
     )
   },
 

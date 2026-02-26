@@ -16,10 +16,10 @@ import { cn } from '@/lib/utils'
 export function SandboxDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { data: sandbox, isLoading, error } = useSandbox(id!)
+  const { data: sandbox, isLoading, error } = useSandbox(id ?? '')
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  if (isLoading) {
+  if (!id || isLoading) {
     return (
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-6 animate-fade-in">
         <Skeleton className="h-10 w-64" />

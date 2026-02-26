@@ -1,16 +1,22 @@
 import { ApiError } from './errors'
 
 export class ApiClient {
-  constructor(private baseUrl: string) {}
+  private baseUrl: string
+
+  constructor(baseUrl: string) {
+    this.baseUrl = baseUrl
+  }
 
   async request<T>(path: string, init?: RequestInit): Promise<T> {
     const url = `${this.baseUrl}${path}`
+    const headers: Record<string, string> = { ...init?.headers as Record<string, string> }
+    // Only set Content-Type for requests with a body
+    if (init?.body) {
+      headers['Content-Type'] ??= 'application/json'
+    }
     const res = await fetch(url, {
       ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        ...init?.headers,
-      },
+      headers,
     })
 
     if (!res.ok) {
@@ -30,7 +36,7 @@ export class ApiClient {
     return res
   }
 
-  async upload(path: string, body: Blob | ArrayBuffer): Promise<Response> {
+  async upload(path: string, body: BodyInit): Promise<Response> {
     const url = `${this.baseUrl}${path}`
     const res = await fetch(url, {
       method: 'POST',

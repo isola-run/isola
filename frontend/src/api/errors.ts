@@ -1,11 +1,14 @@
 export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public statusText: string,
-    public detail: string,
-  ) {
+  status: number
+  statusText: string
+  detail: string
+
+  constructor(status: number, statusText: string, detail: string) {
     super(`${status} ${statusText}: ${detail}`)
     this.name = 'ApiError'
+    this.status = status
+    this.statusText = statusText
+    this.detail = detail
   }
 
   static async fromResponse(res: Response): Promise<ApiError> {

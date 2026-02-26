@@ -1,8 +1,8 @@
 import { getApiClient } from './client'
-import type { CreateSandboxRequest, SandboxResponse, SandboxListResponse } from './types'
+import type { CreateSandboxRequest, SandboxResponse, SandboxSummary, SandboxListResponse } from './types'
 
 export const sandboxApi = {
-  list: async (): Promise<SandboxResponse[]> => {
+  list: async (): Promise<SandboxSummary[]> => {
     const data = await getApiClient().request<SandboxListResponse>('/sandboxes')
     return data.sandboxes ?? []
   },

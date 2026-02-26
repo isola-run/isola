@@ -100,7 +100,6 @@ export function DashboardPage() {
                     <span className="font-mono text-xs text-text-primary truncate">{sb.id}</span>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-text-tertiary shrink-0">
-                    <span className="hidden sm:inline truncate max-w-[150px]">{sb.podTemplate.container.image}</span>
                     <span>{formatRelativeTime(sb.creationTimestamp)}</span>
                   </div>
                 </Link>

@@ -39,16 +39,10 @@ export interface NetworkSpec {
   nameservers?: string[]
 }
 
-export interface ShutdownPolicy {
-  strategy?: 'Delete' | 'SnapshotRootfs'
-  activeDeadlineSeconds?: number
-}
-
 export interface CreateSandboxRequest {
   podTemplate: PodTemplateRequest
   activeDeadlineSeconds?: number
   network?: NetworkSpec
-  shutdownPolicy?: ShutdownPolicy
 }
 
 export interface SandboxResponse {
@@ -60,8 +54,14 @@ export interface SandboxResponse {
   creationTimestamp: string
 }
 
+export interface SandboxSummary {
+  id: string
+  status: SandboxStatus
+  creationTimestamp: string
+}
+
 export interface SandboxListResponse {
-  sandboxes: SandboxResponse[]
+  sandboxes: SandboxSummary[]
 }
 
 export interface CreateCommandRequest {

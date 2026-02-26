@@ -3,11 +3,11 @@ import { MoreHorizontal, Trash2, ExternalLink, Copy } from 'lucide-react'
 import { StatusBadge } from '@/components/ui/badge'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { formatRelativeTime } from '@/lib/utils'
-import type { SandboxResponse } from '@/api/types'
+import type { SandboxSummary } from '@/api/types'
 import { toast } from 'sonner'
 
 interface SandboxCardProps {
-  sandbox: SandboxResponse
+  sandbox: SandboxSummary
   onDelete: (id: string) => void
 }
 
@@ -56,27 +56,9 @@ export function SandboxCard({ sandbox, onDelete }: SandboxCardProps) {
           {sandbox.id}
         </h3>
         <div className="flex items-center gap-3 text-xs text-text-secondary">
-          <span className="truncate">{sandbox.podTemplate.container.image}</span>
-          <span className="text-text-tertiary">&middot;</span>
           <span className="shrink-0">{formatRelativeTime(sandbox.creationTimestamp)}</span>
         </div>
       </div>
-
-      {/* Resource info */}
-      {sandbox.podTemplate.container.resources?.limits && (
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border-subtle">
-          {sandbox.podTemplate.container.resources.limits.cpu && (
-            <span className="text-[11px] text-text-tertiary bg-bg-hover px-1.5 py-0.5 rounded">
-              CPU {sandbox.podTemplate.container.resources.limits.cpu}
-            </span>
-          )}
-          {sandbox.podTemplate.container.resources.limits.memory && (
-            <span className="text-[11px] text-text-tertiary bg-bg-hover px-1.5 py-0.5 rounded">
-              RAM {sandbox.podTemplate.container.resources.limits.memory}
-            </span>
-          )}
-        </div>
-      )}
     </Link>
   )
 }

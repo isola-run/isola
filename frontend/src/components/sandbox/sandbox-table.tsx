@@ -3,11 +3,11 @@ import { MoreHorizontal, Trash2, Copy } from 'lucide-react'
 import { StatusBadge } from '@/components/ui/badge'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { formatRelativeTime, formatUptime } from '@/lib/utils'
-import type { SandboxResponse } from '@/api/types'
+import type { SandboxSummary } from '@/api/types'
 import { toast } from 'sonner'
 
 interface SandboxTableProps {
-  sandboxes: SandboxResponse[]
+  sandboxes: SandboxSummary[]
   onDelete: (id: string) => void
 }
 
@@ -19,7 +19,6 @@ export function SandboxTable({ sandboxes, onDelete }: SandboxTableProps) {
           <tr className="border-b border-border-subtle">
             <th className="text-left py-2.5 px-4 text-xs font-medium text-text-tertiary uppercase tracking-wider">Status</th>
             <th className="text-left py-2.5 px-4 text-xs font-medium text-text-tertiary uppercase tracking-wider">Name</th>
-            <th className="text-left py-2.5 px-4 text-xs font-medium text-text-tertiary uppercase tracking-wider">Image</th>
             <th className="text-left py-2.5 px-4 text-xs font-medium text-text-tertiary uppercase tracking-wider">Created</th>
             <th className="text-left py-2.5 px-4 text-xs font-medium text-text-tertiary uppercase tracking-wider">Uptime</th>
             <th className="w-10"></th>
@@ -41,11 +40,6 @@ export function SandboxTable({ sandboxes, onDelete }: SandboxTableProps) {
                 >
                   {sandbox.id}
                 </Link>
-              </td>
-              <td className="py-3 px-4">
-                <span className="text-sm text-text-secondary truncate max-w-[200px] block">
-                  {sandbox.podTemplate.container.image}
-                </span>
               </td>
               <td className="py-3 px-4">
                 <span className="text-sm text-text-secondary">

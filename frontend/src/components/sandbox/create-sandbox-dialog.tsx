@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -25,6 +25,19 @@ export function CreateSandboxDialog({ open, onOpenChange }: CreateSandboxDialogP
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [envVars, setEnvVars] = useState<Array<{ key: string; value: string }>>([])
 
+  // Reset form state when dialog opens
+  useEffect(() => {
+    if (open) {
+      setImage('ubuntu:latest')
+      setCpu('')
+      setMemory('')
+      setTimeout('')
+      setAllowInternet(false)
+      setShowAdvanced(false)
+      setEnvVars([])
+    }
+  }, [open])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -49,7 +62,7 @@ export function CreateSandboxDialog({ open, onOpenChange }: CreateSandboxDialogP
             } : {}),
           },
         },
-        ...(timeout ? { activeDeadlineSeconds: parseInt(timeout) } : {}),
+        ...(timeout && !isNaN(Number(timeout)) ? { activeDeadlineSeconds: Number(timeout) } : {}),
         ...(allowInternet ? { network: { allowInternetEgress: true } } : {}),
       })
 

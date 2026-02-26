@@ -20,6 +20,7 @@ export function useSandbox(id: string) {
   return useQuery({
     queryKey: sandboxKeys.detail(id),
     queryFn: () => sandboxApi.get(id),
+    enabled: !!id,
     staleTime: 3_000,
     refetchInterval: (query) => {
       const status = query.state.data?.status

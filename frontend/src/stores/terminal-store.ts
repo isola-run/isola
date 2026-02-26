@@ -5,6 +5,8 @@ interface CommandOutput {
   stderr: Uint8Array[]
   stdoutText: string
   stderrText: string
+  stdoutDecoder: TextDecoder
+  stderrDecoder: TextDecoder
 }
 
 interface TerminalState {
@@ -16,7 +18,16 @@ interface TerminalState {
   getOutput: (cmdId: string) => CommandOutput | undefined
 }
 
-const decoder = new TextDecoder('utf-8', { fatal: false })
+function createCommandOutput(): CommandOutput {
+  return {
+    stdout: [],
+    stderr: [],
+    stdoutText: '',
+    stderrText: '',
+    stdoutDecoder: new TextDecoder('utf-8', { fatal: false }),
+    stderrDecoder: new TextDecoder('utf-8', { fatal: false }),
+  }
+}
 
 export const useTerminalStore = create<TerminalState>((set, get) => ({
   outputs: new Map(),
@@ -25,13 +36,9 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   appendOutput: (cmdId, stream, chunk) => {
     set((state) => {
       const outputs = new Map(state.outputs)
-      const existing = outputs.get(cmdId) ?? {
-        stdout: [],
-        stderr: [],
-        stdoutText: '',
-        stderrText: '',
-      }
+      const existing = outputs.get(cmdId) ?? createCommandOutput()
 
+      const decoder = stream === 'stdout' ? existing.stdoutDecoder : existing.stderrDecoder
       const newChunks = [...existing[stream], chunk]
       const newText = existing[`${stream}Text`] + decoder.decode(chunk, { stream: true })
 
