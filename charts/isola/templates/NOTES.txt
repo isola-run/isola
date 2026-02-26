@@ -28,7 +28,6 @@ ACCESS THE API:
 
 VERIFY INSTALLATION:
   kubectl get pods -n {{ .Release.Namespace }}
-  kubectl get sandboxtemplates -A
   kubectl get sandboxes -A
 
 {{- $bucketUrl := include "isola.operator.storageBucketUrl" . }}

@@ -1,0 +1,28 @@
+{{- if .Values.apiGateway.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "isola.apiGateway.fullname" . }}-test-connection
+  labels:
+    {{- include "isola.apiGateway.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: healthcheck
+      image: busybox:stable
+      command: ['wget', '--quiet', '--spider', '--timeout=5', 'http://{{ include "isola.apiGateway.fullname" . }}:80/healthz']
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+  restartPolicy: Never
+{{- end }}

@@ -1,0 +1,414 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "nameOverride": {
+      "type": "string",
+      "description": "Override the chart name"
+    },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Override the full release name"
+    },
+    "global": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "imageRegistry": {
+          "type": "string",
+          "description": "Override registry for all images (useful for air-gapped environments)"
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "description": "Image pull secrets applied to all pods",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "sandboxNamespace": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Namespace where sandbox pods are created"
+    },
+    "createSandboxNamespace": {
+      "type": "boolean",
+      "description": "Whether to create the sandbox namespace"
+    },
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "$ref": "#/$defs/imageWithPullPolicy"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of operator replicas"
+        },
+        "resources": {
+          "$ref": "#/$defs/resources"
+        },
+        "serviceAccount": {
+          "$ref": "#/$defs/serviceAccount"
+        },
+        "logging": {
+          "$ref": "#/$defs/logging"
+        },
+        "nodeSelector": {
+          "type": "object",
+          "description": "Node selector for operator pods"
+        },
+        "tolerations": {
+          "type": "array",
+          "description": "Tolerations for operator pods"
+        },
+        "affinity": {
+          "type": "object",
+          "description": "Affinity rules for operator pods"
+        },
+        "topologySpreadConstraints": {
+          "type": "array",
+          "description": "Topology spread constraints for operator pods"
+        },
+        "podAnnotations": {
+          "type": "object",
+          "description": "Annotations for operator pods"
+        },
+        "sidecar": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "image": {
+              "$ref": "#/$defs/image"
+            }
+          },
+          "required": ["image"]
+        },
+        "sandboxRuntime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["gvisor", "clusterDefault"],
+              "description": "Runtime type for sandbox pods"
+            },
+            "gvisor": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "runtimeClassName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Kubernetes RuntimeClass name for gVisor"
+                },
+                "rootfssnapshot": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Enable rootfs snapshot capability"
+                    },
+                    "runsc": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "binaryPath": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Path to the runsc binary on the host"
+                        },
+                        "rootDir": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Path to the runsc root directory on the host"
+                        }
+                      },
+                      "required": ["binaryPath", "rootDir"]
+                    },
+                    "storage": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "bucketUrl": {
+                          "type": "string",
+                          "description": "Bucket URL for snapshot uploads (e.g., s3://bucket?region=us-east-1)"
+                        },
+                        "credentials": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "existingSecret": {
+                              "type": "string",
+                              "description": "Name of existing secret with storage credentials"
+                            },
+                            "accessKeyId": {
+                              "type": "string",
+                              "description": "AWS access key ID (dev only, prefer workload identity)"
+                            },
+                            "secretAccessKey": {
+                              "type": "string",
+                              "description": "AWS secret access key (dev only, prefer workload identity)"
+                            },
+                            "region": {
+                              "type": "string",
+                              "description": "AWS region"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "uploader": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "image": {
+                          "$ref": "#/$defs/image"
+                        }
+                      },
+                      "required": ["image"]
+                    },
+                    "serviceAccount": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "create": {
+                          "type": "boolean",
+                          "description": "Create a ServiceAccount for rootfs snapshot jobs"
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "ServiceAccount name for rootfs snapshot jobs"
+                        },
+                        "annotations": {
+                          "type": "object",
+                          "description": "Annotations for the ServiceAccount (e.g., for IRSA/Workload Identity)"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "clusterDefault": {
+              "type": "object",
+              "description": "Cluster default runtime configuration (no special settings needed)"
+            }
+          }
+        },
+        "sandboxPriorityClassName": {
+          "type": "string",
+          "description": "PriorityClassName for sandbox pods"
+        }
+      }
+    },
+    "apiGateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Deploy the API gateway"
+        },
+        "image": {
+          "$ref": "#/$defs/imageWithPullPolicy"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of API gateway replicas"
+        },
+        "resources": {
+          "$ref": "#/$defs/resources"
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["ClusterIP", "NodePort", "LoadBalancer"],
+              "description": "Kubernetes Service type"
+            },
+            "nodePort": {
+              "type": ["integer", "null"],
+              "minimum": 30000,
+              "maximum": 32767,
+              "description": "NodePort number (only used when type is NodePort)"
+            },
+            "annotations": {
+              "type": "object",
+              "description": "Annotations for the Service"
+            }
+          }
+        },
+        "logging": {
+          "$ref": "#/$defs/logging"
+        },
+        "serviceAccount": {
+          "$ref": "#/$defs/serviceAccount"
+        },
+        "nodeSelector": {
+          "type": "object",
+          "description": "Node selector for API gateway pods"
+        },
+        "tolerations": {
+          "type": "array",
+          "description": "Tolerations for API gateway pods"
+        },
+        "affinity": {
+          "type": "object",
+          "description": "Affinity rules for API gateway pods"
+        },
+        "topologySpreadConstraints": {
+          "type": "array",
+          "description": "Topology spread constraints for API gateway pods"
+        },
+        "podAnnotations": {
+          "type": "object",
+          "description": "Annotations for API gateway pods"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "registry": {
+          "type": "string",
+          "description": "Image registry"
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Image repository"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Image tag (defaults to Chart.appVersion)"
+        },
+        "digest": {
+          "type": "string",
+          "description": "Image digest (takes precedence over tag)"
+        }
+      },
+      "required": ["repository"]
+    },
+    "imageWithPullPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "registry": {
+          "type": "string",
+          "description": "Image registry"
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Image repository"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Image tag (defaults to Chart.appVersion)"
+        },
+        "digest": {
+          "type": "string",
+          "description": "Image digest (takes precedence over tag)"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"],
+          "description": "Image pull policy"
+        }
+      },
+      "required": ["repository"]
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Create a ServiceAccount"
+        },
+        "name": {
+          "type": "string",
+          "description": "ServiceAccount name (auto-generated if empty)"
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Annotations for the ServiceAccount"
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "description": "Log level"
+        },
+        "devMode": {
+          "type": "boolean",
+          "description": "Enable development mode logging (human-readable output)"
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "CPU/memory resource requests and limits",
+      "properties": {
+        "requests": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "description": "CPU request (e.g., 50m, 100m)"
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory request (e.g., 128Mi, 256Mi)"
+            }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "description": "CPU limit"
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory limit"
+            }
+          }
+        }
+      }
+    }
+  }
+}
