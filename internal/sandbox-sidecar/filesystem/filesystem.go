@@ -387,20 +387,22 @@ func (h *Handlers) MkdirFilesystem(_ context.Context, input *FilesystemMkdirInpu
 }
 
 func (h *Handlers) RenameFilesystem(_ context.Context, input *FilesystemRenameInput) (*FilesystemRenameOutput, error) {
-	srcHost, _, err := h.resolveHostPath(input.Path, input.Container)
+	pid, err := h.resolveContainerPID(input.Container)
 	if err != nil {
 		return nil, err
 	}
 
-	// Resolve destination path using same container
-	pid, pidErr := h.resolveContainerPID(input.Container)
-	if pidErr != nil {
-		return nil, pidErr
+	srcResolvedPath, srcErr := h.resolveAbsolutePath(input.Path, pid)
+	if srcErr != nil {
+		h.logger.Error("failed to resolve source path", "error", srcErr, "path", input.Path)
+		return nil, srcErr
 	}
-	newResolvedPath, resolveErr := h.resolveAbsolutePath(input.NewPath, pid)
-	if resolveErr != nil {
-		h.logger.Error("failed to resolve new path", "error", resolveErr, "path", input.NewPath)
-		return nil, resolveErr
+	srcHost := filepath.Join(h.procFS.GetRoot(pid), srcResolvedPath)
+
+	newResolvedPath, dstErr := h.resolveAbsolutePath(input.NewPath, pid)
+	if dstErr != nil {
+		h.logger.Error("failed to resolve new path", "error", dstErr, "path", input.NewPath)
+		return nil, dstErr
 	}
 	dstHost := filepath.Join(h.procFS.GetRoot(pid), newResolvedPath)
 
@@ -412,7 +414,6 @@ func (h *Handlers) RenameFilesystem(_ context.Context, input *FilesystemRenameIn
 		return nil, huma.Error500InternalServerError("failed to stat source path")
 	}
 
-	// Ensure parent of destination exists
 	uid, gid, err := h.procFS.GetUIDGID(pid)
 	if err != nil {
 		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
@@ -434,11 +435,16 @@ func (h *Handlers) RenameFilesystem(_ context.Context, input *FilesystemRenameIn
 }
 
 func (h *Handlers) RemoveFilesystem(_ context.Context, input *FilesystemRemoveInput) (*struct{}, error) {
-	targetPath, _, err := h.resolveHostPath(input.Path, input.Container)
+	targetPath, resolvedPath, err := h.resolveHostPath(input.Path, input.Container)
 	if err != nil {
 		return nil, err
 	}
 
+	if resolvedPath == "/" {
+		return nil, huma.Error400BadRequest("cannot remove root directory")
+	}
+
+	// Lstat so we can detect and remove symlinks without following them
 	if _, err := os.Lstat(targetPath); err != nil { //nolint:gosec
 		if os.IsNotExist(err) {
 			return nil, huma.Error404NotFound(fmt.Sprintf("path not found: %s", input.Path))

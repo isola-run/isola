@@ -42,7 +42,7 @@ type FileInfo struct {
 	Name  string `json:"name" example:"file.txt" doc:"Base name of the file or directory"`
 	Path  string `json:"path" example:"/workspace/file.txt" doc:"Absolute path"`
 	IsDir bool   `json:"isDir" doc:"True if the entry is a directory"`
-	Size  int64  `json:"size" example:"1024" doc:"Size in bytes (0 for directories)"`
+	Size  int64  `json:"size" example:"1024" doc:"Size in bytes"`
 	Mode  string `json:"mode" example:"-rw-r--r--" doc:"Unix file mode string"`
 }
 

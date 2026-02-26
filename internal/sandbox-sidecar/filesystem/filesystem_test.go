@@ -311,7 +311,6 @@ var _ = Describe("Filesystem", func() {
 			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
 		})
 	})
-})
 
 	Describe("GET /filesystem/list", func() {
 		It("lists directory contents", func() {
