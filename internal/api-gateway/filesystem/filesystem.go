@@ -326,7 +326,7 @@ func (h *Handlers) ListFilesystem(ctx context.Context, input *FilesystemListInpu
 
 	u := h.sidecarURL(sb.Status.PodIP, "/filesystem/list", filesystemParams(input.Path, input.Container))
 
-	_ = sidecarapi.FilesystemListResponse(FilesystemListResponse{}) // assert field compatibility
+	_ = sidecarapi.FileInfo(FileInfo{}) // assert field compatibility
 	var sidecarResp sidecarapi.FilesystemListResponse
 	if err := h.proxyJSONGet(ctx, input.ID, u, &sidecarResp); err != nil {
 		return nil, err
@@ -334,7 +334,6 @@ func (h *Handlers) ListFilesystem(ctx context.Context, input *FilesystemListInpu
 
 	entries := make([]FileInfo, len(sidecarResp.Entries))
 	for i, e := range sidecarResp.Entries {
-		_ = sidecarapi.FileInfo(FileInfo{}) // assert field compatibility
 		entries[i] = FileInfo(e)
 	}
 
