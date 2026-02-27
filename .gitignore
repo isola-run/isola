@@ -212,6 +212,11 @@ __marimo__/
 
 coverage.html
 
+# Docusaurus
+docs/node_modules/
+docs/build/
+docs/.docusaurus/
+
 # Worktrees
 .worktrees/
 
