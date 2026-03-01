@@ -11,7 +11,7 @@ import httpx
 from ._exceptions import APIError, connection_error_from_request, error_from_http, is_transient
 
 STREAM_CONNECT_TIMEOUT = 5.0
-STREAM_WRITE_TIMEOUT = 5.0
+STREAM_WRITE_TIMEOUT = 15.0
 STREAM_POOL_TIMEOUT = 5.0
 MAX_RECONNECTS = 5
 RETRY_DELAY = 1.0
