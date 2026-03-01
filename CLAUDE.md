@@ -21,6 +21,11 @@ make manifests          # Regenerate CRD YAML after CRD changes
 make test-sdk-python    # Run Python SDK tests
 make test-sdk-python-verbose  # Run with verbose output
 
+# Testing (E2E) — requires running cluster: tilt up
+make test-e2e           # Run E2E tests
+make test-e2e-verbose   # Verbose output
+make test-e2e FOCUS="pattern"  # Run specific tests matching pattern
+
 # Build
 make build              # Build all binaries to bin/
 
@@ -77,6 +82,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 - `internal/sidecar-api/` - Shared contract types between api-gateway and sandbox-sidecar
 - `internal/snapshot/` - Shared types used by both operator and uploader
 - `internal/sandbox-sidecar/proc/` - Procfs abstraction for container PID discovery and filesystem access via `/proc/<pid>/root`
+- `internal/httputil/` - Deadline/timeout protection for streaming I/O (per-operation write/read deadlines via `http.ResponseController`)
 
 **Default namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
 
@@ -84,15 +90,19 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **Package:** `isola` — thin client for the api-gateway REST API. Uses httpx for HTTP and pydantic for models. Managed with uv.
 
-**Dual sync/async pattern:** Every public class has a sync and async variant — `Isola`/`AsyncIsola`, `Sandbox`/`AsyncSandbox`, `Command`/`AsyncCommand`, `Filesystem`/`AsyncFilesystem`. Internal API clients follow the same split: `_SyncAPI`/`_AsyncAPI`.
+**Client initialization:** `Isola(base_url=...)` or via `ISOLA_BASE_URL` env var. Built-in retry logic (max 5 retries with 1s backoff) for transient errors (connection failures, 502/503/504).
+
+**Dual sync/async pattern:** Every public class has a sync and async variant — `Isola`/`AsyncIsola`, `Sandbox`/`AsyncSandbox`, `Command`/`AsyncCommand`, `Commands`/`AsyncCommands`, `Filesystem`/`AsyncFilesystem`. Internal API clients follow the same split: `_SyncAPI`/`_AsyncAPI`.
 
 **Object hierarchy:** `Isola` → `client.sandboxes.create()` returns a `Sandbox` → `sandbox.commands` (Commands), `sandbox.filesystem` (Filesystem). Each resource object holds a reference to the underlying API client and the sandbox ID.
 
+**Command execution (`_commands.py`):** Two modes — `spawn(*args)` returns a `Command` immediately (non-blocking), `run(*args)` waits and returns a `CommandResult` (with `stdout`, `stderr`, `exit_code`). `Command` provides `.stdout`/`.stderr` (`StreamReader`), `.wait()` (long-polls), `.exit_code()`, `.write_stdin()`, `.close_stdin()`, `.kill()`. Long-poll interval: 20s (must stay <= gateway max of 25s).
+
 **Pydantic models (`_models.py`):** All models extend `IsolaModel` which uses `to_camel` alias generator for Python snake_case ↔ API camelCase. Models accept both forms (`validate_by_name=True, validate_by_alias=True`). `extra="ignore"` so the server can add fields without breaking the client. `NetworkSpec` has manual `Field(alias=...)` overrides for acronyms (`allowClusterDNS`, `allowedEgressCIDRs`) that `to_camel` can't handle.
 
-**Streaming (`_streaming.py`):** `CommandOutputStream`/`AsyncCommandOutputStream` wrap SSE-style byte streams with auto-reconnect (exponential backoff, offset-based resume). Support text mode (default, UTF-8 incremental decoding) and binary mode.
+**Streaming (`_streaming.py`):** `StreamReader`/`AsyncStreamReader` wrap byte streams with auto-reconnect (exponential backoff, offset-based resume, max 5 reconnects). UTF-8 incremental decoding. Iterable (`for chunk in cmd.stdout`) or bulk read (`cmd.stdout.read()`).
 
-**Error hierarchy:** `IsolaError` base → status-specific subclasses (`BadRequestError`, `NotFoundError`, etc.) mapped from HTTP status codes. `APIConnectionError` for transport failures.
+**Error hierarchy:** `IsolaError` base → `APIError` → status-specific subclasses (`BadRequestError`, `NotFoundError`, `ConflictError`, `ValidationError`, `InternalError`, `BadGatewayError`) mapped from HTTP status codes. `APIConnectionError` for transport failures. `is_transient()` helper identifies retryable errors.
 
 **Testing:** pytest + pytest-asyncio (auto mode) + respx for HTTP mocking. Tests use fake API/response objects rather than respx routes for streaming tests. Strict mypy type checking enabled.
 
@@ -119,11 +129,12 @@ The api-gateway is a thin passthrough to K8s — it validates input structure bu
 - `DELETE /sandboxes/{id}` — delete (idempotent)
 - `POST /sandboxes/{id}/filesystem` — file upload (proxied to sidecar)
 - `GET /sandboxes/{id}/filesystem` — file download (proxied to sidecar)
-- `POST /sandboxes/{id}/commands` — start command (proxied to sidecar, 202 Accepted)
-- `GET /sandboxes/{id}/commands/{cmdId}/status` — exit code (null if running)
+- `POST /sandboxes/{id}/commands` — start command (proxied to sidecar, 202 Accepted). Request body uses `args` (not `cmd`): `args[0]` is executable, `args[1:]` are arguments. Optional `timeout` (seconds), `env`, `cwd`.
+- `GET /sandboxes/{id}/commands/{cmdId}/status` — exit code (null if running). Supports long-polling via `?waitSeconds=N` (max 25 at gateway, max 30 at sidecar).
 - `GET /sandboxes/{id}/commands/{cmdId}/stdout` — stream stdout (?offset=N for resume)
 - `GET /sandboxes/{id}/commands/{cmdId}/stderr` — stream stderr (?offset=N for resume)
 - `POST /sandboxes/{id}/commands/{cmdId}/stdin` — write to stdin
+- `POST /sandboxes/{id}/commands/{cmdId}/stdin/close` — close stdin pipe
 - `DELETE /sandboxes/{id}/commands/{cmdId}` — kill command (idempotent)
 
 **REST ↔ CRD conversion (`sandbox/convert.go`):**
@@ -146,7 +157,7 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 - Custom rules via `Sandbox.spec.network` (NetworkSpec):
   - `allowInternetEgress: true` - allows 0.0.0.0/0 egress (private ranges auto-blocked)
   - `allowedEgressCIDRs` - specific CIDR allowlist
-  - `nameservers` - custom DNS servers (default: sink or 8.8.8.8/1.1.1.1 for internet)
+  - `nameservers` - custom DNS servers (no automatic default — user must specify explicitly; without them, sink DNS 127.0.0.1 is used)
 - Static NetworkPolicies deployed via Helm handle base isolation
 - Custom per-sandbox NetworkPolicy created by operator only when CIDRs or custom nameservers are specified (and `allowInternetEgress` is not true)
 
@@ -161,10 +172,15 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 6. TTL controller deletes snapshot after `ttlSecondsAfterFinished`
 
 **Command execution:**
-- Commands run via `nsenter --all --target <pid>` inside the sandbox container's namespaces.
+- Commands run via `nsenter --mount --target <pid>` inside the sandbox container's mount namespace (not `--all` — gVisor compatibility requires entering specific namespaces only).
+- Non-blocking model: POST returns 202 immediately with a `commandId`; status is polled via long-polling (`?waitSeconds=N`).
+- Per-command `timeout` (seconds): enforced via `context.WithTimeout` → SIGKILL on expiration (exit code -1).
 - Command stdout/stderr are stored on the container's ephemeral storage (counts against resource limits).
 - Command state is in-memory in the sidecar — all running/completed commands are lost on sidecar restart.
+- Streaming I/O uses per-operation deadline protection (10s via `internal/httputil`) to detect stalled connections.
 - Gateway command handlers use compile-time type assertions (`_ = sidecarapi.CreateCommandRequest(CreateCommandRequest{})`) to enforce structural compatibility with `sidecar-api` contract types. Do not remove these.
+
+**Long-poll timeout chain:** Values must satisfy: SDK (20s) < gateway max (25s) < sidecar max (30s) < gateway WriteTimeout (45s) < sidecar WriteTimeout (75s). Changing any one value without adjusting the others can cause cascading failures (premature disconnects or stalled connections). Locations: SDK `_commands.py` (`_LONG_POLL_WAIT_SECONDS`), gateway `command.go` (`maximum:"25"`), sidecar `command.go` (`maximum:"30"`), gateway `main.go` (`serverWriteTimeout`), sidecar `main.go` (`serverWriteTimeout`).
 
 **Dockerfiles copy all of internal/:** Each binary's Dockerfile copies the entire `internal/` directory rather than individual packages. This avoids needing to update Dockerfiles and Tiltfile when adding new `internal/` packages.
 
@@ -182,6 +198,8 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 **API gateway tests** use `humatest.TestAPI` for HTTP request/response testing against a real envtest K8s backend. Tests use `Eventually()` for cache eventual consistency. Error injection tests use controller-runtime's `interceptor.Funcs` to inject fake K8s API errors.
 
 **Python SDK tests** use pytest + pytest-asyncio with `asyncio_mode = "auto"`. HTTP mocking via respx for client/sandbox/filesystem tests. Streaming tests use hand-rolled fake API/response objects (not respx) to simulate reconnects, network errors, and chunked delivery. Run with `make test-sdk-python`.
+
+**E2E tests** (`tests/e2e/`) use pytest + pytest-asyncio against a live cluster (requires `tilt up`). Both sync and async fixtures. Base URL from `ISOLA_BASE_URL` env var (defaults to `http://localhost:8080`). Covers commands, streaming, filesystem, network isolation, timeouts, error handling, and lifecycle. Run with `make test-e2e`.
 
 ## Tooling Versions
 

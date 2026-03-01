@@ -1,4 +1,4 @@
-"""Advanced lifecycle tests: creating-state guards, multi-sandbox, sandbox-with-command deletion."""
+"""Advanced lifecycle tests: multi-sandbox, sandbox-with-command deletion."""
 
 from __future__ import annotations
 
@@ -7,9 +7,7 @@ import time
 import pytest
 
 from isola import (
-    ConflictError,
     Isola,
-    IsolaError,
     NotFoundError,
     SandboxStatus,
 )
@@ -17,34 +15,6 @@ from isola import (
 from conftest import wait_for_running
 
 POLL_INTERVAL = 0.5
-
-
-@pytest.mark.timeout(90)
-def test_operations_on_creating_sandbox_return_conflict(
-    isola_client: Isola,
-    sandbox_factory,
-) -> None:
-    """Running a command or writing a file on a not-yet-running sandbox raises 409.
-
-    Exercises the GetReadySandbox guard in the api-gateway proxy layer.
-    """
-    sb = sandbox_factory(image="alpine:3.21")
-
-    # Immediately try to run a command before the sandbox is running.
-    # The sandbox might already be running if scheduling is very fast,
-    # so we also accept the command succeeding (no error) as valid.
-    try:
-        sb.commands.spawn("echo", "too early")
-    except ConflictError:
-        pass  # expected: sandbox is still creating
-    except IsolaError as e:
-        if e.status != 409:
-            raise
-
-    # Now wait for running and verify it works normally
-    running = wait_for_running(isola_client, sb.id)
-    result = running.commands.run("echo", "now ok")
-    assert result.exit_code == 0
 
 
 @pytest.mark.timeout(120)

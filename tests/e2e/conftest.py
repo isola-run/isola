@@ -8,7 +8,7 @@ import warnings
 import pytest
 import pytest_asyncio
 
-from isola import AsyncIsola, AsyncSandbox, Isola, Sandbox, SandboxStatus
+from isola import AsyncIsola, AsyncSandbox, Isola, NotFoundError, Sandbox, SandboxStatus
 
 ISOLA_BASE_URL = os.environ.get("ISOLA_BASE_URL", "http://localhost:8080")
 
@@ -95,6 +95,8 @@ def sandbox_factory(isola_client: Isola):
     for sid in created:
         try:
             isola_client.sandboxes.get(sid).delete()
+        except NotFoundError:
+            pass  # already deleted by the test
         except Exception as e:
             warnings.warn(f"Failed to delete sandbox {sid} during teardown: {e}")
 
@@ -132,6 +134,8 @@ async def async_sandbox_factory(async_isola_client: AsyncIsola):
         try:
             sb = await async_isola_client.sandboxes.get(sid)
             await sb.delete()
+        except NotFoundError:
+            pass  # already deleted by the test
         except Exception as e:
             warnings.warn(f"Failed to delete sandbox {sid} during teardown: {e}")
 

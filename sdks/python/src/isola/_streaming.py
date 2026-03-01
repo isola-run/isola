@@ -14,9 +14,7 @@ STREAM_CONNECT_TIMEOUT = 5.0
 STREAM_WRITE_TIMEOUT = 5.0
 STREAM_POOL_TIMEOUT = 5.0
 MAX_RECONNECTS = 5
-INITIAL_BACKOFF = 0.1
-BACKOFF_FACTOR = 2.0
-MAX_BACKOFF = 5.0
+RETRY_DELAY = 1.0
 
 
 class _SyncStreamAPI(Protocol):
@@ -66,7 +64,6 @@ class StreamReader:
     def _generate(self) -> Generator[str, None, None]:
         decoder = codecs.getincrementaldecoder("utf-8")("replace")
         reconnects = 0
-        backoff = INITIAL_BACKOFF
 
         while True:
             try:
@@ -83,7 +80,6 @@ class StreamReader:
                             continue
                         self._offset += len(chunk)
                         reconnects = 0
-                        backoff = INITIAL_BACKOFF
                         decoded = decoder.decode(chunk)
                         if decoded:
                             yield decoded
@@ -102,8 +98,7 @@ class StreamReader:
                     if isinstance(exc, httpx.RequestError):
                         raise connection_error_from_request(exc) from exc
                     raise
-                time.sleep(backoff)
-                backoff = min(backoff * BACKOFF_FACTOR, MAX_BACKOFF)
+                time.sleep(RETRY_DELAY)
 
 
 class AsyncStreamReader:
@@ -128,7 +123,6 @@ class AsyncStreamReader:
 
         decoder = codecs.getincrementaldecoder("utf-8")("replace")
         reconnects = 0
-        backoff = INITIAL_BACKOFF
 
         while True:
             try:
@@ -145,7 +139,6 @@ class AsyncStreamReader:
                             continue
                         self._offset += len(chunk)
                         reconnects = 0
-                        backoff = INITIAL_BACKOFF
                         decoded = decoder.decode(chunk)
                         if decoded:
                             yield decoded
@@ -164,8 +157,7 @@ class AsyncStreamReader:
                     if isinstance(exc, httpx.RequestError):
                         raise connection_error_from_request(exc) from exc
                     raise
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * BACKOFF_FACTOR, MAX_BACKOFF)
+                await asyncio.sleep(RETRY_DELAY)
 
     async def read(self) -> str:
         return "".join([chunk async for chunk in self])
