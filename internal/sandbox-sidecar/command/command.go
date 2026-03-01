@@ -481,7 +481,9 @@ func (h *Handlers) CloseCommandStdin(_ context.Context, input *CloseCommandStdin
 	}
 
 	if err := entry.stdinPipe.Close(); err != nil {
-		h.logger.Error("failed to close stdin", "error", err, "cmdID", input.CmdID)
+		// Only realistic failure for a pipe fd: cmd.Wait() already closed it via
+		// closeDescriptors (race between process exit and explicit stdin close).
+		h.logger.Warn("failed to close stdin", "error", err, "cmdID", input.CmdID)
 	}
 	entry.stdinClosed = true
 
