@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from ._exceptions import TRANSIENT_HTTP_STATUSES, APIError, connection_error_from_request, error_from_http
+from ._exceptions import APIError, connection_error_from_request, error_from_http, is_transient
 
 STREAM_CONNECT_TIMEOUT = 5.0
 STREAM_WRITE_TIMEOUT = 5.0
@@ -94,12 +94,12 @@ class StreamReader:
 
                     return
 
-            except (httpx.NetworkError, httpx.TimeoutException, APIError) as exc:
-                if isinstance(exc, APIError) and exc.status_code not in TRANSIENT_HTTP_STATUSES:
+            except (httpx.RequestError, APIError) as exc:
+                if isinstance(exc, APIError) and not is_transient(exc):
                     raise
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
-                    if isinstance(exc, (httpx.NetworkError, httpx.TimeoutException)):
+                    if isinstance(exc, httpx.RequestError):
                         raise connection_error_from_request(exc) from exc
                     raise
                 time.sleep(backoff)
@@ -156,12 +156,12 @@ class AsyncStreamReader:
 
                     return
 
-            except (httpx.NetworkError, httpx.TimeoutException, APIError) as exc:
-                if isinstance(exc, APIError) and exc.status_code not in TRANSIENT_HTTP_STATUSES:
+            except (httpx.RequestError, APIError) as exc:
+                if isinstance(exc, APIError) and not is_transient(exc):
                     raise
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
-                    if isinstance(exc, (httpx.NetworkError, httpx.TimeoutException)):
+                    if isinstance(exc, httpx.RequestError):
                         raise connection_error_from_request(exc) from exc
                     raise
                 await asyncio.sleep(backoff)

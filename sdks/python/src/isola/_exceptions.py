@@ -14,7 +14,6 @@ class IsolaError(Exception):
 class APIError(IsolaError):
     def __init__(self, *, status_code: int, message: str) -> None:
         self.status_code = status_code
-        self.status = status_code
         super().__init__(f"{status_code}: {message}")
 
 
@@ -84,13 +83,13 @@ def error_from_http(
     return exc_type(status_code=status, message=message)
 
 
-TRANSIENT_HTTP_STATUSES: frozenset[int] = frozenset({502, 503, 504})
+_TRANSIENT_HTTP_STATUSES: frozenset[int] = frozenset({502, 503, 504})
 
 
 def is_transient(exc: IsolaError) -> bool:
     if isinstance(exc, APIConnectionError):
         return True
-    return isinstance(exc, APIError) and exc.status_code in TRANSIENT_HTTP_STATUSES
+    return isinstance(exc, APIError) and exc.status_code in _TRANSIENT_HTTP_STATUSES
 
 
 def connection_error_from_request(

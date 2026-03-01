@@ -117,3 +117,102 @@ def test_file_written_is_executable_by_command(session_sandbox: Sandbox) -> None
     result = session_sandbox.commands.run("sh", path)
     assert result.exit_code == 0
     assert "cross_subsystem_works" in result.stdout
+
+
+def test_relative_path_resolved(session_sandbox: Sandbox) -> None:
+    """A relative path is resolved against the container's cwd.
+
+    The sidecar resolves relative paths via /proc/<pid>/cwd and the response
+    absolute_path should be a canonical absolute path.
+    """
+    unique = uuid.uuid4().hex
+    filename = f"relative_{unique}.txt"
+    content = b"relative path test"
+
+    result = session_sandbox.filesystem.write(filename, content)
+
+    assert result.absolute_path.startswith("/")
+    assert result.absolute_path.endswith(filename)
+    # The resolved absolute path must be readable
+    read_back = session_sandbox.filesystem.read(result.absolute_path)
+    assert read_back == content
+
+
+def test_write_parent_is_file_raises_error(session_sandbox: Sandbox) -> None:
+    """Writing a file whose parent path component is itself a file should raise an error.
+
+    mkdirAllChown returns an error when it encounters a regular file where it
+    expects a directory, causing the sidecar to return a 500.
+    """
+    unique = uuid.uuid4().hex
+    blocker_path = f"/tmp/{unique}/blocker"
+
+    # Create a regular file at the blocker path
+    session_sandbox.filesystem.write(blocker_path, b"I am a file, not a directory")
+
+    # Attempt to write nested under the file (treating it as a directory)
+    nested_path = f"{blocker_path}/nested.txt"
+    with pytest.raises(IsolaError):
+        session_sandbox.filesystem.write(nested_path, b"this should fail")
+
+
+def test_empty_file_write(session_sandbox: Sandbox) -> None:
+    """Writing zero bytes creates an empty file; bytes_written should be 0."""
+    path = _unique_path("empty")
+
+    result = session_sandbox.filesystem.write(path, b"")
+
+    assert result.bytes_written == 0
+    assert session_sandbox.filesystem.read(path) == b""
+
+
+def test_file_ownership_matches_container(session_sandbox: Sandbox) -> None:
+    """A file written via the API is owned by the container's UID/GID.
+
+    The sidecar resolves the container's uid/gid via /proc/<pid>/status and
+    applies os.Chown to the written file.
+    """
+    path = _unique_path("ownership")
+    session_sandbox.filesystem.write(path, b"ownership test")
+
+    uid_result = session_sandbox.commands.run("id", "-u")
+    gid_result = session_sandbox.commands.run("id", "-g")
+    stat_result = session_sandbox.commands.run("stat", "-c", "%u %g", path)
+
+    uid = uid_result.stdout.strip()
+    gid = gid_result.stdout.strip()
+    file_uid, file_gid = stat_result.stdout.strip().split()
+
+    assert file_uid == uid
+    assert file_gid == gid
+
+
+def test_command_written_file_readable_via_api(session_sandbox: Sandbox) -> None:
+    """A file written by a command inside the sandbox is readable via the filesystem API.
+
+    Verifies nsenter/proc cross-subsystem consistency: the command handler
+    (nsenter --root) and the filesystem handler (/proc/<pid>/root) share the same view.
+    """
+    unique = uuid.uuid4().hex
+    path = f"/tmp/cmd_written_{unique}.txt"
+    expected = f"written_{unique}"
+
+    result = session_sandbox.commands.run(
+        "sh", "-c", f"printf '%s' {expected} > {path}",
+    )
+    assert result.exit_code == 0
+
+    content = session_sandbox.filesystem.read(path)
+    assert content == expected.encode()
+
+
+def test_container_param_on_filesystem(session_sandbox: Sandbox) -> None:
+    """Explicitly targeting the primary container by name should work."""
+    path = _unique_path("container_param")
+    content = b"container param test"
+
+    result = session_sandbox.filesystem.write(path, content, container="sandbox")
+    assert result.bytes_written == len(content)
+
+    read_back = session_sandbox.filesystem.read(path, container="sandbox")
+    assert read_back == content

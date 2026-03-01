@@ -120,8 +120,9 @@ def test_sync_stream_reconnects_and_resumes_offset(monkeypatch: pytest.MonkeyPat
         httpx.WriteError("broken pipe"),
         httpx.CloseError("close failed"),
         httpx.ConnectTimeout("connect timed out"),
+        httpx.ProxyError("proxy down"),
     ],
-    ids=["ConnectError", "ReadError", "WriteError", "CloseError", "ConnectTimeout"],
+    ids=["ConnectError", "ReadError", "WriteError", "CloseError", "ConnectTimeout", "ProxyError"],
 )
 def test_sync_stream_reconnects_on_network_error(monkeypatch: pytest.MonkeyPatch, error: Exception) -> None:
     monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)

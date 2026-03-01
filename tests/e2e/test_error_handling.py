@@ -9,6 +9,7 @@ from isola import (
     BadRequestError,
     Isola,
     IsolaError,
+    NetworkSpec,
     NotFoundError,
     Sandbox,
     SandboxStatus,
@@ -159,3 +160,40 @@ def test_invalid_command_nonzero_exit(session_sandbox: Sandbox) -> None:
     result = session_sandbox.commands.run("/usr/bin/nonexistent_binary_xyz")
 
     assert result.exit_code != 0, f"Expected non-zero exit code, got {result.exit_code}"
+
+
+def test_zero_timeout_rejected(isola_client: Isola) -> None:
+    """Creating a sandbox with timeout=0 should be rejected -- the minimum is 1.
+
+    The api-gateway enforces activeDeadlineSeconds >= 1 via Huma field validation.
+    """
+    with pytest.raises((ValidationError, BadRequestError)) as exc_info:
+        isola_client.sandboxes.create(image="alpine:3.21", timeout=0)
+
+    assert exc_info.value.status in (400, 422)
+
+
+def test_invalid_k8s_quantity(isola_client: Isola) -> None:
+    """Creating a sandbox with an invalid K8s resource quantity should return 400.
+
+    The api-gateway calls resource.ParseQuantity() during conversion and returns
+    a 400 Bad Request if the quantity string is malformed.
+    """
+    with pytest.raises((ValidationError, BadRequestError)) as exc_info:
+        isola_client.sandboxes.create(image="alpine:3.21", cpu="not-a-valid-quantity")
+
+    assert exc_info.value.status in (400, 422)
+
+
+def test_too_many_nameservers(isola_client: Isola) -> None:
+    """Creating a sandbox with more than 3 nameservers should be rejected.
+
+    The api-gateway enforces maxItems:3 on the nameservers field via Huma validation.
+    """
+    with pytest.raises((ValidationError, BadRequestError)) as exc_info:
+        isola_client.sandboxes.create(
+            image="alpine:3.21",
+            network=NetworkSpec(nameservers=["1.1.1.1", "8.8.8.8", "9.9.9.9", "4.4.4.4"]),
+        )
+
+    assert exc_info.value.status in (400, 422)

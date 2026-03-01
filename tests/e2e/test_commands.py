@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from isola import Sandbox
+from isola import ConflictError, Sandbox
 
 
 def test_echo_stdout(session_sandbox: Sandbox) -> None:
@@ -114,3 +114,71 @@ def test_run_with_input(session_sandbox: Sandbox) -> None:
     result = session_sandbox.commands.run("cat", input="hello\n")
     assert result.exit_code == 0
     assert result.stdout == "hello\n"
+
+
+def test_command_no_output(session_sandbox: Sandbox) -> None:
+    """A command that produces no output returns empty stdout and stderr."""
+    result = session_sandbox.commands.run("true")
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    assert result.stderr == ""
+
+
+def test_kill_already_exited_command(session_sandbox: Sandbox) -> None:
+    """Killing a naturally-exited command should not raise -- kill is idempotent."""
+    cmd = session_sandbox.commands.spawn("true")
+    cmd.wait()
+
+    # Command has already exited; kill should be a no-op
+    cmd.kill()
+
+
+def test_empty_stdin_write(session_sandbox: Sandbox) -> None:
+    """Writing zero bytes to stdin should succeed without raising."""
+    cmd = session_sandbox.commands.spawn("sleep", "30", timeout=15)
+    try:
+        cmd.write_stdin(b"")
+    finally:
+        cmd.kill()
+
+
+def test_close_stdin_twice_raises_conflict(session_sandbox: Sandbox) -> None:
+    """Closing stdin twice should raise ConflictError (409) on the second call."""
+    cmd = session_sandbox.commands.spawn("sleep", "30", timeout=15)
+    try:
+        cmd.close_stdin()
+        with pytest.raises(ConflictError):
+            cmd.close_stdin()
+    finally:
+        cmd.kill()
+
+
+def test_write_stdin_after_close_raises_conflict(session_sandbox: Sandbox) -> None:
+    """Writing to stdin after it has been closed should raise ConflictError (409)."""
+    cmd = session_sandbox.commands.spawn("sleep", "30", timeout=15)
+    try:
+        cmd.close_stdin()
+        with pytest.raises(ConflictError):
+            cmd.write_stdin(b"hello")
+    finally:
+        cmd.kill()
+
+
+def test_isola_container_name_stripped(session_sandbox: Sandbox) -> None:
+    """ISOLA_CONTAINER_NAME should not be visible inside user commands.
+
+    The operator injects this env var into the container, but the sidecar strips
+    it from the child process environment when executing user commands.
+    """
+    result = session_sandbox.commands.run("sh", "-c", 'echo "${ISOLA_CONTAINER_NAME}"')
+
+    assert result.stdout.strip() == ""
+
+
+def test_container_param_on_command(session_sandbox: Sandbox) -> None:
+    """Explicitly targeting the primary container by name should work."""
+    result = session_sandbox.commands.run("echo", "hello", container="sandbox")
+
+    assert result.exit_code == 0
+    assert "hello" in result.stdout

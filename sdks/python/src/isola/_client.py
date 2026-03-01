@@ -11,7 +11,9 @@ from pydantic import BaseModel, ValidationError
 
 from ._exceptions import APIConnectionError, APIError, connection_error_from_request, error_from_http, is_transient
 
-DEFAULT_TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=5.0, pool=5.0)
+# https://www.python-httpx.org/advanced/timeouts/
+# read / write timeouts are PER CHUNK, not total request timeouts
+DEFAULT_TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=30.0, pool=5.0)
 
 MAX_RETRIES = 5
 RETRY_DELAY = 1.0

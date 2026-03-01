@@ -171,3 +171,21 @@ def test_resource_limits_round_trip(
     assert container.resources.limits.cpu == "250m"
     assert container.resources.limits.memory == "256Mi"
     assert container.resources.limits.ephemeral_storage == "1Gi"
+
+
+def test_list_status_matches_get_status(
+    isola_client: Isola,
+    session_sandbox: Sandbox,
+) -> None:
+    """The status returned by list() must match the status returned by get() for the same sandbox.
+
+    Ensures both code paths (list summary vs full get) derive status from the same
+    K8s conditions and produce consistent results.
+    """
+    summaries = isola_client.sandboxes.list()
+    summary = next((s for s in summaries if s.id == session_sandbox.id), None)
+    assert summary is not None, f"Session sandbox {session_sandbox.id} not found in list"
+
+    details = isola_client.sandboxes.get(session_sandbox.id)
+
+    assert summary.status == details.status
