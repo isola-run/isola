@@ -78,6 +78,7 @@ class PodTemplateInfo(IsolaModel):
 class CreateSandboxPayload(IsolaModel):
     pod_template: PodTemplate
     # todo benl: rename to activeDeadlineSeconds?
+    # todo benl: maybe rename activeDeadlineSeconds to something like max_lifetime in CRD and here
     timeout: int | None = Field(None, alias="activeDeadlineSeconds")
     network: NetworkSpec | None = None
 
