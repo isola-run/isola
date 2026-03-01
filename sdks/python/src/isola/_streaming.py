@@ -61,6 +61,8 @@ class StreamReader:
     def read(self) -> str:
         return "".join(self)
 
+    # todo benl: there's a big problem here - if server doesn't have anything to stream for a while (e.g. no stdout)
+    # will close the connections enough times to cause the stream to end without reading the whole stdout
     def _generate(self) -> Generator[str, None, None]:
         decoder = codecs.getincrementaldecoder("utf-8")("replace")
         reconnects = 0
