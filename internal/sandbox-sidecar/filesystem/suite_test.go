@@ -84,7 +84,7 @@ var _ = BeforeSuite(func() {
 		gid:     os.Getgid(),
 	}
 
-	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
+	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
 
 	pidResolver := sandboxsidecar.NewPIDResolver(mockProcFS)
 	h := New(logger, mockProcFS, pidResolver)

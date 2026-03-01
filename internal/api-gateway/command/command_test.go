@@ -101,7 +101,7 @@ func (d *brokenBodyDoer) Do(*http.Request) (*http.Response, error) {
 }
 
 func newCommandTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humatest.TestAPI {
-	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
+	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
 	h := New(
 		slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
 		testNamespace,

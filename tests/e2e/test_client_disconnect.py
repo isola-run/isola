@@ -20,7 +20,7 @@ def test_client_disconnect_during_long_poll(session_sandbox: Sandbox) -> None:
     """A client that disconnects during long-poll status does not break the command.
 
     Simulates the ctx.Done() path in sidecar GetCommandStatus by issuing
-    a long-poll request (?waitSeconds=60) with a short HTTP read timeout (2s).
+    a long-poll request (?waitSeconds=25) with a short HTTP read timeout (2s).
     The httpx client times out and closes the connection, triggering context
     cancellation through: httpx timeout → gateway ctx cancelled → sidecar ctx.Done().
 
@@ -36,7 +36,7 @@ def test_client_disconnect_during_long_poll(session_sandbox: Sandbox) -> None:
                 raw_client.get(
                     f"{ISOLA_BASE_URL}/sandboxes/{session_sandbox.id}"
                     f"/commands/{cmd.id}/status",
-                    params={"waitSeconds": 60},
+                    params={"waitSeconds": 25},
                     timeout=httpx.Timeout(5.0, read=2.0),
                 )
 
@@ -63,7 +63,7 @@ def test_command_usable_after_multiple_disconnects(session_sandbox: Sandbox) -> 
                     raw_client.get(
                         f"{ISOLA_BASE_URL}/sandboxes/{session_sandbox.id}"
                         f"/commands/{cmd.id}/status",
-                        params={"waitSeconds": 60},
+                        params={"waitSeconds": 25},
                         timeout=httpx.Timeout(5.0, read=1.0),
                     )
 

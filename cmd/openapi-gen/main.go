@@ -63,7 +63,7 @@ func main() {
 
 func setupAPIGateway() huma.API {
 	r := chi.NewRouter()
-	config := huma.DefaultConfig("Isola Sandbox API", "1.0.0")
+	config := huma.DefaultConfig("Isola Sandbox API", "0.1.0")
 	config.Info.Description = "API for managing sandboxes"
 	api := humachi.New(r, config)
 
@@ -78,7 +78,7 @@ func setupAPIGateway() huma.API {
 
 func setupSandboxSidecar() huma.API {
 	r := chi.NewRouter()
-	config := huma.DefaultConfig("Isola Sandbox Sidecar API", "1.0.0")
+	config := huma.DefaultConfig("Isola Sandbox Sidecar API", "0.1.0")
 	config.Info.Description = "Internal API for sandbox filesystem operations"
 	api := humachi.New(r, config)
 

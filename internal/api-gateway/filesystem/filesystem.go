@@ -77,7 +77,7 @@ func (h *Handlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInp
 	}
 	sidecarURL := fmt.Sprintf("http://%s:%d/filesystem?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
 
-	stream := httputil.NewDeadlineReader(input.Stream, input.RC, httputil.StreamTimeout)
+	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, stream)
 	if err != nil {

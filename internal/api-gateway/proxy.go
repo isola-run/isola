@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola-sb/api/v1alpha1"
+	"github.com/isola-ai/isola-sb/internal/httputil"
 )
 
 // HTTPDoer abstracts HTTP request execution (satisfied by *http.Client), for faking it in tests.
@@ -27,15 +28,13 @@ type HTTPDoer interface {
 // BodyStream provides streaming access to request body via Huma's Resolver pattern.
 // See https://github.com/danielgtaylor/huma/issues/749
 type BodyStream struct {
-	Stream io.Reader
-	RC     *http.ResponseController
+	Stream             io.Reader
+	ResponseController *http.ResponseController
 }
 
 func (b *BodyStream) Resolve(ctx huma.Context) []error {
 	b.Stream = ctx.BodyReader()
-	if rw, ok := ctx.BodyWriter().(http.ResponseWriter); ok {
-		b.RC = http.NewResponseController(rw)
-	}
+	b.ResponseController = httputil.ResponseController(ctx)
 	return nil
 }
 

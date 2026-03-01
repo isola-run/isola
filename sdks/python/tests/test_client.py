@@ -89,9 +89,7 @@ def test_transport_error_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
     ids=["400", "404", "409", "422", "500", "502"],
 )
 @respx.mock
-def test_error_status_code_mapping(
-    status_code: int, exc_type: type[APIError], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_error_status_code_mapping(status_code: int, exc_type: type[APIError], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
     respx.get("http://localhost:8080/sandboxes/bad").mock(
         return_value=httpx.Response(

@@ -23,10 +23,11 @@ type CreateSandboxInput struct {
 }
 
 type ContainerSpec struct {
-	Image     string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
-	Command   []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
-	Env       map[string]string `json:"env,omitempty" doc:"Environment variables"`
-	Resources *ResourcesSpec    `json:"resources,omitempty" doc:"Resource requests and limits"`
+	Image   string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
+	Command []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
+	Env     map[string]string `json:"env,omitempty" doc:"Environment variables"`
+	// todo benl: those are enforced in gvisor only on the sandbox container, consider moving this to podtemplate and setting pod limits (though they don't support ephemeral storage limits)
+	Resources *ResourcesSpec `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
 
 type PodTemplate struct {

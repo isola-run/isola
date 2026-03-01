@@ -60,7 +60,7 @@ func main() {
 		},
 	}))
 
-	humaConfig := huma.DefaultConfig("Isola Sandbox Sidecar API", "1.0.0")
+	humaConfig := huma.DefaultConfig("Isola Sandbox Sidecar API", "0.1.0")
 	humaConfig.Info.Description = "Internal API for sandbox operations"
 	// the sandbox-sidecar is internal api, so we don't want to expose the docs
 	humaConfig.DocsPath = ""

@@ -141,7 +141,7 @@ func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput
 		}
 	}()
 
-	stream := httputil.NewDeadlineReader(input.Stream, input.RC, httputil.StreamTimeout)
+	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
 
 	written, err := io.Copy(dst, stream)
 	if err != nil {

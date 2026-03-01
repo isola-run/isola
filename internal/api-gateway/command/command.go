@@ -265,7 +265,7 @@ func (h *Handlers) PostCommandStdin(ctx context.Context, input *PostSandboxComma
 
 	sidecarURL := fmt.Sprintf("http://%s:%d/commands/%s/stdin", sb.Status.PodIP, h.sidecarPort, input.CmdID)
 
-	stream := httputil.NewDeadlineReader(input.Stream, input.RC, httputil.StreamTimeout)
+	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, stream)
 	if err != nil {

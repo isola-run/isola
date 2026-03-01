@@ -52,15 +52,18 @@ func (b *NsenterCommandBuilder) Build(ctx context.Context, pid int, req sidecara
 		//   to fail with EINVAL.
 		// - gVisor's setns(2) requires CAP_SYS_ADMIN (granted via sidecar SecurityContext).
 		"--mount", // each container has its own mount namespace (filesystem view)
-		"--uts",   // hostname/domainname
-		"--ipc",   // System V IPC
-		"--net",   // network stack
 		// Namespaces intentionally excluded:
+
+		// Already shared between containers in a k8s pod:
+		// "--uts",   // hostname/domainname
+		// "--ipc",   // System V IPC
+		// "--net",   // network stack
+
 		// --pid:    pod has shareProcessNamespace:true, PID namespace is already shared.
 		// --user:   gVisor's is_usable_namespace() falsely detects it as different (ino mismatch),
 		//           but setns() into the user namespace fails with EINVAL in gVisor.
 		// --cgroup: gVisor does not support CLONE_NEWCGROUP (/proc/<pid>/ns/cgroup absent).
-		// --time:   gVisor does not support CLONE_NEWTIME (/proc/<pid>/ns/time absent).
+		// --time:   gVisor does not support CLONE_NEWTIME (/proc/<pid>/ns/time absent). Already shared.
 		"--no-fork", // prevent nsenter's implicit fork when entering PID namespace (execvp directly)
 		"--root",    // chroot to /proc/<pid>/root
 		"--setuid=0",
@@ -69,6 +72,7 @@ func (b *NsenterCommandBuilder) Build(ctx context.Context, pid int, req sidecara
 		// creating an intermediate parent in a waitpid loop. SIGKILL would kill that parent
 		// and orphan the actual command. With --no-fork, nsenter calls execvp() directly,
 		// so SIGKILL reaches the user's process.
+
 		// No --env: we build the env ourselves and must not inherit the sidecar's.
 	}
 	if req.Cwd != "" {
@@ -430,7 +434,7 @@ func (h *Handlers) PostCommandStdin(_ context.Context, input *PostCommandStdinIn
 	default:
 	}
 
-	stream := httputil.NewDeadlineReader(input.Stream, input.RC, httputil.StreamTimeout)
+	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
 
 	entry.stdinMu.Lock()
 	if entry.stdinClosed {
@@ -441,9 +445,13 @@ func (h *Handlers) PostCommandStdin(_ context.Context, input *PostCommandStdinIn
 	entry.stdinMu.Unlock()
 
 	if err != nil {
-		// Process may have exited between the check and the write
-		if errors.Is(err, syscall.EPIPE) || errors.Is(err, os.ErrClosed) {
+		// EPIPE: process closed its stdin (or exited) — read end of pipe is gone.
+		// ErrClosed: pipe write end was closed (by cmd.Wait or CloseCommandStdin).
+		if errors.Is(err, syscall.EPIPE) {
 			return nil, huma.Error409Conflict("command has already exited")
+		}
+		if errors.Is(err, os.ErrClosed) {
+			return nil, huma.Error409Conflict("stdin has been closed")
 		}
 		h.logger.Error("failed to write to stdin", "error", err, "cmdID", input.CmdID)
 		return nil, huma.Error500InternalServerError("failed to write to stdin")

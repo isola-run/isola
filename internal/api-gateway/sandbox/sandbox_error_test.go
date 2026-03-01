@@ -25,7 +25,7 @@ import (
 func newErrorTestAPI(funcs interceptor.Funcs) humatest.TestAPI {
 	baseClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
 	wrappedClient := interceptor.NewClient(baseClient, funcs)
-	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
+	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
 	h := New(
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		testNamespace,

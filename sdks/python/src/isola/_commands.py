@@ -59,7 +59,10 @@ class Command:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/status"
         while True:
             result = self._api.request_model(
-                "GET", path, CommandStatusResponse, params={"waitSeconds": _LONG_POLL_WAIT_SECONDS},
+                "GET",
+                path,
+                CommandStatusResponse,
+                params={"waitSeconds": _LONG_POLL_WAIT_SECONDS},
             )
             if result.exit_code is not None:
                 return result.exit_code
@@ -124,7 +127,10 @@ class AsyncCommand:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/status"
         while True:
             result = await self._api.request_model(
-                "GET", path, CommandStatusResponse, params={"waitSeconds": _LONG_POLL_WAIT_SECONDS},
+                "GET",
+                path,
+                CommandStatusResponse,
+                params={"waitSeconds": _LONG_POLL_WAIT_SECONDS},
             )
             if result.exit_code is not None:
                 return result.exit_code

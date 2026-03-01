@@ -84,7 +84,7 @@ var _ = BeforeSuite(func() {
 
 	logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
 
-	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
+	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
 
 	h := New(logger, testNamespace, k8sClient)
 	Register(testAPI, h)

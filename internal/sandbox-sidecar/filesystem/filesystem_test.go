@@ -391,7 +391,7 @@ var _ = Describe("Filesystem deadline wiring", func() {
 
 		logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
 		var api humatest.TestAPI
-		fsHandler, api = humatest.New(GinkgoT(), huma.DefaultConfig("Deadline Test API", "1.0.0"))
+		fsHandler, api = humatest.New(GinkgoT(), huma.DefaultConfig("Deadline Test API", "0.1.0"))
 		h := New(logger, mockProcFS, sandboxsidecar.NewPIDResolver(mockProcFS))
 		Register(api, h)
 	})
@@ -448,7 +448,7 @@ var _ = Describe("Filesystem error cases", func() {
 				findPIDError: proc.ErrContainerNotFound,
 			}
 
-			_, errorAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Error Test API", "1.0.0"))
+			_, errorAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Error Test API", "0.1.0"))
 			handler := New(logger, mockProcFS, sandboxsidecar.NewPIDResolver(mockProcFS))
 			Register(errorAPI, handler)
 		})

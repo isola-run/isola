@@ -40,7 +40,7 @@ const (
 	managerShutdownGracePeriod = 25 * time.Second // < shutdownGracePeriod
 
 	serverReadHeaderTimeout = 10 * time.Second
-	serverReadTimeout       = 60 * time.Second
+	serverReadTimeout       = 30 * time.Second
 	serverIdleTimeout       = 120 * time.Second
 	// have the api-gateway writeTimeout > maximal allowed api-gateway long poll interval (waitSeconds) == 25 seconds.
 	// have the api-gateway writeTimeout < upstream server timeouts:
@@ -151,7 +151,7 @@ func main() {
 		},
 	}))
 
-	humaConfig := huma.DefaultConfig("Isola Sandbox API", "1.0.0")
+	humaConfig := huma.DefaultConfig("Isola Sandbox API", "0.1.0")
 	humaConfig.Info.Description = "API for managing sandboxes"
 	api := humachi.New(r, humaConfig)
 

@@ -17,7 +17,7 @@ func TestHealth(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
+	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
 
 	h := New()
 	Register(testAPI, h)

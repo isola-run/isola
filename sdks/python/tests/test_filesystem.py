@@ -105,7 +105,6 @@ async def test_async_filesystem_with_container(sandbox_response_copy: dict[str, 
     assert read_route.calls[0].request.url.params["container"] == "sidecar"
 
 
-
 class _ChunkedReadValidator(io.RawIOBase):
     """File-like object that fails if .read() is ever called without a bounded size."""
 

@@ -31,7 +31,7 @@ var _ = Describe("Command Handlers", func() {
 	)
 
 	BeforeEach(func() {
-		commandHandler, commandAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Command Test API", "1.0.0"))
+		commandHandler, commandAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Command Test API", "0.1.0"))
 
 		mockProcFS := &MockProcFS{
 			rootDir: testRootDir,
@@ -297,6 +297,55 @@ var _ = Describe("Command Handlers", func() {
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
 			}).ShouldNot(BeNil())
+
+			resp := commandAPI.Post(
+				fmt.Sprintf("/commands/%s/stdin", result.CommandID),
+				"Content-Type: application/octet-stream",
+				strings.NewReader("data"),
+			)
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+	})
+
+	Describe("POST /commands/{cmdId}/stdin error paths", func() {
+		It("returns 409 when process closes its stdin while still running (EPIPE)", func() {
+			// "exec 0<&-" closes fd 0 (stdin) in the shell process, which closes the
+			// pipe's read end. The process stays alive (sleep 60) so <-entry.done and
+			// stdinClosed checks pass, but io.Copy hits EPIPE from the kernel because
+			// there's no reader left on the pipe.
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "exec 0<&-; echo -n ready >&2; sleep 60"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+			DeferCleanup(func() {
+				commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
+			})
+
+			Eventually(func() string {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stderr", result.CommandID))
+				return resp.Body.String()
+			}).Should(Equal("ready"))
+
+			resp := commandAPI.Post(
+				fmt.Sprintf("/commands/%s/stdin", result.CommandID),
+				"Content-Type: application/octet-stream",
+				strings.NewReader("data"),
+			)
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+
+		It("returns 409 when stdin pipe handle is closed (ErrClosed)", func() {
+			code, result := postCommand(`{"args": ["sleep", "60"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+			DeferCleanup(func() {
+				commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
+			})
+
+			// Directly close the write end of the pipe without setting stdinClosed.
+			// This simulates the race where cmd.Wait() closes the pipe handle
+			// (via closeDescriptors) before PostCommandStdin checks stdinClosed.
+			commandHandlers.cmdMu.RLock()
+			entry := commandHandlers.commands[result.CommandID]
+			commandHandlers.cmdMu.RUnlock()
+			Expect(entry.stdinPipe.Close()).To(Succeed())
 
 			resp := commandAPI.Post(
 				fmt.Sprintf("/commands/%s/stdin", result.CommandID),
@@ -577,7 +626,7 @@ var _ = Describe("Command Handlers", func() {
 			// Place a regular file at <root>/var so MkdirAll(<root>/var/run/isola/...) fails
 			Expect(os.WriteFile(filepath.Join(blockedRoot, "var"), []byte("blocker"), 0600)).To(Succeed())
 
-			_, blockedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Blocked Test API", "1.0.0"))
+			_, blockedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Blocked Test API", "0.1.0"))
 			blockedMock := &MockProcFS{rootDir: blockedRoot, cwd: testCwd}
 			blockedHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), blockedMock, sandboxsidecar.NewPIDResolver(blockedMock), &DirectCommandBuilder{})
 			Register(blockedAPI, blockedHandlers)
@@ -630,7 +679,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(func() { _ = os.RemoveAll(isolatedRoot) })
 
-			_, isolatedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Cleanup Test API", "1.0.0"))
+			_, isolatedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Cleanup Test API", "0.1.0"))
 			isolatedMock := &MockProcFS{rootDir: isolatedRoot, cwd: testCwd}
 			isolatedHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, sandboxsidecar.NewPIDResolver(isolatedMock), &DirectCommandBuilder{})
 			Register(isolatedAPI, isolatedHandlers)
@@ -785,7 +834,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("PID resolution failure", func() {
 		It("returns 400 when container PID cannot be found", func() {
-			_, failingAPI := humatest.New(GinkgoT(), huma.DefaultConfig("PID Fail Test API", "1.0.0"))
+			_, failingAPI := humatest.New(GinkgoT(), huma.DefaultConfig("PID Fail Test API", "0.1.0"))
 			failingMock := &MockProcFS{
 				rootDir:       testRootDir,
 				cwd:           testCwd,
@@ -860,7 +909,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(func() { _ = os.RemoveAll(isolatedRoot) })
 
-			_, isolatedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Builder Fail API", "1.0.0"))
+			_, isolatedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Builder Fail API", "0.1.0"))
 			isolatedMock := &MockProcFS{rootDir: isolatedRoot, cwd: testCwd}
 			failBuilder := &FailingCommandBuilder{err: fmt.Errorf("build error")}
 			isolatedHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, sandboxsidecar.NewPIDResolver(isolatedMock), failBuilder)
@@ -884,7 +933,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("GetEnviron failure", func() {
 		It("proceeds with empty env when container environ is unreadable", func() {
-			_, envFailAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Env Fail API", "1.0.0"))
+			_, envFailAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Env Fail API", "0.1.0"))
 			envFailMock := &MockProcFS{
 				rootDir:       testRootDir,
 				cwd:           testCwd,
