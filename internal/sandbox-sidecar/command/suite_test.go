@@ -37,7 +37,7 @@ var (
 type DirectCommandBuilder struct{}
 
 func (b *DirectCommandBuilder) Build(ctx context.Context, _ int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
-	cmd := exec.CommandContext(ctx, req.Cmd, req.Args...) //nolint:gosec // test-only builder; inputs are test fixtures
+	cmd := exec.CommandContext(ctx, req.Args[0], req.Args[1:]...) //nolint:gosec // test-only builder; inputs are test fixtures
 	cmd.Stdout = stdoutFile
 	cmd.Stderr = stderrFile
 	cmd.Env = env

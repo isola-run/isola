@@ -19,14 +19,12 @@ from collections.abc import AsyncIterator, Iterator
 import httpx
 import pytest
 
-from isola import APIConnectionError, NotFoundError, StreamTimeoutError
-from isola._streaming import MAX_RECONNECTS, AsyncCommandOutputStream, CommandOutputStream
+from isola import APIConnectionError, IsolaError, NotFoundError
+from isola._streaming import MAX_RECONNECTS, AsyncStreamReader, StreamReader
 
 
 class _FakeSyncResponse:
-    def __init__(
-        self, chunks: list[bytes], *, raise_after: Exception | None = None, status_code: int = 200
-    ) -> None:
+    def __init__(self, chunks: list[bytes], *, raise_after: Exception | None = None, status_code: int = 200) -> None:
         self.status_code = status_code
         self._chunks = chunks
         self._raise_after = raise_after
@@ -68,9 +66,7 @@ class _FakeSyncAPI:
 
 
 class _FakeAsyncResponse:
-    def __init__(
-        self, chunks: list[bytes], *, raise_after: Exception | None = None, status_code: int = 200
-    ) -> None:
+    def __init__(self, chunks: list[bytes], *, raise_after: Exception | None = None, status_code: int = 200) -> None:
         self.status_code = status_code
         self._chunks = chunks
         self._raise_after = raise_after
@@ -122,12 +118,11 @@ def test_sync_stream_reconnects_and_resumes_offset(monkeypatch: pytest.MonkeyPat
         ]
     )
 
-    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+    stream = StreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
 
-    with stream as chunks:
-        output = b"".join(chunks)
+    output = "".join(stream)
 
-    assert output == b"abcd"
+    assert output == "abcd"
     assert api.calls == [0, 2]
 
 
@@ -138,8 +133,10 @@ def test_sync_stream_reconnects_and_resumes_offset(monkeypatch: pytest.MonkeyPat
         httpx.ReadError("server dropped"),
         httpx.WriteError("broken pipe"),
         httpx.CloseError("close failed"),
+        httpx.ConnectTimeout("connect timed out"),
+        httpx.ProxyError("proxy down"),
     ],
-    ids=["ConnectError", "ReadError", "WriteError", "CloseError"],
+    ids=["ConnectError", "ReadError", "WriteError", "CloseError", "ConnectTimeout", "ProxyError"],
 )
 def test_sync_stream_reconnects_on_network_error(monkeypatch: pytest.MonkeyPatch, error: Exception) -> None:
     monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
@@ -151,26 +148,12 @@ def test_sync_stream_reconnects_on_network_error(monkeypatch: pytest.MonkeyPatch
         ]
     )
 
-    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+    stream = StreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
 
-    with stream as chunks:
-        output = b"".join(chunks)
+    output = "".join(stream)
 
-    assert output == b"abcd"
+    assert output == "abcd"
     assert api.calls == [0, 2]
-
-
-def test_sync_stream_timeout_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
-
-    api = _FakeSyncAPI([
-        _FakeSyncCM(_FakeSyncResponse([], raise_after=httpx.ReadTimeout("idle"))),
-    ])
-
-    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", timeout=60, text=False)
-
-    with pytest.raises(StreamTimeoutError), stream as chunks:
-        list(chunks)
 
 
 @pytest.mark.asyncio
@@ -187,47 +170,25 @@ async def test_async_stream_reconnects_and_resumes_offset(monkeypatch: pytest.Mo
         ]
     )
 
-    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+    stream = AsyncStreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
 
-    chunks_list: list[bytes] = []
-    async with stream as chunks:
-        async for chunk in chunks:
-            chunks_list.append(chunk)
+    chunks_list: list[str] = []
+    async for chunk in stream:
+        chunks_list.append(chunk)
 
-    assert b"".join(chunks_list) == b"abc"
+    assert "".join(chunks_list) == "abc"
     assert api.calls == [0, 1]
-
-
-@pytest.mark.asyncio
-async def test_async_stream_timeout_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def _no_sleep(_seconds: float) -> None:
-        return None
-
-    monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
-
-    api = _FakeAsyncAPI([
-        _FakeAsyncCM(_FakeAsyncResponse([], raise_after=httpx.ReadTimeout("idle"))),
-    ])
-
-    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", timeout=10, text=False)
-
-    with pytest.raises(StreamTimeoutError):
-        async with stream as chunks:
-            async for _ in chunks:
-                pass
 
 
 def test_sync_stream_max_reconnects_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
 
-    api = _FakeSyncAPI(
-        [_FakeSyncCM(enter_exc=httpx.ConnectError("down")) for _ in range(MAX_RECONNECTS + 1)]
-    )
+    api = _FakeSyncAPI([_FakeSyncCM(enter_exc=httpx.ConnectError("down")) for _ in range(MAX_RECONNECTS + 1)])
 
-    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+    stream = StreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
 
-    with pytest.raises(APIConnectionError), stream as chunks:
-        list(chunks)
+    with pytest.raises(APIConnectionError):
+        list(stream)
 
 
 def test_sync_stream_connect_error_during_enter(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -240,26 +201,56 @@ def test_sync_stream_connect_error_during_enter(monkeypatch: pytest.MonkeyPatch)
         ]
     )
 
-    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+    stream = StreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
 
-    with stream as chunks:
-        output = b"".join(chunks)
+    output = "".join(stream)
 
-    assert output == b"hello"
+    assert output == "hello"
     assert api.calls == [0, 0]
+
+
+def test_sync_stream_connect_timeout_during_enter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
+
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(enter_exc=httpx.ConnectTimeout("connect timed out")),
+            _FakeSyncCM(_FakeSyncResponse([b"hello"])),
+        ]
+    )
+
+    stream = StreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    output = "".join(stream)
+
+    assert output == "hello"
+    assert api.calls == [0, 0]
+
+
+def test_sync_stream_connect_timeout_max_reconnects_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
+
+    api = _FakeSyncAPI([_FakeSyncCM(enter_exc=httpx.ConnectTimeout("down")) for _ in range(MAX_RECONNECTS + 1)])
+
+    stream = StreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    with pytest.raises(APIConnectionError):
+        list(stream)
 
 
 def test_sync_stream_http_error_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
 
-    api = _FakeSyncAPI([
-        _FakeSyncCM(_FakeSyncResponse([], status_code=404)),
-    ])
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([], status_code=404)),
+        ]
+    )
 
-    stream = CommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+    stream = StreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
 
-    with pytest.raises(NotFoundError), stream as chunks:
-        list(chunks)
+    with pytest.raises(NotFoundError):
+        list(stream)
 
 
 @pytest.mark.asyncio
@@ -269,16 +260,13 @@ async def test_async_stream_max_reconnects_exhausted(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
 
-    api = _FakeAsyncAPI(
-        [_FakeAsyncCM(enter_exc=httpx.ConnectError("down")) for _ in range(MAX_RECONNECTS + 1)]
-    )
+    api = _FakeAsyncAPI([_FakeAsyncCM(enter_exc=httpx.ConnectError("down")) for _ in range(MAX_RECONNECTS + 1)])
 
-    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+    stream = AsyncStreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
 
     with pytest.raises(APIConnectionError):
-        async with stream as chunks:
-            async for _ in chunks:
-                pass
+        async for _ in stream:
+            pass
 
 
 @pytest.mark.asyncio
@@ -295,15 +283,54 @@ async def test_async_stream_connect_error_during_enter(monkeypatch: pytest.Monke
         ]
     )
 
-    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+    stream = AsyncStreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
 
-    chunks_list: list[bytes] = []
-    async with stream as chunks:
-        async for chunk in chunks:
-            chunks_list.append(chunk)
+    chunks_list: list[str] = []
+    async for chunk in stream:
+        chunks_list.append(chunk)
 
-    assert b"".join(chunks_list) == b"hello"
+    assert "".join(chunks_list) == "hello"
     assert api.calls == [0, 0]
+
+
+@pytest.mark.asyncio
+async def test_async_stream_connect_timeout_during_enter(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
+
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(enter_exc=httpx.ConnectTimeout("connect timed out")),
+            _FakeAsyncCM(_FakeAsyncResponse([b"hello"])),
+        ]
+    )
+
+    stream = AsyncStreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    chunks_list: list[str] = []
+    async for chunk in stream:
+        chunks_list.append(chunk)
+
+    assert "".join(chunks_list) == "hello"
+    assert api.calls == [0, 0]
+
+
+@pytest.mark.asyncio
+async def test_async_stream_connect_timeout_max_reconnects_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
+
+    api = _FakeAsyncAPI([_FakeAsyncCM(enter_exc=httpx.ConnectTimeout("down")) for _ in range(MAX_RECONNECTS + 1)])
+
+    stream = AsyncStreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    with pytest.raises(APIConnectionError):
+        async for _ in stream:
+            pass
 
 
 @pytest.mark.asyncio
@@ -313,151 +340,290 @@ async def test_async_stream_http_error_propagates(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
 
-    api = _FakeAsyncAPI([
-        _FakeAsyncCM(_FakeAsyncResponse([], status_code=404)),
-    ])
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([], status_code=404)),
+        ]
+    )
 
-    stream = AsyncCommandOutputStream(api, "/sandboxes/s-1/commands/c-1/stdout", text=False)
+    stream = AsyncStreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
 
     with pytest.raises(NotFoundError):
-        async with stream as chunks:
-            async for _ in chunks:
-                pass
-
-
-@pytest.mark.parametrize(
-    ("offset", "timeout", "match"),
-    [
-        (-1, None, "offset must be >= 0"),
-        (0, 0, "timeout must be > 0"),
-        (0, -5, "timeout must be > 0"),
-    ],
-    ids=["negative_offset", "zero_timeout", "negative_timeout"],
-)
-def test_sync_stream_rejects_invalid_params(offset: int, timeout: float | None, match: str) -> None:
-    with pytest.raises(ValueError, match=match):
-        CommandOutputStream(object(), "/path", offset=offset, timeout=timeout)
-
-
-@pytest.mark.parametrize(
-    ("offset", "timeout", "match"),
-    [
-        (-1, None, "offset must be >= 0"),
-        (0, 0, "timeout must be > 0"),
-        (0, -5, "timeout must be > 0"),
-    ],
-    ids=["negative_offset", "zero_timeout", "negative_timeout"],
-)
-def test_async_stream_rejects_invalid_params(offset: int, timeout: float | None, match: str) -> None:
-    with pytest.raises(ValueError, match=match):
-        AsyncCommandOutputStream(object(), "/path", offset=offset, timeout=timeout)
+        async for _ in stream:
+            pass
 
 
 # --- Text mode tests ---
 
 
 def test_sync_stream_text_mode_decodes_utf8() -> None:
-    api = _FakeSyncAPI([
-        _FakeSyncCM(_FakeSyncResponse([b"hello ", b"world"])),
-    ])
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([b"hello ", b"world"])),
+        ]
+    )
 
-    stream = CommandOutputStream(api, "/path", text=True)
+    stream = StreamReader(api, "/path")
 
-    with stream as chunks:
-        output = "".join(chunks)
+    output = "".join(stream)
 
     assert output == "hello world"
 
 
 def test_sync_stream_text_mode_handles_split_multibyte() -> None:
-    # "café\n" in UTF-8: b"caf\xc3\xa9\n"
-    # Split the é (0xc3 0xa9) across two chunks
-    api = _FakeSyncAPI([
-        _FakeSyncCM(_FakeSyncResponse([b"caf\xc3", b"\xa9\n"])),
-    ])
+    # "cafe\u0301\n" in UTF-8: b"caf\xc3\xa9\n"
+    # Split the e\u0301 (0xc3 0xa9) across two chunks
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([b"caf\xc3", b"\xa9\n"])),
+        ]
+    )
 
-    stream = CommandOutputStream(api, "/path", text=True)
+    stream = StreamReader(api, "/path")
 
-    with stream as chunks:
-        output = "".join(chunks)
+    output = "".join(stream)
 
     assert output == "caf\u00e9\n"
 
 
-def test_sync_stream_binary_mode_yields_bytes() -> None:
-    data = b"\x00\x01\x02\xff"
-    api = _FakeSyncAPI([
-        _FakeSyncCM(_FakeSyncResponse([data])),
-    ])
-
-    stream = CommandOutputStream(api, "/path", text=False)
-
-    with stream as chunks:
-        output = b"".join(chunks)
-
-    assert output == data
-
-
 @pytest.mark.asyncio
 async def test_async_stream_text_mode_decodes_utf8() -> None:
-    api = _FakeAsyncAPI([
-        _FakeAsyncCM(_FakeAsyncResponse([b"hello ", b"world"])),
-    ])
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([b"hello ", b"world"])),
+        ]
+    )
 
-    stream = AsyncCommandOutputStream(api, "/path", text=True)
+    stream = AsyncStreamReader(api, "/path")
 
     chunks_list: list[str] = []
-    async with stream as chunks:
-        async for chunk in chunks:
-            chunks_list.append(chunk)
+    async for chunk in stream:
+        chunks_list.append(chunk)
 
     assert "".join(chunks_list) == "hello world"
 
 
 @pytest.mark.asyncio
 async def test_async_stream_text_mode_handles_split_multibyte() -> None:
-    # "café\n" in UTF-8: b"caf\xc3\xa9\n"
-    # Split the é (0xc3 0xa9) across two chunks
-    api = _FakeAsyncAPI([
-        _FakeAsyncCM(_FakeAsyncResponse([b"caf\xc3", b"\xa9\n"])),
-    ])
+    # "cafe\u0301\n" in UTF-8: b"caf\xc3\xa9\n"
+    # Split the e\u0301 (0xc3 0xa9) across two chunks
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([b"caf\xc3", b"\xa9\n"])),
+        ]
+    )
 
-    stream = AsyncCommandOutputStream(api, "/path", text=True)
+    stream = AsyncStreamReader(api, "/path")
 
     chunks_list: list[str] = []
-    async with stream as chunks:
-        async for chunk in chunks:
-            chunks_list.append(chunk)
+    async for chunk in stream:
+        chunks_list.append(chunk)
 
     assert "".join(chunks_list) == "caf\u00e9\n"
 
 
 def test_sync_stream_text_mode_flushes_incomplete_sequence_at_eof() -> None:
-    # Stream ends with 0xc3 — the first byte of a 2-byte UTF-8 character
+    # Stream ends with 0xc3 -- the first byte of a 2-byte UTF-8 character
     # with no second byte. The decoder should flush it as U+FFFD (replacement).
-    api = _FakeSyncAPI([
-        _FakeSyncCM(_FakeSyncResponse([b"hello\xc3"])),
-    ])
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([b"hello\xc3"])),
+        ]
+    )
 
-    stream = CommandOutputStream(api, "/path", text=True)
+    stream = StreamReader(api, "/path")
 
-    with stream as chunks:
-        output = "".join(chunks)
+    output = "".join(stream)
 
     assert output == "hello\ufffd"
 
 
 @pytest.mark.asyncio
 async def test_async_stream_text_mode_flushes_incomplete_sequence_at_eof() -> None:
-    api = _FakeAsyncAPI([
-        _FakeAsyncCM(_FakeAsyncResponse([b"hello\xc3"])),
-    ])
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([b"hello\xc3"])),
+        ]
+    )
 
-    stream = AsyncCommandOutputStream(api, "/path", text=True)
+    stream = AsyncStreamReader(api, "/path")
 
     chunks_list: list[str] = []
-    async with stream as chunks:
-        async for chunk in chunks:
-            chunks_list.append(chunk)
+    async for chunk in stream:
+        chunks_list.append(chunk)
 
     assert "".join(chunks_list) == "hello\ufffd"
+
+
+# --- Single-use guard tests ---
+
+
+def test_sync_stream_single_use_guard() -> None:
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([b"data"])),
+        ]
+    )
+
+    stream = StreamReader(api, "/path")
+    list(stream)
+
+    with pytest.raises(RuntimeError, match="single-use"):
+        list(stream)
+
+
+@pytest.mark.asyncio
+async def test_async_stream_single_use_guard() -> None:
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([b"data"])),
+        ]
+    )
+
+    stream = AsyncStreamReader(api, "/path")
+    async for _ in stream:
+        pass
+
+    with pytest.raises(RuntimeError, match="single-use"):
+        async for _ in stream:
+            pass
+
+
+# --- read() convenience tests ---
+
+
+def test_sync_stream_read_text() -> None:
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([b"hello ", b"world"])),
+        ]
+    )
+
+    stream = StreamReader(api, "/path")
+    assert stream.read() == "hello world"
+
+
+@pytest.mark.asyncio
+async def test_async_stream_read_text() -> None:
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([b"hello ", b"world"])),
+        ]
+    )
+
+    stream = AsyncStreamReader(api, "/path")
+    assert await stream.read() == "hello world"
+
+
+# --- Stream natural termination tests ---
+
+
+@pytest.mark.parametrize("status", [502, 503, 504], ids=["502", "503", "504"])
+def test_sync_stream_retries_transient_http_error_on_reconnect(monkeypatch: pytest.MonkeyPatch, status: int) -> None:
+    """A transient HTTP error during stream reconnect should be retried, not raised."""
+    monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
+
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([b"ab"], raise_after=httpx.ReadError("connection reset"))),
+            _FakeSyncCM(_FakeSyncResponse([], status_code=status)),
+            _FakeSyncCM(_FakeSyncResponse([b"cd"])),
+        ]
+    )
+
+    stream = StreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    output = "".join(stream)
+
+    assert output == "abcd"
+    assert api.calls == [0, 2, 2]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [502, 503, 504], ids=["502", "503", "504"])
+async def test_async_stream_retries_transient_http_error_on_reconnect(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    """A transient HTTP error during async stream reconnect should be retried, not raised."""
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
+
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([b"ab"], raise_after=httpx.ReadError("connection reset"))),
+            _FakeAsyncCM(_FakeAsyncResponse([], status_code=status)),
+            _FakeAsyncCM(_FakeAsyncResponse([b"cd"])),
+        ]
+    )
+
+    stream = AsyncStreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    chunks_list: list[str] = []
+    async for chunk in stream:
+        chunks_list.append(chunk)
+
+    assert "".join(chunks_list) == "abcd"
+    assert api.calls == [0, 2, 2]
+
+
+@pytest.mark.parametrize("status", [502, 503, 504], ids=["502", "503", "504"])
+def test_sync_stream_transient_http_error_max_reconnects_exhausted(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    """Repeated transient HTTP errors should eventually give up after MAX_RECONNECTS."""
+    monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
+
+    api = _FakeSyncAPI([_FakeSyncCM(_FakeSyncResponse([], status_code=status)) for _ in range(MAX_RECONNECTS + 1)])
+
+    stream = StreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    with pytest.raises(IsolaError):
+        list(stream)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [502, 503, 504], ids=["502", "503", "504"])
+async def test_async_stream_transient_http_error_max_reconnects_exhausted(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    """Repeated transient HTTP errors should eventually give up after MAX_RECONNECTS."""
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
+
+    api = _FakeAsyncAPI([_FakeAsyncCM(_FakeAsyncResponse([], status_code=status)) for _ in range(MAX_RECONNECTS + 1)])
+
+    stream = AsyncStreamReader(api, "/sandboxes/s-1/commands/c-1/stdout")
+
+    with pytest.raises(IsolaError):
+        async for _ in stream:
+            pass
+
+
+def test_sync_stream_read_completes_on_response_end() -> None:
+    """read() completes when the HTTP response body ends naturally (no error)."""
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([b"hello"])),
+        ]
+    )
+
+    stream = StreamReader(api, "/path")
+    assert stream.read() == "hello"
+
+
+def test_sync_stream_iter_completes_on_response_end() -> None:
+    """Iteration completes when the HTTP response body ends naturally."""
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([b"hello"])),
+        ]
+    )
+
+    stream = StreamReader(api, "/path")
+    assert list(stream) == ["hello"]

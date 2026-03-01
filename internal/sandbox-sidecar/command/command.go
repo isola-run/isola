@@ -54,27 +54,39 @@ type CommandBuilder interface {
 // NsenterCommandBuilder constructs nsenter commands that enter the target container's namespaces.
 type NsenterCommandBuilder struct{}
 
+// TODO BENL: change to /bin/sh -c instead of nsenter
 func (b *NsenterCommandBuilder) Build(ctx context.Context, pid int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
 	args := []string{
 		// https://man7.org/linux/man-pages/man1/nsenter.1.html
 		"--target", strconv.Itoa(pid), // target process to get namespaces from
-		"--all",     // enter all usable namespaces (see nsenter.c is_usable_namespace())
+		// Enter specific namespaces rather than --all because:
+		// - --all uses is_usable_namespace() (nsenter.c:429) which checks /proc/self/ns/<type>
+		//   ino vs target ino to skip same-namespace cases, but gVisor virtualizes inos so
+		//   the user namespace appears different even though it's shared, causing setns()
+		//   to fail with EINVAL.
+		// - gVisor's setns(2) requires CAP_SYS_ADMIN (granted via sidecar SecurityContext).
+		"--mount", // each container has its own mount namespace (filesystem view)
+		// Namespaces intentionally excluded:
+
+		// Already shared between containers in a k8s pod:
+		// "--uts",   // hostname/domainname
+		// "--ipc",   // System V IPC
+		// "--net",   // network stack
+
+		// --pid:    pod has shareProcessNamespace:true, PID namespace is already shared.
+		// --user:   gVisor's is_usable_namespace() falsely detects it as different (ino mismatch),
+		//           but setns() into the user namespace fails with EINVAL in gVisor.
+		// --cgroup: gVisor does not support CLONE_NEWCGROUP (/proc/<pid>/ns/cgroup absent).
+		// --time:   gVisor does not support CLONE_NEWTIME (/proc/<pid>/ns/time absent). Already shared.
 		"--no-fork", // prevent nsenter's implicit fork when entering PID namespace (execvp directly)
 		"--root",    // chroot to /proc/<pid>/root
-		// Execute as root:
 		"--setuid=0",
 		"--setgid=0",
 		// --no-fork is critical: without it, nsenter forks when entering a PID namespace,
 		// creating an intermediate parent in a waitpid loop. SIGKILL would kill that parent
 		// and orphan the actual command. With --no-fork, nsenter calls execvp() directly,
 		// so SIGKILL reaches the user's process.
-		//
-		// --no-fork means the exec'd process itself doesn't join the target PID namespace (only its children would).
-		// This is safe because the sandbox pod has shareProcessNamespace: true,
-		// so caller and target already share the same PID namespace.
-		//
-		// --all (vs explicit flags) gracefully handles namespaces that can't be entered
-		// (e.g. the caller's own user namespace, which setns(2) forbids reentering).
+
 		// No --env: we build the env ourselves and must not inherit the sidecar's.
 	}
 	if req.Cwd != "" {
@@ -83,7 +95,6 @@ func (b *NsenterCommandBuilder) Build(ctx context.Context, pid int, req sidecara
 		args = append(args, "--wd") // effectively /proc/<pid>/cwd
 	}
 	args = append(args, "--")
-	args = append(args, req.Cmd)
 	args = append(args, req.Args...)
 
 	cmd := exec.CommandContext(ctx, "nsenter", args...) //nolint:gosec // args are constructed from validated request
@@ -107,6 +118,10 @@ type CreateCommandOutput struct {
 
 type GetCommandStatusInput struct {
 	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	// Higher than the api-gateway's max (25s) so the gateway always terminates first
+	// also aligns with the safe (assuming possible proxies etc) long polling value according to https://datatracker.ietf.org/doc/html/rfc6202
+	// and of course it must be lower than the server's WriteTimeout.
+	WaitSeconds int `query:"waitSeconds,omitempty" minimum:"0" maximum:"30" doc:"Max seconds to wait for the command to exit. 0 or absent returns immediately."`
 }
 
 type GetCommandStatusOutput struct {
@@ -123,6 +138,10 @@ type PostCommandStdinInput struct {
 	sandboxsidecar.BodyStream
 }
 
+type CloseCommandStdinInput struct {
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+}
+
 type DeleteCommandInput struct {
 	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
@@ -130,14 +149,15 @@ type DeleteCommandInput struct {
 // --- Handlers ---
 
 type commandEntry struct {
-	cmdID     string
-	cmd       *exec.Cmd
-	cancel    context.CancelFunc
-	stdinPipe io.WriteCloser
-	stdinMu   sync.Mutex // serialize concurrent stdin writes
-	exitCode  int        // only valid after done is closed
-	done      chan struct{}
-	outputDir string
+	cmdID       string
+	cmd         *exec.Cmd
+	cancel      context.CancelFunc
+	stdinPipe   io.WriteCloser
+	stdinMu     sync.Mutex // serialize concurrent stdin writes
+	stdinClosed bool
+	exitCode    int // only valid after done is closed
+	done        chan struct{}
+	outputDir   string
 }
 
 type Handlers struct {
@@ -248,7 +268,7 @@ func (h *Handlers) startCommand(pid int, input *CreateCommandInput) (*commandEnt
 	}
 
 	if err := cmd.Start(); err != nil {
-		h.logger.Error("failed to start command", "error", err, "cmd", input.Body.Cmd)
+		h.logger.Error("failed to start command", "error", err, "args", input.Body.Args)
 		return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to start command: %s", err.Error()))
 	}
 
@@ -304,19 +324,32 @@ func (h *Handlers) getCommandEntry(cmdID string) (*commandEntry, error) {
 	return entry, nil
 }
 
-func (h *Handlers) GetCommandStatus(_ context.Context, input *GetCommandStatusInput) (*GetCommandStatusOutput, error) {
+func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetCommandStatusInput) (*GetCommandStatusOutput, error) {
 	entry, err := h.getCommandEntry(input.CmdID)
 	if err != nil {
 		return nil, err
 	}
 
-	select {
-	case <-entry.done:
-		exitCode := entry.exitCode
-		return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: &exitCode}}, nil
-	default: // return immediately if cmd not done, indicating "still running"
-		return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: nil}}, nil
+	if input.WaitSeconds > 0 {
+		timer := time.NewTimer(time.Duration(input.WaitSeconds) * time.Second)
+		defer timer.Stop()
+		select {
+		case <-entry.done:
+		case <-timer.C:
+			return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: nil}}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	} else {
+		select {
+		case <-entry.done:
+		default:
+			return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: nil}}, nil
+		}
 	}
+
+	exitCode := entry.exitCode
+	return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: &exitCode}}, nil
 }
 
 func (h *Handlers) GetCommandStdout(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
@@ -358,7 +391,9 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 				}
 			}
 
-			fw := httputil.NewTimedFlushWriter(ctx.BodyWriter(), 100*time.Millisecond)
+			rc := httputil.ResponseController(ctx)
+			dw := httputil.NewDeadlineWriter(ctx.BodyWriter(), rc, httputil.StreamTimeout)
+			fw := httputil.NewTimedFlushWriter(dw, 100*time.Millisecond)
 			defer fw.Stop()
 
 			for {
@@ -413,20 +448,60 @@ func (h *Handlers) PostCommandStdin(_ context.Context, input *PostCommandStdinIn
 	default:
 	}
 
+	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
+
 	entry.stdinMu.Lock()
-	written, err := io.Copy(entry.stdinPipe, input.Stream)
+	if entry.stdinClosed {
+		entry.stdinMu.Unlock()
+		return nil, huma.Error409Conflict("stdin is already closed")
+	}
+	written, err := io.Copy(entry.stdinPipe, stream)
 	entry.stdinMu.Unlock()
 
 	if err != nil {
-		// Process may have exited between the check and the write
-		if errors.Is(err, syscall.EPIPE) || errors.Is(err, os.ErrClosed) {
+		// EPIPE: process closed its stdin (or exited) — read end of pipe is gone.
+		// ErrClosed: pipe write end was closed (by cmd.Wait or CloseCommandStdin).
+		if errors.Is(err, syscall.EPIPE) {
 			return nil, huma.Error409Conflict("command has already exited")
+		}
+		if errors.Is(err, os.ErrClosed) {
+			return nil, huma.Error409Conflict("stdin has been closed")
 		}
 		h.logger.Error("failed to write to stdin", "error", err, "cmdID", input.CmdID)
 		return nil, huma.Error500InternalServerError("failed to write to stdin")
 	}
 
 	h.logger.Debug("stdin write", "cmdID", input.CmdID, "bytes", written)
+	return nil, nil
+}
+
+func (h *Handlers) CloseCommandStdin(_ context.Context, input *CloseCommandStdinInput) (*struct{}, error) {
+	entry, err := h.getCommandEntry(input.CmdID)
+	if err != nil {
+		return nil, err
+	}
+
+	select {
+	case <-entry.done:
+		return nil, huma.Error409Conflict("command has already exited")
+	default:
+	}
+
+	entry.stdinMu.Lock()
+	defer entry.stdinMu.Unlock()
+
+	if entry.stdinClosed {
+		return nil, huma.Error409Conflict("stdin is already closed")
+	}
+
+	if err := entry.stdinPipe.Close(); err != nil {
+		// Only realistic failure for a pipe fd: cmd.Wait() already closed it via
+		// closeDescriptors (race between process exit and explicit stdin close).
+		h.logger.Warn("failed to close stdin", "error", err, "cmdID", input.CmdID)
+	}
+	entry.stdinClosed = true
+
+	h.logger.Debug("stdin closed", "cmdID", input.CmdID)
 	return nil, nil
 }
 
@@ -487,7 +562,7 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/commands/{cmdId}/status",
 		Summary:     "Get command status",
-		Description: "Returns the exit code of the command, or null if still running",
+		Description: "Returns the exit code of the command, or null if still running. Supports long-polling via ?waitSeconds=N to block until the command exits or the wait expires.",
 		Tags:        []string{"commands"},
 		Errors:      []int{http.StatusNotFound},
 	}, h.GetCommandStatus)
@@ -550,6 +625,17 @@ func Register(api huma.API, h *Handlers) {
 		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusNotFound, http.StatusConflict},
 	}, h.PostCommandStdin)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "closeCommandStdin",
+		Method:        http.MethodPost,
+		Path:          "/commands/{cmdId}/stdin/close",
+		Summary:       "Close command stdin",
+		Description:   "Closes the command's stdin pipe",
+		Tags:          []string{"commands"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusNotFound, http.StatusConflict},
+	}, h.CloseCommandStdin)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "deleteCommand",

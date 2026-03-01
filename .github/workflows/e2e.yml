@@ -10,7 +10,7 @@ env:
   KIND_CLUSTER_NAME: isola-e2e
   # Image names (no registry prefix - loaded directly into Kind)
   OPERATOR_IMAGE: isola-operator
-  SIDECAR_IMAGE: sandbox-sidecar
+  SANDBOX_SIDECAR_IMAGE: sandbox-sidecar
   UPLOADER_IMAGE: isola-uploader
   API_IMAGE: api-gateway
 
@@ -44,7 +44,7 @@ jobs:
           context: .
           file: cmd/sandbox-sidecar/Dockerfile
           load: true
-          tags: ${{ env.SIDECAR_IMAGE }}:ci
+          tags: ${{ env.SANDBOX_SIDECAR_IMAGE }}:ci
           cache-from: type=gha,scope=sidecar
           cache-to: type=gha,mode=max,scope=sidecar
 
@@ -117,7 +117,7 @@ jobs:
       - name: Load images into Kind
         run: |
           kind load docker-image ${{ env.OPERATOR_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
-          kind load docker-image ${{ env.SIDECAR_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.SANDBOX_SIDECAR_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.UPLOADER_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.API_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
 
@@ -143,8 +143,8 @@ jobs:
             --set operator.image.repository=${{ env.OPERATOR_IMAGE }} \
             --set operator.image.tag=ci \
             --set operator.image.pullPolicy=Never \
-            --set operator.sidecar.image.repository=${{ env.SIDECAR_IMAGE }} \
-            --set operator.sidecar.image.tag=ci \
+            --set operator.sandboxSidecar.image.repository=${{ env.SANDBOX_SIDECAR_IMAGE }} \
+            --set operator.sandboxSidecar.image.tag=ci \
             --set operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.repository=${{ env.UPLOADER_IMAGE }} \
             --set operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.tag=ci \
             --set apiGateway.image.repository=${{ env.API_IMAGE }} \

@@ -16,12 +16,16 @@ package filesystem
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -338,6 +342,115 @@ func (m *errorMockProcFS) GetEnviron(pid int) ([]string, error) {
 	return []string{"PATH=/usr/bin:/bin", "HOME=/root"}, nil
 }
 
+// deadlineCapture is an http.ResponseWriter that records Set*Deadline calls.
+// http.ResponseController discovers the methods via interface assertions.
+type deadlineCapture struct {
+	httptest.ResponseRecorder
+	mu             sync.Mutex
+	writeDeadlines []time.Time
+	readDeadlines  []time.Time
+}
+
+func (d *deadlineCapture) SetWriteDeadline(t time.Time) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.writeDeadlines = append(d.writeDeadlines, t)
+	return nil
+}
+
+func (d *deadlineCapture) SetReadDeadline(t time.Time) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.readDeadlines = append(d.readDeadlines, t)
+	return nil
+}
+
+func (d *deadlineCapture) Flush() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+}
+
+func (d *deadlineCapture) getWriteDeadlines() []time.Time {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]time.Time{}, d.writeDeadlines...)
+}
+
+func (d *deadlineCapture) getReadDeadlines() []time.Time {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]time.Time{}, d.readDeadlines...)
+}
+
+var _ = Describe("Filesystem deadline wiring", func() {
+	var (
+		fsHandler http.Handler
+		rootDir   string
+	)
+
+	BeforeEach(func() {
+		var err error
+		rootDir, err = os.MkdirTemp("", "deadline-test-*")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { _ = os.RemoveAll(rootDir) })
+
+		Expect(os.MkdirAll(filepath.Join(rootDir, "/workspace"), 0750)).To(Succeed())
+
+		mockProcFS := &MockProcFS{
+			rootDir: rootDir,
+			cwd:     "/workspace",
+			uid:     os.Getuid(),
+			gid:     os.Getgid(),
+		}
+
+		logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
+		var api humatest.TestAPI
+		fsHandler, api = humatest.New(GinkgoT(), huma.DefaultConfig("Deadline Test API", "0.1.0"))
+		h := New(logger, mockProcFS, sandboxsidecar.NewPIDResolver(mockProcFS))
+		Register(api, h)
+	})
+
+	It("sets read and write deadlines during file upload", func() {
+		body := make([]byte, 48*1024)
+		_, err := rand.Read(body)
+		Expect(err).NotTo(HaveOccurred())
+
+		mock := &deadlineCapture{ResponseRecorder: *httptest.NewRecorder()}
+		req := httptest.NewRequest("POST", "/filesystem?path=/tmp/deadline-upload.txt", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/octet-stream")
+
+		fsHandler.ServeHTTP(mock, req)
+
+		Expect(mock.Code).To(Equal(http.StatusCreated))
+		Expect(mock.getReadDeadlines()).NotTo(BeEmpty())
+		Expect(mock.getWriteDeadlines()).NotTo(BeEmpty())
+
+		hostPath := filepath.Join(rootDir, "/tmp/deadline-upload.txt")
+		written, err := os.ReadFile(hostPath) //nolint:gosec // test file path
+		Expect(err).NotTo(HaveOccurred())
+		Expect(written).To(Equal(body))
+	})
+
+	It("sets write deadlines during file download", func() {
+		content := make([]byte, 48*1024)
+		_, err := rand.Read(content)
+		Expect(err).NotTo(HaveOccurred())
+
+		hostPath := filepath.Join(rootDir, "/tmp/deadline-download.txt")
+		Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+		Expect(os.WriteFile(hostPath, content, 0600)).To(Succeed())
+
+		mock := &deadlineCapture{ResponseRecorder: *httptest.NewRecorder()}
+		req := httptest.NewRequest("GET", "/filesystem?path=/tmp/deadline-download.txt", nil)
+
+		fsHandler.ServeHTTP(mock, req)
+
+		Expect(mock.Code).To(Equal(http.StatusOK))
+		Expect(mock.getWriteDeadlines()).NotTo(BeEmpty())
+		Expect(mock.Body.Bytes()).To(Equal(content))
+	})
+})
+
 var _ = Describe("Filesystem error cases", func() {
 	var errorAPI humatest.TestAPI
 
@@ -349,7 +462,7 @@ var _ = Describe("Filesystem error cases", func() {
 				findPIDError: proc.ErrContainerNotFound,
 			}
 
-			_, errorAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Error Test API", "1.0.0"))
+			_, errorAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Error Test API", "0.1.0"))
 			handler := New(logger, mockProcFS, sandboxsidecar.NewPIDResolver(mockProcFS))
 			Register(errorAPI, handler)
 		})

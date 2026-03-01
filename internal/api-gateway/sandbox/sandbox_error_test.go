@@ -39,7 +39,7 @@ import (
 func newErrorTestAPI(funcs interceptor.Funcs) humatest.TestAPI {
 	baseClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
 	wrappedClient := interceptor.NewClient(baseClient, funcs)
-	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
+	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
 	h := New(
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		testNamespace,
@@ -88,7 +88,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 			Expect(resp.Code).To(Equal(403))
 		})
 
-		It("returns 429 when k8s Create returns TooManyRequests", func() {
+		It("returns 429 with Retry-After when k8s Create returns TooManyRequests", func() {
 			api := newErrorTestAPI(interceptor.Funcs{
 				Create: func(_ context.Context, _ client.WithWatch, _ client.Object, _ ...client.CreateOption) error {
 					return apierrors.NewTooManyRequests("rate limit exceeded", 30)
@@ -97,6 +97,22 @@ var _ = Describe("Sandbox Error Handling", func() {
 
 			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(429))
+			Expect(resp.Header().Get("Retry-After")).To(Equal("30"))
+		})
+
+		It("includes Retry-After when k8s Create returns ServerTimeout", func() {
+			api := newErrorTestAPI(interceptor.Funcs{
+				Create: func(_ context.Context, _ client.WithWatch, _ client.Object, _ ...client.CreateOption) error {
+					return apierrors.NewServerTimeout(
+						schema.GroupResource{Group: "sandbox.isola.run", Resource: "sandboxes"},
+						"create", 10,
+					)
+				},
+			})
+
+			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			Expect(resp.Code).To(Equal(500))
+			Expect(resp.Header().Get("Retry-After")).To(Equal("10"))
 		})
 
 		It("returns 503 when k8s Create returns ServiceUnavailable", func() {
@@ -139,6 +155,33 @@ var _ = Describe("Sandbox Error Handling", func() {
 	})
 
 	Describe("GET /sandboxes/{id}", func() {
+		It("returns 429 with Retry-After when k8s Get returns TooManyRequests", func() {
+			api := newErrorTestAPI(interceptor.Funcs{
+				Get: func(_ context.Context, _ client.WithWatch, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
+					return apierrors.NewTooManyRequests("throttled", 60)
+				},
+			})
+
+			resp := api.Get("/sandboxes/some-id")
+			Expect(resp.Code).To(Equal(429))
+			Expect(resp.Header().Get("Retry-After")).To(Equal("60"))
+		})
+
+		It("does not set Retry-After when k8s error has no retry hint", func() {
+			api := newErrorTestAPI(interceptor.Funcs{
+				Get: func(_ context.Context, _ client.WithWatch, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
+					return apierrors.NewForbidden(
+						schema.GroupResource{Group: "sandbox.isola.run", Resource: "sandboxes"},
+						"some-id", fmt.Errorf("not allowed"),
+					)
+				},
+			})
+
+			resp := api.Get("/sandboxes/some-id")
+			Expect(resp.Code).To(Equal(403))
+			Expect(resp.Header().Get("Retry-After")).To(BeEmpty())
+		})
+
 		It("returns 403 when k8s Get returns Forbidden", func() {
 			api := newErrorTestAPI(interceptor.Funcs{
 				Get: func(_ context.Context, _ client.WithWatch, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
