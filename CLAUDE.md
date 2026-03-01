@@ -76,7 +76,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **Backward compatibility:** not required at this stage. You may introduce breaking changes to CRDs, APIs, and internal interfaces if it simplifies the design, provided tests are updated accordingly.
 
-**Single Go module:** The project uses a single `go.mod` at the root (`github.com/isola-ai/isola-sb`). All binaries import from this module.
+**Single Go module:** The project uses a single `go.mod` at the root (`github.com/isola-ai/isola`). All binaries import from this module.
 
 **Multi-service architecture:** Four binaries in `cmd/` — `operator`, `api-gateway`, `sandbox-sidecar`, `uploader`. Each has its own `internal/` packages under the matching path. The api-gateway uses domain sub-packages (`{health,sandbox,filesystem,command}/`) with shared utilities in `proxy.go`. The sandbox-sidecar uses domain sub-packages (`{health,filesystem,command}/`) with shared utilities in `sidecar.go`. Cross-service packages:
 - `internal/sidecar-api/` - Shared contract types between api-gateway and sandbox-sidecar

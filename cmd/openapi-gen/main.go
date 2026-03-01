@@ -1,3 +1,17 @@
+// Copyright The Isola Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // openapi-gen generates OpenAPI specs for the HTTP services without starting servers.
 // Usage:
 //
@@ -14,13 +28,13 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 
-	"github.com/isola-ai/isola-sb/internal/api-gateway/command"
-	"github.com/isola-ai/isola-sb/internal/api-gateway/filesystem"
-	"github.com/isola-ai/isola-sb/internal/api-gateway/health"
-	"github.com/isola-ai/isola-sb/internal/api-gateway/sandbox"
-	sidecarCmd "github.com/isola-ai/isola-sb/internal/sandbox-sidecar/command"
-	sidecarFs "github.com/isola-ai/isola-sb/internal/sandbox-sidecar/filesystem"
-	sidecarHealth "github.com/isola-ai/isola-sb/internal/sandbox-sidecar/health"
+	"github.com/isola-ai/isola/internal/api-gateway/command"
+	"github.com/isola-ai/isola/internal/api-gateway/filesystem"
+	"github.com/isola-ai/isola/internal/api-gateway/health"
+	"github.com/isola-ai/isola/internal/api-gateway/sandbox"
+	sidecarCmd "github.com/isola-ai/isola/internal/sandbox-sidecar/command"
+	sidecarFs "github.com/isola-ai/isola/internal/sandbox-sidecar/filesystem"
+	sidecarHealth "github.com/isola-ai/isola/internal/sandbox-sidecar/health"
 )
 
 func main() {
