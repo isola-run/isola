@@ -77,6 +77,7 @@ class PodTemplateInfo(IsolaModel):
 
 class CreateSandboxPayload(IsolaModel):
     pod_template: PodTemplate
+    # todo benl: rename to activeDeadlineSeconds?
     timeout: int | None = Field(None, alias="activeDeadlineSeconds")
     network: NetworkSpec | None = None
 
