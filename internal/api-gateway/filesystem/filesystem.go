@@ -16,6 +16,7 @@ import (
 
 	apigateway "github.com/isola-ai/isola-sb/internal/api-gateway"
 	"github.com/isola-ai/isola-sb/internal/constants"
+	"github.com/isola-ai/isola-sb/internal/httputil"
 	sidecarapi "github.com/isola-ai/isola-sb/internal/sidecar-api"
 )
 
@@ -76,7 +77,9 @@ func (h *Handlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInp
 	}
 	sidecarURL := fmt.Sprintf("http://%s:%d/filesystem?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, input.Stream)
+	stream := httputil.NewDeadlineReader(input.Stream, input.RC, httputil.StreamTimeout)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, stream)
 	if err != nil {
 		h.logger.Error("failed to build sidecar request", "error", err)
 		return nil, huma.Error500InternalServerError("failed to build sidecar request")
@@ -159,7 +162,10 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 			// limitedReader := io.LimitReader(resp.Body, maxBytes+1)
 			// io.Copy(ctx.BodyWriter(), limitedReader)
 
-			if _, err := io.Copy(ctx.BodyWriter(), resp.Body); err != nil {
+			rc := httputil.ResponseController(ctx)
+			dw := httputil.NewDeadlineWriter(ctx.BodyWriter(), rc, httputil.StreamTimeout)
+
+			if _, err := io.Copy(dw, resp.Body); err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) {
 					h.logger.Warn("client disconnected during file stream", "error", err, "id", input.ID)
 				} else {

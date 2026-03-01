@@ -83,6 +83,15 @@ def error_from_http(
     return exc_type(status_code=status, message=message)
 
 
+TRANSIENT_HTTP_STATUSES: frozenset[int] = frozenset({502, 503, 504})
+
+
+def is_transient(exc: IsolaError) -> bool:
+    if isinstance(exc, APIConnectionError):
+        return True
+    return isinstance(exc, APIError) and exc.status_code in TRANSIENT_HTTP_STATUSES
+
+
 def connection_error_from_request(
     exc: httpx.RequestError,
     *,

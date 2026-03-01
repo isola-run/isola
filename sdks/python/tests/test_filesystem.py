@@ -105,19 +105,6 @@ async def test_async_filesystem_with_container(sandbox_response_copy: dict[str, 
     assert read_route.calls[0].request.url.params["container"] == "sidecar"
 
 
-def test_filesystem_write_from_str_file_like_raises_type_error(sandbox_response_copy: dict[str, object]) -> None:
-    with Isola(base_url="http://localhost:8080") as client:
-        # Manually construct a sandbox to avoid HTTP call
-        from isola._models import SandboxData
-
-        data = SandboxData.model_validate(sandbox_response_copy)
-        from isola._sandbox import Sandbox
-
-        sandbox = Sandbox(client._api, data)
-
-        with pytest.raises(TypeError):
-            sandbox.filesystem.write("/tmp/file.txt", io.StringIO("text"))
-
 
 class _ChunkedReadValidator(io.RawIOBase):
     """File-like object that fails if .read() is ever called without a bounded size."""

@@ -241,7 +241,9 @@ func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream str
 			// X-Accel-Buffering: no, disable nginx buffering (serve immediately)
 			ctx.SetHeader("X-Accel-Buffering", "no")
 
-			fw := httputil.NewTimedFlushWriter(ctx.BodyWriter(), 100*time.Millisecond)
+			rc := httputil.ResponseController(ctx)
+			dw := httputil.NewDeadlineWriter(ctx.BodyWriter(), rc, httputil.StreamTimeout)
+			fw := httputil.NewTimedFlushWriter(dw, 100*time.Millisecond)
 			defer fw.Stop()
 
 			if _, err := io.Copy(fw, resp.Body); err != nil {
@@ -263,7 +265,9 @@ func (h *Handlers) PostCommandStdin(ctx context.Context, input *PostSandboxComma
 
 	sidecarURL := fmt.Sprintf("http://%s:%d/commands/%s/stdin", sb.Status.PodIP, h.sidecarPort, input.CmdID)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, input.Stream)
+	stream := httputil.NewDeadlineReader(input.Stream, input.RC, httputil.StreamTimeout)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, stream)
 	if err != nil {
 		h.logger.Error("failed to build sidecar request", "error", err)
 		return nil, huma.Error500InternalServerError("failed to build sidecar request")

@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 import os
+import time
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from typing import Any, BinaryIO, TypeVar
 
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from ._exceptions import APIConnectionError, APIError, connection_error_from_request, error_from_http
+from ._exceptions import APIConnectionError, APIError, connection_error_from_request, error_from_http, is_transient
 
-DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+DEFAULT_TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=5.0, pool=5.0)
+
+MAX_RETRIES = 5
+RETRY_DELAY = 1.0
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -34,25 +39,36 @@ class _SyncAPI:
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
-        try:
-            response = self._client.request(
-                method,
-                url,
-                params=params,
-                json=json_body,
-                content=content,
-                headers=headers,
-                timeout=timeout,
-            )
-        except httpx.RequestError as exc:
-            raise connection_error_from_request(exc, method=method, path=path) from exc
-        except Exception as exc:
-            raise APIConnectionError(f"{method} {path}: {exc}") from exc
 
-        if response.status_code >= 400:
-            body = response.read()
-            raise error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
-        return response
+        for attempt in range(1 + MAX_RETRIES):
+            try:
+                response = self._client.request(
+                    method,
+                    url,
+                    params=params,
+                    json=json_body,
+                    content=content,
+                    headers=headers,
+                    timeout=timeout,
+                )
+            except httpx.RequestError as exc:
+                if attempt < MAX_RETRIES:
+                    time.sleep(RETRY_DELAY)
+                    continue
+                raise connection_error_from_request(exc, method=method, path=path) from exc
+            except Exception as exc:
+                raise APIConnectionError(f"{method} {path}: {exc}") from exc
+
+            if response.status_code >= 400:
+                body = response.read()
+                api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
+                if is_transient(api_err) and attempt < MAX_RETRIES:
+                    time.sleep(RETRY_DELAY)
+                    continue
+                raise api_err
+            return response
+
+        raise AssertionError("unreachable")
 
     def request_model(
         self,
@@ -64,7 +80,6 @@ class _SyncAPI:
         json_body: dict[str, Any] | None = None,
         content: bytes | BinaryIO | None = None,
         headers: dict[str, str] | None = None,
-        timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> ModelT:
         response = self.request(
             method,
@@ -73,7 +88,6 @@ class _SyncAPI:
             json_body=json_body,
             content=content,
             headers=headers,
-            timeout=timeout,
         )
         try:
             payload = response.json()
@@ -87,9 +101,8 @@ class _SyncAPI:
         path: str,
         *,
         params: dict[str, Any] | None = None,
-        timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> bytes:
-        response = self.request(method, path, params=params, timeout=timeout)
+        response = self.request(method, path, params=params)
         return response.content
 
     def request_no_content(
@@ -100,9 +113,8 @@ class _SyncAPI:
         params: dict[str, Any] | None = None,
         content: bytes | BinaryIO | None = None,
         headers: dict[str, str] | None = None,
-        timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> None:
-        self.request(method, path, params=params, content=content, headers=headers, timeout=timeout)
+        self.request(method, path, params=params, content=content, headers=headers)
 
     def open_stream(
         self,
@@ -139,25 +151,36 @@ class _AsyncAPI:
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
-        try:
-            response = await self._client.request(
-                method,
-                url,
-                params=params,
-                json=json_body,
-                content=content,
-                headers=headers,
-                timeout=timeout,
-            )
-        except httpx.RequestError as exc:
-            raise connection_error_from_request(exc, method=method, path=path) from exc
-        except Exception as exc:
-            raise APIConnectionError(f"{method} {path}: {exc}") from exc
 
-        if response.status_code >= 400:
-            body = await response.aread()
-            raise error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
-        return response
+        for attempt in range(1 + MAX_RETRIES):
+            try:
+                response = await self._client.request(
+                    method,
+                    url,
+                    params=params,
+                    json=json_body,
+                    content=content,
+                    headers=headers,
+                    timeout=timeout,
+                )
+            except httpx.RequestError as exc:
+                if attempt < MAX_RETRIES:
+                    await asyncio.sleep(RETRY_DELAY)
+                    continue
+                raise connection_error_from_request(exc, method=method, path=path) from exc
+            except Exception as exc:
+                raise APIConnectionError(f"{method} {path}: {exc}") from exc
+
+            if response.status_code >= 400:
+                body = await response.aread()
+                api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
+                if is_transient(api_err) and attempt < MAX_RETRIES:
+                    await asyncio.sleep(RETRY_DELAY)
+                    continue
+                raise api_err
+            return response
+
+        raise AssertionError("unreachable")
 
     async def request_model(
         self,
@@ -169,7 +192,6 @@ class _AsyncAPI:
         json_body: dict[str, Any] | None = None,
         content: bytes | BinaryIO | None = None,
         headers: dict[str, str] | None = None,
-        timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> ModelT:
         response = await self.request(
             method,
@@ -178,7 +200,6 @@ class _AsyncAPI:
             json_body=json_body,
             content=content,
             headers=headers,
-            timeout=timeout,
         )
         try:
             payload = response.json()
@@ -192,9 +213,8 @@ class _AsyncAPI:
         path: str,
         *,
         params: dict[str, Any] | None = None,
-        timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> bytes:
-        response = await self.request(method, path, params=params, timeout=timeout)
+        response = await self.request(method, path, params=params)
         return response.content
 
     async def request_no_content(
@@ -205,9 +225,8 @@ class _AsyncAPI:
         params: dict[str, Any] | None = None,
         content: bytes | BinaryIO | None = None,
         headers: dict[str, str] | None = None,
-        timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> None:
-        await self.request(method, path, params=params, content=content, headers=headers, timeout=timeout)
+        await self.request(method, path, params=params, content=content, headers=headers)
 
     def open_stream(
         self,

@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import math
-import time
 from urllib.parse import quote
 
 from ._client import _AsyncAPI, _SyncAPI
 from ._models import CommandResult, CommandStatusResponse, CreateCommandPayload, CreateCommandResponse
 from ._streaming import AsyncStreamReader, StreamReader
 
-_EXEC_TIMEOUT_BUFFER = 5  # extra seconds for client deadline beyond server-side kill
-_LONG_POLL_SECONDS = 300
+_LONG_POLL_WAIT_SECONDS = 20  # long poll interval - must stay <= api-gateway's maximum:"25"
 
 
 def _command_base_path(sandbox_id: str) -> str:
@@ -29,13 +26,10 @@ class Command:
         api: _SyncAPI,
         sandbox_id: str,
         command_id: str,
-        *,
-        deadline: float | None = None,
     ) -> None:
         self._api = api
         self._sandbox_id = sandbox_id
         self._command_id = command_id
-        self._deadline = deadline
         self._stdout: StreamReader | None = None
         self._stderr: StreamReader | None = None
 
@@ -63,17 +57,9 @@ class Command:
 
     def wait(self) -> int:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/status"
-        if self._deadline is not None:
-            remaining = max(1, math.ceil(self._deadline - time.monotonic()))
-            result = self._api.request_model(
-                "GET", path, CommandStatusResponse, params={"waitSeconds": remaining}, timeout=None
-            )
-            if result.exit_code is None:
-                raise TimeoutError(f"Command {self._command_id} did not exit in time")
-            return result.exit_code
         while True:
             result = self._api.request_model(
-                "GET", path, CommandStatusResponse, params={"waitSeconds": _LONG_POLL_SECONDS}, timeout=None
+                "GET", path, CommandStatusResponse, params={"waitSeconds": _LONG_POLL_WAIT_SECONDS},
             )
             if result.exit_code is not None:
                 return result.exit_code
@@ -105,13 +91,10 @@ class AsyncCommand:
         api: _AsyncAPI,
         sandbox_id: str,
         command_id: str,
-        *,
-        deadline: float | None = None,
     ) -> None:
         self._api = api
         self._sandbox_id = sandbox_id
         self._command_id = command_id
-        self._deadline = deadline
         self._stdout: AsyncStreamReader | None = None
         self._stderr: AsyncStreamReader | None = None
 
@@ -139,17 +122,9 @@ class AsyncCommand:
 
     async def wait(self) -> int:
         path = f"{_command_path(self._sandbox_id, self._command_id)}/status"
-        if self._deadline is not None:
-            remaining = max(1, math.ceil(self._deadline - time.monotonic()))
-            result = await self._api.request_model(
-                "GET", path, CommandStatusResponse, params={"waitSeconds": remaining}, timeout=None
-            )
-            if result.exit_code is None:
-                raise TimeoutError(f"Command {self._command_id} did not exit in time")
-            return result.exit_code
         while True:
             result = await self._api.request_model(
-                "GET", path, CommandStatusResponse, params={"waitSeconds": _LONG_POLL_SECONDS}, timeout=None
+                "GET", path, CommandStatusResponse, params={"waitSeconds": _LONG_POLL_WAIT_SECONDS},
             )
             if result.exit_code is not None:
                 return result.exit_code
@@ -197,8 +172,7 @@ class Commands:
             params=params,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        deadline = time.monotonic() + timeout + _EXEC_TIMEOUT_BUFFER if timeout is not None else None
-        return Command(self._api, self._sandbox_id, data.command_id, deadline=deadline)
+        return Command(self._api, self._sandbox_id, data.command_id)
 
     def run(
         self,
@@ -243,8 +217,7 @@ class AsyncCommands:
             params=params,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        deadline = time.monotonic() + timeout + _EXEC_TIMEOUT_BUFFER if timeout is not None else None
-        return AsyncCommand(self._api, self._sandbox_id, data.command_id, deadline=deadline)
+        return AsyncCommand(self._api, self._sandbox_id, data.command_id)
 
     async def run(
         self,

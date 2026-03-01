@@ -373,7 +373,9 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 				}
 			}
 
-			fw := httputil.NewTimedFlushWriter(ctx.BodyWriter(), 100*time.Millisecond)
+			rc := httputil.ResponseController(ctx)
+			dw := httputil.NewDeadlineWriter(ctx.BodyWriter(), rc, httputil.StreamTimeout)
+			fw := httputil.NewTimedFlushWriter(dw, 100*time.Millisecond)
 			defer fw.Stop()
 
 			for {
@@ -428,12 +430,14 @@ func (h *Handlers) PostCommandStdin(_ context.Context, input *PostCommandStdinIn
 	default:
 	}
 
+	stream := httputil.NewDeadlineReader(input.Stream, input.RC, httputil.StreamTimeout)
+
 	entry.stdinMu.Lock()
 	if entry.stdinClosed {
 		entry.stdinMu.Unlock()
 		return nil, huma.Error409Conflict("stdin is already closed")
 	}
-	written, err := io.Copy(entry.stdinPipe, input.Stream)
+	written, err := io.Copy(entry.stdinPipe, stream)
 	entry.stdinMu.Unlock()
 
 	if err != nil {

@@ -2,6 +2,7 @@ package sandboxsidecar
 
 import (
 	"io"
+	"net/http"
 	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -13,10 +14,14 @@ import (
 // See https://github.com/danielgtaylor/huma/issues/749
 type BodyStream struct {
 	Stream io.Reader
+	RC     *http.ResponseController
 }
 
 func (b *BodyStream) Resolve(ctx huma.Context) []error {
 	b.Stream = ctx.BodyReader()
+	if rw, ok := ctx.BodyWriter().(http.ResponseWriter); ok {
+		b.RC = http.NewResponseController(rw)
+	}
 	return nil
 }
 
