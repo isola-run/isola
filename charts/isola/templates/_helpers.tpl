@@ -145,10 +145,10 @@ Operator image
 {{- end }}
 
 {{/*
-Sidecar image
+Sandbox sidecar image
 */}}
-{{- define "isola.operator.sidecarImage" -}}
-{{- include "isola.image" (dict "imageConfig" .Values.operator.sidecar.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- define "isola.operator.sandboxSidecarImage" -}}
+{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxSidecar.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
 
 {{/*

@@ -17,20 +17,18 @@ from __future__ import annotations
 import asyncio
 import codecs
 import time
-from collections.abc import AsyncGenerator, AsyncIterator, Generator, Iterator
+from collections.abc import AsyncIterator, Generator, Iterator
 from typing import Any, Protocol
 
 import httpx
 
-from ._exceptions import StreamTimeoutError, connection_error_from_request, error_from_http
+from ._exceptions import APIError, connection_error_from_request, error_from_http, is_transient
 
 STREAM_CONNECT_TIMEOUT = 5.0
-STREAM_WRITE_TIMEOUT = 5.0
+STREAM_WRITE_TIMEOUT = 15.0
 STREAM_POOL_TIMEOUT = 5.0
 MAX_RECONNECTS = 5
-INITIAL_BACKOFF = 0.1
-BACKOFF_FACTOR = 2.0
-MAX_BACKOFF = 5.0
+RETRY_DELAY = 1.0
 
 
 class _SyncStreamAPI(Protocol):
@@ -53,51 +51,35 @@ class _AsyncStreamAPI(Protocol):
     ) -> Any: ...
 
 
-class CommandOutputStream:
-    def __init__(
-        self,
-        api: _SyncStreamAPI,
-        path: str,
-        *,
-        offset: int = 0,
-        timeout: float | None = None,
-        text: bool = True,
-    ) -> None:
-        if offset < 0:
-            raise ValueError("offset must be >= 0")
-        if timeout is not None and timeout <= 0:
-            raise ValueError("timeout must be > 0")
+class StreamReader:
+    """Single-use iterable stream with transparent reconnect."""
 
+    def __init__(self, api: _SyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
-        self._offset = offset
-        self._text = text
+        self._offset = 0
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
-            read=timeout,
+            read=None,
             write=STREAM_WRITE_TIMEOUT,
             pool=STREAM_POOL_TIMEOUT,
         )
-        self._gen: Generator[str | bytes, None, None] | None = None
+        self._consumed = False
 
-    def __enter__(self) -> Iterator[str | bytes]:
-        self._gen = self._stream()
-        return self._gen
+    def __iter__(self) -> Iterator[str]:
+        if self._consumed:
+            raise RuntimeError("StreamReader is single-use and has already been consumed")
+        self._consumed = True
+        return self._generate()
 
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: type[BaseException] | None,
-    ) -> None:
-        if self._gen is not None:
-            self._gen.close()
-            self._gen = None
+    def read(self) -> str:
+        return "".join(self)
 
-    def _stream(self) -> Generator[str | bytes, None, None]:
-        decoder = codecs.getincrementaldecoder("utf-8")("replace") if self._text else None
+    # todo benl: there's a big problem here - if server doesn't have anything to stream for a while (e.g. no stdout)
+    # will close the connections enough times to cause the stream to end without reading the whole stdout
+    def _generate(self) -> Generator[str, None, None]:
+        decoder = codecs.getincrementaldecoder("utf-8")("replace")
         reconnects = 0
-        backoff = INITIAL_BACKOFF
 
         while True:
             try:
@@ -114,76 +96,49 @@ class CommandOutputStream:
                             continue
                         self._offset += len(chunk)
                         reconnects = 0
-                        backoff = INITIAL_BACKOFF
-                        if decoder is not None:
-                            decoded = decoder.decode(chunk)
-                            if decoded:
-                                yield decoded
-                        else:
-                            yield chunk
+                        decoded = decoder.decode(chunk)
+                        if decoded:
+                            yield decoded
 
-                    if decoder is not None:
-                        final = decoder.decode(b"", final=True)
-                        if final:
-                            yield final
+                    final = decoder.decode(b"", final=True)
+                    if final:
+                        yield final
 
                     return
 
-            except httpx.ReadTimeout as exc:
-                raise StreamTimeoutError(f"No data received for {self._httpx_timeout.read}s") from exc
-            except httpx.NetworkError as exc:
+            except (httpx.RequestError, APIError) as exc:
+                if isinstance(exc, APIError) and not is_transient(exc):
+                    raise
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
-                    raise connection_error_from_request(exc) from exc
-                time.sleep(backoff)
-                backoff = min(backoff * BACKOFF_FACTOR, MAX_BACKOFF)
+                    if isinstance(exc, httpx.RequestError):
+                        raise connection_error_from_request(exc) from exc
+                    raise
+                time.sleep(RETRY_DELAY)
 
 
-class AsyncCommandOutputStream:
-    def __init__(
-        self,
-        api: _AsyncStreamAPI,
-        path: str,
-        *,
-        offset: int = 0,
-        timeout: float | None = None,
-        text: bool = True,
-    ) -> None:
-        if offset < 0:
-            raise ValueError("offset must be >= 0")
-        if timeout is not None and timeout <= 0:
-            raise ValueError("timeout must be > 0")
+class AsyncStreamReader:
+    """Single-use async iterable stream with transparent reconnect."""
 
+    def __init__(self, api: _AsyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
-        self._offset = offset
-        self._text = text
+        self._offset = 0
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
-            read=timeout,
+            read=None,
             write=STREAM_WRITE_TIMEOUT,
             pool=STREAM_POOL_TIMEOUT,
         )
-        self._gen: AsyncGenerator[str | bytes, None] | None = None
+        self._consumed = False
 
-    async def __aenter__(self) -> AsyncIterator[str | bytes]:
-        self._gen = self._stream()
-        return self._gen
+    async def __aiter__(self) -> AsyncIterator[str]:
+        if self._consumed:
+            raise RuntimeError("AsyncStreamReader is single-use and has already been consumed")
+        self._consumed = True
 
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: type[BaseException] | None,
-    ) -> None:
-        if self._gen is not None:
-            await self._gen.aclose()
-            self._gen = None
-
-    async def _stream(self) -> AsyncGenerator[str | bytes, None]:
-        decoder = codecs.getincrementaldecoder("utf-8")("replace") if self._text else None
+        decoder = codecs.getincrementaldecoder("utf-8")("replace")
         reconnects = 0
-        backoff = INITIAL_BACKOFF
 
         while True:
             try:
@@ -200,26 +155,25 @@ class AsyncCommandOutputStream:
                             continue
                         self._offset += len(chunk)
                         reconnects = 0
-                        backoff = INITIAL_BACKOFF
-                        if decoder is not None:
-                            decoded = decoder.decode(chunk)
-                            if decoded:
-                                yield decoded
-                        else:
-                            yield chunk
+                        decoded = decoder.decode(chunk)
+                        if decoded:
+                            yield decoded
 
-                    if decoder is not None:
-                        final = decoder.decode(b"", final=True)
-                        if final:
-                            yield final
+                    final = decoder.decode(b"", final=True)
+                    if final:
+                        yield final
 
                     return
 
-            except httpx.ReadTimeout as exc:
-                raise StreamTimeoutError(f"No data received for {self._httpx_timeout.read}s") from exc
-            except httpx.NetworkError as exc:
+            except (httpx.RequestError, APIError) as exc:
+                if isinstance(exc, APIError) and not is_transient(exc):
+                    raise
                 reconnects += 1
                 if reconnects > MAX_RECONNECTS:
-                    raise connection_error_from_request(exc) from exc
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * BACKOFF_FACTOR, MAX_BACKOFF)
+                    if isinstance(exc, httpx.RequestError):
+                        raise connection_error_from_request(exc) from exc
+                    raise
+                await asyncio.sleep(RETRY_DELAY)
+
+    async def read(self) -> str:
+        return "".join([chunk async for chunk in self])

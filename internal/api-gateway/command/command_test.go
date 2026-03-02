@@ -115,7 +115,7 @@ func (d *brokenBodyDoer) Do(*http.Request) (*http.Response, error) {
 }
 
 func newCommandTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humatest.TestAPI {
-	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "1.0.0"))
+	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
 	h := New(
 		slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
 		testNamespace,
@@ -153,7 +153,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo","args":["hello"]}`),
+				strings.NewReader(`{"args":["echo","hello"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusAccepted))
 
@@ -165,8 +165,7 @@ var _ = Describe("Command Proxy", func() {
 
 			var capturedReq CreateCommandRequest
 			Expect(json.Unmarshal(capturedBody, &capturedReq)).To(Succeed())
-			Expect(capturedReq.Cmd).To(Equal("echo"))
-			Expect(capturedReq.Args).To(Equal([]string{"hello"}))
+			Expect(capturedReq.Args).To(Equal([]string{"echo", "hello"}))
 		})
 
 		It("forwards container query param", func() {
@@ -186,7 +185,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands?container=main", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusAccepted))
 			Expect(capturedContainer).To(Equal("main"))
@@ -195,7 +194,7 @@ var _ = Describe("Command Proxy", func() {
 		It("returns 404 for nonexistent sandbox", func() {
 			api := newCommandTestAPI(&http.Client{}, 0)
 			resp := api.Post("/sandboxes/nonexistent/commands", "Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`))
+				strings.NewReader(`{"args":["echo"]}`))
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 
@@ -205,7 +204,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusConflict))
 		})
@@ -221,7 +220,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
@@ -262,6 +261,43 @@ var _ = Describe("Command Proxy", func() {
 
 			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/00000000-0000-0000-0000-000000000000/status", sbName))
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("forwards waitSeconds query param to sidecar", func() {
+			var capturedTimeout string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedTimeout = r.URL.Query().Get("waitSeconds")
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(CommandStatusResponse{ExitCode: nil})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status?waitSeconds=25", sbName))
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(capturedTimeout).To(Equal("25"))
+		})
+
+		It("does not send waitSeconds when not specified", func() {
+			var capturedTimeout string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedTimeout = r.URL.Query().Get("waitSeconds")
+				w.Header().Set("Content-Type", "application/json")
+				exitCode := 0
+				_ = json.NewEncoder(w).Encode(CommandStatusResponse{ExitCode: &exitCode})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(capturedTimeout).To(BeEmpty())
 		})
 	})
 
@@ -333,6 +369,67 @@ var _ = Describe("Command Proxy", func() {
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 			Expect(string(capturedBody)).To(Equal("input data"))
 			Expect(capturedContentType).To(Equal("application/octet-stream"))
+		})
+	})
+
+	Describe("POST /sandboxes/{id}/commands/{cmdId}/stdin/close", func() {
+		It("proxies close to sidecar", func() {
+			var capturedMethod string
+			var capturedPath string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedMethod = r.Method
+				capturedPath = r.URL.Path
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close", sbName),
+				"",
+			)
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			Expect(capturedMethod).To(Equal(http.MethodPost))
+			Expect(capturedPath).To(Equal("/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close"))
+		})
+
+		It("forwards sidecar 409 conflict", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"detail": "stdin is already closed",
+				})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close", sbName),
+				"",
+			)
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+
+		It("returns 502 when sidecar is unreachable", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			mockSidecar.Close()
+
+			api := newCommandTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(
+				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close", sbName),
+				"",
+			)
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 	})
 
@@ -469,7 +566,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
@@ -491,7 +588,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
 		})
@@ -509,7 +606,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
@@ -521,7 +618,7 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Post(
 				fmt.Sprintf("/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
-				strings.NewReader(`{"cmd":"echo"}`),
+				strings.NewReader(`{"args":["echo"]}`),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
 		})

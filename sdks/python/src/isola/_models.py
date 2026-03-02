@@ -14,11 +14,22 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    """Result of a completed command execution."""
+
+    command_id: str
+    stdout: str
+    stderr: str
+    exit_code: int
 
 
 class IsolaModel(BaseModel):
@@ -39,6 +50,7 @@ class SandboxStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
+# todo benl: should we default nameservers to e.g. 1.1.1.1 if allow internet is specified?
 class NetworkSpec(IsolaModel):
     allow_internet_egress: bool | None = None
     allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
@@ -80,7 +92,9 @@ class PodTemplateInfo(IsolaModel):
 
 class CreateSandboxPayload(IsolaModel):
     pod_template: PodTemplate
-    active_deadline_seconds: int | None = None
+    # todo benl: rename to activeDeadlineSeconds?
+    # todo benl: maybe rename activeDeadlineSeconds to something like max_lifetime in CRD and here
+    timeout: int | None = Field(None, alias="activeDeadlineSeconds")
     network: NetworkSpec | None = None
 
 
@@ -99,23 +113,22 @@ class SandboxData(IsolaModel):
     pod_template: PodTemplateInfo
     status: SandboxStatus
     creation_timestamp: datetime
-    active_deadline_seconds: int | None = None
+    timeout: int | None = Field(None, alias="activeDeadlineSeconds")
     network: NetworkSpec | None = None
 
 
 class CreateCommandPayload(IsolaModel):
-    cmd: str
-    args: list[str] | None = None
+    args: list[str]
     env: dict[str, str] | None = None
     cwd: str | None = None
     timeout: int | None = None
 
 
-class CommandResult(IsolaModel):
+class CreateCommandResponse(IsolaModel):
     command_id: str
 
 
-class CommandStatus(IsolaModel):
+class CommandStatusResponse(IsolaModel):
     exit_code: int | None = None
 
 

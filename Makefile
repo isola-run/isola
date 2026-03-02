@@ -93,12 +93,12 @@ GO_TEST_FLAGS ?=
 .PHONY: test
 test: ## Run all tests
 	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
-		go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out $(GO_TEST_FLAGS)
+		go test ./... -coverprofile cover.out $(GO_TEST_FLAGS)
 
 .PHONY: test-verbose
 test-verbose: ## Run all tests with verbose output
 	KUBEBUILDER_ASSETS="$$(setup-envtest use $(ENVTEST_K8S_VERSION) -p path)" \
-		go test $$(go list ./... | grep -v /e2e) -v -coverprofile cover.out $(GO_TEST_FLAGS)
+		go test ./... -v -coverprofile cover.out $(GO_TEST_FLAGS)
 
 .PHONY: test-operator
 test-operator: ## Run operator tests (supports FOCUS=pattern)
@@ -154,6 +154,16 @@ test-sdk-python: ## Run Python SDK tests
 .PHONY: test-sdk-python-verbose
 test-sdk-python-verbose: ## Run Python SDK tests with verbose output
 	cd sdks/python && uv run --frozen --extra dev pytest -v
+
+##@ E2E Testing
+
+.PHONY: test-e2e
+test-e2e: ## Run E2E tests (requires running cluster: tilt up)
+	cd tests/e2e && uv run --frozen pytest -q $(if $(FOCUS),-k "$(FOCUS)")
+
+.PHONY: test-e2e-verbose
+test-e2e-verbose: ## Run E2E tests with verbose output
+	cd tests/e2e && uv run --frozen pytest -v $(if $(FOCUS),-k "$(FOCUS)")
 
 ##@ Build
 

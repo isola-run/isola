@@ -3,7 +3,7 @@ module github.com/isola-ai/isola
 go 1.26.0
 
 require (
-	github.com/danielgtaylor/huma/v2 v2.37.0
+	github.com/danielgtaylor/huma/v2 v2.37.2
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/httplog/v2 v2.1.1
 	github.com/go-logr/logr v1.4.3
@@ -131,7 +131,7 @@ require (
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/mod v0.32.0 // indirect
-	golang.org/x/net v0.50.0 // indirect
+	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/term v0.40.0 // indirect

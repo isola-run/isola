@@ -26,6 +26,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/isola-ai/isola/internal/httputil"
 	sandboxsidecar "github.com/isola-ai/isola/internal/sandbox-sidecar"
 	"github.com/isola-ai/isola/internal/sandbox-sidecar/proc"
 	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
@@ -154,7 +155,9 @@ func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput
 		}
 	}()
 
-	written, err := io.Copy(dst, input.Stream)
+	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
+
+	written, err := io.Copy(dst, stream)
 	if err != nil {
 		h.logger.Error("failed to write file", "error", err, "path", targetPath)
 		return nil, huma.Error500InternalServerError("failed to write file")
@@ -220,8 +223,6 @@ func (h *Handlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) 
 		return nil, huma.Error500InternalServerError("failed to open file")
 	}
 
-	// in the future, we might want to examine sendfile to optimize this
-	// for now its definitely a premature optimization
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
 			defer func() { _ = f.Close() }()
@@ -232,7 +233,10 @@ func (h *Handlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) 
 			// might be inconsistent.
 			ctx.SetHeader("Content-Type", "application/octet-stream")
 
-			if _, err := io.Copy(ctx.BodyWriter(), f); err != nil {
+			rc := httputil.ResponseController(ctx)
+			dw := httputil.NewDeadlineWriter(ctx.BodyWriter(), rc, httputil.StreamTimeout)
+
+			if _, err := io.Copy(dw, f); err != nil {
 				if errors.Is(err, context.Canceled) {
 					h.logger.Warn("client disconnected during file stream", "error", err, "path", targetPath)
 				} else {

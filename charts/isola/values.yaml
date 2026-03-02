@@ -5,7 +5,7 @@ fullnameOverride: ""
 
 
 global:
-  # Override registry for all images (operator, sidecar, uploader, api-gateway)
+  # Override registry for all images (operator, sandbox-sidecar, uploader, api-gateway)
   # Useful for air-gapped environments or private registries.
   # Example: "my-registry.example.com/isola"
   imageRegistry: ""
@@ -82,9 +82,9 @@ operator:
   topologySpreadConstraints: []
   podAnnotations: {}
 
-  # Sidecar image injected into sandbox pods to facilitate control
+  # Sandbox sidecar image injected into sandbox pods to facilitate control
   # from api-gateway to the sandbox (e.g. exec commands, copy files)
-  sidecar:
+  sandboxSidecar:
     image:
       registry: ghcr.io/isola-ai
       repository: sandbox-sidecar

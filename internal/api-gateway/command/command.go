@@ -39,8 +39,7 @@ import (
 // --- Types ---
 
 type CreateCommandRequest struct {
-	Cmd     string            `json:"cmd" required:"true" minLength:"1" doc:"Executable path"`
-	Args    []string          `json:"args,omitempty" doc:"Arguments to the executable"`
+	Args    []string          `json:"args" required:"true" minItems:"1" doc:"Argument vector: Args[0] is the executable path, Args[1:] are its arguments"`
 	Env     map[string]string `json:"env,omitempty" doc:"Environment variable overrides"`
 	Cwd     string            `json:"cwd,omitempty" doc:"Working directory inside the sandbox. Defaults to the target container process's working directory if omitted."`
 	Timeout *int              `json:"timeout,omitempty" minimum:"1" doc:"Max execution time in seconds"`
@@ -67,6 +66,10 @@ type CreateSandboxCommandOutput struct {
 type GetSandboxCommandStatusInput struct {
 	ID    string `path:"id" doc:"Sandbox identifier"`
 	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	// Lower than the sandbox-sidecar's max (30 seconds) so the gateway always terminates first
+	// also aligns with the safe (assuming possible proxies etc) long polling value according to https://datatracker.ietf.org/doc/html/rfc6202
+	// and of course it must be lower than the server's WriteTimeout.
+	WaitSeconds int `query:"waitSeconds,omitempty" minimum:"0" maximum:"25" doc:"Max seconds to wait for the command to exit. 0 or absent returns immediately."`
 }
 
 type GetSandboxCommandStatusOutput struct {
@@ -83,6 +86,11 @@ type PostSandboxCommandStdinInput struct {
 	ID    string `path:"id" doc:"Sandbox identifier"`
 	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	apigateway.BodyStream
+}
+
+type CloseSandboxCommandStdinInput struct {
+	ID    string `path:"id" doc:"Sandbox identifier"`
+	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
 
 type DeleteSandboxCommandInput struct {
@@ -166,6 +174,9 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetSandboxComman
 	}
 
 	sidecarURL := fmt.Sprintf("http://%s:%d/commands/%s/status", sb.Status.PodIP, h.sidecarPort, input.CmdID)
+	if input.WaitSeconds > 0 {
+		sidecarURL += fmt.Sprintf("?waitSeconds=%d", input.WaitSeconds)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarURL, nil)
 	if err != nil {
@@ -244,7 +255,9 @@ func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream str
 			// X-Accel-Buffering: no, disable nginx buffering (serve immediately)
 			ctx.SetHeader("X-Accel-Buffering", "no")
 
-			fw := httputil.NewTimedFlushWriter(ctx.BodyWriter(), 100*time.Millisecond)
+			rc := httputil.ResponseController(ctx)
+			dw := httputil.NewDeadlineWriter(ctx.BodyWriter(), rc, httputil.StreamTimeout)
+			fw := httputil.NewTimedFlushWriter(dw, 100*time.Millisecond)
 			defer fw.Stop()
 
 			if _, err := io.Copy(fw, resp.Body); err != nil {
@@ -266,12 +279,42 @@ func (h *Handlers) PostCommandStdin(ctx context.Context, input *PostSandboxComma
 
 	sidecarURL := fmt.Sprintf("http://%s:%d/commands/%s/stdin", sb.Status.PodIP, h.sidecarPort, input.CmdID)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, input.Stream)
+	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, stream)
 	if err != nil {
 		h.logger.Error("failed to build sidecar request", "error", err)
 		return nil, huma.Error500InternalServerError("failed to build sidecar request")
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
+		return nil, huma.Error502BadGateway("failed to reach sidecar")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 400 {
+		return nil, apigateway.HandleSidecarError(resp, input.ID, h.logger)
+	}
+
+	return nil, nil
+}
+
+func (h *Handlers) CloseCommandStdin(ctx context.Context, input *CloseSandboxCommandStdinInput) (*struct{}, error) {
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	if err != nil {
+		return nil, err
+	}
+
+	sidecarURL := fmt.Sprintf("http://%s:%d/commands/%s/stdin/close", sb.Status.PodIP, h.sidecarPort, input.CmdID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, nil)
+	if err != nil {
+		h.logger.Error("failed to build sidecar request", "error", err)
+		return nil, huma.Error500InternalServerError("failed to build sidecar request")
+	}
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
@@ -327,13 +370,12 @@ func Register(api huma.API, h *Handlers) {
 		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.PostCommand)
 
-	// todo benl: add long polling wait param (or just default to long poll)
 	huma.Register(api, huma.Operation{
 		OperationID: "getSandboxCommandStatus",
 		Method:      http.MethodGet,
 		Path:        "/sandboxes/{id}/commands/{cmdId}/status",
 		Summary:     "Get command status",
-		Description: "Returns the exit code of the command, or null if still running",
+		Description: "Returns the exit code of the command, or null if still running. Supports long-polling via ?waitSeconds=N to block until the command exits or the wait expires.",
 		Tags:        []string{"sandboxes", "commands"},
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.GetCommandStatus)
@@ -396,6 +438,17 @@ func Register(api huma.API, h *Handlers) {
 		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.PostCommandStdin)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "closeSandboxCommandStdin",
+		Method:        http.MethodPost,
+		Path:          "/sandboxes/{id}/commands/{cmdId}/stdin/close",
+		Summary:       "Close command stdin",
+		Description:   "Closes the command's stdin pipe",
+		Tags:          []string{"sandboxes", "commands"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.CloseCommandStdin)
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "deleteSandboxCommand",

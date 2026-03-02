@@ -16,21 +16,25 @@ package sandboxsidecar
 
 import (
 	"io"
+	"net/http"
 	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/isola-ai/isola/internal/httputil"
 	"github.com/isola-ai/isola/internal/sandbox-sidecar/proc"
 )
 
 // BodyStream provides streaming access to request body via Huma's Resolver pattern.
 // See https://github.com/danielgtaylor/huma/issues/749
 type BodyStream struct {
-	Stream io.Reader
+	Stream             io.Reader
+	ResponseController *http.ResponseController
 }
 
 func (b *BodyStream) Resolve(ctx huma.Context) []error {
 	b.Stream = ctx.BodyReader()
+	b.ResponseController = httputil.ResponseController(ctx)
 	return nil
 }
 

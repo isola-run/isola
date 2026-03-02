@@ -117,13 +117,21 @@ func main() {
 	ctrl.SetLogger(logrLogger)
 	klog.SetLogger(logrLogger)
 
+	// Fall back to env vars for image refs so Tilt's match_in_env_vars can rewrite them.
 	if sandboxSidecarImage == "" {
-		setupLog.Error(nil, "--sidecar-image is required")
+		sandboxSidecarImage = os.Getenv("ISOLA_SANDBOX_SIDECAR_IMAGE")
+	}
+	if rootfssnapshotUploaderImage == "" {
+		rootfssnapshotUploaderImage = os.Getenv("ISOLA_UPLOADER_IMAGE")
+	}
+
+	if sandboxSidecarImage == "" {
+		setupLog.Error(nil, "--sidecar-image or ISOLA_SANDBOX_SIDECAR_IMAGE env var is required")
 		os.Exit(1)
 	}
 	if rootfssnapshotEnabled {
 		if rootfssnapshotUploaderImage == "" {
-			setupLog.Error(nil, "--rootfssnapshot-uploader-image is required when --rootfssnapshot-enabled is set")
+			setupLog.Error(nil, "--rootfssnapshot-uploader-image or ISOLA_UPLOADER_IMAGE env var is required when --rootfssnapshot-enabled is set")
 			os.Exit(1)
 		}
 		if rootfssnapshotBucketURL == "" {

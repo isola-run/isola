@@ -22,6 +22,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -30,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
+	"github.com/isola-ai/isola/internal/httputil"
 )
 
 // HTTPDoer abstracts HTTP request execution (satisfied by *http.Client), for faking it in tests.
@@ -40,11 +42,13 @@ type HTTPDoer interface {
 // BodyStream provides streaming access to request body via Huma's Resolver pattern.
 // See https://github.com/danielgtaylor/huma/issues/749
 type BodyStream struct {
-	Stream io.Reader
+	Stream             io.Reader
+	ResponseController *http.ResponseController
 }
 
 func (b *BodyStream) Resolve(ctx huma.Context) []error {
 	b.Stream = ctx.BodyReader()
+	b.ResponseController = httputil.ResponseController(ctx)
 	return nil
 }
 
@@ -81,7 +85,13 @@ func ConditionsToStatus(conditions []metav1.Condition) string {
 func K8sErrorToHuma(err error, fallbackMsg string) error {
 	var statusErr *apierrors.StatusError
 	if errors.As(err, &statusErr) && statusErr.ErrStatus.Code > 0 {
-		return huma.NewError(int(statusErr.ErrStatus.Code), statusErr.ErrStatus.Message)
+		humaErr := huma.NewError(int(statusErr.ErrStatus.Code), statusErr.ErrStatus.Message)
+		if seconds, ok := apierrors.SuggestsClientDelay(err); ok && seconds > 0 {
+			return huma.ErrorWithHeaders(humaErr, http.Header{
+				"Retry-After": {strconv.Itoa(seconds)},
+			})
+		}
+		return humaErr
 	}
 	return huma.Error500InternalServerError(fallbackMsg)
 }
