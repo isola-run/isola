@@ -36,31 +36,8 @@ operator:
   replicaCount: 1
 
   metrics:
-    # Port for the Prometheus metrics endpoint
+    # The container port for the Prometheus metrics endpoint.
     port: 8080
-    # Serve metrics over HTTP. Set to true to enable HTTPS (requires cert setup).
-    secure: false
-
-    service:
-      # Create a Service for the metrics endpoint (needed for ServiceMonitor)
-      enabled: true
-
-    serviceMonitor:
-      # Create a ServiceMonitor for Prometheus Operator
-      enabled: false
-      # Override namespace for ServiceMonitor (defaults to release namespace).
-      # Useful when Prometheus Operator watches a dedicated monitoring namespace.
-      namespace: ""
-      # Scrape interval (leave empty for Prometheus default)
-      interval: ""
-      # Scrape timeout
-      scrapeTimeout: ""
-      # Additional labels for ServiceMonitor (e.g. for Prometheus selector matching)
-      labels: {}
-      # Relabeling rules applied before ingestion
-      relabelings: []
-      # Metric relabeling rules applied to scraped samples
-      metricRelabelings: []
 
   resources:
     requests:
@@ -166,6 +143,13 @@ operator:
 
   # PriorityClassName for sandbox pods (applies to both runtime types)
   sandboxPriorityClassName: ""
+
+
+serviceMonitor:
+  # Specifies whether a ServiceMonitor should be created.
+  enabled: false
+  # Additional labels for the ServiceMonitor (e.g. for Prometheus selector matching).
+  additionalLabels: {}
 
 
 apiGateway:

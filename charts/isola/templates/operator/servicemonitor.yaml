@@ -1,44 +1,22 @@
-{{- if .Values.operator.metrics.serviceMonitor.enabled }}
+{{- if .Values.serviceMonitor.enabled }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ include "isola.operator.fullname" . }}
-  namespace: {{ .Values.operator.metrics.serviceMonitor.namespace | default .Release.Namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "isola.operator.labels" . | nindent 4 }}
-    {{- with .Values.operator.metrics.serviceMonitor.labels }}
+    {{- with .Values.serviceMonitor.additionalLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
-  selector:
-    matchLabels:
-      {{- include "isola.operator.selectorLabels" . | nindent 6 }}
-  # Restrict scraping to the namespace where the metrics Service lives,
-  # regardless of which namespace this ServiceMonitor is deployed to.
-  # Matches the pattern used by cert-manager and external-secrets operators.
   namespaceSelector:
     matchNames:
       - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      {{- include "isola.operator.selectorLabels" . | nindent 6 }}
   endpoints:
     - port: metrics
-      {{- if .Values.operator.metrics.secure }}
-      scheme: https
-      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
-      tlsConfig:
-        insecureSkipVerify: true
-      {{- end }}
-      {{- with .Values.operator.metrics.serviceMonitor.interval }}
-      interval: {{ . }}
-      {{- end }}
-      {{- with .Values.operator.metrics.serviceMonitor.scrapeTimeout }}
-      scrapeTimeout: {{ . }}
-      {{- end }}
-      {{- with .Values.operator.metrics.serviceMonitor.relabelings }}
-      relabelings:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.operator.metrics.serviceMonitor.metricRelabelings }}
-      metricRelabelings:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      path: /metrics
 {{- end }}

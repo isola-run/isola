@@ -36,7 +36,6 @@ spec:
         - --leader-elect
         - --health-probe-bind-address=:8081
         - "--metrics-bind-address=:{{ .Values.operator.metrics.port }}"
-        - "--metrics-secure={{ .Values.operator.metrics.secure }}"
         {{- $runtimeClass := include "isola.operator.runtimeClassName" . }}
         {{- if $runtimeClass }}
         - "--runtime-class={{ $runtimeClass }}"
