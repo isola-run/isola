@@ -28,9 +28,6 @@ COPY internal/ internal/
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o sandbox-sidecar ./cmd/sandbox-sidecar/main.go
 
-# Sidecar runs as root (set by operator SecurityContext) to access /proc/<pid>/environ
-# and /proc/<pid>/root of sandbox containers via shared PID namespace.
-# No nsenter binary needed: chroot(2) is called via SysProcAttr in the Go binary.
 FROM gcr.io/distroless/static
 
 WORKDIR /
