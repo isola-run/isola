@@ -86,6 +86,8 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **Default namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
 
+**Operator metrics:** Custom Prometheus metrics are defined in `internal/operator/controller/metrics.go` and registered via `metrics.Registry.MustRegister()`. Helm includes a metrics Service and optional ServiceMonitor (`serviceMonitor.enabled: false` by default). Tiltfile port-forwards operator metrics to `localhost:8082`.
+
 ## Python SDK (`sdks/python/`)
 
 **Package:** `isola` — thin client for the api-gateway REST API. Uses httpx for HTTP and pydantic for models. Managed with uv.
@@ -199,7 +201,7 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 
 **Python SDK tests** use pytest + pytest-asyncio with `asyncio_mode = "auto"`. HTTP mocking via respx for client/sandbox/filesystem tests. Streaming tests use hand-rolled fake API/response objects (not respx) to simulate reconnects, network errors, and chunked delivery. Run with `make test-sdk-python`.
 
-**E2E tests** (`tests/e2e/`) use pytest + pytest-asyncio against a live cluster (requires `tilt up`). Both sync and async fixtures. Base URL from `ISOLA_BASE_URL` env var (defaults to `http://localhost:8080`). Covers commands, streaming, filesystem, network isolation, timeouts, error handling, and lifecycle. Run with `make test-e2e`.
+**E2E tests** (`tests/e2e/`) use pytest + pytest-asyncio against a live cluster (requires `tilt up`). Both sync and async fixtures. Base URL from `ISOLA_BASE_URL` env var (defaults to `http://localhost:8080`). Metrics URL from `ISOLA_METRICS_URL` (defaults to `http://localhost:8082`). Covers commands, streaming, filesystem, network isolation, timeouts, error handling, lifecycle, and operator metrics. Run with `make test-e2e`.
 
 ## Tooling Versions
 
