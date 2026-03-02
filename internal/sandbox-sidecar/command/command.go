@@ -24,7 +24,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -46,62 +45,57 @@ import (
 const waitDelayGracePeriod = 5 * time.Second
 
 // CommandBuilder abstracts command construction for testability.
-// The real implementation uses nsenter; tests use direct execution.
+// The real implementation uses chroot via /proc/<pid>/root; tests use direct execution.
 type CommandBuilder interface {
 	Build(ctx context.Context, pid int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error)
 }
 
-// NsenterCommandBuilder constructs nsenter commands that enter the target container's namespaces.
-type NsenterCommandBuilder struct{}
+// ChrootCommandBuilder runs commands in the target container's filesystem view
+// using SysProcAttr.Chroot instead of the nsenter binary.
+//
+// nsenter --mount joined the mount namespace via setns(CLONE_NEWNS), making
+// /proc/self/mounts and df(1) reflect the container's mounts. With chroot-only
+// the process stays in the sidecar's mount namespace — /proc/self/mounts and df(1)
+// show the sidecar's mounts. File I/O, PATH resolution, and cwd are identical.
+// For running user commands this makes no practical difference.
+//
+// setns cannot be called natively in Go: it is per-thread and taints the OS thread
+// (unfit for other goroutines); the only exit is exec() or exit(). SysProcAttr.Chroot
+// runs in the forked child, leaving the server goroutine pool unaffected.
+type ChrootCommandBuilder struct{}
 
-// TODO BENL: change to /bin/sh -c instead of nsenter
-func (b *NsenterCommandBuilder) Build(ctx context.Context, pid int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
-	args := []string{
-		// https://man7.org/linux/man-pages/man1/nsenter.1.html
-		"--target", strconv.Itoa(pid), // target process to get namespaces from
-		// Enter specific namespaces rather than --all because:
-		// - --all uses is_usable_namespace() (nsenter.c:429) which checks /proc/self/ns/<type>
-		//   ino vs target ino to skip same-namespace cases, but gVisor virtualizes inos so
-		//   the user namespace appears different even though it's shared, causing setns()
-		//   to fail with EINVAL.
-		// - gVisor's setns(2) requires CAP_SYS_ADMIN (granted via sidecar SecurityContext).
-		"--mount", // each container has its own mount namespace (filesystem view)
-		// Namespaces intentionally excluded:
-
-		// Already shared between containers in a k8s pod:
-		// "--uts",   // hostname/domainname
-		// "--ipc",   // System V IPC
-		// "--net",   // network stack
-
-		// --pid:    pod has shareProcessNamespace:true, PID namespace is already shared.
-		// --user:   gVisor's is_usable_namespace() falsely detects it as different (ino mismatch),
-		//           but setns() into the user namespace fails with EINVAL in gVisor.
-		// --cgroup: gVisor does not support CLONE_NEWCGROUP (/proc/<pid>/ns/cgroup absent).
-		// --time:   gVisor does not support CLONE_NEWTIME (/proc/<pid>/ns/time absent). Already shared.
-		"--no-fork", // prevent nsenter's implicit fork when entering PID namespace (execvp directly)
-		"--root",    // chroot to /proc/<pid>/root
-		"--setuid=0",
-		"--setgid=0",
-		// --no-fork is critical: without it, nsenter forks when entering a PID namespace,
-		// creating an intermediate parent in a waitpid loop. SIGKILL would kill that parent
-		// and orphan the actual command. With --no-fork, nsenter calls execvp() directly,
-		// so SIGKILL reaches the user's process.
-
-		// No --env: we build the env ourselves and must not inherit the sidecar's.
+func (b *ChrootCommandBuilder) Build(ctx context.Context, pid int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
+	// Resolve cwd before the chroot: /proc/<pid>/cwd is not accessible inside
+	// the container's root, so readlink it now to get an absolute path (e.g. /workspace).
+	// cmd.Dir is applied after chroot in the child (Go syscall/exec_linux.go order:
+	// chroot → setuid/gid → chdir → execve), so it resolves inside the container's root.
+	dir := req.Cwd
+	if dir == "" {
+		cwd, err := os.Readlink(fmt.Sprintf("/proc/%d/cwd", pid))
+		if err != nil {
+			return nil, fmt.Errorf("read cwd for pid %d: %w", pid, err)
+		}
+		dir = cwd
 	}
-	if req.Cwd != "" {
-		args = append(args, "--wdns="+req.Cwd)
-	} else {
-		args = append(args, "--wd") // effectively /proc/<pid>/cwd
-	}
-	args = append(args, "--")
-	args = append(args, req.Args...)
 
-	cmd := exec.CommandContext(ctx, "nsenter", args...) //nolint:gosec // args are constructed from validated request
+	// /bin/sh with exec "$@": the shell does PATH lookup using the container's PATH env,
+	// handles both absolute (/usr/bin/python3) and bare (python3) command names, and
+	// exec(1) replaces the shell (same PID) so SIGKILL reaches the user's process directly.
+	// exec.CommandContext("/bin/sh", ...) does not call LookPath because the path contains
+	// a slash (Go os/exec/exec.go:440); no parent-side stat is performed.
+	cmd := exec.CommandContext(ctx, "/bin/sh", //nolint:gosec // args are constructed from validated request
+		append([]string{"-c", `exec "$@"`, "--"}, req.Args...)...)
 	cmd.Stdout = stdoutFile
 	cmd.Stderr = stderrFile
 	cmd.Env = env
+	cmd.Dir = dir
 	cmd.WaitDelay = waitDelayGracePeriod
+	// Chroot runs before chdir and execve in the child (Go syscall/exec_linux.go).
+	// "/bin/sh" and Dir resolve inside the container's root after chroot is applied.
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Chroot:     fmt.Sprintf("/proc/%d/root", pid),
+		Credential: &syscall.Credential{Uid: 0, Gid: 0},
+	}
 	return cmd, nil
 }
 
