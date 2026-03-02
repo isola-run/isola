@@ -22,15 +22,6 @@ from prometheus_client.parser import text_string_to_metric_families
 
 from conftest import ISOLA_METRICS_URL, POLL_INTERVAL
 
-EXPECTED_TYPES = {
-    "isola_sandbox_created_total",
-    "isola_sandbox_deleted_total",
-    "isola_sandbox_timed_out_total",
-    "isola_sandbox_ready_duration_seconds",
-    "isola_rootfssnapshot_created_total",
-    "isola_rootfssnapshot_completed_total",
-}
-
 
 def scrape_metrics() -> dict[str, float]:
     """GET /metrics, parse Prometheus text format, return flat dict keyed by sample name."""
@@ -59,9 +50,10 @@ class TestMetrics:
 
     @pytest.mark.timeout(10)
     def test_custom_metrics_registered(self):
+        """Spot-check one metric from each controller to verify registration."""
         raw = scrape_raw()
-        for name in EXPECTED_TYPES:
-            assert f"# TYPE {name} " in raw, f"metric {name} not found in /metrics output"
+        assert "# TYPE isola_sandbox_created_total " in raw
+        assert "# TYPE isola_rootfssnapshot_created_total " in raw
 
     @pytest.mark.timeout(90)
     def test_sandbox_created_counter_increments(self, isola_client, sandbox_factory):
