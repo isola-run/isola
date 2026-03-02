@@ -244,6 +244,42 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.RestartPolicy).To(Equal(corev1.RestartPolicyNever))
 		})
 
+		It("should configure sidecar with minimal required capabilities", func() {
+			// CAP_SYS_PTRACE is the minimal capability required for the sidecar to access
+			// /proc/<pid>/root, /proc/<pid>/cwd, and /proc/<pid>/environ of other containers
+			// in the shared PID namespace. gVisor gates these paths behind ContextCanTrace
+			// (task_files.go), which checks CAP_SYS_PTRACE via canTraceStandard (ptrace.go:205).
+			//
+			// CAP_SYS_CHROOT (in the default container cap set) covers the chroot(2) call
+			// made by SysProcAttr.Chroot in the forked child (gVisor sys_file.go:368).
+			//
+			// CAP_SYS_ADMIN is NOT required: it was previously needed for nsenter's
+			// setns(CLONE_NEWNS), which has been replaced by SysProcAttr.Chroot.
+			sandboxName := "sandbox-sidecar-caps"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.InitContainers).To(HaveLen(1))
+
+			sidecar := pod.Spec.InitContainers[0]
+			Expect(sidecar.Name).To(Equal(sandboxSidecarContainerName))
+			Expect(sidecar.SecurityContext).NotTo(BeNil())
+			Expect(sidecar.SecurityContext.RunAsUser).To(HaveValue(BeEquivalentTo(0)))
+			Expect(sidecar.SecurityContext.Capabilities).NotTo(BeNil())
+			Expect(sidecar.SecurityContext.Capabilities.Add).To(ConsistOf(
+				corev1.Capability("SYS_PTRACE"),
+			))
+		})
+
 		It("should preserve sandbox init containers when injecting sidecar", func() {
 			sandboxName := "sandbox-preserve-init"
 

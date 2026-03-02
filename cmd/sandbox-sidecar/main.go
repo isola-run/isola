@@ -87,7 +87,7 @@ func main() {
 
 	health.Register(api, health.New())
 	filesystem.Register(api, filesystem.New(logger, procFS, pidResolver))
-	command.Register(api, command.New(logger, procFS, pidResolver, &command.NsenterCommandBuilder{}))
+	command.Register(api, command.New(logger, procFS, pidResolver, &command.ChrootCommandBuilder{}))
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", constants.SidecarPort),

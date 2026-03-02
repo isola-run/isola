@@ -687,30 +687,19 @@ var _ = Describe("Command Handlers", func() {
 	})
 
 	Describe("output directory cleanup on start failure", func() {
-		It("cleans up output directory when command binary does not exist", func() {
-			// Use an isolated rootDir so other tests' command dirs don't interfere
-			isolatedRoot, err := os.MkdirTemp("", "sidecar-test-cleanup-*")
-			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(func() { _ = os.RemoveAll(isolatedRoot) })
+		It("exits with code 127 when command binary does not exist", func() {
+			// With shell-wrapping, /bin/sh starts successfully (202 returned) and
+			// then fails to exec the missing binary, exiting with code 127.
+			// The output directory is NOT cleaned up in this case (cmd.Start succeeded).
+			code, result := postCommand(`{"args": ["/nonexistent/binary"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
 
-			_, isolatedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Cleanup Test API", "0.1.0"))
-			isolatedMock := &MockProcFS{rootDir: isolatedRoot, cwd: testCwd}
-			isolatedHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, sandboxsidecar.NewPIDResolver(isolatedMock), &DirectCommandBuilder{})
-			Register(isolatedAPI, isolatedHandlers)
-
-			resp := isolatedAPI.Post("/commands", "Content-Type: application/json",
-				strings.NewReader(`{"args": ["/nonexistent/binary"]}`))
-			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
-
-			// Directory may not exist (RemoveAll removed it) or may be empty — either is acceptable
-			commandsDir := filepath.Join(isolatedRoot, "var", "run", "isola", "commands")
-			entries, err := os.ReadDir(commandsDir)
-			if err != nil && !os.IsNotExist(err) {
-				Fail(fmt.Sprintf("unexpected error reading commands dir: %v", err))
-			}
-			if err == nil {
-				Expect(entries).To(BeEmpty(), "orphaned command output directory after failed start")
-			}
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status", result.CommandID))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				return status.ExitCode
+			}).Should(HaveValue(Equal(127)))
 		})
 	})
 
@@ -783,6 +772,54 @@ var _ = Describe("Command Handlers", func() {
 			cancel()
 
 			Eventually(done, "1s").Should(BeClosed())
+		})
+	})
+
+	Describe("exec shell-wrapping correctness", func() {
+		It("passes arguments with spaces and special characters verbatim", func() {
+			// exec "$@" passes each element of req.Args as a separate word — no shell
+			// word-splitting or globbing. This verifies that args are forwarded correctly
+			// through the /bin/sh -c 'exec "$@"' -- wrapper.
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "printf '%s\n' \"$@\"", "--", "hello world", "foo  bar", "a*b"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() string {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+				return resp.Body.String()
+			}).Should(Equal("hello world\nfoo  bar\na*b\n"))
+		})
+
+		It("resolves bare command names via PATH from cmd.Env", func() {
+			// Production behavior: a bare name like "echo" is resolved by the shell
+			// using the PATH from the container's environment. This test verifies that
+			// the shell-wrapper (not Go's LookPath) performs the resolution.
+			code, result := postCommand(`{"args": ["echo", "-n", "via-path"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() string {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+				return resp.Body.String()
+			}).Should(Equal("via-path"))
+		})
+
+		It("exec replaces the shell so the user process is killed directly", func() {
+			// With exec "$@", the shell is replaced by the user process (same PID).
+			// Cancelling the context sends SIGKILL to that process directly, not to a
+			// shell parent that would need to propagate the signal.
+			code, result := postCommand(`{"args": ["sleep", "60"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			resp := commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+
+			// Exit code -1 means the process was killed by a signal (SIGKILL).
+			// If exec didn't replace the shell, we might get the shell's exit code instead.
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status", result.CommandID))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				return status.ExitCode
+			}).Should(HaveValue(Equal(-1)))
 		})
 	})
 

@@ -31,20 +31,20 @@ var (
 	testCwd     string
 )
 
-// DirectCommandBuilder runs commands directly without nsenter (for testing).
-// This mimics nsenter's behavior when --pid is NOT specified: nsenter calls
-// execvp() directly (no fork), so the Go child process IS the target command.
+// DirectCommandBuilder runs commands directly without chroot (for testing).
+// Uses the same /bin/sh shell-wrapping pattern as ChrootCommandBuilder so
+// test behavior matches production: PATH lookup uses cmd.Env, and exec
+// replaces the shell process.
 type DirectCommandBuilder struct{}
 
 func (b *DirectCommandBuilder) Build(ctx context.Context, _ int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
-	cmd := exec.CommandContext(ctx, req.Args[0], req.Args[1:]...) //nolint:gosec // test-only builder; inputs are test fixtures
+	cmd := exec.CommandContext(ctx, "/bin/sh", //nolint:gosec // test-only builder; inputs are test fixtures
+		append([]string{"-c", `exec "$@"`, "--"}, req.Args...)...)
 	cmd.Stdout = stdoutFile
 	cmd.Stderr = stderrFile
 	cmd.Env = env
+	cmd.Dir = req.Cwd
 	cmd.WaitDelay = waitDelayGracePeriod
-	if req.Cwd != "" {
-		cmd.Dir = req.Cwd
-	}
 	return cmd, nil
 }
 

@@ -172,7 +172,7 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 6. TTL controller deletes snapshot after `ttlSecondsAfterFinished`
 
 **Command execution:**
-- Commands run via `nsenter --mount --target <pid>` inside the sandbox container's mount namespace (not `--all` — gVisor compatibility requires entering specific namespaces only).
+- Commands run via `SysProcAttr.Chroot` to `/proc/<pid>/root`, entering the sandbox container's filesystem view without changing namespaces. The sidecar uses `/bin/sh -c 'exec "$@"'` for PATH lookup inside the container, and `exec` replaces the shell so SIGKILL reaches the user's process directly. Requires `CAP_SYS_PTRACE` (for gVisor's `/proc/<pid>/root` access check) and `CAP_SYS_CHROOT` (default capability set).
 - Non-blocking model: POST returns 202 immediately with a `commandId`; status is polled via long-polling (`?waitSeconds=N`).
 - Per-command `timeout` (seconds): enforced via `context.WithTimeout` → SIGKILL on expiration (exit code -1).
 - Command stdout/stderr are stored on the container's ephemeral storage (counts against resource limits).
