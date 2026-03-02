@@ -51,9 +51,9 @@ type CommandBuilder interface {
 }
 
 // ChrootCommandBuilder runs commands in the target container's filesystem view.
-// Using chroot instead of the possible setns (with nsenter) for simplicity and compatability with Go's concurrency model.
+// Using chroot instead of the possible setns (with nsenter) for simplicity and compatibility with Go's concurrency model.
 //
-// setns works changes the executing thread's namespace, and thus requires startegies like runtime.LockOSThread()
+// setns changes the executing thread's namespace, and thus requires strategies like runtime.LockOSThread()
 // to avoid affecting other goroutines. See also: github.com/containernetworking/plugins/blob/main/pkg/ns/README.md#namespace-switching
 //
 // With chroot-only the process stays in the sidecar's mount namespace — /proc/self/mounts and df(1)
