@@ -30,6 +30,7 @@ import (
 	snapshotpkg "github.com/isola-ai/isola/internal/snapshot"
 )
 
+
 var _ = Describe("Metrics", func() {
 
 	Context("Registration", func() {
@@ -38,12 +39,12 @@ var _ = Describe("Metrics", func() {
 			// We use CollectAndCount on individual collectors rather than Gather(),
 			// because CounterVec metrics don't appear in Gather() until labels are observed.
 			Expect(testutil.CollectAndCount(sandboxCreatedTotal)).To(Equal(1))
-			Expect(testutil.CollectAndCount(sandboxDeletedTotal)).To(Equal(1))
 			Expect(testutil.CollectAndCount(sandboxTimedOutTotal)).To(Equal(1))
 			Expect(testutil.CollectAndCount(sandboxReadyDurationSeconds)).To(Equal(1))
 			Expect(testutil.CollectAndCount(rootfsSnapshotCreatedTotal)).To(Equal(1))
 			// CounterVec starts with 0 label combos until observations happen
 			Expect(testutil.CollectAndCount(rootfsSnapshotCompletedTotal)).To(BeNumerically(">=", 0))
+			// sandboxRunningCollector is tested via scrape in its own test below
 		})
 	})
 
@@ -100,28 +101,37 @@ var _ = Describe("Metrics", func() {
 			Expect(testutil.CollectAndCount(sandboxReadyDurationSeconds)).To(Equal(1))
 		})
 
-		It("should increment sandboxDeletedTotal on finalizer removal", func() {
-			sandboxName := "metrics-deleted"
+		It("should report running sandbox count from collector at scrape time", func() {
+			collector := &sandboxRunningCollector{client: k8sClient}
 
+			// Baseline: count running sandboxes before test
+			before := testutil.ToFloat64(collector)
+
+			sandboxName := "metrics-running-collector"
 			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
 
-			// Reconcile to add finalizer and create pod
+			// Reconcile to create pod
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			before := testutil.ToFloat64(sandboxDeletedTotal)
+			// Not ready yet — count should not change
+			Expect(testutil.ToFloat64(collector)).To(Equal(before))
 
-			// Delete sandbox
-			deleteSandbox(ctx, sandboxName)
+			// Make pod ready
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			makePodReady(ctx, pod, "containerd://abc-collector", fakeClock)
 
-			// Reconcile to run finalizer
+			// Reconcile to set Ready=True on the sandbox
 			_, err = doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(testutil.ToFloat64(sandboxDeletedTotal)).To(Equal(before + 1))
+			// Now the collector should see one more running sandbox
+			Expect(testutil.ToFloat64(collector)).To(Equal(before + 1))
 		})
 
 		It("should not increment sandboxTimedOutTotal on subsequent reconciles after cleanup begins", func() {

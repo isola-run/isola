@@ -825,7 +825,6 @@ func (r *SandboxReconciler) finalizeSandbox(
 		log.Error(err, "Failed to remove finalizer")
 		return ctrl.Result{}, false, err
 	}
-	sandboxDeletedTotal.Inc()
 
 	return ctrl.Result{}, true, nil
 }

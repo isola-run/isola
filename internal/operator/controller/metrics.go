@@ -15,8 +15,15 @@
 package controller
 
 import (
+	"context"
+
 	"github.com/prometheus/client_golang/prometheus"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+
+	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 )
 
 var (
@@ -25,13 +32,6 @@ var (
 		Subsystem: "sandbox",
 		Name:      "created_total",
 		Help:      "Total number of sandbox pods created by the operator.",
-	})
-
-	sandboxDeletedTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "isola",
-		Subsystem: "sandbox",
-		Name:      "deleted_total",
-		Help:      "Total number of sandboxes deleted (finalizer completed).",
 	})
 
 	sandboxTimedOutTotal = prometheus.NewCounter(prometheus.CounterOpts{
@@ -63,15 +63,50 @@ var (
 		Name:      "completed_total",
 		Help:      "Total number of rootfs snapshots that reached a terminal state.",
 	}, []string{"result"})
+
+	sandboxRunningDesc = prometheus.NewDesc(
+		"isola_sandbox_running",
+		"Current number of sandboxes with Ready condition True.",
+		nil, nil,
+	)
 )
 
-func init() {
+// sandboxRunningCollector computes the running sandbox count at scrape time
+// by listing from the controller-runtime cache. Restart- and multi-replica-safe.
+type sandboxRunningCollector struct {
+	client client.Reader
+}
+
+func (c *sandboxRunningCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- sandboxRunningDesc
+}
+
+func (c *sandboxRunningCollector) Collect(ch chan<- prometheus.Metric) {
+	var sandboxes sandboxv1alpha1.SandboxList
+	if err := c.client.List(context.Background(), &sandboxes); err != nil {
+		ch <- prometheus.NewInvalidMetric(sandboxRunningDesc, err)
+		return
+	}
+
+	var count float64
+	for i := range sandboxes.Items {
+		cond := meta.FindStatusCondition(sandboxes.Items[i].Status.Conditions, SandboxReadyCondition)
+		if cond != nil && cond.Status == metav1.ConditionTrue {
+			count++
+		}
+	}
+	ch <- prometheus.MustNewConstMetric(sandboxRunningDesc, prometheus.GaugeValue, count)
+}
+
+// RegisterMetrics registers all custom metrics with the controller-runtime registry.
+// Must be called after the manager is created (the cache is only read at scrape time).
+func RegisterMetrics(reader client.Reader) {
 	metrics.Registry.MustRegister(
 		sandboxCreatedTotal,
-		sandboxDeletedTotal,
 		sandboxTimedOutTotal,
 		sandboxReadyDurationSeconds,
 		rootfsSnapshotCreatedTotal,
 		rootfsSnapshotCompletedTotal,
+		&sandboxRunningCollector{client: reader},
 	)
 }
