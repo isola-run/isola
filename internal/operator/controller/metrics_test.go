@@ -30,7 +30,6 @@ import (
 	snapshotpkg "github.com/isola-ai/isola/internal/snapshot"
 )
 
-
 var _ = Describe("Metrics", func() {
 
 	Context("Registration", func() {

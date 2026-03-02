@@ -18,6 +18,7 @@ import (
 	"context"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -26,22 +27,24 @@ import (
 	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 )
 
+var factory = promauto.With(metrics.Registry)
+
 var (
-	sandboxCreatedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	sandboxCreatedTotal = factory.NewCounter(prometheus.CounterOpts{
 		Namespace: "isola",
 		Subsystem: "sandbox",
 		Name:      "created_total",
 		Help:      "Total number of sandbox pods created by the operator.",
 	})
 
-	sandboxTimedOutTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	sandboxTimedOutTotal = factory.NewCounter(prometheus.CounterOpts{
 		Namespace: "isola",
 		Subsystem: "sandbox",
 		Name:      "timed_out_total",
 		Help:      "Total number of sandboxes that hit their activeDeadlineSeconds timeout.",
 	})
 
-	sandboxReadyDurationSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
+	sandboxReadyDurationSeconds = factory.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "isola",
 		Subsystem: "sandbox",
 		Name:      "ready_duration_seconds",
@@ -50,14 +53,14 @@ var (
 		Buckets: prometheus.ExponentialBuckets(0.5, 2, 9),
 	})
 
-	rootfsSnapshotCreatedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	rootfsSnapshotCreatedTotal = factory.NewCounter(prometheus.CounterOpts{
 		Namespace: "isola",
 		Subsystem: "rootfssnapshot",
 		Name:      "created_total",
 		Help:      "Total number of rootfs snapshot jobs created.",
 	})
 
-	rootfsSnapshotCompletedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	rootfsSnapshotCompletedTotal = factory.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "isola",
 		Subsystem: "rootfssnapshot",
 		Name:      "completed_total",
@@ -98,15 +101,10 @@ func (c *sandboxRunningCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(sandboxRunningDesc, prometheus.GaugeValue, count)
 }
 
-// RegisterMetrics registers all custom metrics with the controller-runtime registry.
-// Must be called after the manager is created (the cache is only read at scrape time).
-func RegisterMetrics(reader client.Reader) {
-	metrics.Registry.MustRegister(
-		sandboxCreatedTotal,
-		sandboxTimedOutTotal,
-		sandboxReadyDurationSeconds,
-		rootfsSnapshotCreatedTotal,
-		rootfsSnapshotCompletedTotal,
-		&sandboxRunningCollector{client: reader},
-	)
+// RegisterRunningCollector registers the sandboxRunningCollector with the
+// controller-runtime metrics registry. Must be called after the manager is
+// created (the cache is only read at scrape time). All other metrics are
+// auto-registered via promauto.
+func RegisterRunningCollector(reader client.Reader) {
+	metrics.Registry.MustRegister(&sandboxRunningCollector{client: reader})
 }
