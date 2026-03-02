@@ -50,27 +50,19 @@ type CommandBuilder interface {
 	Build(ctx context.Context, pid int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error)
 }
 
-// ChrootCommandBuilder runs commands in the target container's filesystem view
-// using SysProcAttr.Chroot instead of the nsenter binary.
+// ChrootCommandBuilder runs commands in the target container's filesystem view.
+// Using chroot instead of the possible setns (with nsenter) for simplicity and compatability with Go's concurrency model.
 //
-// nsenter --mount joined the mount namespace via setns(CLONE_NEWNS), making
-// /proc/self/mounts and df(1) reflect the container's mounts. With chroot-only
-// the process stays in the sidecar's mount namespace — /proc/self/mounts and df(1)
-// show the sidecar's mounts. File I/O, PATH resolution, and cwd are identical.
-// For running user commands this makes no practical difference.
+// setns works changes the executing thread's namespace, and thus requires startegies like runtime.LockOSThread()
+// to avoid affecting other goroutines. See also: github.com/containernetworking/plugins/blob/main/pkg/ns/README.md#namespace-switching
 //
-// setns cannot be called natively in Go: it is per-thread and taints the OS thread
-// (unfit for other goroutines); the only exit is exec() or exit(). SysProcAttr.Chroot
-// runs in the forked child, leaving the server goroutine pool unaffected.
+// With chroot-only the process stays in the sidecar's mount namespace — /proc/self/mounts and df(1)
+// show the sidecar's mounts. For running user commands this should make no practical difference.
 type ChrootCommandBuilder struct{}
 
 func (b *ChrootCommandBuilder) Build(ctx context.Context, pid int, req sidecarapi.CreateCommandRequest, env []string, stdoutFile, stderrFile *os.File) (*exec.Cmd, error) {
-	// Resolve cwd before the chroot: /proc/<pid>/cwd is not accessible inside
-	// the container's root, so readlink it now to get an absolute path (e.g. /workspace).
-	// cmd.Dir is applied after chroot in the child (Go syscall/exec_linux.go order:
-	// chroot → setuid/gid → chdir → execve), so it resolves inside the container's root.
 	dir := req.Cwd
-	if dir == "" {
+	if dir == "" { // default to the target container's cwd
 		cwd, err := os.Readlink(fmt.Sprintf("/proc/%d/cwd", pid))
 		if err != nil {
 			return nil, fmt.Errorf("read cwd for pid %d: %w", pid, err)
@@ -82,7 +74,7 @@ func (b *ChrootCommandBuilder) Build(ctx context.Context, pid int, req sidecarap
 	// handles both absolute (/usr/bin/python3) and bare (python3) command names, and
 	// exec(1) replaces the shell (same PID) so SIGKILL reaches the user's process directly.
 	// exec.CommandContext("/bin/sh", ...) does not call LookPath because the path contains
-	// a slash (Go os/exec/exec.go:440); no parent-side stat is performed.
+	// a slash (Go os/exec/exec.go:440). no parent-side stat is performed (PATH will be resolved in the destination container after chroot).
 	cmd := exec.CommandContext(ctx, "/bin/sh", //nolint:gosec // args are constructed from validated request
 		append([]string{"-c", `exec "$@"`, "--"}, req.Args...)...)
 	cmd.Stdout = stdoutFile

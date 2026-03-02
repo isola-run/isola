@@ -122,14 +122,17 @@ func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 		Name:          sandboxSidecarContainerName,
 		Image:         r.SandboxSidecarImage,
 		RestartPolicy: &rp,
-		// RunAsUser 0 (root) is needed to read /proc/<pid>/environ of other users' processes
-		// and to access /proc/<pid>/root when using shared PID namespace.
-		// CAP_SYS_ADMIN is required for nsenter's setns(2) calls to enter the target
-		// container's mount namespace (gVisor checks this capability explicitly).
+		// CAP_SYS_PTRACE is required by gVisor's ContextCanTrace check (task_files.go)
+		// that guards /proc/<pid>/root, /proc/<pid>/cwd, and /proc/<pid>/environ.
+		// These are accessed to find the container's PID, resolve its working directory,
+		// read its environment, and supply the chroot path for SysProcAttr.Chroot.
+		//
+		// CAP_SYS_CHROOT (in the default capability set) is required for the chroot to the target
+		// container filesystem view.
 		SecurityContext: &corev1.SecurityContext{
 			RunAsUser: ptr.To(int64(0)),
 			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{"SYS_ADMIN"},
+				Add: []corev1.Capability{"SYS_PTRACE"},
 			},
 		},
 	}
