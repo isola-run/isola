@@ -225,8 +225,6 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Failed to read upload result: %v", err))
 		}
 
-		r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "SnapshotComplete", "Completed", "Snapshot completed successfully")
-
 		// Delete the job now that we've read the results
 		r.deleteJob(ctx, job)
 
@@ -239,7 +237,6 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 			message = fmt.Sprintf("Snapshot job failed: %s", condMsg)
 		}
 		log.Info(message, "job", jobName)
-		r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "SnapshotFailed", "Failed", "%s", message)
 
 		// Delete the job - no point keeping failed jobs until we hit to snapshotter TTL
 		r.deleteJob(ctx, job)
@@ -523,8 +520,6 @@ func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap
 }
 
 func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, result *snapshotpkg.UploadResult) (ctrl.Result, error) {
-	rootfsSnapshotCompletedTotal.WithLabelValues("succeeded").Inc()
-
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletionTime = &now
 
@@ -547,16 +542,15 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap 
 		return ctrl.Result{}, err
 	}
 
+	rootfsSnapshotCompletedTotal.WithLabelValues("succeeded").Inc()
+	r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "SnapshotComplete", "Completed", "Snapshot completed successfully")
 	return ctrl.Result{RequeueAfter: getTTLSeconds(snap)}, nil
 }
 
 func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, message string) (ctrl.Result, error) {
-	rootfsSnapshotCompletedTotal.WithLabelValues("failed").Inc()
-
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.CompletionTime = &now
 
-	r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "SnapshotFailed", "Failed", "%s", message)
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
 		{
 			Type:               string(sandboxv1alpha1.RootfsSnapshotFailed),
@@ -569,6 +563,8 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 		return ctrl.Result{}, err
 	}
 
+	rootfsSnapshotCompletedTotal.WithLabelValues("failed").Inc()
+	r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "SnapshotFailed", "Failed", "%s", message)
 	return ctrl.Result{RequeueAfter: getTTLSeconds(snap)}, nil
 }
 

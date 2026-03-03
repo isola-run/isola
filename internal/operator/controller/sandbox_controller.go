@@ -505,14 +505,6 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod)
 	conditions = append(conditions, readyCondition)
 
-	// Observe ready duration on the transition to Ready=True
-	if readyCondition.Status == metav1.ConditionTrue {
-		prevReady := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
-		if prevReady == nil || prevReady.Status != metav1.ConditionTrue {
-			sandboxReadyDurationSeconds.Observe(r.clock().Since(sandbox.CreationTimestamp.Time).Seconds())
-		}
-	}
-
 	return r.patchStatus(ctx, baseSandbox, sandbox, conditions)
 }
 
@@ -735,16 +727,6 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	if optionalTimeoutAt != nil && r.clock().Now().After(optionalTimeoutAt.Time) {
 		log.Info("Sandbox timed out")
-
-		// Only count the timeout once — skip if cleanup was already initiated on a previous reconcile.
-		// This guard relies on the cleanup condition being persisted before the next reconcile;
-		// a transient status patch failure could cause a double-count, which is accepted as
-		// a low-probability edge case.
-		readyCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
-		alreadyCleaning := readyCond != nil && (readyCond.Reason == CondReasonDeleting || readyCond.Reason == CondReasonRootfsSnapshottingInProgress)
-		if !alreadyCleaning {
-			sandboxTimedOutTotal.Inc()
-		}
 
 		res, cleanupDone, err := r.finalizeSandbox(ctx, sandbox, baseSandbox)
 		if err != nil {

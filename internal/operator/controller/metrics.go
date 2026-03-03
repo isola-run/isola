@@ -30,22 +30,6 @@ var (
 		Help:      "Total number of sandbox pods created by the operator.",
 	})
 
-	sandboxTimedOutTotal = factory.NewCounter(prometheus.CounterOpts{
-		Namespace: "isola",
-		Subsystem: "sandbox",
-		Name:      "timed_out_total",
-		Help:      "Total number of sandboxes that hit their activeDeadlineSeconds timeout.",
-	})
-
-	sandboxReadyDurationSeconds = factory.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "isola",
-		Subsystem: "sandbox",
-		Name:      "ready_duration_seconds",
-		Help:      "Time from sandbox creation to Ready condition becoming True.",
-		// ExponentialBuckets(0.5, 2, 9) → 0.5s, 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s
-		Buckets: prometheus.ExponentialBuckets(0.5, 2, 9),
-	})
-
 	rootfsSnapshotCreatedTotal = factory.NewCounter(prometheus.CounterOpts{
 		Namespace: "isola",
 		Subsystem: "rootfssnapshot",

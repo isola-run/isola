@@ -21,12 +21,10 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 	snapshotpkg "github.com/isola-ai/isola/internal/snapshot"
 )
 
@@ -38,8 +36,6 @@ var _ = Describe("Metrics", func() {
 			// We use CollectAndCount on individual collectors rather than Gather(),
 			// because CounterVec metrics don't appear in Gather() until labels are observed.
 			Expect(testutil.CollectAndCount(sandboxCreatedTotal)).To(Equal(1))
-			Expect(testutil.CollectAndCount(sandboxTimedOutTotal)).To(Equal(1))
-			Expect(testutil.CollectAndCount(sandboxReadyDurationSeconds)).To(Equal(1))
 			Expect(testutil.CollectAndCount(rootfsSnapshotCreatedTotal)).To(Equal(1))
 			// CounterVec starts with 0 label combos until observations happen
 			Expect(testutil.CollectAndCount(rootfsSnapshotCompletedTotal)).To(BeNumerically(">=", 0))
@@ -73,111 +69,6 @@ var _ = Describe("Metrics", func() {
 			Expect(testutil.ToFloat64(sandboxCreatedTotal)).To(Equal(before + 1))
 		})
 
-		It("should observe sandboxReadyDurationSeconds when sandbox becomes ready", func() {
-			sandboxName := "metrics-ready-duration"
-
-			createSandbox(ctx, sandboxName)
-			defer deleteSandbox(ctx, sandboxName)
-
-			podName := sandboxName + "-pod"
-			defer deletePod(ctx, podName)
-
-			// First reconcile: create pod
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Make pod ready
-			pod := getPod(ctx, podName)
-			Expect(pod).NotTo(BeNil())
-			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
-
-			// Reconcile again to pick up the ready state — the histogram should gain an observation
-			_, err = doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Verify the histogram has at least 1 observation (CollectAndCount returns metric family count)
-			Expect(testutil.CollectAndCount(sandboxReadyDurationSeconds)).To(Equal(1))
-		})
-
-		It("should not increment sandboxTimedOutTotal on subsequent reconciles after cleanup begins", func() {
-			sandboxName := "metrics-timed-out-idempotent"
-			timeout := int64(60)
-
-			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
-			})
-			defer deleteSandbox(ctx, sandboxName)
-
-			podName := sandboxName + "-pod"
-			defer deletePod(ctx, podName)
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, podName)
-			Expect(pod).NotTo(BeNil())
-			pod.Status.Phase = corev1.PodRunning
-			pod.Status.StartTime = &metav1.Time{Time: fakeClock.Now()}
-			pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
-			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
-
-			_, err = doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			fakeClock.Advance(61 * time.Second)
-
-			// First timeout reconcile — fires the counter
-			_, err = doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			after := testutil.ToFloat64(sandboxTimedOutTotal)
-
-			// Second timeout reconcile — cleanup already started, counter must not fire again
-			_, err = doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(testutil.ToFloat64(sandboxTimedOutTotal)).To(Equal(after))
-		})
-
-		It("should increment sandboxTimedOutTotal when sandbox times out", func() {
-			sandboxName := "metrics-timed-out"
-			timeout := int64(60)
-
-			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
-			})
-			defer deleteSandbox(ctx, sandboxName)
-
-			podName := sandboxName + "-pod"
-			defer deletePod(ctx, podName)
-
-			// Reconcile to add finalizer and create pod
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Make pod ready
-			pod := getPod(ctx, podName)
-			Expect(pod).NotTo(BeNil())
-			pod.Status.Phase = corev1.PodRunning
-			pod.Status.StartTime = &metav1.Time{Time: fakeClock.Now()}
-			pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
-			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
-
-			// Reconcile to update status
-			_, err = doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			before := testutil.ToFloat64(sandboxTimedOutTotal)
-
-			// Advance past timeout
-			fakeClock.Advance(61 * time.Second)
-
-			// Reconcile to trigger timeout
-			_, err = doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(testutil.ToFloat64(sandboxTimedOutTotal)).To(Equal(before + 1))
-		})
 	})
 
 	Context("Snapshot lifecycle", func() {
