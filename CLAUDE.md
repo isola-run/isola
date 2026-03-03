@@ -86,7 +86,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **Default namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
 
-**Operator metrics:** Custom Prometheus metrics are defined in `internal/operator/controller/metrics.go` and registered via `metrics.Registry.MustRegister()`. Helm includes a metrics Service and optional ServiceMonitor (`serviceMonitor.enabled: false` by default). Tiltfile port-forwards operator metrics to `localhost:8082`.
+**Operator metrics:** Custom Prometheus metrics are defined in `internal/operator/controller/metrics.go` and auto-registered via `promauto.With(metrics.Registry)`. Helm includes a metrics Service and optional ServiceMonitor (`serviceMonitor.enabled: false` by default). Tiltfile port-forwards operator metrics to `localhost:8082`.
 
 ## Python SDK (`sdks/python/`)
 

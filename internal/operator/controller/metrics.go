@@ -15,16 +15,9 @@
 package controller
 
 import (
-	"context"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
-
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 )
 
 var factory = promauto.With(metrics.Registry)
@@ -66,45 +59,4 @@ var (
 		Name:      "completed_total",
 		Help:      "Total number of rootfs snapshots that reached a terminal state.",
 	}, []string{"result"})
-
-	sandboxRunningDesc = prometheus.NewDesc(
-		"isola_sandbox_running",
-		"Current number of sandboxes with Ready condition True.",
-		nil, nil,
-	)
 )
-
-// sandboxRunningCollector computes the running sandbox count at scrape time
-// by listing from the controller-runtime cache. Restart- and multi-replica-safe.
-type sandboxRunningCollector struct {
-	client client.Reader
-}
-
-func (c *sandboxRunningCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- sandboxRunningDesc
-}
-
-func (c *sandboxRunningCollector) Collect(ch chan<- prometheus.Metric) {
-	var sandboxes sandboxv1alpha1.SandboxList
-	if err := c.client.List(context.Background(), &sandboxes); err != nil {
-		ch <- prometheus.NewInvalidMetric(sandboxRunningDesc, err)
-		return
-	}
-
-	var count float64
-	for i := range sandboxes.Items {
-		cond := meta.FindStatusCondition(sandboxes.Items[i].Status.Conditions, SandboxReadyCondition)
-		if cond != nil && cond.Status == metav1.ConditionTrue {
-			count++
-		}
-	}
-	ch <- prometheus.MustNewConstMetric(sandboxRunningDesc, prometheus.GaugeValue, count)
-}
-
-// RegisterRunningCollector registers the sandboxRunningCollector with the
-// controller-runtime metrics registry. Must be called after the manager is
-// created (the cache is only read at scrape time). All other metrics are
-// auto-registered via promauto.
-func RegisterRunningCollector(reader client.Reader) {
-	metrics.Registry.MustRegister(&sandboxRunningCollector{client: reader})
-}

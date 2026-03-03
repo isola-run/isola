@@ -105,8 +105,6 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
-	RegisterRunningCollector(k8sClient)
-
 	// Create manager with cache for field indexing support (used by reconciler)
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,

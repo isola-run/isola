@@ -43,7 +43,6 @@ var _ = Describe("Metrics", func() {
 			Expect(testutil.CollectAndCount(rootfsSnapshotCreatedTotal)).To(Equal(1))
 			// CounterVec starts with 0 label combos until observations happen
 			Expect(testutil.CollectAndCount(rootfsSnapshotCompletedTotal)).To(BeNumerically(">=", 0))
-			// sandboxRunningCollector is tested via scrape in its own test below
 		})
 	})
 
@@ -98,39 +97,6 @@ var _ = Describe("Metrics", func() {
 
 			// Verify the histogram has at least 1 observation (CollectAndCount returns metric family count)
 			Expect(testutil.CollectAndCount(sandboxReadyDurationSeconds)).To(Equal(1))
-		})
-
-		It("should report running sandbox count from collector at scrape time", func() {
-			collector := &sandboxRunningCollector{client: k8sClient}
-
-			// Baseline: count running sandboxes before test
-			before := testutil.ToFloat64(collector)
-
-			sandboxName := "metrics-running-collector"
-			createSandbox(ctx, sandboxName)
-			defer deleteSandbox(ctx, sandboxName)
-
-			podName := sandboxName + "-pod"
-			defer deletePod(ctx, podName)
-
-			// Reconcile to create pod
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Not ready yet — count should not change
-			Expect(testutil.ToFloat64(collector)).To(Equal(before))
-
-			// Make pod ready
-			pod := getPod(ctx, podName)
-			Expect(pod).NotTo(BeNil())
-			makePodReady(ctx, pod, "containerd://abc-collector", fakeClock)
-
-			// Reconcile to set Ready=True on the sandbox
-			_, err = doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Now the collector should see one more running sandbox
-			Expect(testutil.ToFloat64(collector)).To(Equal(before + 1))
 		})
 
 		It("should not increment sandboxTimedOutTotal on subsequent reconciles after cleanup begins", func() {

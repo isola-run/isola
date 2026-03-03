@@ -155,8 +155,6 @@ func main() {
 		}
 	}
 
-	controller.RegisterRunningCollector(mgr.GetClient())
-
 	// SandboxReconciler manages Sandbox resources.
 	if err := (&controller.SandboxReconciler{
 		Client:              mgr.GetClient(),
