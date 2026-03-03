@@ -139,7 +139,6 @@ The api-gateway is a thin passthrough to K8s — it validates input structure bu
 
 **REST ↔ CRD conversion (`sandbox/convert.go`):**
 REST types are separate from CRD types with explicit conversion in `sandbox/convert.go`. Key behaviors:
-- Single-container model: `sandboxToResponse` reads only the first container
 - User-facing status enum: `creating`, `running`, `shuttingDown`, `failed`, `stopped`, `unknown`
 
 **Env vars are write-only:** Request types accept env vars but response types intentionally omit them to avoid leaking secrets. `ContainerSpec` (request) has `Env`; `ContainerInfo` (response) does not.

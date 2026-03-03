@@ -71,10 +71,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"sandbox"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-sandbox"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -106,14 +106,12 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(snapshotDataVolume).NotTo(BeNil())
 			Expect(snapshotDataVolume.EmptyDir).NotTo(BeNil())
 
-			// Verify container snapshot status (SnapshotKey/URI not set until job completes)
+			// Verify snapshot status (SnapshotKey not set until job completes)
 			snap := getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
-			Expect(snap.Status.ContainerSnapshots).To(HaveLen(1))
-			Expect(snap.Status.ContainerSnapshots[0].ContainerName).To(Equal("sandbox"))
-			Expect(snap.Status.ContainerSnapshots[0].ContainerID).To(Equal("abc123"))
+			Expect(snap.Status.ContainerID).To(Equal("abc123"))
 			// SnapshotKey is empty until job completes with termination message
-			Expect(snap.Status.ContainerSnapshots[0].SnapshotKey).To(BeEmpty())
+			Expect(snap.Status.SnapshotKey).To(BeEmpty())
 			// Revision is 0 until job completes and reports actual revision
 			Expect(snap.Status.Revision).To(Equal(int32(0)))
 		})
@@ -133,10 +131,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 			defer deleteSnapshotJobPod(ctx, jobName)
 
@@ -186,10 +184,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			// First reconcile - creates job
@@ -235,10 +233,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			// Use reconciler with credential secret configured
@@ -287,10 +285,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -331,10 +329,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -375,10 +373,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -418,10 +416,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			// First reconcile - creates job
@@ -463,10 +461,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			// First reconcile - creates job
@@ -511,10 +509,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			// First reconcile - creates job
@@ -585,10 +583,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			// First reconcile - creates job

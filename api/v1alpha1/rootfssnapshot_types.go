@@ -22,23 +22,11 @@ import (
 type RootfsSnapshotConditionType string
 
 const (
-	// RootfsSnapshotComplete indicates all containers have been snapshotted successfully.
-	// True when all container snapshots succeeded.
+	// RootfsSnapshotComplete indicates the snapshot completed successfully.
 	RootfsSnapshotComplete RootfsSnapshotConditionType = "Complete"
 
 	// RootfsSnapshotFailed indicates the snapshot operation failed.
-	// True when any snapshot failed.
 	RootfsSnapshotFailed RootfsSnapshotConditionType = "Failed"
-)
-
-// ContainerSnapshotConditionType defines condition types for per-container status
-type ContainerSnapshotConditionType string
-
-const (
-	// ContainerSnapshotComplete indicates this container's snapshot status.
-	// True when snapshot succeeded.
-	// False when snapshot failed or is still in progress.
-	ContainerSnapshotComplete ContainerSnapshotConditionType = "Complete"
 )
 
 // Condition reasons for RootfsSnapshot
@@ -49,12 +37,6 @@ const (
 	// RuntimeSupported condition reasons
 	ReasonRuntimeSupported    = "Supported"
 	ReasonRuntimeNotSupported = "NotSupported"
-
-	// Per-container Ready condition reasons
-	ReasonContainerJobCreated = "JobCreated"
-	ReasonContainerJobRunning = "JobRunning"
-	ReasonContainerSucceeded  = "Succeeded"
-	ReasonContainerFailed     = "Failed"
 )
 
 // RootfsSnapshotSpec defines the desired state of RootfsSnapshot
@@ -65,21 +47,15 @@ type RootfsSnapshotSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	SandboxName string `json:"sandboxName"`
 
-	// ContainerNames optionally specifies which containers to snapshot.
-	// Each name must match a non-init container in the pod.
-	// If empty, all non-init containers in the pod are snapshotted.
-	// +optional
-	ContainerNames []string `json:"containerNames,omitempty"`
-
-	// ActiveDeadlineSeconds specifies the duration in seconds for each snapshot job.
-	// If a job does not complete within this time, it will be terminated.
+	// ActiveDeadlineSeconds specifies the duration in seconds for the snapshot job.
+	// If the job does not complete within this time, it will be terminated.
 	// +optional
 	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=1
 	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
 
 	// TTLSecondsAfterFinished limits the lifetime of a RootfsSnapshot that has
-	// finished execution (either all containers succeeded or any failed).
+	// finished execution (succeeded or failed).
 	// If set, the RootfsSnapshot will be automatically deleted after this many
 	// seconds after it finishes.
 	// If not set, the RootfsSnapshot will be deleted after a default value.
@@ -90,27 +66,6 @@ type RootfsSnapshotSpec struct {
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
 }
 
-// ContainerSnapshotStatus tracks the snapshot status of a single container
-type ContainerSnapshotStatus struct {
-	// ContainerName is the name of the container being snapshotted
-	// +required
-	ContainerName string `json:"containerName"`
-
-	// ContainerID is the container ID that is being snapshotted
-	// +optional
-	ContainerID string `json:"containerID,omitempty"`
-
-	// SnapshotKey is the object key within the bucket (without the bucket URL prefix)
-	// +optional
-	SnapshotKey string `json:"snapshotKey,omitempty"`
-
-	// Conditions represent the status of this container's snapshot
-	// +listType=map
-	// +listMapKey=type
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
-}
-
 // RootfsSnapshotStatus defines the observed state of RootfsSnapshot
 type RootfsSnapshotStatus struct {
 	// Conditions represent the overall RootfsSnapshot state
@@ -119,19 +74,23 @@ type RootfsSnapshotStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// ContainerSnapshots tracks the status of each container being snapshotted
+	// ContainerID is the container ID that was snapshotted
 	// +optional
-	ContainerSnapshots []ContainerSnapshotStatus `json:"containerSnapshots,omitempty"`
+	ContainerID string `json:"containerID,omitempty"`
+
+	// SnapshotKey is the object key within the bucket (without the bucket URL prefix)
+	// +optional
+	SnapshotKey string `json:"snapshotKey,omitempty"`
 
 	// Revision is the snapshot revision number for this sandbox
 	// +optional
 	Revision int32 `json:"revision,omitempty"`
 
-	// StartTime is when the first snapshot job was created
+	// StartTime is when the snapshot job was created
 	// +optional
 	StartTime *metav1.Time `json:"startTime,omitempty"`
 
-	// CompletionTime is when all snapshots finished (success or failure).
+	// CompletionTime is when the snapshot finished (success or failure).
 	// Set on both success and failure (unlike K8s Job which only sets it on success)
 	// because it is used for TTL calculation.
 	// +optional
@@ -141,14 +100,13 @@ type RootfsSnapshotStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=rfs
-// +kubebuilder:printcolumn:name="Complete",type="string",JSONPath=".status.conditions[?(@.type=='Complete')].status",description="All snapshots completed successfully"
+// +kubebuilder:printcolumn:name="Complete",type="string",JSONPath=".status.conditions[?(@.type=='Complete')].status",description="Snapshot completed successfully"
 // +kubebuilder:printcolumn:name="Failed",type="string",JSONPath=".status.conditions[?(@.type=='Failed')].status",description="Snapshot failed"
 // +kubebuilder:printcolumn:name="Sandbox",type="string",JSONPath=".spec.sandboxName",description="Sandbox being snapshotted"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
-// RootfsSnapshot represents a request to snapshot a sandbox's container root filesystems.
-// The controller creates Jobs that use gvisor's runsc to tar the overlay2 upper layer.
-// Each container in the sandbox gets its own rootfs snapshot Job.
+// RootfsSnapshot represents a request to snapshot a sandbox's root filesystem.
+// The controller creates a Job that uses gvisor's runsc to tar the overlay2 upper layer.
 type RootfsSnapshot struct {
 	metav1.TypeMeta `json:",inline"`
 
