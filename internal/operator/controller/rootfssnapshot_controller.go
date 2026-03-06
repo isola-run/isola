@@ -167,14 +167,16 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "Runtime does not support rootfs snapshotting")
 	}
 
-	containersToSnapshot := snap.Spec.ContainerNames
-	if len(containersToSnapshot) == 0 {
-		return r.setFailed(ctx, baseSnap, snap, "No containers found to snapshot")
+	if len(sandboxPod.Spec.Containers) == 0 {
+		return r.setFailed(ctx, baseSnap, snap, "No containers found in sandbox pod")
 	}
 
-	// Get or create the snapshot job (single job for the first container for now)
-	// TODO: support multiple containers by iterating
-	containerName := containersToSnapshot[0]
+	containerName := sandboxPod.Spec.Containers[0].Name
+
+	if len(sandboxPod.Spec.Containers) > 1 {
+		log.Info("Multiple containers found in sandbox pod, defaulting to first container", "containerName", containerName)
+	}
+
 	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName)
 }
 
@@ -186,7 +188,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithValues("container", containerName)
 
-	jobName := podutil.GetSnapshotJobName(snap.Name, containerName)
+	jobName := podutil.GetSnapshotJobName(snap.Name)
 	job := &batchv1.Job{}
 	err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: snap.Namespace}, job)
 
@@ -206,7 +208,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		log.Info("Created snapshot job", "job", jobName)
 		r.Recorder.Eventf(snap, nil, corev1.EventTypeNormal, "JobCreated", "Created", "Created snapshot job for container %s", containerName)
 
-		return r.setInProgress(ctx, baseSnap, snap, containerName, containerID)
+		return r.setInProgress(ctx, baseSnap, snap, containerID)
 	}
 	if err != nil {
 		return ctrl.Result{}, err
@@ -315,7 +317,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 ) error {
 	log := logf.FromContext(ctx)
 
-	jobName := podutil.GetSnapshotJobName(snap.Name, containerName)
+	jobName := podutil.GetSnapshotJobName(snap.Name)
 	localSnapshotPath := "/snapshot/rootfs.tar"
 
 	activeDeadlineSeconds := defaultActiveDeadlineSecondsSnapshot
@@ -503,15 +505,10 @@ func (r *RootfsSnapshotReconciler) patchStatus(ctx context.Context, base, snap *
 	return r.Status().Patch(ctx, snap, client.MergeFrom(base))
 }
 
-func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, containerName, containerID string) (ctrl.Result, error) {
+func (r *RootfsSnapshotReconciler) setInProgress(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, containerID string) (ctrl.Result, error) {
 	now := metav1.NewTime(r.clock().Now())
 	snap.Status.StartTime = &now
-	snap.Status.ContainerSnapshots = []sandboxv1alpha1.ContainerSnapshotStatus{
-		{
-			ContainerName: containerName,
-			ContainerID:   containerID,
-		},
-	}
+	snap.Status.ContainerID = containerID
 	if err := r.patchStatus(ctx, base, snap, nil); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -525,9 +522,7 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap 
 
 	if result != nil {
 		snap.Status.Revision = result.Revision
-		if len(snap.Status.ContainerSnapshots) > 0 {
-			snap.Status.ContainerSnapshots[0].SnapshotKey = result.SnapshotKey
-		}
+		snap.Status.SnapshotKey = result.SnapshotKey
 	}
 
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{

@@ -17,7 +17,7 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: All snapshots completed successfully
+    - description: Snapshot completed successfully
       jsonPath: .status.conditions[?(@.type=='Complete')].status
       name: Complete
       type: string
@@ -36,9 +36,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          RootfsSnapshot represents a request to snapshot a sandbox's container root filesystems.
-          The controller creates Jobs that use gvisor's runsc to tar the overlay2 upper layer.
-          Each container in the sandbox gets its own rootfs snapshot Job.
+          RootfsSnapshot represents a request to snapshot a sandbox's root filesystem.
+          The controller creates a Job that uses gvisor's runsc to tar the overlay2 upper layer.
         properties:
           apiVersion:
             description: |-
@@ -63,19 +62,11 @@ spec:
               activeDeadlineSeconds:
                 default: 300
                 description: |-
-                  ActiveDeadlineSeconds specifies the duration in seconds for each snapshot job.
-                  If a job does not complete within this time, it will be terminated.
+                  ActiveDeadlineSeconds specifies the duration in seconds for the snapshot job.
+                  If the job does not complete within this time, it will be terminated.
                 format: int64
                 minimum: 1
                 type: integer
-              containerNames:
-                description: |-
-                  ContainerNames optionally specifies which containers to snapshot.
-                  Each name must match a non-init container in the pod.
-                  If empty, all non-init containers in the pod are snapshotted.
-                items:
-                  type: string
-                type: array
               sandboxName:
                 description: |-
                   SandboxName is the name of the sandbox to snapshot.
@@ -86,7 +77,7 @@ spec:
                 default: 300
                 description: |-
                   TTLSecondsAfterFinished limits the lifetime of a RootfsSnapshot that has
-                  finished execution (either all containers succeeded or any failed).
+                  finished execution (succeeded or failed).
                   If set, the RootfsSnapshot will be automatically deleted after this many
                   seconds after it finishes.
                   If not set, the RootfsSnapshot will be deleted after a default value.
@@ -102,7 +93,7 @@ spec:
             properties:
               completionTime:
                 description: |-
-                  CompletionTime is when all snapshots finished (success or failure).
+                  CompletionTime is when the snapshot finished (success or failure).
                   Set on both success and failure (unlike K8s Job which only sets it on success)
                   because it is used for TTL calculation.
                 format: date-time
@@ -167,96 +158,19 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              containerSnapshots:
-                description: ContainerSnapshots tracks the status of each container
-                  being snapshotted
-                items:
-                  description: ContainerSnapshotStatus tracks the snapshot status
-                    of a single container
-                  properties:
-                    conditions:
-                      description: Conditions represent the status of this container's
-                        snapshot
-                      items:
-                        description: Condition contains details for one aspect of
-                          the current state of this API Resource.
-                        properties:
-                          lastTransitionTime:
-                            description: |-
-                              lastTransitionTime is the last time the condition transitioned from one status to another.
-                              This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
-                            format: date-time
-                            type: string
-                          message:
-                            description: |-
-                              message is a human readable message indicating details about the transition.
-                              This may be an empty string.
-                            maxLength: 32768
-                            type: string
-                          observedGeneration:
-                            description: |-
-                              observedGeneration represents the .metadata.generation that the condition was set based upon.
-                              For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
-                              with respect to the current state of the instance.
-                            format: int64
-                            minimum: 0
-                            type: integer
-                          reason:
-                            description: |-
-                              reason contains a programmatic identifier indicating the reason for the condition's last transition.
-                              Producers of specific condition types may define expected values and meanings for this field,
-                              and whether the values are considered a guaranteed API.
-                              The value should be a CamelCase string.
-                              This field may not be empty.
-                            maxLength: 1024
-                            minLength: 1
-                            pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
-                            type: string
-                          status:
-                            description: status of the condition, one of True, False,
-                              Unknown.
-                            enum:
-                            - "True"
-                            - "False"
-                            - Unknown
-                            type: string
-                          type:
-                            description: type of condition in CamelCase or in foo.example.com/CamelCase.
-                            maxLength: 316
-                            pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
-                            type: string
-                        required:
-                        - lastTransitionTime
-                        - message
-                        - reason
-                        - status
-                        - type
-                        type: object
-                      type: array
-                      x-kubernetes-list-map-keys:
-                      - type
-                      x-kubernetes-list-type: map
-                    containerID:
-                      description: ContainerID is the container ID that is being snapshotted
-                      type: string
-                    containerName:
-                      description: ContainerName is the name of the container being
-                        snapshotted
-                      type: string
-                    snapshotKey:
-                      description: SnapshotKey is the object key within the bucket
-                        (without the bucket URL prefix)
-                      type: string
-                  required:
-                  - containerName
-                  type: object
-                type: array
+              containerID:
+                description: ContainerID is the container ID that was snapshotted
+                type: string
               revision:
                 description: Revision is the snapshot revision number for this sandbox
                 format: int32
                 type: integer
+              snapshotKey:
+                description: SnapshotKey is the object key within the bucket (without
+                  the bucket URL prefix)
+                type: string
               startTime:
-                description: StartTime is when the first snapshot job was created
+                description: StartTime is when the snapshot job was created
                 format: date-time
                 type: string
             type: object

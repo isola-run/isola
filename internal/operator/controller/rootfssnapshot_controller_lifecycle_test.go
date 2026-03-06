@@ -75,14 +75,13 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 					SandboxName:             sandboxName,
-					ContainerNames:          []string{"main"},
 					TTLSecondsAfterFinished: func() *int32 { v := int32(10); return &v }(),
 				},
 			}
 			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			// First reconcile - creates job
@@ -143,14 +142,13 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 					SandboxName:             sandboxName,
-					ContainerNames:          []string{"main"},
 					TTLSecondsAfterFinished: func() *int32 { v := int32(60); return &v }(),
 				},
 			}
 			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			// Reconcile to create and complete job
@@ -195,9 +193,9 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			// Reconcile to create job
@@ -260,14 +258,13 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 					SandboxName:           sandboxName,
-					ContainerNames:        []string{"main"},
 					ActiveDeadlineSeconds: &customDeadline,
 				},
 			}
 			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -296,10 +293,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			jobName := snapName + "-main"
+			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{

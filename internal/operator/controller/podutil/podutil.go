@@ -58,8 +58,8 @@ func GetShutdownSnapshotName(sandboxName string) string {
 	return sandboxName + "-shutdown"
 }
 
-func GetSnapshotJobName(snapshotName, containerName string) string {
-	return snapshotName + "-" + containerName
+func GetSnapshotJobName(snapshotName string) string {
+	return snapshotName + "-job"
 }
 
 // ExtractContainerID gets the container ID for a named container.

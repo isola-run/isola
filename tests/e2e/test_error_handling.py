@@ -45,7 +45,7 @@ def test_get_nonexistent_sandbox(isola_client: Isola) -> None:
     with pytest.raises(NotFoundError) as exc_info:
         isola_client.sandboxes.get(FAKE_SANDBOX_ID)
 
-    assert exc_info.value.status == 404
+    assert exc_info.value.status_code == 404
 
 
 def test_commands_on_nonexistent_sandbox(isola_client: Isola) -> None:
@@ -55,7 +55,7 @@ def test_commands_on_nonexistent_sandbox(isola_client: Isola) -> None:
     with pytest.raises(IsolaError) as exc_info:
         commands.spawn("echo", "hello")
 
-    assert exc_info.value.status >= 400
+    assert exc_info.value.status_code >= 400
 
 
 def test_filesystem_on_nonexistent_sandbox(isola_client: Isola) -> None:
@@ -65,7 +65,7 @@ def test_filesystem_on_nonexistent_sandbox(isola_client: Isola) -> None:
     with pytest.raises(IsolaError) as exc_info:
         filesystem.read("/tmp/anything.txt")
 
-    assert exc_info.value.status >= 400
+    assert exc_info.value.status_code >= 400
 
 
 @pytest.mark.skip(
@@ -127,7 +127,7 @@ def test_empty_image_validation(isola_client: Isola) -> None:
     with pytest.raises((ValidationError, BadRequestError)) as exc_info:
         isola_client.sandboxes.create(image="")
 
-    assert exc_info.value.status in (400, 422)
+    assert exc_info.value.status_code in (400, 422)
 
 
 @pytest.mark.timeout(90)
@@ -184,7 +184,7 @@ def test_zero_timeout_rejected(isola_client: Isola) -> None:
     with pytest.raises((ValidationError, BadRequestError)) as exc_info:
         isola_client.sandboxes.create(image="alpine:3.21", timeout=0)
 
-    assert exc_info.value.status in (400, 422)
+    assert exc_info.value.status_code in (400, 422)
 
 
 def test_invalid_k8s_quantity(isola_client: Isola) -> None:
@@ -196,7 +196,7 @@ def test_invalid_k8s_quantity(isola_client: Isola) -> None:
     with pytest.raises((ValidationError, BadRequestError)) as exc_info:
         isola_client.sandboxes.create(image="alpine:3.21", cpu="not-a-valid-quantity")
 
-    assert exc_info.value.status in (400, 422)
+    assert exc_info.value.status_code in (400, 422)
 
 
 def test_too_many_nameservers(isola_client: Isola) -> None:
@@ -210,4 +210,4 @@ def test_too_many_nameservers(isola_client: Isola) -> None:
             network=NetworkSpec(nameservers=["1.1.1.1", "8.8.8.8", "9.9.9.9", "4.4.4.4"]),
         )
 
-    assert exc_info.value.status in (400, 422)
+    assert exc_info.value.status_code in (400, 422)

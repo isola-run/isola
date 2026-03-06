@@ -78,7 +78,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				// BucketURL is intentionally empty
 			}
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, nil)
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
 			_, err := noBucketReconciler.Reconcile(ctx, reconcile.Request{
@@ -111,9 +111,9 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
-			defer deleteSnapshotJob(ctx, snapName+"-main")
+			defer deleteSnapshotJob(ctx, snapName+"-job")
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
@@ -121,7 +121,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify job was created
-			job := getSnapshotJob(ctx, snapName+"-main")
+			job := getSnapshotJob(ctx, snapName+"-job")
 			Expect(job).NotTo(BeNil())
 
 			// Verify standard labels on Job metadata
@@ -148,7 +148,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snapName := "snap-no-pod"
 			sandboxName := "sandbox-no-pod"
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, nil)
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -180,7 +180,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, nil)
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -212,7 +212,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{

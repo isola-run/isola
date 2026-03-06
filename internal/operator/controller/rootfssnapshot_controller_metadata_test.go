@@ -20,13 +20,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 	snapshotpkg "github.com/isola-ai/isola/internal/snapshot"
 )
 
@@ -71,10 +68,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			// First snapshot
 			snap1Name := "snap-rev-1"
-			createRootfsSnapshotCR(ctx, snap1Name, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snap1Name, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snap1Name)
 
-			job1Name := snap1Name + "-main"
+			job1Name := snap1Name + "-job"
 			defer deleteSnapshotJob(ctx, job1Name)
 			defer deleteSnapshotJobPod(ctx, job1Name)
 
@@ -101,14 +98,14 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snap1 := getRootfsSnapshotCR(ctx, snap1Name)
 			Expect(snap1).NotTo(BeNil())
 			Expect(snap1.Status.Revision).To(Equal(int32(1)))
-			Expect(snap1.Status.ContainerSnapshots[0].SnapshotKey).To(ContainSubstring("rev-00001"))
+			Expect(snap1.Status.SnapshotKey).To(ContainSubstring("rev-00001"))
 
 			// Second snapshot of same sandbox
 			snap2Name := "snap-rev-2"
-			createRootfsSnapshotCR(ctx, snap2Name, sandboxName, []string{"main"})
+			createRootfsSnapshotCR(ctx, snap2Name, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snap2Name)
 
-			job2Name := snap2Name + "-main"
+			job2Name := snap2Name + "-job"
 			defer deleteSnapshotJob(ctx, job2Name)
 			defer deleteSnapshotJobPod(ctx, job2Name)
 
@@ -135,16 +132,16 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snap2 := getRootfsSnapshotCR(ctx, snap2Name)
 			Expect(snap2).NotTo(BeNil())
 			Expect(snap2.Status.Revision).To(Equal(int32(2)))
-			Expect(snap2.Status.ContainerSnapshots[0].SnapshotKey).To(ContainSubstring("rev-00002"))
+			Expect(snap2.Status.SnapshotKey).To(ContainSubstring("rev-00002"))
 		})
 	})
 
 	Context("Container Selection", func() {
-		It("should fail when containerNames is empty", func() {
-			snapName := "snap-auto"
-			sandboxName := "sandbox-auto"
+		It("should use the first container from the pod", func() {
+			snapName := "snap-specified"
+			sandboxName := "sandbox-specified"
 			podName := sandboxName + "-pod"
-			runtimeClassName := "gvisor-auto"
+			runtimeClassName := "gvisor-specified"
 
 			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
 			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
@@ -161,8 +158,9 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, nil) // nil = no containers specified
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
+			defer deleteSnapshotJob(ctx, snapName+"-job")
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
@@ -171,49 +169,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			snap := getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
-
-			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
-			Expect(failedCond).NotTo(BeNil())
-			Expect(failedCond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(failedCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
-			Expect(failedCond.Message).To(ContainSubstring("No containers found"))
-		})
-
-		It("should use first specified container when containerNames is provided", func() {
-			snapName := "snap-specified"
-			sandboxName := "sandbox-specified"
-			podName := sandboxName + "-pod"
-			runtimeClassName := "gvisor-specified"
-
-			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
-
-			createSnapshotPod(ctx, podName, runtimeClassName,
-				[]corev1.Container{
-					{Name: "a", Image: "busybox"},
-					{Name: "b", Image: "busybox"},
-				},
-				[]corev1.ContainerStatus{
-					{Name: "a", ContainerID: "containerd://a111", Ready: true},
-					{Name: "b", ContainerID: "containerd://b222", Ready: true},
-				},
-			)
-			defer deleteSnapshotPod(ctx, podName)
-
-			// Request specific containers - controller uses first one
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"b", "a"})
-			defer deleteRootfsSnapshotCR(ctx, snapName)
-			defer deleteSnapshotJob(ctx, snapName+"-b")
-
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			snap := getRootfsSnapshotCR(ctx, snapName)
-			Expect(snap).NotTo(BeNil())
-			Expect(snap.Status.ContainerSnapshots).To(HaveLen(1))
-			Expect(snap.Status.ContainerSnapshots[0].ContainerName).To(Equal("b"))
+			Expect(snap.Status.ContainerID).To(Equal("app123"))
 		})
 	})
 })
