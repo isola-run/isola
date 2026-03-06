@@ -187,6 +187,8 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "No containers found in sandbox pod")
 	}
 
+	// Key path (rootfssnapshots/<snapshotName>.tar) is namespace-unaware - identical snapshot
+	// names in different namespaces map to the same bucket key.
 	snapshotName := snap.Spec.SnapshotName
 	if snapshotName == "" {
 		snapshotName = snap.Spec.SandboxName
