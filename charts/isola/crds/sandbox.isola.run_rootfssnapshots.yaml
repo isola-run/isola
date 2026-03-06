@@ -67,6 +67,11 @@ spec:
                 format: int64
                 minimum: 1
                 type: integer
+              container:
+                description: |-
+                  Container is the name of the container to snapshot.
+                  If empty, defaults to the first container in the sandbox pod.
+                type: string
               sandboxName:
                 description: |-
                   SandboxName is the name of the sandbox to snapshot.

@@ -110,9 +110,9 @@ var _ = Describe("Metrics", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"sandbox"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
-			defer deleteSnapshotJob(ctx, snapName+"-sandbox")
+			defer deleteSnapshotJob(ctx, snapName+"-job")
 
 			_, err := snapReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
@@ -127,7 +127,7 @@ var _ = Describe("Metrics", func() {
 			sandboxName := "metrics-sandbox-snap-succeeded"
 			podName := sandboxName + "-pod"
 			runtimeClassName := "gvisor-metrics-snap-succeeded"
-			jobName := snapName + "-sandbox"
+			jobName := snapName + "-job"
 
 			before := testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("succeeded"))
 
@@ -140,7 +140,7 @@ var _ = Describe("Metrics", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"sandbox"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 			defer deleteSnapshotJob(ctx, jobName)
 			defer deleteSnapshotJobPod(ctx, jobName)
@@ -171,7 +171,7 @@ var _ = Describe("Metrics", func() {
 			sandboxName := "metrics-sandbox-snap-failed"
 			podName := sandboxName + "-pod"
 			runtimeClassName := "gvisor-metrics-snap-failed"
-			jobName := snapName + "-sandbox"
+			jobName := snapName + "-job"
 
 			before := testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("failed"))
 
@@ -184,7 +184,7 @@ var _ = Describe("Metrics", func() {
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			createRootfsSnapshotCR(ctx, snapName, sandboxName, []string{"sandbox"})
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
 			defer deleteRootfsSnapshotCR(ctx, snapName)
 			defer deleteSnapshotJob(ctx, jobName)
 

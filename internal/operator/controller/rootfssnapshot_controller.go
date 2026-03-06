@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -167,14 +168,23 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "Runtime does not support rootfs snapshotting")
 	}
 
-	if len(sandboxPod.Spec.Containers) == 0 {
-		return r.setFailed(ctx, baseSnap, snap, "No containers found in sandbox pod")
-	}
-
-	containerName := sandboxPod.Spec.Containers[0].Name
-
-	if len(sandboxPod.Spec.Containers) > 1 {
+	var containerName string
+	if snap.Spec.Container != "" {
+		containerName = snap.Spec.Container
+		targetContainerInPod := slices.ContainsFunc(sandboxPod.Spec.Containers, func(c corev1.Container) bool {
+			return c.Name == containerName
+		})
+		
+		if !targetContainerInPod {
+			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Container %q not found in sandbox pod", containerName))
+		}
+	} else if len(sandboxPod.Spec.Containers) == 1 {
+		containerName = sandboxPod.Spec.Containers[0].Name
+	} else if len(sandboxPod.Spec.Containers) > 1 {
+		containerName = sandboxPod.Spec.Containers[0].Name
 		log.Info("Multiple containers found in sandbox pod, defaulting to first container", "containerName", containerName)
+	} else { // len(sandboxPod.Spec.Containers) == 0
+		return r.setFailed(ctx, baseSnap, snap, "No containers found in sandbox pod")
 	}
 
 	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName)
