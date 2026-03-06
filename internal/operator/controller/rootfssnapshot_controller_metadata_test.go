@@ -20,9 +20,13 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 
 	snapshotpkg "github.com/isola-ai/isola/internal/snapshot"
 )
@@ -170,6 +174,76 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snap := getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
 			Expect(snap.Status.ContainerID).To(Equal("app123"))
+		})
+
+		It("should use the explicitly specified container", func() {
+			snapName := "snap-explicit"
+			sandboxName := "sandbox-explicit"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-explicit"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{
+					{Name: "app", Image: "busybox"},
+					{Name: "sidecar", Image: "busybox"},
+				},
+				[]corev1.ContainerStatus{
+					{Name: "app", ContainerID: "containerd://app123", Ready: true},
+					{Name: "sidecar", ContainerID: "containerd://sidecar456", Ready: true},
+				},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCRWithContainer(ctx, snapName, sandboxName, "sidecar")
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+			defer deleteSnapshotJob(ctx, snapName+"-job")
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+			Expect(snap.Status.ContainerID).To(Equal("sidecar456"))
+		})
+
+		It("should fail when specified container does not exist", func() {
+			snapName := "snap-badcontainer"
+			sandboxName := "sandbox-badcontainer"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-badcontainer"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{
+					{Name: "app", Image: "busybox"},
+				},
+				[]corev1.ContainerStatus{
+					{Name: "app", ContainerID: "containerd://app123", Ready: true},
+				},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCRWithContainer(ctx, snapName, sandboxName, "nonexistent")
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
+			Expect(failedCond).NotTo(BeNil())
+			Expect(failedCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(failedCond.Message).To(ContainSubstring(`Container "nonexistent" not found`))
 		})
 	})
 })

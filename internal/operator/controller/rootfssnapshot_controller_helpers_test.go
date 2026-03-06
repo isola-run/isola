@@ -96,6 +96,10 @@ func deleteSnapshotPod(ctx context.Context, name string) {
 }
 
 func createRootfsSnapshotCR(ctx context.Context, name, sandboxName string) {
+	createRootfsSnapshotCRWithContainer(ctx, name, sandboxName, "")
+}
+
+func createRootfsSnapshotCRWithContainer(ctx context.Context, name, sandboxName, container string) {
 	snap := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -103,9 +107,10 @@ func createRootfsSnapshotCR(ctx context.Context, name, sandboxName string) {
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 			SandboxName: sandboxName,
+			Container:   container,
 		},
 	}
-	ExpectWithOffset(1, k8sClient.Create(ctx, snap)).To(Succeed())
+	ExpectWithOffset(2, k8sClient.Create(ctx, snap)).To(Succeed())
 }
 
 func deleteRootfsSnapshotCR(ctx context.Context, name string) {
