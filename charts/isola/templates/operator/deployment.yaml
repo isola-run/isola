@@ -35,6 +35,7 @@ spec:
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081
+        - "--metrics-bind-address=:{{ .Values.operator.metrics.port }}"
         {{- $runtimeClass := include "isola.operator.runtimeClassName" . }}
         {{- if $runtimeClass }}
         - "--runtime-class={{ $runtimeClass }}"
@@ -74,6 +75,9 @@ spec:
         ports:
         - name: health
           containerPort: 8081
+          protocol: TCP
+        - name: metrics
+          containerPort: {{ .Values.operator.metrics.port }}
           protocol: TCP
         livenessProbe:
           httpGet:
