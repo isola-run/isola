@@ -55,88 +55,103 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 		}
 	})
 
-	Context("Revision Management", func() {
-		It("should increment revision for each snapshot of the same sandbox", func() {
-			sandboxName := "sandbox-revision"
+	Context("Snapshot Key Format", func() {
+		It("should use flat key path with snapshot name", func() {
+			sandboxName := "sandbox-keypath"
 			podName := sandboxName + "-pod"
-			runtimeClassName := "gvisor-revision"
+			runtimeClassName := "gvisor-keypath"
 
 			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
 			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
 
 			createSnapshotPod(ctx, podName, runtimeClassName,
 				[]corev1.Container{{Name: "main", Image: "busybox"}},
-				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://rev123", Ready: true}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://key123", Ready: true}},
 			)
 			defer deleteSnapshotPod(ctx, podName)
 
-			// First snapshot
-			snap1Name := "snap-rev-1"
-			createRootfsSnapshotCR(ctx, snap1Name, sandboxName)
-			defer deleteRootfsSnapshotCR(ctx, snap1Name)
+			snapName := "snap-keypath"
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
+			defer deleteRootfsSnapshotCR(ctx, snapName)
 
-			job1Name := snap1Name + "-job"
-			defer deleteSnapshotJob(ctx, job1Name)
-			defer deleteSnapshotJobPod(ctx, job1Name)
+			jobName := snapName + "-job"
+			defer deleteSnapshotJob(ctx, jobName)
+			defer deleteSnapshotJobPod(ctx, jobName)
 
 			// First reconcile creates the job
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: snap1Name, Namespace: testNamespace},
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
 			// Create job pod with termination message and complete the job
-			createSnapshotJobPodWithTerminationMessage(ctx, job1Name, &snapshotpkg.UploadResult{
-				SnapshotKey:  "snapshots/" + testNamespace + "/" + sandboxName + "/rev-00001/main.tar",
-				Revision:     1,
+			createSnapshotJobPodWithTerminationMessage(ctx, jobName, &snapshotpkg.UploadResult{
+				SnapshotKey:  "rootfssnapshots/" + sandboxName + ".tar",
 				BytesWritten: 1024,
 			})
-			setSnapshotJobComplete(ctx, job1Name)
+			setSnapshotJobComplete(ctx, jobName)
 
 			// Second reconcile processes job completion
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: snap1Name, Namespace: testNamespace},
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			snap1 := getRootfsSnapshotCR(ctx, snap1Name)
-			Expect(snap1).NotTo(BeNil())
-			Expect(snap1.Status.Revision).To(Equal(int32(1)))
-			Expect(snap1.Status.SnapshotKey).To(ContainSubstring("rev-00001"))
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+			Expect(snap.Status.SnapshotKey).To(Equal("rootfssnapshots/" + sandboxName + ".tar"))
+		})
 
-			// Second snapshot of same sandbox
-			snap2Name := "snap-rev-2"
-			createRootfsSnapshotCR(ctx, snap2Name, sandboxName)
-			defer deleteRootfsSnapshotCR(ctx, snap2Name)
+		It("should pass custom snapshotName to the uploader job", func() {
+			sandboxName := "sandbox-custom-snapname"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-custom-snapname"
 
-			job2Name := snap2Name + "-job"
-			defer deleteSnapshotJob(ctx, job2Name)
-			defer deleteSnapshotJobPod(ctx, job2Name)
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
 
-			// First reconcile creates the job
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: snap2Name, Namespace: testNamespace},
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://custom123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			snapName := "snap-custom-snapname"
+			customSnapshotName := "my-custom-snapshot"
+			snap := &sandboxv1alpha1.RootfsSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      snapName,
+					Namespace: testNamespace,
+				},
+				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
+					SandboxName:  sandboxName,
+					SnapshotName: customSnapshotName,
+				},
+			}
+			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-job"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Create job pod with termination message and complete the job
-			createSnapshotJobPodWithTerminationMessage(ctx, job2Name, &snapshotpkg.UploadResult{
-				SnapshotKey:  "snapshots/" + testNamespace + "/" + sandboxName + "/rev-00002/main.tar",
-				Revision:     2,
-				BytesWritten: 2048,
-			})
-			setSnapshotJobComplete(ctx, job2Name)
+			job := getSnapshotJob(ctx, jobName)
+			Expect(job).NotTo(BeNil())
 
-			// Second reconcile processes job completion
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: snap2Name, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			snap2 := getRootfsSnapshotCR(ctx, snap2Name)
-			Expect(snap2).NotTo(BeNil())
-			Expect(snap2.Status.Revision).To(Equal(int32(2)))
-			Expect(snap2.Status.SnapshotKey).To(ContainSubstring("rev-00002"))
+			// Verify the SNAPSHOT_NAME env var uses the custom snapshot name
+			uploaderContainer := job.Spec.Template.Spec.Containers[0]
+			Expect(uploaderContainer.Name).To(Equal("uploader"))
+			var snapshotNameEnv string
+			for _, env := range uploaderContainer.Env {
+				if env.Name == "SNAPSHOT_NAME" {
+					snapshotNameEnv = env.Value
+				}
+			}
+			Expect(snapshotNameEnv).To(Equal(customSnapshotName))
 		})
 	})
 

@@ -174,7 +174,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		targetContainerInPod := slices.ContainsFunc(sandboxPod.Spec.Containers, func(c corev1.Container) bool {
 			return c.Name == containerName
 		})
-		
+
 		if !targetContainerInPod {
 			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Container %q not found in sandbox pod", containerName))
 		}
@@ -187,14 +187,19 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "No containers found in sandbox pod")
 	}
 
-	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName)
+	snapshotName := snap.Spec.SnapshotName
+	if snapshotName == "" {
+		snapshotName = snap.Spec.SandboxName
+	}
+
+	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName, snapshotName)
 }
 
 func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 	ctx context.Context,
 	baseSnap, snap *sandboxv1alpha1.RootfsSnapshot,
 	pod *corev1.Pod,
-	containerName string,
+	containerName, snapshotName string,
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithValues("container", containerName)
 
@@ -209,7 +214,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Failed to extract container ID: %v", err))
 		}
 
-		err = r.createSnapshotJob(ctx, snap, pod, containerName, containerID)
+		err = r.createSnapshotJob(ctx, snap, pod, containerName, containerID, snapshotName)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -323,7 +328,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 	ctx context.Context,
 	snap *sandboxv1alpha1.RootfsSnapshot,
 	sandboxPod *corev1.Pod,
-	containerName, containerID string,
+	containerName, containerID, snapshotName string,
 ) error {
 	log := logf.FromContext(ctx)
 
@@ -343,9 +348,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 	uploaderEnv := []corev1.EnvVar{
 		{Name: "ISOLA_BUCKET_URL", Value: r.BucketURL},
 		{Name: "SNAPSHOT_FILE", Value: localSnapshotPath},
-		{Name: "SNAPSHOT_NAMESPACE", Value: snap.Namespace},
-		{Name: "SNAPSHOT_SANDBOX_NAME", Value: snap.Spec.SandboxName},
-		{Name: "SNAPSHOT_CONTAINER_NAME", Value: containerName},
+		{Name: "SNAPSHOT_NAME", Value: snapshotName},
 	}
 
 	var uploaderEnvFrom []corev1.EnvFromSource
@@ -531,7 +534,6 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap 
 	snap.Status.CompletionTime = &now
 
 	if result != nil {
-		snap.Status.Revision = result.Revision
 		snap.Status.SnapshotKey = result.SnapshotKey
 	}
 

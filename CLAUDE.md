@@ -118,7 +118,11 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 - `shutdownPolicy` - ShutdownPolicy struct with `strategy` (`Delete` default, or `SnapshotRootfs`) and optional `activeDeadlineSeconds` for the snapshot job
 - `network` - NetworkSpec for isolation rules (immutable after creation)
 
-**RootfsSnapshot** - Triggers a snapshot of a sandbox's filesystem. Creates an uploader Job that tarballs the container rootfs and uploads to cloud storage. Supports TTL-based auto-deletion.
+**RootfsSnapshot** - Triggers a snapshot of a sandbox's filesystem. Creates an uploader Job that tarballs the container rootfs and uploads to cloud storage. Key spec fields:
+- `sandboxName` (required) - The sandbox to snapshot
+- `snapshotName` (optional) - Name used for the storage key (`rootfssnapshots/<snapshotName>.tar`); defaults to sandbox name
+- `container` (optional) - Which container to snapshot; defaults to first
+- Supports TTL-based auto-deletion via `ttlSecondsAfterFinished`
 
 ## REST API (api-gateway)
 

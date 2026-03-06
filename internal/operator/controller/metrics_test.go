@@ -152,8 +152,7 @@ var _ = Describe("Metrics", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			createSnapshotJobPodWithTerminationMessage(ctx, jobName, &snapshotpkg.UploadResult{
-				SnapshotKey: "snapshots/test/rev-00001/sandbox.tar",
-				Revision:    1,
+				SnapshotKey: "rootfssnapshots/sandbox-metrics-success.tar",
 			})
 			setSnapshotJobComplete(ctx, jobName)
 

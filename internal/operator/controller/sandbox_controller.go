@@ -572,9 +572,6 @@ func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1a
 	completeCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 	if completeCond != nil && completeCond.Status == metav1.ConditionTrue {
 		message := fmt.Sprintf("RootfsSnapshot %q completed", snap.Name)
-		if snap.Status.Revision > 0 {
-			message = fmt.Sprintf("RootfsSnapshot %q completed (revision %d)", snap.Name, snap.Status.Revision)
-		}
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionTrue,
@@ -1048,6 +1045,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 			SandboxName:           sandbox.Name,
+			SnapshotName:          sandbox.Name,
 			ActiveDeadlineSeconds: &activeDeadlineSeconds,
 		},
 	}
