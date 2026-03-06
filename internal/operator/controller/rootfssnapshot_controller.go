@@ -172,6 +172,11 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	containerName := sandboxPod.Spec.Containers[0].Name
+
+	if len(sandboxPod.Spec.Containers) > 1 {
+		log.Info("Multiple containers found in sandbox pod, defaulting to first container", "containerName", containerName)
+	}
+
 	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName)
 }
 
