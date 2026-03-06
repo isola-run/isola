@@ -47,6 +47,11 @@ type RootfsSnapshotSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	SandboxName string `json:"sandboxName"`
 
+	// SnapshotName is the name used for the snapshot object key in storage.
+	// If empty, defaults to the sandbox name.
+	// +optional
+	SnapshotName string `json:"snapshotName,omitempty"`
+
 	// Container is the name of the container to snapshot.
 	// If empty, defaults to the first container in the sandbox pod.
 	// +optional
@@ -83,13 +88,9 @@ type RootfsSnapshotStatus struct {
 	// +optional
 	ContainerID string `json:"containerID,omitempty"`
 
-	// SnapshotKey is the object key within the bucket (without the bucket URL prefix)
+	// SnapshotKey is the object key within the bucket (e.g., "rootfssnapshots/<name>.tar")
 	// +optional
 	SnapshotKey string `json:"snapshotKey,omitempty"`
-
-	// Revision is the snapshot revision number for this sandbox
-	// +optional
-	Revision int32 `json:"revision,omitempty"`
 
 	// StartTime is when the snapshot job was created
 	// +optional

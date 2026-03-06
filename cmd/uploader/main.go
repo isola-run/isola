@@ -15,22 +15,17 @@
 // isola-uploader uploads a local file to cloud object storage.
 // Used as a sidecar container in RootfsSnapshot jobs to upload tarballs to S3/GCS/Azure.
 //
-// The uploader determines the revision number by listing existing rootfs snapshots in the bucket.
-//
 // # Required Bucket Permissions
 //
 // The uploader requires the following permissions on the target bucket:
 //
 // AWS S3:
-//   - s3:ListBucket (to list existing rootfs snapshots and determine revision)
 //   - s3:PutObject (to upload the rootfs snapshot)
 //
 // Google Cloud Storage:
-//   - storage.objects.list (to list existing rootfs snapshots)
 //   - storage.objects.create (to upload the rootfs snapshot)
 //
 // Azure Blob Storage:
-//   - Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read (list)
 //   - Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write (modify blobs)
 //   - Microsoft.Storage/storageAccounts/blobServices/containers/blobs/add/action (create new blobs)
 //   - Or use the "Storage Blob Data Contributor" built-in role
@@ -48,8 +43,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"regexp"
-	"strconv"
 	"syscall"
 
 	"github.com/isola-ai/isola/internal/logging"
@@ -63,11 +56,9 @@ import (
 )
 
 const (
-	EnvBucketURL             = "ISOLA_BUCKET_URL"
-	EnvSnapshotNamespace     = "SNAPSHOT_NAMESPACE"
-	EnvSnapshotSandboxName   = "SNAPSHOT_SANDBOX_NAME"
-	EnvSnapshotContainerName = "SNAPSHOT_CONTAINER_NAME"
-	EnvLogLevel              = "ISOLA_LOG_LEVEL"
+	EnvBucketURL    = "ISOLA_BUCKET_URL"
+	EnvSnapshotName = "SNAPSHOT_NAME"
+	EnvLogLevel     = "ISOLA_LOG_LEVEL"
 
 	// EnvSnapshotFile is the path to the local file to upload
 	EnvSnapshotFile = "SNAPSHOT_FILE"
@@ -94,9 +85,7 @@ func run(logger *slog.Logger) error {
 
 	bucketURL := os.Getenv(EnvBucketURL)
 	snapshotFile := os.Getenv(EnvSnapshotFile)
-	namespace := os.Getenv(EnvSnapshotNamespace)
-	sandboxName := os.Getenv(EnvSnapshotSandboxName)
-	containerName := os.Getenv(EnvSnapshotContainerName)
+	snapshotName := os.Getenv(EnvSnapshotName)
 
 	if bucketURL == "" {
 		logger.Error("missing required environment variable", "var", EnvBucketURL)
@@ -106,17 +95,9 @@ func run(logger *slog.Logger) error {
 		logger.Error("missing required environment variable", "var", EnvSnapshotFile)
 		return errMissingEnv(EnvSnapshotFile)
 	}
-	if namespace == "" {
-		logger.Error("missing required environment variable", "var", EnvSnapshotNamespace)
-		return errMissingEnv(EnvSnapshotNamespace)
-	}
-	if sandboxName == "" {
-		logger.Error("missing required environment variable", "var", EnvSnapshotSandboxName)
-		return errMissingEnv(EnvSnapshotSandboxName)
-	}
-	if containerName == "" {
-		logger.Error("missing required environment variable", "var", EnvSnapshotContainerName)
-		return errMissingEnv(EnvSnapshotContainerName)
+	if snapshotName == "" {
+		logger.Error("missing required environment variable", "var", EnvSnapshotName)
+		return errMissingEnv(EnvSnapshotName)
 	}
 
 	logger.Info("opening bucket", "url", bucketURL)
@@ -127,19 +108,12 @@ func run(logger *slog.Logger) error {
 	}
 	defer func() { _ = bucket.Close() }()
 
-	revision, err := getNextRevision(ctx, logger, bucket, namespace, sandboxName)
-	if err != nil {
-		logger.Error("failed to determine revision", "error", err)
-		return err
-	}
-
-	snapshotKey := snapshotKeyPath(namespace, sandboxName, revision, containerName)
+	snapshotKey := snapshotKeyPath(snapshotName)
 
 	logger.Info("uploading rootfs snapshot",
 		"file", snapshotFile,
 		"bucket", bucketURL,
 		"key", snapshotKey,
-		"revision", revision,
 	)
 
 	f, err := os.Open(snapshotFile) //nolint:gosec // snapshotFile comes from trusted env var
@@ -183,7 +157,6 @@ func run(logger *slog.Logger) error {
 	// Write result to termination log for controller to read
 	result := snapshot.UploadResult{
 		SnapshotKey:  snapshotKey,
-		Revision:     revision,
 		BytesWritten: written,
 	}
 	if err := writeTerminationLog(result); err != nil {
@@ -194,48 +167,8 @@ func run(logger *slog.Logger) error {
 	return nil
 }
 
-func snapshotKeyPath(namespace, sandboxName string, revision int32, containerName string) string {
-	return "snapshots/" + namespace + "/" + sandboxName + "/rev-" + padRevision(revision) + "/" + containerName + ".tar"
-}
-
-func padRevision(rev int32) string {
-	return strconv.FormatInt(int64(rev), 10)
-}
-
-// getNextRevision lists existing rootfs snapshots in the bucket and returns the next revision number.
-// This ensures revision numbers are always increasing even if RootfsSnapshot resources
-// have been deleted from etcd.
-func getNextRevision(ctx context.Context, logger *slog.Logger, bucket *blob.Bucket, namespace, sandboxName string) (int32, error) {
-	prefix := "snapshots/" + namespace + "/" + sandboxName + "/rev-"
-
-	// Pattern to extract revision number from keys like "snapshots/ns/sandbox/rev-00001/container.tar"
-	revPattern := regexp.MustCompile(`rev-(\d+)/`)
-
-	var maxRevision int32 = 0
-
-	logger.Debug("listing existing rootfs snapshots", "prefix", prefix)
-
-	iter := bucket.List(&blob.ListOptions{Prefix: prefix})
-	for {
-		obj, err := iter.Next(ctx)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return 0, err
-		}
-
-		matches := revPattern.FindStringSubmatch(obj.Key)
-		if len(matches) >= 2 {
-			rev, err := strconv.ParseInt(matches[1], 10, 32)
-			if err == nil && int32(rev) > maxRevision {
-				maxRevision = int32(rev)
-			}
-		}
-	}
-
-	logger.Debug("determined next revision", "max_existing", maxRevision, "next", maxRevision+1)
-	return maxRevision + 1, nil
+func snapshotKeyPath(snapshotName string) string {
+	return "rootfssnapshots/" + snapshotName + ".tar"
 }
 
 func writeTerminationLog(result snapshot.UploadResult) error {

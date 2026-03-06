@@ -78,6 +78,11 @@ spec:
                   The sandbox must be in the same namespace as this RootfsSnapshot.
                 minLength: 1
                 type: string
+              snapshotName:
+                description: |-
+                  SnapshotName is the name used for the snapshot object key in storage.
+                  If empty, defaults to the sandbox name.
+                type: string
               ttlSecondsAfterFinished:
                 default: 300
                 description: |-
@@ -166,13 +171,9 @@ spec:
               containerID:
                 description: ContainerID is the container ID that was snapshotted
                 type: string
-              revision:
-                description: Revision is the snapshot revision number for this sandbox
-                format: int32
-                type: integer
               snapshotKey:
-                description: SnapshotKey is the object key within the bucket (without
-                  the bucket URL prefix)
+                description: SnapshotKey is the object key within the bucket (e.g.,
+                  "rootfssnapshots/<name>.tar")
                 type: string
               startTime:
                 description: StartTime is when the snapshot job was created

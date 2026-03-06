@@ -17,7 +17,7 @@
 //   - rootfssnapshot_controller_helpers_test.go: Helper functions
 //   - rootfssnapshot_controller_test.go: Basic operations and runtime validation tests
 //   - rootfssnapshot_controller_snapshot_test.go: Single container snapshot and error handling tests
-//   - rootfssnapshot_controller_metadata_test.go: Label, revision, and container selection tests
+//   - rootfssnapshot_controller_metadata_test.go: Snapshot key format and container selection tests
 //   - rootfssnapshot_controller_lifecycle_test.go: TTL, finalizer, and deadline tests
 package controller
 

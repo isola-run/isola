@@ -23,10 +23,8 @@ package snapshot
 // This struct is the single source of truth - both services import this package
 // to ensure type safety and prevent drift.
 type UploadResult struct {
-	// SnapshotKey is the object key in the bucket (e.g., "snapshots/ns/sandbox/rev-00001/main.tar")
+	// SnapshotKey is the object key in the bucket (e.g., "rootfssnapshots/<name>.tar")
 	SnapshotKey string `json:"snapshotKey"`
-	// Revision is the revision number determined by the uploader
-	Revision int32 `json:"revision"`
 	// BytesWritten is the number of bytes uploaded
 	BytesWritten int64 `json:"bytesWritten"`
 }

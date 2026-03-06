@@ -112,8 +112,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(snap.Status.ContainerID).To(Equal("abc123"))
 			// SnapshotKey is empty until job completes with termination message
 			Expect(snap.Status.SnapshotKey).To(BeEmpty())
-			// Revision is 0 until job completes and reports actual revision
-			Expect(snap.Status.Revision).To(Equal(int32(0)))
 		})
 
 		It("should mark complete when job succeeds", func() {
@@ -146,8 +144,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			// Create job pod with termination message and mark job complete
 			createSnapshotJobPodWithTerminationMessage(ctx, jobName, &snapshotpkg.UploadResult{
-				SnapshotKey:  "snapshots/" + testNamespace + "/" + sandboxName + "/rev-00001/main.tar",
-				Revision:     1,
+				SnapshotKey:  "rootfssnapshots/" + sandboxName + ".tar",
 				BytesWritten: 1024,
 			})
 			setSnapshotJobComplete(ctx, jobName)
