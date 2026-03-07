@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import codecs
+import contextlib
 import time
 from collections.abc import AsyncIterator, Generator, Iterator
 from typing import Any, Protocol
@@ -37,6 +38,7 @@ class _SyncStreamAPI(Protocol):
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = None,
     ) -> Any: ...
 
@@ -47,12 +49,19 @@ class _AsyncStreamAPI(Protocol):
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = None,
     ) -> Any: ...
 
 
 class StreamReader:
-    """Single-use iterable stream with transparent reconnect."""
+    """Single-use iterable stream with transparent reconnect.
+
+    Parses SSE (Server-Sent Events) from the response. Data events carry
+    stdout/stderr text, with `id:` fields tracking byte offsets for resume
+    via the `Last-Event-ID` header. Comment lines (`: keepalive`) keep the
+    connection alive through intermediate infrastructure.
+    """
 
     def __init__(self, api: _SyncStreamAPI, path: str) -> None:
         self._api = api
@@ -75,34 +84,58 @@ class StreamReader:
     def read(self) -> str:
         return "".join(self)
 
-    # todo benl: there's a big problem here - if server doesn't have anything to stream for a while (e.g. no stdout)
-    # will close the connections enough times to cause the stream to end without reading the whole stdout
     def _generate(self) -> Generator[str, None, None]:
         decoder = codecs.getincrementaldecoder("utf-8")("replace")
         reconnects = 0
 
         while True:
             try:
+                headers = {"Last-Event-ID": str(self._offset)} if self._offset > 0 else None
                 with self._api.open_stream(
                     self._path,
-                    params={"offset": self._offset},
+                    headers=headers,
                     timeout=self._httpx_timeout,
                 ) as response:
                     if response.status_code >= 400:
                         raise error_from_http(response.status_code, None, response.read())
 
+                    data_parts: list[str] = []
+                    event_id = ""
+                    buf = ""
+
                     for chunk in response.iter_bytes():
                         if not chunk:
                             continue
-                        self._offset += len(chunk)
-                        reconnects = 0
-                        decoded = decoder.decode(chunk)
-                        if decoded:
-                            yield decoded
+                        buf += decoder.decode(chunk)
+                        while "\n" in buf:
+                            line, buf = buf.split("\n", 1)
+                            line = line.rstrip("\r")
+                            if not line:
+                                # Empty line = event boundary
+                                if event_id:
+                                    with contextlib.suppress(ValueError):
+                                        self._offset = int(event_id)
+                                    event_id = ""
+                                if data_parts:
+                                    text = "\n".join(data_parts)
+                                    data_parts = []
+                                    reconnects = 0
+                                    if text:
+                                        yield text
+                            elif line.startswith(":"):
+                                pass  # comment (keepalive)
+                            else:
+                                name, _, value = line.partition(":")
+                                if value.startswith(" "):
+                                    value = value[1:]
+                                if name == "data":
+                                    data_parts.append(value)
+                                elif name == "id" and "\0" not in value:
+                                    event_id = value
 
                     final = decoder.decode(b"", final=True)
                     if final:
-                        yield final
+                        buf += final
 
                     return
 
@@ -118,7 +151,13 @@ class StreamReader:
 
 
 class AsyncStreamReader:
-    """Single-use async iterable stream with transparent reconnect."""
+    """Single-use async iterable stream with transparent reconnect.
+
+    Parses SSE (Server-Sent Events) from the response. Data events carry
+    stdout/stderr text, with `id:` fields tracking byte offsets for resume
+    via the `Last-Event-ID` header. Comment lines (`: keepalive`) keep the
+    connection alive through intermediate infrastructure.
+    """
 
     def __init__(self, api: _AsyncStreamAPI, path: str) -> None:
         self._api = api
@@ -142,26 +181,52 @@ class AsyncStreamReader:
 
         while True:
             try:
+                headers = {"Last-Event-ID": str(self._offset)} if self._offset > 0 else None
                 async with self._api.open_stream(
                     self._path,
-                    params={"offset": self._offset},
+                    headers=headers,
                     timeout=self._httpx_timeout,
                 ) as response:
                     if response.status_code >= 400:
                         raise error_from_http(response.status_code, None, await response.aread())
 
+                    data_parts: list[str] = []
+                    event_id = ""
+                    buf = ""
+
                     async for chunk in response.aiter_bytes():
                         if not chunk:
                             continue
-                        self._offset += len(chunk)
-                        reconnects = 0
-                        decoded = decoder.decode(chunk)
-                        if decoded:
-                            yield decoded
+                        buf += decoder.decode(chunk)
+                        while "\n" in buf:
+                            line, buf = buf.split("\n", 1)
+                            line = line.rstrip("\r")
+                            if not line:
+                                # Empty line = event boundary
+                                if event_id:
+                                    with contextlib.suppress(ValueError):
+                                        self._offset = int(event_id)
+                                    event_id = ""
+                                if data_parts:
+                                    text = "\n".join(data_parts)
+                                    data_parts = []
+                                    reconnects = 0
+                                    if text:
+                                        yield text
+                            elif line.startswith(":"):
+                                pass  # comment (keepalive)
+                            else:
+                                name, _, value = line.partition(":")
+                                if value.startswith(" "):
+                                    value = value[1:]
+                                if name == "data":
+                                    data_parts.append(value)
+                                elif name == "id" and "\0" not in value:
+                                    event_id = value
 
                     final = decoder.decode(b"", final=True)
                     if final:
-                        yield final
+                        buf += final
 
                     return
 

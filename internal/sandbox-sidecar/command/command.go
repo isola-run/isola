@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -37,12 +38,17 @@ import (
 	sandboxsidecar "github.com/isola-ai/isola/internal/sandbox-sidecar"
 	"github.com/isola-ai/isola/internal/sandbox-sidecar/proc"
 	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
+	"github.com/isola-ai/isola/internal/sseutil"
 )
 
 // time cmd.Wait() has to drain before giving up
 // in our case, there should be nothing to drain
 // but it's a safety precaution for infinitely blocking after process kill
 const waitDelayGracePeriod = 5 * time.Second
+
+// sseKeepaliveInterval controls how often keepalive comments are sent on SSE streams
+// to prevent proxies from dropping idle connections.
+const sseKeepaliveInterval = 15 * time.Second
 
 // CommandBuilder abstracts command construction for testability.
 // The real implementation uses chroot via /proc/<pid>/root; tests use direct execution.
@@ -115,8 +121,8 @@ type GetCommandStatusOutput struct {
 }
 
 type GetCommandStreamInput struct {
-	CmdID  string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
-	Offset int64  `query:"offset,omitempty" minimum:"0" doc:"Byte offset to resume from (default 0)"`
+	CmdID       string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	LastEventID string `header:"Last-Event-ID" doc:"Byte offset to resume from (SSE Last-Event-ID)"`
 }
 
 type PostCommandStdinInput struct {
@@ -339,11 +345,33 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetCommandStatus
 }
 
 func (h *Handlers) GetCommandStdout(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
-	return h.streamOutput(input.CmdID, input.Offset, "stdout")
+	offset, err := parseLastEventID(input.LastEventID)
+	if err != nil {
+		return nil, err
+	}
+	return h.streamOutput(input.CmdID, offset, "stdout")
 }
 
 func (h *Handlers) GetCommandStderr(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
-	return h.streamOutput(input.CmdID, input.Offset, "stderr")
+	offset, err := parseLastEventID(input.LastEventID)
+	if err != nil {
+		return nil, err
+	}
+	return h.streamOutput(input.CmdID, offset, "stderr")
+}
+
+func parseLastEventID(id string) (int64, error) {
+	if id == "" {
+		return 0, nil
+	}
+	offset, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return 0, huma.Error400BadRequest(fmt.Sprintf("invalid Last-Event-ID header %q: %v", id, err))
+	}
+	if offset < 0 {
+		return 0, huma.Error400BadRequest(fmt.Sprintf("invalid Last-Event-ID header %q: must be non-negative", id))
+	}
+	return offset, nil
 }
 
 func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (*huma.StreamResponse, error) {
@@ -356,8 +384,8 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
-			ctx.SetHeader("Content-Type", "application/octet-stream")
-			// no-cache, since the stream change over time
+			ctx.SetHeader("Content-Type", "text/event-stream")
+			// no-cache, since the stream changes over time
 			// not ", private" in the context of the sandbox->api-gateway
 			ctx.SetHeader("Cache-Control", "no-cache")
 			// X-Accel-Buffering: no, disable nginx buffering (serve immediately)
@@ -382,44 +410,83 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 			fw := httputil.NewTimedFlushWriter(dw, 100*time.Millisecond)
 			defer fw.Stop()
 
+			sse := sseutil.NewWriter(fw)
+			buf := make([]byte, 32*1024)
+			keepaliveTicker := time.NewTicker(sseKeepaliveInterval)
+			defer keepaliveTicker.Stop()
+
 			for {
-				written, err := io.Copy(fw, f)
-				if err != nil {
-					if isClientDisconnect(err) {
-						h.logger.Warn("client disconnected during command stream", "error", err, "cmdID", cmdID)
-					} else {
-						h.logger.Error("unexpected error streaming command output", "error", err, "cmdID", cmdID)
+				n, readErr := f.Read(buf)
+				if n > 0 {
+					offset += int64(n)
+					if werr := sse.WriteData(buf[:n], offset); werr != nil {
+						if isClientDisconnect(werr) {
+							h.logger.Warn("client disconnected during command stream", "error", werr, "cmdID", cmdID)
+						} else {
+							h.logger.Error("unexpected error streaming command output", "error", werr, "cmdID", cmdID)
+						}
+						return
 					}
-					return
-				}
-				eof := written == 0 && err == nil
-				if !eof {
+					keepaliveTicker.Reset(sseKeepaliveInterval)
 					continue
 				}
-				// EOF - check if process is done or wait for more data
+				if readErr != nil && readErr != io.EOF {
+					h.logger.Error("unexpected error reading command output", "error", readErr, "cmdID", cmdID)
+					return
+				}
+				// EOF — poll for more data or exit
 				select {
 				case <-entry.done:
-					// process exited; drain anything written between the read and the channel check
-					if _, err := io.Copy(fw, f); err != nil {
-						if isClientDisconnect(err) {
-							h.logger.Warn("client disconnected during command stream", "error", err, "cmdID", cmdID)
-						} else {
-							h.logger.Error("error during final drain of command output", "error", err, "cmdID", cmdID)
-						}
-					}
+					h.drainSSE(f, sse, buf, offset, cmdID)
 					return
 				case <-ctx.Context().Done():
 					h.logger.Warn("client disconnected during command stream", "cmdID", cmdID)
 					return
+				case <-keepaliveTicker.C:
+					if werr := sse.WriteKeepalive(); werr != nil {
+						if isClientDisconnect(werr) {
+							h.logger.Warn("client disconnected during command stream", "error", werr, "cmdID", cmdID)
+						} else {
+							h.logger.Error("unexpected error writing keepalive", "error", werr, "cmdID", cmdID)
+						}
+						return
+					}
 				default:
-					// we could have used inotify to watch writes to the file, but it would complicate the solution
-					// and introduce possible file descriptor saturation issues, and waking up a few times a second
-					// to poll the file isn't that bad nor we need ~0 latency on sudden writes to the file
 					time.Sleep(20 * time.Millisecond)
 				}
 			}
 		},
 	}, nil
+}
+
+// drainSSE reads remaining bytes from f after the process exits and writes them as SSE events.
+func (h *Handlers) drainSSE(f *os.File, sse *sseutil.Writer, buf []byte, offset int64, cmdID string) {
+	for {
+		n, readErr := f.Read(buf)
+		if n > 0 {
+			offset += int64(n)
+			if werr := sse.WriteData(buf[:n], offset); werr != nil {
+				if isClientDisconnect(werr) {
+					h.logger.Warn("client disconnected during command stream", "error", werr, "cmdID", cmdID)
+				} else {
+					h.logger.Error("error during final drain of command output", "error", werr, "cmdID", cmdID)
+				}
+				return
+			}
+		}
+		if readErr != nil {
+			if readErr != io.EOF {
+				h.logger.Error("error during final drain of command output", "error", readErr, "cmdID", cmdID)
+			}
+			// Flush any incomplete UTF-8 sequence
+			if ferr := sse.Flush(offset); ferr != nil {
+				if !isClientDisconnect(ferr) {
+					h.logger.Error("error flushing SSE writer", "error", ferr, "cmdID", cmdID)
+				}
+			}
+			return
+		}
+	}
 }
 
 func (h *Handlers) PostCommandStdin(_ context.Context, input *PostCommandStdinInput) (*struct{}, error) {
@@ -558,14 +625,14 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/commands/{cmdId}/stdout",
 		Summary:     "Stream command stdout",
-		Description: "Streams the command's stdout as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.",
+		Description: "Streams the command's stdout as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.",
 		Tags:        []string{"commands"},
 		Responses: map[string]*huma.Response{
 			"200": {
 				Description: "Command stdout stream",
 				Content: map[string]*huma.MediaType{
-					"application/octet-stream": {
-						Schema: &huma.Schema{Type: "string", Format: "binary"},
+					"text/event-stream": {
+						Schema: &huma.Schema{Type: "string"},
 					},
 				},
 			},
@@ -578,14 +645,14 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/commands/{cmdId}/stderr",
 		Summary:     "Stream command stderr",
-		Description: "Streams the command's stderr as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.",
+		Description: "Streams the command's stderr as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.",
 		Tags:        []string{"commands"},
 		Responses: map[string]*huma.Response{
 			"200": {
 				Description: "Command stderr stream",
 				Content: map[string]*huma.MediaType{
-					"application/octet-stream": {
-						Schema: &huma.Schema{Type: "string", Format: "binary"},
+					"text/event-stream": {
+						Schema: &huma.Schema{Type: "string"},
 					},
 				},
 			},

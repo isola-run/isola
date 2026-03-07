@@ -303,9 +303,9 @@ var _ = Describe("Command Proxy", func() {
 
 	Describe("GET /sandboxes/{id}/commands/{cmdId}/stdout", func() {
 		It("proxies chunked byte stream", func() {
-			content := []byte("hello from command")
+			content := []byte("data: hello from command\nid: 17\n\n")
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/octet-stream")
+				w.Header().Set("Content-Type", "text/event-stream")
 				w.Header().Set("Cache-Control", "no-cache")
 				w.Header().Set("X-Accel-Buffering", "no")
 				w.WriteHeader(http.StatusOK)
@@ -320,27 +320,40 @@ var _ = Describe("Command Proxy", func() {
 			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Bytes()).To(Equal(content))
-			Expect(resp.Header().Get("Content-Type")).To(Equal("application/octet-stream"))
+			Expect(resp.Header().Get("Content-Type")).To(Equal("text/event-stream"))
 			Expect(resp.Header().Get("X-Accel-Buffering")).To(Equal("no"))
 		})
 
-		It("forwards offset query param to sidecar", func() {
-			var capturedOffset string
+		It("forwards Last-Event-ID header to sidecar", func() {
+			var capturedLastEventID string
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				capturedOffset = r.URL.Query().Get("offset")
-				w.Header().Set("Content-Type", "application/octet-stream")
+				capturedLastEventID = r.Header.Get("Last-Event-ID")
+				w.Header().Set("Content-Type", "text/event-stream")
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("partial"))
+				_, _ = w.Write([]byte("data: partial\nid: 49\n\n"))
 			}))
 			defer mockSidecar.Close()
 
 			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
-			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout?offset=42", sbName))
-			Expect(resp.Code).To(Equal(http.StatusOK))
-			Expect(capturedOffset).To(Equal("42"))
+			handler, testAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
+			h := New(
+				slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
+				testNamespace,
+				k8sClient,
+				&http.Client{},
+			)
+			h.sidecarPort = port
+			Register(testAPI, h)
+
+			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout", sbName), nil)
+			req.Header.Set("Last-Event-ID", "42")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+			Expect(capturedLastEventID).To(Equal("42"))
 		})
 	})
 
@@ -496,10 +509,10 @@ var _ = Describe("Command Proxy", func() {
 
 	Describe("GET /sandboxes/{id}/commands/{cmdId}/stderr", func() {
 		It("proxies stderr byte stream", func() {
-			content := []byte("error output here")
+			content := []byte("data: error output here\nid: 5\n\n")
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				Expect(r.URL.Path).To(ContainSubstring("/stderr"))
-				w.Header().Set("Content-Type", "application/octet-stream")
+				w.Header().Set("Content-Type", "text/event-stream")
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write(content)
 			}))
@@ -514,23 +527,36 @@ var _ = Describe("Command Proxy", func() {
 			Expect(resp.Body.Bytes()).To(Equal(content))
 		})
 
-		It("forwards offset query param to sidecar", func() {
-			var capturedOffset string
+		It("forwards Last-Event-ID header to sidecar", func() {
+			var capturedLastEventID string
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				capturedOffset = r.URL.Query().Get("offset")
-				w.Header().Set("Content-Type", "application/octet-stream")
+				capturedLastEventID = r.Header.Get("Last-Event-ID")
+				w.Header().Set("Content-Type", "text/event-stream")
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("partial"))
+				_, _ = w.Write([]byte("data: partial\nid: 15\n\n"))
 			}))
 			defer mockSidecar.Close()
 
 			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
-			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stderr?offset=10", sbName))
-			Expect(resp.Code).To(Equal(http.StatusOK))
-			Expect(capturedOffset).To(Equal("10"))
+			handler, testAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
+			h := New(
+				slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
+				testNamespace,
+				k8sClient,
+				&http.Client{},
+			)
+			h.sidecarPort = port
+			Register(testAPI, h)
+
+			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stderr", sbName), nil)
+			req.Header.Set("Last-Event-ID", "10")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+			Expect(capturedLastEventID).To(Equal("10"))
 		})
 	})
 

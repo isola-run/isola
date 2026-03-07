@@ -137,12 +137,14 @@ class _SyncAPI:
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = None,
     ) -> AbstractContextManager[httpx.Response]:
         return self._client.stream(
             "GET",
             f"{self.base_url}{path}",
             params=params,
+            headers=headers,
             timeout=timeout,
         )
 
@@ -249,12 +251,14 @@ class _AsyncAPI:
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = None,
     ) -> AbstractAsyncContextManager[httpx.Response]:
         return self._client.stream(
             "GET",
             f"{self.base_url}{path}",
             params=params,
+            headers=headers,
             timeout=timeout,
         )
 

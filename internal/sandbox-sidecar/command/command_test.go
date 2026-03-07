@@ -37,6 +37,28 @@ import (
 	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
 )
 
+// extractSSEData parses SSE events from a response body and returns the concatenated data.
+func extractSSEData(body string) string {
+	var result strings.Builder
+	var dataParts []string
+
+	for line := range strings.SplitSeq(body, "\n") {
+		switch {
+		case strings.HasPrefix(line, "data: "):
+			dataParts = append(dataParts, line[6:])
+		case line == "data:":
+			dataParts = append(dataParts, "")
+		case line == "":
+			if len(dataParts) > 0 {
+				result.WriteString(strings.Join(dataParts, "\n"))
+				dataParts = dataParts[:0]
+			}
+		}
+	}
+
+	return result.String()
+}
+
 var _ = Describe("Command Handlers", func() {
 	var (
 		commandAPI      humatest.TestAPI
@@ -214,7 +236,7 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello world"))
 		})
 
@@ -224,36 +246,39 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).ShouldNot(BeEmpty())
 
 			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-			Expect(resp.Header().Get("Content-Type")).To(Equal("application/octet-stream"))
+			Expect(resp.Header().Get("Content-Type")).To(Equal("text/event-stream"))
 			Expect(resp.Header().Get("X-Accel-Buffering")).To(Equal("no"))
 			Expect(resp.Header().Get("Cache-Control")).To(Equal("no-cache"))
 		})
 
-		It("supports resume via offset", func() {
+		It("supports resume via Last-Event-ID", func() {
 			code, result := postCommand(`{"args": ["echo", "-n", "hello world"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello world"))
 
-			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout?offset=6", result.CommandID))
-			Expect(resp.Body.String()).To(Equal("world"))
+			req := httptest.NewRequest("GET", fmt.Sprintf("/commands/%s/stdout", result.CommandID), nil)
+			req.Header.Set("Last-Event-ID", "6")
+			w := httptest.NewRecorder()
+			commandHandler.ServeHTTP(w, req)
+			Expect(extractSSEData(w.Body.String())).To(Equal("world"))
 		})
 
-		It("preserves binary data", func() {
-			code, result := postCommand(`{"args": ["/bin/sh", "-c", "printf 'a\\0b\\rc'"]}`)
+		It("replaces invalid UTF-8 with replacement character", func() {
+			code, result := postCommand(`{"args": ["/bin/sh", "-c", "printf 'a\\377b'"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
-			Eventually(func() []byte {
+			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-				return resp.Body.Bytes()
-			}).Should(Equal([]byte{'a', 0, 'b', '\r', 'c'}))
+				return extractSSEData(resp.Body.String())
+			}).Should(Equal("a\uFFFDb"))
 		})
 
 		It("returns 404 for unknown command", func() {
@@ -269,11 +294,11 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stderr", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).Should(Equal("err"))
 
 			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-			Expect(resp.Body.String()).To(Equal("out"))
+			Expect(extractSSEData(resp.Body.String())).To(Equal("out"))
 		})
 	})
 
@@ -291,7 +316,7 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello"))
 		})
 
@@ -335,7 +360,7 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stderr", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).Should(Equal("ready"))
 
 			resp := commandAPI.Post(
@@ -400,7 +425,7 @@ var _ = Describe("Command Handlers", func() {
 
 			// Verify the data was echoed
 			resp = commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-			Expect(resp.Body.String()).To(Equal("hello"))
+			Expect(extractSSEData(resp.Body.String())).To(Equal("hello"))
 		})
 
 		It("returns 409 when closing already closed stdin", func() {
@@ -534,7 +559,7 @@ var _ = Describe("Command Handlers", func() {
 
 			// Output written before the kill should be preserved
 			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-			Expect(resp.Body.String()).To(Equal("before-timeout"))
+			Expect(extractSSEData(resp.Body.String())).To(Equal("before-timeout"))
 		})
 	})
 
@@ -554,7 +579,7 @@ var _ = Describe("Command Handlers", func() {
 			// Output should still be available
 			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
 			Expect(resp.Code).To(Equal(http.StatusOK))
-			Expect(resp.Body.String()).To(Equal("fast"))
+			Expect(extractSSEData(resp.Body.String())).To(Equal("fast"))
 		})
 	})
 
@@ -576,7 +601,7 @@ var _ = Describe("Command Handlers", func() {
 
 			// The goroutine should complete once the process exits and the stream closes
 			Eventually(done, "2s").Should(BeClosed())
-			Expect(w.Body.String()).To(Equal("hello"))
+			Expect(extractSSEData(w.Body.String())).To(Equal("hello"))
 		})
 
 		It("stream delivers final output written just before exit", func() {
@@ -595,7 +620,7 @@ var _ = Describe("Command Handlers", func() {
 			}()
 
 			Eventually(done, "5s").Should(BeClosed())
-			Expect(w.Body.String()).To(Equal("final"))
+			Expect(extractSSEData(w.Body.String())).To(Equal("final"))
 		})
 
 		It("concurrent stdout and stderr streams both close on exit", func() {
@@ -624,8 +649,8 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(stdoutDone, "2s").Should(BeClosed())
 			Eventually(stderrDone, "2s").Should(BeClosed())
-			Expect(stdoutW.Body.String()).To(Equal("out"))
-			Expect(stderrW.Body.String()).To(Equal("err"))
+			Expect(extractSSEData(stdoutW.Body.String())).To(Equal("out"))
+			Expect(extractSSEData(stderrW.Body.String())).To(Equal("err"))
 		})
 	})
 
@@ -703,7 +728,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
-	Describe("offset beyond file size", func() {
+	Describe("Last-Event-ID beyond file size", func() {
 		It("returns empty body when offset exceeds output size for exited command", func() {
 			code, result := postCommand(`{"args": ["echo", "-n", "short"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
@@ -715,9 +740,12 @@ var _ = Describe("Command Handlers", func() {
 				return status.ExitCode
 			}).ShouldNot(BeNil())
 
-			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout?offset=9999", result.CommandID))
-			Expect(resp.Code).To(Equal(http.StatusOK))
-			Expect(resp.Body.String()).To(BeEmpty())
+			req := httptest.NewRequest("GET", fmt.Sprintf("/commands/%s/stdout", result.CommandID), nil)
+			req.Header.Set("Last-Event-ID", "9999")
+			w := httptest.NewRecorder()
+			commandHandler.ServeHTTP(w, req)
+			Expect(w.Code).To(Equal(http.StatusOK))
+			Expect(extractSSEData(w.Body.String())).To(BeEmpty())
 		})
 	})
 
@@ -742,7 +770,7 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).Should(Equal("helloworld"))
 		})
 	})
@@ -785,7 +813,7 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello world\nfoo  bar\na*b\n"))
 		})
 
@@ -798,7 +826,7 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).Should(Equal("via-path"))
 		})
 
@@ -830,7 +858,7 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-				return strings.TrimSpace(resp.Body.String())
+				return strings.TrimSpace(extractSSEData(resp.Body.String()))
 			}).Should(Equal("/tmp"))
 		})
 	})
@@ -842,7 +870,7 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello"))
 		})
 
@@ -853,7 +881,7 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).Should(Equal("/root"))
 		})
 	})
@@ -877,7 +905,7 @@ var _ = Describe("Command Handlers", func() {
 			for _, c := range cmds {
 				Eventually(func() string {
 					resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", c.id))
-					return resp.Body.String()
+					return extractSSEData(resp.Body.String())
 				}).Should(Equal(c.want))
 			}
 		})
@@ -900,18 +928,21 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
-	Describe("stderr offset", func() {
-		It("supports resume via offset on stderr", func() {
+	Describe("stderr Last-Event-ID", func() {
+		It("supports resume via Last-Event-ID on stderr", func() {
 			code, result := postCommand(`{"args": ["/bin/sh", "-c", "echo -n 'hello world' >&2"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
 				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stderr", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello world"))
 
-			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stderr?offset=6", result.CommandID))
-			Expect(resp.Body.String()).To(Equal("world"))
+			req := httptest.NewRequest("GET", fmt.Sprintf("/commands/%s/stderr", result.CommandID), nil)
+			req.Header.Set("Last-Event-ID", "6")
+			w := httptest.NewRecorder()
+			commandHandler.ServeHTTP(w, req)
+			Expect(extractSSEData(w.Body.String())).To(Equal("world"))
 		})
 	})
 
@@ -950,7 +981,7 @@ var _ = Describe("Command Handlers", func() {
 			}, "5s").ShouldNot(BeNil())
 
 			resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-			Expect(resp.Body.Len()).To(Equal(1024 * 1024))
+			Expect(extractSSEData(resp.Body.String())).To(HaveLen(1024 * 1024))
 		})
 	})
 
@@ -1002,7 +1033,7 @@ var _ = Describe("Command Handlers", func() {
 
 			Eventually(func() string {
 				resp := envFailAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
-				return resp.Body.String()
+				return extractSSEData(resp.Body.String())
 			}).Should(Equal("ok"))
 		})
 	})

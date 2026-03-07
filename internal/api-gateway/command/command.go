@@ -77,9 +77,9 @@ type GetSandboxCommandStatusOutput struct {
 }
 
 type GetSandboxCommandStreamInput struct {
-	ID     string `path:"id" doc:"Sandbox identifier"`
-	CmdID  string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
-	Offset int64  `query:"offset,omitempty" minimum:"0" doc:"Byte offset to resume from (default 0)"`
+	ID          string `path:"id" doc:"Sandbox identifier"`
+	CmdID       string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	LastEventID string `header:"Last-Event-ID" doc:"Byte offset to resume from (SSE Last-Event-ID)"`
 }
 
 type PostSandboxCommandStdinInput struct {
@@ -208,31 +208,30 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetSandboxComman
 }
 
 func (h *Handlers) GetCommandStdout(ctx context.Context, input *GetSandboxCommandStreamInput) (*huma.StreamResponse, error) {
-	return h.proxyStream(ctx, input.ID, input.CmdID, "stdout", input.Offset)
+	return h.proxyStream(ctx, input.ID, input.CmdID, "stdout", input.LastEventID)
 }
 
 func (h *Handlers) GetCommandStderr(ctx context.Context, input *GetSandboxCommandStreamInput) (*huma.StreamResponse, error) {
-	return h.proxyStream(ctx, input.ID, input.CmdID, "stderr", input.Offset)
+	return h.proxyStream(ctx, input.ID, input.CmdID, "stderr", input.LastEventID)
 }
 
-func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream string, offset int64) (*huma.StreamResponse, error) {
+func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream, lastEventID string) (*huma.StreamResponse, error) {
 	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, sandboxID, h.logger)
 	if err != nil {
 		return nil, err
 	}
 
 	sidecarURL := fmt.Sprintf("http://%s:%d/commands/%s/%s", sb.Status.PodIP, h.sidecarPort, cmdID, stream)
-	if offset > 0 {
-		sidecarURL += fmt.Sprintf("?offset=%d", offset)
-	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarURL, nil)
 	if err != nil {
 		h.logger.Error("failed to build sidecar request", "error", err)
 		return nil, huma.Error500InternalServerError("failed to build sidecar request")
 	}
+	if lastEventID != "" {
+		req.Header.Set("Last-Event-ID", lastEventID)
+	}
 
-	// todo benl: can probably refactor the code around here to something like doSidecarRequest
 	resp, err := h.httpClient.Do(req) //nolint:bodyclose // closed in both error and streaming paths below
 	if err != nil {
 		h.logger.Error("sidecar request failed", "error", err, "id", sandboxID)
@@ -248,11 +247,8 @@ func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream str
 		Body: func(ctx huma.Context) {
 			defer func() { _ = resp.Body.Close() }()
 
-			ctx.SetHeader("Content-Type", "application/octet-stream")
-			// no-cache, since the stream change over time
-			// private, since the stream is of a specific sandbox
+			ctx.SetHeader("Content-Type", "text/event-stream")
 			ctx.SetHeader("Cache-Control", "no-cache, private")
-			// X-Accel-Buffering: no, disable nginx buffering (serve immediately)
 			ctx.SetHeader("X-Accel-Buffering", "no")
 
 			rc := httputil.ResponseController(ctx)
@@ -385,14 +381,14 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/sandboxes/{id}/commands/{cmdId}/stdout",
 		Summary:     "Stream command stdout",
-		Description: "Streams the command's stdout as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.",
+		Description: "Streams the command's stdout as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.",
 		Tags:        []string{"sandboxes", "commands"},
 		Responses: map[string]*huma.Response{
 			"200": {
 				Description: "Command stdout stream",
 				Content: map[string]*huma.MediaType{
-					"application/octet-stream": {
-						Schema: &huma.Schema{Type: "string", Format: "binary"},
+					"text/event-stream": {
+						Schema: &huma.Schema{Type: "string"},
 					},
 				},
 			},
@@ -405,14 +401,14 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/sandboxes/{id}/commands/{cmdId}/stderr",
 		Summary:     "Stream command stderr",
-		Description: "Streams the command's stderr as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.",
+		Description: "Streams the command's stderr as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.",
 		Tags:        []string{"sandboxes", "commands"},
 		Responses: map[string]*huma.Response{
 			"200": {
 				Description: "Command stderr stream",
 				Content: map[string]*huma.MediaType{
-					"application/octet-stream": {
-						Schema: &huma.Schema{Type: "string", Format: "binary"},
+					"text/event-stream": {
+						Schema: &huma.Schema{Type: "string"},
 					},
 				},
 			},

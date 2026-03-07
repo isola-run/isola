@@ -23,6 +23,14 @@ from isola import APIConnectionError, IsolaError, NotFoundError
 from isola._streaming import MAX_RECONNECTS, AsyncStreamReader, StreamReader
 
 
+def _sse_event(data: str, event_id: int) -> bytes:
+    """Format a single SSE data event as wire bytes."""
+    lines = [f"data: {line}" for line in data.split("\n")]
+    lines.append(f"id: {event_id}")
+    lines.append("")  # blank line terminates event
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 class _FakeSyncResponse:
     def __init__(self, chunks: list[bytes], *, raise_after: Exception | None = None, status_code: int = 200) -> None:
         self.status_code = status_code
@@ -58,10 +66,17 @@ class _FakeSyncAPI:
         self._sequence = sequence
         self.calls: list[int] = []
 
-    def open_stream(self, path: str, *, params: dict[str, int] | None = None, timeout: object = None) -> _FakeSyncCM:
-        del path, timeout
-        assert params is not None
-        self.calls.append(params["offset"])
+    def open_stream(
+        self,
+        path: str,
+        *,
+        params: dict[str, int] | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: object = None,
+    ) -> _FakeSyncCM:
+        del path, params, timeout
+        offset = int(headers["Last-Event-ID"]) if headers and "Last-Event-ID" in headers else 0
+        self.calls.append(offset)
         return self._sequence.pop(0)
 
 
@@ -101,11 +116,21 @@ class _FakeAsyncAPI:
         self._sequence = sequence
         self.calls: list[int] = []
 
-    def open_stream(self, path: str, *, params: dict[str, int] | None = None, timeout: object = None) -> _FakeAsyncCM:
-        del path, timeout
-        assert params is not None
-        self.calls.append(params["offset"])
+    def open_stream(
+        self,
+        path: str,
+        *,
+        params: dict[str, int] | None = None,
+        headers: dict[str, str] | None = None,
+        timeout: object = None,
+    ) -> _FakeAsyncCM:
+        del path, params, timeout
+        offset = int(headers["Last-Event-ID"]) if headers and "Last-Event-ID" in headers else 0
+        self.calls.append(offset)
         return self._sequence.pop(0)
+
+
+# --- Reconnect tests ---
 
 
 def test_sync_stream_reconnects_and_resumes_offset(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -113,8 +138,8 @@ def test_sync_stream_reconnects_and_resumes_offset(monkeypatch: pytest.MonkeyPat
 
     api = _FakeSyncAPI(
         [
-            _FakeSyncCM(_FakeSyncResponse([b"ab"], raise_after=httpx.ConnectError("disconnect"))),
-            _FakeSyncCM(_FakeSyncResponse([b"cd"])),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("ab", 2)], raise_after=httpx.ConnectError("disconnect"))),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("cd", 4)])),
         ]
     )
 
@@ -143,8 +168,8 @@ def test_sync_stream_reconnects_on_network_error(monkeypatch: pytest.MonkeyPatch
 
     api = _FakeSyncAPI(
         [
-            _FakeSyncCM(_FakeSyncResponse([b"ab"], raise_after=error)),
-            _FakeSyncCM(_FakeSyncResponse([b"cd"])),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("ab", 2)], raise_after=error)),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("cd", 4)])),
         ]
     )
 
@@ -165,8 +190,8 @@ async def test_async_stream_reconnects_and_resumes_offset(monkeypatch: pytest.Mo
 
     api = _FakeAsyncAPI(
         [
-            _FakeAsyncCM(_FakeAsyncResponse([b"a"], raise_after=httpx.ConnectError("disconnect"))),
-            _FakeAsyncCM(_FakeAsyncResponse([b"b", b"c"])),
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("a", 1)], raise_after=httpx.ConnectError("disconnect"))),
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("b", 2), _sse_event("c", 3)])),
         ]
     )
 
@@ -197,7 +222,7 @@ def test_sync_stream_connect_error_during_enter(monkeypatch: pytest.MonkeyPatch)
     api = _FakeSyncAPI(
         [
             _FakeSyncCM(enter_exc=httpx.ConnectError("refused")),
-            _FakeSyncCM(_FakeSyncResponse([b"hello"])),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("hello", 5)])),
         ]
     )
 
@@ -215,7 +240,7 @@ def test_sync_stream_connect_timeout_during_enter(monkeypatch: pytest.MonkeyPatc
     api = _FakeSyncAPI(
         [
             _FakeSyncCM(enter_exc=httpx.ConnectTimeout("connect timed out")),
-            _FakeSyncCM(_FakeSyncResponse([b"hello"])),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("hello", 5)])),
         ]
     )
 
@@ -279,7 +304,7 @@ async def test_async_stream_connect_error_during_enter(monkeypatch: pytest.Monke
     api = _FakeAsyncAPI(
         [
             _FakeAsyncCM(enter_exc=httpx.ConnectError("refused")),
-            _FakeAsyncCM(_FakeAsyncResponse([b"hello"])),
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("hello", 5)])),
         ]
     )
 
@@ -303,7 +328,7 @@ async def test_async_stream_connect_timeout_during_enter(monkeypatch: pytest.Mon
     api = _FakeAsyncAPI(
         [
             _FakeAsyncCM(enter_exc=httpx.ConnectTimeout("connect timed out")),
-            _FakeAsyncCM(_FakeAsyncResponse([b"hello"])),
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("hello", 5)])),
         ]
     )
 
@@ -353,106 +378,147 @@ async def test_async_stream_http_error_propagates(monkeypatch: pytest.MonkeyPatc
             pass
 
 
-# --- Text mode tests ---
+# --- SSE parsing tests ---
 
 
-def test_sync_stream_text_mode_decodes_utf8() -> None:
+def test_sync_stream_parses_multiline_sse_data() -> None:
+    """Multiple data: lines in one event are joined with newlines."""
     api = _FakeSyncAPI(
         [
-            _FakeSyncCM(_FakeSyncResponse([b"hello ", b"world"])),
+            _FakeSyncCM(_FakeSyncResponse([b"data: hello\ndata: world\nid: 11\n\n"])),
         ]
     )
 
     stream = StreamReader(api, "/path")
-
-    output = "".join(stream)
-
-    assert output == "hello world"
+    assert "".join(stream) == "hello\nworld"
 
 
-def test_sync_stream_text_mode_handles_split_multibyte() -> None:
-    # "cafe\u0301\n" in UTF-8: b"caf\xc3\xa9\n"
-    # Split the e\u0301 (0xc3 0xa9) across two chunks
+def test_sync_stream_filters_keepalive_comments() -> None:
+    """SSE comments (: keepalive) are invisible to the parser."""
     api = _FakeSyncAPI(
         [
-            _FakeSyncCM(_FakeSyncResponse([b"caf\xc3", b"\xa9\n"])),
+            _FakeSyncCM(
+                _FakeSyncResponse(
+                    [
+                        _sse_event("hello", 5),
+                        b": keepalive\n\n",
+                        _sse_event("world", 10),
+                    ]
+                )
+            ),
         ]
     )
 
     stream = StreamReader(api, "/path")
-
-    output = "".join(stream)
-
-    assert output == "caf\u00e9\n"
+    assert "".join(stream) == "helloworld"
 
 
-@pytest.mark.asyncio
-async def test_async_stream_text_mode_decodes_utf8() -> None:
-    api = _FakeAsyncAPI(
-        [
-            _FakeAsyncCM(_FakeAsyncResponse([b"hello ", b"world"])),
-        ]
-    )
-
-    stream = AsyncStreamReader(api, "/path")
-
-    chunks_list: list[str] = []
-    async for chunk in stream:
-        chunks_list.append(chunk)
-
-    assert "".join(chunks_list) == "hello world"
-
-
-@pytest.mark.asyncio
-async def test_async_stream_text_mode_handles_split_multibyte() -> None:
-    # "cafe\u0301\n" in UTF-8: b"caf\xc3\xa9\n"
-    # Split the e\u0301 (0xc3 0xa9) across two chunks
-    api = _FakeAsyncAPI(
-        [
-            _FakeAsyncCM(_FakeAsyncResponse([b"caf\xc3", b"\xa9\n"])),
-        ]
-    )
-
-    stream = AsyncStreamReader(api, "/path")
-
-    chunks_list: list[str] = []
-    async for chunk in stream:
-        chunks_list.append(chunk)
-
-    assert "".join(chunks_list) == "caf\u00e9\n"
-
-
-def test_sync_stream_text_mode_flushes_incomplete_sequence_at_eof() -> None:
-    # Stream ends with 0xc3 -- the first byte of a 2-byte UTF-8 character
-    # with no second byte. The decoder should flush it as U+FFFD (replacement).
+def test_sync_stream_preserves_trailing_newline() -> None:
+    """Output ending with a newline round-trips through SSE correctly."""
+    # "hello\n" → data: hello\ndata: \nid: 6\n\n
     api = _FakeSyncAPI(
         [
-            _FakeSyncCM(_FakeSyncResponse([b"hello\xc3"])),
+            _FakeSyncCM(_FakeSyncResponse([b"data: hello\ndata: \nid: 6\n\n"])),
         ]
     )
 
     stream = StreamReader(api, "/path")
-
-    output = "".join(stream)
-
-    assert output == "hello\ufffd"
+    assert "".join(stream) == "hello\n"
 
 
 @pytest.mark.asyncio
-async def test_async_stream_text_mode_flushes_incomplete_sequence_at_eof() -> None:
+async def test_async_stream_parses_multiline_sse_data() -> None:
     api = _FakeAsyncAPI(
         [
-            _FakeAsyncCM(_FakeAsyncResponse([b"hello\xc3"])),
+            _FakeAsyncCM(_FakeAsyncResponse([b"data: hello\ndata: world\nid: 11\n\n"])),
         ]
     )
 
     stream = AsyncStreamReader(api, "/path")
+    assert "".join([c async for c in stream]) == "hello\nworld"
 
-    chunks_list: list[str] = []
-    async for chunk in stream:
-        chunks_list.append(chunk)
 
-    assert "".join(chunks_list) == "hello\ufffd"
+@pytest.mark.asyncio
+async def test_async_stream_filters_keepalive_comments() -> None:
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(
+                _FakeAsyncResponse(
+                    [
+                        _sse_event("hello", 5),
+                        b": keepalive\n\n",
+                        _sse_event("world", 10),
+                    ]
+                )
+            ),
+        ]
+    )
+
+    stream = AsyncStreamReader(api, "/path")
+    assert "".join([c async for c in stream]) == "helloworld"
+
+
+# --- UTF-8 defense-in-depth tests ---
+
+
+def test_sync_stream_decodes_utf8() -> None:
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("hello ", 6), _sse_event("world", 11)])),
+        ]
+    )
+
+    stream = StreamReader(api, "/path")
+    assert "".join(stream) == "hello world"
+
+
+def test_sync_stream_handles_split_multibyte() -> None:
+    # "café" in UTF-8: b"caf\xc3\xa9"
+    # Split é (0xc3 0xa9) across two chunks within one SSE event
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([b"data: caf\xc3", b"\xa9\nid: 5\n\n"])),
+        ]
+    )
+
+    stream = StreamReader(api, "/path")
+    assert "".join(stream) == "caf\u00e9"
+
+
+def test_sync_stream_handles_replacement_character() -> None:
+    # Server replaces invalid UTF-8 with U+FFFD before sending SSE
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("hello\ufffdworld", 11)])),
+        ]
+    )
+
+    stream = StreamReader(api, "/path")
+    assert "".join(stream) == "hello\ufffdworld"
+
+
+@pytest.mark.asyncio
+async def test_async_stream_decodes_utf8() -> None:
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("hello ", 6), _sse_event("world", 11)])),
+        ]
+    )
+
+    stream = AsyncStreamReader(api, "/path")
+    assert "".join([c async for c in stream]) == "hello world"
+
+
+@pytest.mark.asyncio
+async def test_async_stream_handles_split_multibyte() -> None:
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([b"data: caf\xc3", b"\xa9\nid: 5\n\n"])),
+        ]
+    )
+
+    stream = AsyncStreamReader(api, "/path")
+    assert "".join([c async for c in stream]) == "caf\u00e9"
 
 
 # --- Single-use guard tests ---
@@ -461,7 +527,7 @@ async def test_async_stream_text_mode_flushes_incomplete_sequence_at_eof() -> No
 def test_sync_stream_single_use_guard() -> None:
     api = _FakeSyncAPI(
         [
-            _FakeSyncCM(_FakeSyncResponse([b"data"])),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("data", 4)])),
         ]
     )
 
@@ -476,7 +542,7 @@ def test_sync_stream_single_use_guard() -> None:
 async def test_async_stream_single_use_guard() -> None:
     api = _FakeAsyncAPI(
         [
-            _FakeAsyncCM(_FakeAsyncResponse([b"data"])),
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("data", 4)])),
         ]
     )
 
@@ -495,7 +561,7 @@ async def test_async_stream_single_use_guard() -> None:
 def test_sync_stream_read_text() -> None:
     api = _FakeSyncAPI(
         [
-            _FakeSyncCM(_FakeSyncResponse([b"hello ", b"world"])),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("hello ", 6), _sse_event("world", 11)])),
         ]
     )
 
@@ -507,7 +573,7 @@ def test_sync_stream_read_text() -> None:
 async def test_async_stream_read_text() -> None:
     api = _FakeAsyncAPI(
         [
-            _FakeAsyncCM(_FakeAsyncResponse([b"hello ", b"world"])),
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("hello ", 6), _sse_event("world", 11)])),
         ]
     )
 
@@ -515,7 +581,7 @@ async def test_async_stream_read_text() -> None:
     assert await stream.read() == "hello world"
 
 
-# --- Stream natural termination tests ---
+# --- Transient HTTP error retry tests ---
 
 
 @pytest.mark.parametrize("status", [502, 503, 504], ids=["502", "503", "504"])
@@ -525,9 +591,9 @@ def test_sync_stream_retries_transient_http_error_on_reconnect(monkeypatch: pyte
 
     api = _FakeSyncAPI(
         [
-            _FakeSyncCM(_FakeSyncResponse([b"ab"], raise_after=httpx.ReadError("connection reset"))),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("ab", 2)], raise_after=httpx.ReadError("connection reset"))),
             _FakeSyncCM(_FakeSyncResponse([], status_code=status)),
-            _FakeSyncCM(_FakeSyncResponse([b"cd"])),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("cd", 4)])),
         ]
     )
 
@@ -553,9 +619,9 @@ async def test_async_stream_retries_transient_http_error_on_reconnect(
 
     api = _FakeAsyncAPI(
         [
-            _FakeAsyncCM(_FakeAsyncResponse([b"ab"], raise_after=httpx.ReadError("connection reset"))),
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("ab", 2)], raise_after=httpx.ReadError("connection reset"))),
             _FakeAsyncCM(_FakeAsyncResponse([], status_code=status)),
-            _FakeAsyncCM(_FakeAsyncResponse([b"cd"])),
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("cd", 4)])),
         ]
     )
 
@@ -605,11 +671,14 @@ async def test_async_stream_transient_http_error_max_reconnects_exhausted(
             pass
 
 
+# --- Stream natural termination tests ---
+
+
 def test_sync_stream_read_completes_on_response_end() -> None:
     """read() completes when the HTTP response body ends naturally (no error)."""
     api = _FakeSyncAPI(
         [
-            _FakeSyncCM(_FakeSyncResponse([b"hello"])),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("hello", 5)])),
         ]
     )
 
@@ -621,7 +690,7 @@ def test_sync_stream_iter_completes_on_response_end() -> None:
     """Iteration completes when the HTTP response body ends naturally."""
     api = _FakeSyncAPI(
         [
-            _FakeSyncCM(_FakeSyncResponse([b"hello"])),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("hello", 5)])),
         ]
     )
 
