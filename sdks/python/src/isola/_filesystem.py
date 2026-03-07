@@ -30,17 +30,18 @@ class Filesystem:
         self._api = api
         self._sandbox_id = sandbox_id
 
-    def write(self, path: str, data: bytes | BinaryIO, *, container: str | None = None) -> FileWriteResult:
+    def write(self, path: str, data: str | bytes | BinaryIO, *, container: str | None = None) -> FileWriteResult:
         params = {"path": path}
         if container:
             params["container"] = container
 
+        content: bytes | BinaryIO = data.encode() if isinstance(data, str) else data
         result = self._api.request_model(
             "POST",
             _filesystem_path(self._sandbox_id),
             FileWriteResult,
             params=params,
-            content=data,
+            content=content,
             headers={"Content-Type": "application/octet-stream"},
         )
         return result
@@ -58,17 +59,18 @@ class AsyncFilesystem:
         self._api = api
         self._sandbox_id = sandbox_id
 
-    async def write(self, path: str, data: bytes | BinaryIO, *, container: str | None = None) -> FileWriteResult:
+    async def write(self, path: str, data: str | bytes | BinaryIO, *, container: str | None = None) -> FileWriteResult:
         params = {"path": path}
         if container:
             params["container"] = container
 
+        content: bytes | BinaryIO = data.encode() if isinstance(data, str) else data
         result = await self._api.request_model(
             "POST",
             _filesystem_path(self._sandbox_id),
             FileWriteResult,
             params=params,
-            content=data,
+            content=content,
             headers={"Content-Type": "application/octet-stream"},
         )
         return result

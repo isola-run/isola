@@ -167,6 +167,12 @@ class Sandbox:
     def timeout(self) -> int | None:
         return self._data.timeout
 
+    def __enter__(self) -> Sandbox:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self.delete()
+
     def delete(self) -> None:
         self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
 
@@ -197,6 +203,12 @@ class AsyncSandbox:
     @property
     def timeout(self) -> int | None:
         return self._data.timeout
+
+    async def __aenter__(self) -> AsyncSandbox:
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+        await self.delete()
 
     async def delete(self) -> None:
         await self._api.request_no_content("DELETE", _sandbox_path(self._data.id))

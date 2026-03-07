@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from typing import BinaryIO, cast
 
 import httpx
 import pytest
@@ -119,26 +120,53 @@ async def test_async_filesystem_with_container(sandbox_response_copy: dict[str, 
     assert read_route.calls[0].request.url.params["container"] == "sidecar"
 
 
-class _ChunkedReadValidator(io.RawIOBase):
+@respx.mock
+def test_filesystem_write_str(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(201, json={"absolutePath": "/workspace/hello.py", "bytesWritten": 14})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        sandbox.filesystem.write("/workspace/hello.py", "print('hello')")
+
+    assert write_route.calls[0].request.content == b"print('hello')"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_filesystem_write_str(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(201, json={"absolutePath": "/workspace/hello.py", "bytesWritten": 14})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        await sandbox.filesystem.write("/workspace/hello.py", "print('hello')")
+
+    assert write_route.calls[0].request.content == b"print('hello')"
+
+
+class _ChunkedReadValidator(io.BufferedIOBase):
     """File-like object that fails if .read() is ever called without a bounded size."""
 
     def __init__(self, data: bytes, max_read_size: int) -> None:
         self._buf = io.BytesIO(data)
         self._max_read_size = max_read_size
 
-    def read(self, size: int = -1) -> bytes:  # type: ignore[override]
+    def read(self, size: int | None = -1) -> bytes:
         if size is None or size < 0:
             raise AssertionError(
                 f"read() called without a bounded size (got {size!r}), which would load the entire file into memory"
             )
         assert size <= self._max_read_size, f"read({size}) exceeds max {self._max_read_size}"
         return self._buf.read(size)
-
-    def readinto(self, b: bytearray) -> int:
-        data = self._buf.read(len(b))
-        n = len(data)
-        b[:n] = data
-        return n
 
     def readable(self) -> bool:
         return True
@@ -159,7 +187,7 @@ def test_filesystem_write_streams_without_full_buffering(sandbox_response_copy: 
 
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
-        sandbox.filesystem.write("/big.bin", stream)
+        sandbox.filesystem.write("/big.bin", cast(BinaryIO, stream))
 
 
 @respx.mock

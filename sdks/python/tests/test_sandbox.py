@@ -125,6 +125,37 @@ def test_network_spec_acronym_aliases_round_trip(sandbox_response_copy: dict[str
     assert "allowedEgressCIDRs" in network
 
 
+@respx.mock
+def test_sandbox_context_manager_deletes_on_exit(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    delete_route = respx.delete("http://localhost:8080/sandboxes/sandbox-123").mock(return_value=httpx.Response(204))
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        with sandbox:
+            assert sandbox.id == "sandbox-123"
+
+    assert delete_route.called
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_sandbox_context_manager_deletes_on_exit(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    delete_route = respx.delete("http://localhost:8080/sandboxes/sandbox-123").mock(return_value=httpx.Response(204))
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        async with sandbox:
+            assert sandbox.id == "sandbox-123"
+
+    assert delete_route.called
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_create_properties_and_delete(sandbox_response_copy: dict[str, object]) -> None:
