@@ -15,13 +15,12 @@
 from __future__ import annotations
 
 import asyncio
-import codecs
-import contextlib
 import time
 from collections.abc import AsyncIterator, Generator, Iterator
 from typing import Any, Protocol
 
 import httpx
+from httpx_sse import EventSource
 
 from ._exceptions import APIError, connection_error_from_request, error_from_http, is_transient
 
@@ -57,16 +56,15 @@ class _AsyncStreamAPI(Protocol):
 class StreamReader:
     """Single-use iterable stream with transparent reconnect.
 
-    Parses SSE (Server-Sent Events) from the response. Data events carry
-    stdout/stderr text, with `id:` fields tracking byte offsets for resume
-    via the `Last-Event-ID` header. Comment lines (`: keepalive`) keep the
-    connection alive through intermediate infrastructure.
+    Delegates SSE parsing to httpx-sse. Data events carry stdout/stderr text,
+    with ``id:`` fields tracking byte offsets for resume via the
+    ``Last-Event-ID`` header.
     """
 
     def __init__(self, api: _SyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
-        self._offset = 0
+        self._last_event_id = 0
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
             read=None,
@@ -85,12 +83,11 @@ class StreamReader:
         return "".join(self)
 
     def _generate(self) -> Generator[str, None, None]:
-        decoder = codecs.getincrementaldecoder("utf-8")("replace")
         reconnects = 0
 
         while True:
             try:
-                headers = {"Last-Event-ID": str(self._offset)} if self._offset > 0 else None
+                headers = {"Last-Event-ID": str(self._last_event_id)} if self._last_event_id > 0 else None
                 with self._api.open_stream(
                     self._path,
                     headers=headers,
@@ -99,43 +96,12 @@ class StreamReader:
                     if response.status_code >= 400:
                         raise error_from_http(response.status_code, None, response.read())
 
-                    data_parts: list[str] = []
-                    event_id = ""
-                    buf = ""
-
-                    for chunk in response.iter_bytes():
-                        if not chunk:
-                            continue
-                        buf += decoder.decode(chunk)
-                        while "\n" in buf:
-                            line, buf = buf.split("\n", 1)
-                            line = line.rstrip("\r")
-                            if not line:
-                                # Empty line = event boundary
-                                if event_id:
-                                    with contextlib.suppress(ValueError):
-                                        self._offset = int(event_id)
-                                    event_id = ""
-                                if data_parts:
-                                    text = "\n".join(data_parts)
-                                    data_parts = []
-                                    reconnects = 0
-                                    if text:
-                                        yield text
-                            elif line.startswith(":"):
-                                pass  # comment (keepalive)
-                            else:
-                                name, _, value = line.partition(":")
-                                if value.startswith(" "):
-                                    value = value[1:]
-                                if name == "data":
-                                    data_parts.append(value)
-                                elif name == "id" and "\0" not in value:
-                                    event_id = value
-
-                    final = decoder.decode(b"", final=True)
-                    if final:
-                        buf += final
+                    for sse in EventSource(response).iter_sse():
+                        if sse.id:
+                            self._last_event_id = int(sse.id)
+                        if sse.data:
+                            reconnects = 0
+                            yield sse.data
 
                     return
 
@@ -153,16 +119,15 @@ class StreamReader:
 class AsyncStreamReader:
     """Single-use async iterable stream with transparent reconnect.
 
-    Parses SSE (Server-Sent Events) from the response. Data events carry
-    stdout/stderr text, with `id:` fields tracking byte offsets for resume
-    via the `Last-Event-ID` header. Comment lines (`: keepalive`) keep the
-    connection alive through intermediate infrastructure.
+    Delegates SSE parsing to httpx-sse. Data events carry stdout/stderr text,
+    with ``id:`` fields tracking byte offsets for resume via the
+    ``Last-Event-ID`` header.
     """
 
     def __init__(self, api: _AsyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
-        self._offset = 0
+        self._last_event_id = 0
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
             read=None,
@@ -176,12 +141,11 @@ class AsyncStreamReader:
             raise RuntimeError("AsyncStreamReader is single-use and has already been consumed")
         self._consumed = True
 
-        decoder = codecs.getincrementaldecoder("utf-8")("replace")
         reconnects = 0
 
         while True:
             try:
-                headers = {"Last-Event-ID": str(self._offset)} if self._offset > 0 else None
+                headers = {"Last-Event-ID": str(self._last_event_id)} if self._last_event_id > 0 else None
                 async with self._api.open_stream(
                     self._path,
                     headers=headers,
@@ -190,43 +154,12 @@ class AsyncStreamReader:
                     if response.status_code >= 400:
                         raise error_from_http(response.status_code, None, await response.aread())
 
-                    data_parts: list[str] = []
-                    event_id = ""
-                    buf = ""
-
-                    async for chunk in response.aiter_bytes():
-                        if not chunk:
-                            continue
-                        buf += decoder.decode(chunk)
-                        while "\n" in buf:
-                            line, buf = buf.split("\n", 1)
-                            line = line.rstrip("\r")
-                            if not line:
-                                # Empty line = event boundary
-                                if event_id:
-                                    with contextlib.suppress(ValueError):
-                                        self._offset = int(event_id)
-                                    event_id = ""
-                                if data_parts:
-                                    text = "\n".join(data_parts)
-                                    data_parts = []
-                                    reconnects = 0
-                                    if text:
-                                        yield text
-                            elif line.startswith(":"):
-                                pass  # comment (keepalive)
-                            else:
-                                name, _, value = line.partition(":")
-                                if value.startswith(" "):
-                                    value = value[1:]
-                                if name == "data":
-                                    data_parts.append(value)
-                                elif name == "id" and "\0" not in value:
-                                    event_id = value
-
-                    final = decoder.decode(b"", final=True)
-                    if final:
-                        buf += final
+                    async for sse in EventSource(response).aiter_sse():
+                        if sse.id:
+                            self._last_event_id = int(sse.id)
+                        if sse.data:
+                            reconnects = 0
+                            yield sse.data
 
                     return
 

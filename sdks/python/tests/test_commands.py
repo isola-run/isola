@@ -135,10 +135,12 @@ def test_run_returns_command_result(sandbox_response_copy: dict[str, object]) ->
     )
     respx.get(url__regex=r".*/commands/cmd-1/status.*").mock(return_value=httpx.Response(200, json={"exitCode": 0}))
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-1/stdout").mock(
-        return_value=httpx.Response(200, content=b"data: hello world\ndata: \nid: 12\n\n")
+        return_value=httpx.Response(
+            200, content=b"data: hello world\ndata: \nid: 12\n\n", headers={"content-type": "text/event-stream"}
+        )
     )
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-1/stderr").mock(
-        return_value=httpx.Response(200, content=b"")
+        return_value=httpx.Response(200, content=b"", headers={"content-type": "text/event-stream"})
     )
 
     with Isola(base_url="http://localhost:8080") as client:
@@ -160,7 +162,9 @@ def test_command_stdout_streams_text(sandbox_response_copy: dict[str, object]) -
         return_value=httpx.Response(202, json={"commandId": "cmd-1"})
     )
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-1/stdout").mock(
-        return_value=httpx.Response(200, content=b"data: hello world\ndata: \nid: 12\n\n")
+        return_value=httpx.Response(
+            200, content=b"data: hello world\ndata: \nid: 12\n\n", headers={"content-type": "text/event-stream"}
+        )
     )
 
     with Isola(base_url="http://localhost:8080") as client:
@@ -180,7 +184,9 @@ def test_command_stderr_streams_text(sandbox_response_copy: dict[str, object]) -
         return_value=httpx.Response(202, json={"commandId": "cmd-2"})
     )
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-2/stderr").mock(
-        return_value=httpx.Response(200, content=b"data: error output\ndata: \nid: 13\n\n")
+        return_value=httpx.Response(
+            200, content=b"data: error output\ndata: \nid: 13\n\n", headers={"content-type": "text/event-stream"}
+        )
     )
 
     with Isola(base_url="http://localhost:8080") as client:
@@ -201,7 +207,9 @@ async def test_async_command_stdout_streams_text(sandbox_response_copy: dict[str
         return_value=httpx.Response(202, json={"commandId": "cmd-4"})
     )
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-4/stdout").mock(
-        return_value=httpx.Response(200, content=b"data: async output\ndata: \nid: 13\n\n")
+        return_value=httpx.Response(
+            200, content=b"data: async output\ndata: \nid: 13\n\n", headers={"content-type": "text/event-stream"}
+        )
     )
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
@@ -223,7 +231,9 @@ def test_command_stdout_text_mode_default(sandbox_response_copy: dict[str, objec
         return_value=httpx.Response(202, json={"commandId": "cmd-text"})
     )
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-text/stdout").mock(
-        return_value=httpx.Response(200, content=b"data: hello text\ndata: \nid: 11\n\n")
+        return_value=httpx.Response(
+            200, content=b"data: hello text\ndata: \nid: 11\n\n", headers={"content-type": "text/event-stream"}
+        )
     )
 
     with Isola(base_url="http://localhost:8080") as client:
@@ -337,10 +347,12 @@ async def test_async_run_returns_command_result(sandbox_response_copy: dict[str,
     )
     respx.get(url__regex=r".*/commands/cmd-ar/status.*").mock(return_value=httpx.Response(200, json={"exitCode": 0}))
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-ar/stdout").mock(
-        return_value=httpx.Response(200, content=b"data: async result\ndata: \nid: 13\n\n")
+        return_value=httpx.Response(
+            200, content=b"data: async result\ndata: \nid: 13\n\n", headers={"content-type": "text/event-stream"}
+        )
     )
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-ar/stderr").mock(
-        return_value=httpx.Response(200, content=b"")
+        return_value=httpx.Response(200, content=b"", headers={"content-type": "text/event-stream"})
     )
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
@@ -389,10 +401,12 @@ def test_run_with_input(sandbox_response_copy: dict[str, object]) -> None:
     )
     respx.get(url__regex=r".*/commands/cmd-input/status.*").mock(return_value=httpx.Response(200, json={"exitCode": 0}))
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/stdout").mock(
-        return_value=httpx.Response(200, content=b"data: hello\ndata: \nid: 6\n\n")
+        return_value=httpx.Response(
+            200, content=b"data: hello\ndata: \nid: 6\n\n", headers={"content-type": "text/event-stream"}
+        )
     )
     respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/stderr").mock(
-        return_value=httpx.Response(200, content=b"")
+        return_value=httpx.Response(200, content=b"", headers={"content-type": "text/event-stream"})
     )
 
     with Isola(base_url="http://localhost:8080") as client:
