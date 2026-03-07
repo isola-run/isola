@@ -666,7 +666,7 @@ var _ = Describe("Command Handlers", func() {
 
 			// Replace the stdout file with a directory.
 			// os.Open on a directory succeeds, but f.Read returns EISDIR.
-			stdoutPath := filepath.Join(entry.outputDir, "stdout")
+			stdoutPath := filepath.Join(testRootDir, entry.outputDir, "stdout")
 			Expect(os.Remove(stdoutPath)).To(Succeed())
 			Expect(os.Mkdir(stdoutPath, 0750)).To(Succeed())
 			DeferCleanup(func() { _ = os.Remove(stdoutPath) })

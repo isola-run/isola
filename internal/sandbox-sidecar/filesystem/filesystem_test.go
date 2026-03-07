@@ -102,7 +102,8 @@ var _ = Describe("Filesystem", func() {
 			linkPath := filepath.Join(testRootDir, "/tmp/symlink.txt")
 			Expect(os.MkdirAll(filepath.Dir(targetPath), 0750)).To(Succeed())
 			Expect(os.WriteFile(targetPath, content, 0600)).To(Succeed())
-			Expect(os.Symlink(targetPath, linkPath)).To(Succeed())
+			// Relative symlink stays within the root
+			Expect(os.Symlink("symlink-target.txt", linkPath)).To(Succeed())
 
 			resp := doGet("/filesystem?path=/tmp/symlink.txt")
 
@@ -113,11 +114,22 @@ var _ = Describe("Filesystem", func() {
 		It("returns 404 for dangling symlink", func() {
 			linkPath := filepath.Join(testRootDir, "/tmp/dangling.txt")
 			Expect(os.MkdirAll(filepath.Dir(linkPath), 0750)).To(Succeed())
-			Expect(os.Symlink("/nonexistent/target", linkPath)).To(Succeed())
+			// Relative dangling target — stays within root but points nowhere
+			Expect(os.Symlink("nonexistent-target", linkPath)).To(Succeed())
 
 			resp := doGet("/filesystem?path=/tmp/dangling.txt")
 
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("blocks absolute symlink escaping the root", func() {
+			linkPath := filepath.Join(testRootDir, "/tmp/escape")
+			Expect(os.MkdirAll(filepath.Dir(linkPath), 0750)).To(Succeed())
+			Expect(os.Symlink("/etc/passwd", linkPath)).To(Succeed())
+
+			resp := doGet("/filesystem?path=/tmp/escape")
+
+			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
 		})
 
 		It("returns 422 when path is missing", func() {
@@ -306,6 +318,16 @@ var _ = Describe("Filesystem", func() {
 			err := json.NewDecoder(resp.Body).Decode(&body)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(body.AbsolutePath).To(Equal("/tmp/no-container.txt"))
+		})
+
+		It("blocks writing through absolute symlink escaping the root", func() {
+			linkPath := filepath.Join(testRootDir, "/tmp/write-escape")
+			Expect(os.MkdirAll(filepath.Dir(linkPath), 0750)).To(Succeed())
+			Expect(os.Symlink("/etc/shadow", linkPath)).To(Succeed())
+
+			resp := doPost("/filesystem?path=/tmp/write-escape", []byte("malicious"))
+
+			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
 		})
 
 		It("returns 500 for null bytes in path", func() {

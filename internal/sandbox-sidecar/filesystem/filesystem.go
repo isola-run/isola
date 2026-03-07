@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -80,14 +81,20 @@ func (h *Handlers) resolveAbsolutePath(path string, pid int) (string, huma.Statu
 	return absolutePath, nil
 }
 
-// mkdirAllChown is like os.MkdirAll but chowns each newly created directory.
-// Existing directories are left untouched.
-func mkdirAllChown(path string, uid, gid int) error {
+// toRelative converts an absolute path to a relative path suitable for os.Root methods.
+// os.Root rejects absolute paths — all names must be relative to the root.
+func toRelative(absPath string) string {
+	return strings.TrimPrefix(absPath, "/")
+}
+
+// mkdirAllChown is like os.Root.MkdirAll but chowns each newly created directory.
+// Existing directories are left untouched. path must be relative to root.
+func mkdirAllChown(root *os.Root, path string, uid, gid int) error {
 	parent := filepath.Dir(path)
 	if parent == path {
 		return nil
 	}
-	fi, err := os.Stat(path)
+	fi, err := root.Stat(path)
 	if err == nil {
 		if !fi.IsDir() {
 			return fmt.Errorf("%s exists and is not a directory", path)
@@ -97,16 +104,16 @@ func mkdirAllChown(path string, uid, gid int) error {
 	if !os.IsNotExist(err) {
 		return err
 	}
-	if err := mkdirAllChown(parent, uid, gid); err != nil {
+	if err := mkdirAllChown(root, parent, uid, gid); err != nil {
 		return err
 	}
-	if err := os.Mkdir(path, 0755); err != nil { //nolint:gosec
+	if err := root.Mkdir(path, 0755); err != nil { //nolint:gosec
 		if os.IsExist(err) {
 			return nil
 		}
 		return err
 	}
-	return os.Chown(path, uid, gid)
+	return root.Chown(path, uid, gid)
 }
 
 func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
@@ -135,23 +142,33 @@ func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput
 		return nil, huma.Error500InternalServerError("failed to get container uid/gid")
 	}
 
-	// Build the host path via /proc/<pid>/root
-	targetPath := filepath.Join(h.procFS.GetRoot(pid), resolvedPath)
+	root, err := os.OpenRoot(h.procFS.GetRoot(pid))
+	if err != nil {
+		h.logger.Error("failed to open container root", "error", err)
+		return nil, huma.Error500InternalServerError("failed to open container root")
+	}
+	defer func() { _ = root.Close() }()
 
-	parentDir := filepath.Dir(targetPath)
-	if err := mkdirAllChown(parentDir, uid, gid); err != nil {
-		h.logger.Error("failed to create parent directories", "error", err, "path", parentDir)
-		return nil, huma.Error500InternalServerError("failed to create parent directories")
+	relPath := toRelative(resolvedPath)
+
+	parentDir := filepath.Dir(relPath)
+	if parentDir != "." {
+		if err := mkdirAllChown(root, parentDir, uid, gid); err != nil {
+			h.logger.Error("failed to create parent directories", "error", err, "path", parentDir)
+			return nil, huma.Error500InternalServerError("failed to create parent directories")
+		}
 	}
 
-	dst, err := os.Create(targetPath) //nolint:gosec
+	// Symlink escapes from mkdirAllChown or OpenFile return 500 — see comment in GetFilesystem
+	// for why this isn't 403 (unexported errPathEscapes, golang/go#74640).
+	dst, err := root.OpenFile(relPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666) //nolint:gosec
 	if err != nil {
-		h.logger.Error("failed to create file", "error", err, "path", targetPath)
+		h.logger.Error("failed to create file", "error", err, "path", resolvedPath)
 		return nil, huma.Error500InternalServerError("failed to create file")
 	}
 	defer func() {
 		if err := dst.Close(); err != nil {
-			h.logger.Error("failed to close written file", "error", err, "path", targetPath)
+			h.logger.Error("failed to close written file", "error", err, "path", resolvedPath)
 		}
 	}()
 
@@ -159,16 +176,17 @@ func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput
 
 	written, err := io.Copy(dst, stream)
 	if err != nil {
-		h.logger.Error("failed to write file", "error", err, "path", targetPath)
+		h.logger.Error("failed to write file", "error", err, "path", resolvedPath)
 		return nil, huma.Error500InternalServerError("failed to write file")
 	}
 
-	if err := os.Chmod(targetPath, 0666); err != nil { //nolint:gosec
-		h.logger.Error("failed to set file permissions", "error", err, "path", targetPath)
+	// Use file handle directly for chmod/chown to avoid TOCTOU re-resolving the path
+	if err := dst.Chmod(0666); err != nil { //nolint:gosec
+		h.logger.Error("failed to set file permissions", "error", err, "path", resolvedPath)
 	}
 
-	if err := os.Chown(targetPath, uid, gid); err != nil {
-		h.logger.Error("failed to set file ownership", "error", err, "path", targetPath, "uid", uid, "gid", gid)
+	if err := dst.Chown(uid, gid); err != nil {
+		h.logger.Error("failed to set file ownership", "error", err, "path", resolvedPath, "uid", uid, "gid", gid)
 	}
 
 	return &FilesystemWriteOutput{
@@ -199,17 +217,27 @@ func (h *Handlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) 
 		return nil, err
 	}
 
-	// Build the host path via /proc/<pid>/root
-	targetPath := filepath.Join(h.procFS.GetRoot(pid), resolvedPath)
+	root, err := os.OpenRoot(h.procFS.GetRoot(pid))
+	if err != nil {
+		h.logger.Error("failed to open container root", "error", err)
+		return nil, huma.Error500InternalServerError("failed to open container root")
+	}
+	defer func() { _ = root.Close() }()
+
+	relPath := toRelative(resolvedPath)
 
 	// Stat before Open to reject non-regular files (FIFOs, devices, sockets)
 	// without blocking — os.Open on a FIFO blocks until a writer connects.
-	info, err := os.Stat(targetPath) //nolint:gosec // path is within container root via /proc/<pid>/root
+	info, err := root.Stat(relPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, huma.Error404NotFound(fmt.Sprintf("file not found: %s", path))
 		}
-		h.logger.Error("failed to stat file", "error", err, "path", targetPath)
+		// Symlink escapes land here (os.Root returns unexported errPathEscapes).
+		// Ideally this would be 403 Forbidden, but Go does not export the sentinel
+		// (proposal: https://github.com/golang/go/issues/74640) and detecting it
+		// requires fragile string matching. Revisit when os.ErrPathEscapes is available.
+		h.logger.Error("failed to stat file", "error", err, "path", resolvedPath)
 		return nil, huma.Error500InternalServerError("failed to stat file")
 	}
 
@@ -217,9 +245,10 @@ func (h *Handlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) 
 		return nil, huma.Error400BadRequest(fmt.Sprintf("not a regular file: %s", path))
 	}
 
-	f, err := os.Open(targetPath) //nolint:gosec // path is within container root via /proc/<pid>/root
+	// root.Open returns a file with its own fd from openat — valid after root is closed
+	f, err := root.Open(relPath)
 	if err != nil {
-		h.logger.Error("failed to open file", "error", err, "path", targetPath)
+		h.logger.Error("failed to open file", "error", err, "path", resolvedPath)
 		return nil, huma.Error500InternalServerError("failed to open file")
 	}
 
@@ -238,9 +267,9 @@ func (h *Handlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) 
 
 			if _, err := io.Copy(dw, f); err != nil {
 				if errors.Is(err, context.Canceled) {
-					h.logger.Warn("client disconnected during file stream", "error", err, "path", targetPath)
+					h.logger.Warn("client disconnected during file stream", "error", err, "path", resolvedPath)
 				} else {
-					h.logger.Error("failed to stream file", "error", err, "path", targetPath)
+					h.logger.Error("failed to stream file", "error", err, "path", resolvedPath)
 				}
 			}
 		},

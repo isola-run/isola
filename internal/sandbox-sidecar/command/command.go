@@ -143,7 +143,8 @@ type commandEntry struct {
 	stdinClosed bool
 	exitCode    int // only valid after done is closed
 	done        chan struct{}
-	outputDir   string
+	root        *os.Root // container root fd for safe file access within the rootfs
+	outputDir   string   // relative path within the container root
 }
 
 type Handlers struct {
@@ -195,21 +196,34 @@ func (h *Handlers) PostCommand(_ context.Context, input *CreateCommandInput) (*C
 func (h *Handlers) startCommand(pid int, input *CreateCommandInput) (*commandEntry, error) {
 	cmdID := uuid.New().String()
 
+	root, err := os.OpenRoot(h.procFS.GetRoot(pid))
+	if err != nil {
+		h.logger.Error("failed to open container root", "error", err)
+		return nil, huma.Error500InternalServerError("failed to open container root")
+	}
+
+	succeeded := false
+	defer func() {
+		if !succeeded {
+			_ = root.Close()
+		}
+	}()
+
 	// Create output directory on the target container rootfs, so the logs count against its ephemeral storage calculation.
-	outputDir := filepath.Join(h.procFS.GetRoot(pid), "var", "run", "isola", "commands", cmdID)
-	if err := os.MkdirAll(outputDir, 0755); err != nil { //nolint:gosec
-		h.logger.Error("failed to create command output directory", "error", err, "path", outputDir)
+	relOutputDir := filepath.Join("var", "run", "isola", "commands", cmdID)
+	if err := root.MkdirAll(relOutputDir, 0755); err != nil { //nolint:gosec
+		h.logger.Error("failed to create command output directory", "error", err, "path", relOutputDir)
 		return nil, huma.Error500InternalServerError("failed to create command output directory")
 	}
 
-	stdoutFile, err := os.Create(filepath.Join(outputDir, "stdout")) //nolint:gosec
+	stdoutFile, err := root.Create(filepath.Join(relOutputDir, "stdout"))
 	if err != nil {
 		h.logger.Error("failed to create stdout file", "error", err)
 		return nil, huma.Error500InternalServerError("failed to create stdout file")
 	}
 	defer func() { _ = stdoutFile.Close() }()
 
-	stderrFile, err := os.Create(filepath.Join(outputDir, "stderr")) //nolint:gosec
+	stderrFile, err := root.Create(filepath.Join(relOutputDir, "stderr"))
 	if err != nil {
 		h.logger.Error("failed to create stderr file", "error", err)
 		return nil, huma.Error500InternalServerError("failed to create stderr file")
@@ -233,11 +247,10 @@ func (h *Handlers) startCommand(pid int, input *CreateCommandInput) (*commandEnt
 		ctx, cancel = context.WithCancel(context.Background())
 	}
 
-	succeeded := false
 	defer func() {
 		if !succeeded {
 			cancel()
-			_ = os.RemoveAll(outputDir)
+			_ = root.RemoveAll(relOutputDir)
 		}
 	}()
 
@@ -265,7 +278,8 @@ func (h *Handlers) startCommand(pid int, input *CreateCommandInput) (*commandEnt
 		cancel:    cancel,
 		stdinPipe: stdinPipe,
 		done:      make(chan struct{}),
-		outputDir: outputDir,
+		root:      root,
+		outputDir: relOutputDir,
 	}, nil
 }
 
@@ -352,7 +366,7 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 		return nil, err
 	}
 
-	filePath := filepath.Join(entry.outputDir, streamName)
+	relPath := filepath.Join(entry.outputDir, streamName)
 
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
@@ -363,9 +377,9 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 			// X-Accel-Buffering: no, disable nginx buffering (serve immediately)
 			ctx.SetHeader("X-Accel-Buffering", "no")
 
-			f, err := os.Open(filePath) //nolint:gosec
+			f, err := entry.root.Open(relPath)
 			if err != nil {
-				h.logger.Error("failed to open output file for streaming", "error", err, "path", filePath)
+				h.logger.Error("failed to open output file for streaming", "error", err, "path", relPath)
 				return
 			}
 			defer func() { _ = f.Close() }()
