@@ -20,14 +20,12 @@ export ISOLA_BASE_URL=http://localhost:8080
 from isola import Isola
 
 client = Isola()
-sandbox = client.sandboxes.create(image="alpine:3.21")
 
-# Run a command and get output
-result = sandbox.commands.run("echo", "hello world")
-print(result.stdout)      # "hello world\n"
-print(result.exit_code)   # 0
-
-sandbox.delete()
+# Sandboxes are context managers — auto-deleted on exit
+with client.sandboxes.create(image="alpine:3.21") as sandbox:
+    result = sandbox.commands.run("echo", "hello world")
+    print(result.stdout)      # "hello world\n"
+    print(result.exit_code)   # 0
 ```
 
 ## Sandbox options
@@ -99,9 +97,13 @@ cmd.wait()       # returns exit code
 ## File I/O
 
 ```python
-result = sandbox.filesystem.write("/tmp/hello.txt", b"hello world")
-print(result.absolute_path)   # "/tmp/hello.txt"
-print(result.bytes_written)   # 11
+# Write text (str) or binary data (bytes)
+sandbox.filesystem.write("/tmp/hello.txt", "hello world")
+sandbox.filesystem.write("/tmp/data.bin", b"\x00\x01\x02")
+
+# Upload a local file
+with open("local.tar.gz", "rb") as f:
+    sandbox.filesystem.write("/tmp/archive.tar.gz", f)
 
 data = sandbox.filesystem.read("/tmp/hello.txt")  # bytes
 ```
@@ -129,18 +131,15 @@ sandbox.delete()
 from isola import AsyncIsola
 
 async with AsyncIsola() as client:
-    sandbox = await client.sandboxes.create(image="alpine:3.21")
+    async with await client.sandboxes.create(image="alpine:3.21") as sandbox:
+        result = await sandbox.commands.run("echo", "hello")
+        print(result.stdout)
 
-    result = await sandbox.commands.run("echo", "hello")
-    print(result.stdout)
-
-    # Async streaming
-    cmd = await sandbox.commands.spawn("sh", "-c", "echo hello; sleep 1; echo world")
-    async for chunk in cmd.stdout:
-        print(chunk, end="")
-    await cmd.wait()
-
-    await sandbox.delete()
+        # Async streaming
+        cmd = await sandbox.commands.spawn("sh", "-c", "echo hello; sleep 1; echo world")
+        async for chunk in cmd.stdout:
+            print(chunk, end="")
+        await cmd.wait()
 ```
 
 ## Error handling

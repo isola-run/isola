@@ -119,6 +119,39 @@ async def test_async_filesystem_with_container(sandbox_response_copy: dict[str, 
     assert read_route.calls[0].request.url.params["container"] == "sidecar"
 
 
+@respx.mock
+def test_filesystem_write_str(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(201, json={"absolutePath": "/workspace/hello.py", "bytesWritten": 14})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        sandbox.filesystem.write("/workspace/hello.py", "print('hello')")
+
+    assert write_route.calls[0].request.content == b"print('hello')"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_filesystem_write_str(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(201, json={"absolutePath": "/workspace/hello.py", "bytesWritten": 14})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        await sandbox.filesystem.write("/workspace/hello.py", "print('hello')")
+
+    assert write_route.calls[0].request.content == b"print('hello')"
+
+
 class _ChunkedReadValidator(io.RawIOBase):
     """File-like object that fails if .read() is ever called without a bounded size."""
 
