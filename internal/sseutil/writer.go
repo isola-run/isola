@@ -106,22 +106,22 @@ func (w *Writer) Flush() error {
 // WriteKeepalive writes an SSE comment line that keeps the connection alive
 // through intermediate infrastructure without being visible to SSE clients.
 func (w *Writer) WriteKeepalive() error {
-	w.w.Write(keepalive) //nolint:errcheck // error is sticky; returned by Flush
+	w.write(keepalive)
 	return w.w.Flush()
 }
 
 // writeDataLine writes a single "data: <line>\n" into the buffer.
 func (w *Writer) writeDataLine(line string) {
-	w.w.WriteString("data: ") //nolint:errcheck // error is sticky; returned by Flush
-	w.w.WriteString(line)     //nolint:errcheck // error is sticky; returned by Flush
-	w.w.WriteByte('\n')       //nolint:errcheck // error is sticky; returned by Flush
+	w.writeString("data: ")
+	w.writeString(line)
+	w.writeByte('\n')
 }
 
 // writeID writes "id: <offset>\n\n" into the buffer.
 func (w *Writer) writeID(offset int64) {
-	w.w.WriteString("id: ")                        //nolint:errcheck // error is sticky; returned by Flush
-	w.w.WriteString(strconv.FormatInt(offset, 10)) //nolint:errcheck // error is sticky; returned by Flush
-	w.w.WriteString("\n\n")                        //nolint:errcheck // error is sticky; returned by Flush
+	w.writeString("id: ")
+	w.writeString(strconv.FormatInt(offset, 10))
+	w.writeString("\n\n")
 }
 
 // writeDataLines splits s on \n, \r\n, and bare \r into "data:" lines.
@@ -158,6 +158,20 @@ func nextChunk(s string) (chunk, remaining string, hasNewline bool) {
 		}
 	}
 	return s, "", false
+}
+
+// bufio.Writer stores the first write error and returns it from Flush, so the
+// incremental writes below can safely ignore their direct return values.
+func (w *Writer) write(p []byte) {
+	_, _ = w.w.Write(p)
+}
+
+func (w *Writer) writeString(s string) {
+	_, _ = w.w.WriteString(s)
+}
+
+func (w *Writer) writeByte(b byte) {
+	_ = w.w.WriteByte(b)
 }
 
 // safePrefixLen returns the number of bytes at the start of data that can be
