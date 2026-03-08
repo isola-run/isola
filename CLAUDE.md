@@ -83,6 +83,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 - `internal/snapshot/` - Shared types used by both operator and uploader
 - `internal/sandbox-sidecar/proc/` - Procfs abstraction for container PID discovery and filesystem access via `/proc/<pid>/root`
 - `internal/httputil/` - Deadline/timeout protection for streaming I/O (per-operation write/read deadlines via `http.ResponseController`)
+- `internal/sseutil/` - SSE (Server-Sent Events) writer for streaming command stdout/stderr with UTF-8 encoding, keepalive, and offset-based resume via `id:` fields
 
 **Default namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
 
@@ -102,7 +103,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **Pydantic models (`_models.py`):** All models extend `IsolaModel` which uses `to_camel` alias generator for Python snake_case ↔ API camelCase. Models accept both forms (`validate_by_name=True, validate_by_alias=True`). `extra="ignore"` so the server can add fields without breaking the client. `NetworkSpec` has manual `Field(alias=...)` overrides for acronyms (`allowClusterDNS`, `allowedEgressCIDRs`) that `to_camel` can't handle.
 
-**Streaming (`_streaming.py`):** `StreamReader`/`AsyncStreamReader` wrap byte streams with auto-reconnect (exponential backoff, offset-based resume, max 5 reconnects). UTF-8 incremental decoding. Iterable (`for chunk in cmd.stdout`) or bulk read (`cmd.stdout.read()`).
+**Streaming (`_streaming.py`):** `StreamReader`/`AsyncStreamReader` consume SSE streams (via `httpx-sse`) with auto-reconnect (exponential backoff, offset-based resume via `Last-Event-ID` header, max 5 reconnects). Iterable (`for chunk in cmd.stdout`) or bulk read (`cmd.stdout.read()`).
 
 **Error hierarchy:** `IsolaError` base → `APIError` → status-specific subclasses (`BadRequestError`, `NotFoundError`, `ConflictError`, `ValidationError`, `InternalError`, `BadGatewayError`) mapped from HTTP status codes. `APIConnectionError` for transport failures. `is_transient()` helper identifies retryable errors.
 
@@ -133,8 +134,8 @@ The api-gateway is a thin passthrough to K8s — it validates input structure bu
 - `GET /sandboxes/{id}/filesystem` — file download (proxied to sidecar)
 - `POST /sandboxes/{id}/commands` — start command (proxied to sidecar, 202 Accepted). Request body uses `args` (not `cmd`): `args[0]` is executable, `args[1:]` are arguments. Optional `timeout` (seconds), `env`, `cwd`.
 - `GET /sandboxes/{id}/commands/{cmdId}/status` — exit code (null if running). Supports long-polling via `?waitSeconds=N` (max 25 at gateway, max 30 at sidecar).
-- `GET /sandboxes/{id}/commands/{cmdId}/stdout` — stream stdout (?offset=N for resume)
-- `GET /sandboxes/{id}/commands/{cmdId}/stderr` — stream stderr (?offset=N for resume)
+- `GET /sandboxes/{id}/commands/{cmdId}/stdout` — SSE stream of stdout (`text/event-stream`). Resume via `Last-Event-ID` header (byte offset).
+- `GET /sandboxes/{id}/commands/{cmdId}/stderr` — SSE stream of stderr (`text/event-stream`). Resume via `Last-Event-ID` header (byte offset).
 - `POST /sandboxes/{id}/commands/{cmdId}/stdin` — write to stdin
 - `POST /sandboxes/{id}/commands/{cmdId}/stdin/close` — close stdin pipe
 - `DELETE /sandboxes/{id}/commands/{cmdId}` — kill command (idempotent)
@@ -179,6 +180,7 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 - Per-command `timeout` (seconds): enforced via `context.WithTimeout` → SIGKILL on expiration (exit code -1).
 - Command stdout/stderr are stored on the container's ephemeral storage (counts against resource limits).
 - Command state is in-memory in the sidecar — all running/completed commands are lost on sidecar restart.
+- Stdout/stderr are streamed as SSE (`text/event-stream`). The sidecar produces SSE via `internal/sseutil/` (UTF-8 sanitization, `id:` fields for byte-offset resume, 15s keepalive comments). The gateway proxies SSE transparently. The Python SDK consumes SSE via `httpx-sse` and resumes with `Last-Event-ID` header. Non-UTF-8 bytes in output are replaced with U+FFFD; for binary content, redirect to a file and download via the filesystem API.
 - Streaming I/O uses per-operation deadline protection (10s via `internal/httputil`) to detect stalled connections.
 - Gateway command handlers use compile-time type assertions (`_ = sidecarapi.CreateCommandRequest(CreateCommandRequest{})`) to enforce structural compatibility with `sidecar-api` contract types. Do not remove these.
 

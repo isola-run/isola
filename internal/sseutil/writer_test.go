@@ -16,6 +16,7 @@ package sseutil
 
 import (
 	"bytes"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -620,10 +621,11 @@ func TestWriteData_Split4ByteEmoji(t *testing.T) {
 				}
 			}
 
-			got := buf.String()
-			// The final event must contain the complete emoji
-			if !bytes.Contains([]byte(got), []byte("🎉")) {
-				t.Errorf("emoji not found in output: %q", got)
+			if got := extractSSEData(buf.String()); got != "🎉" {
+				t.Errorf("round-trip data = %q, want %q", got, "🎉")
+			}
+			if got := extractSSEIDs(buf.String()); got[len(got)-1] != "4" {
+				t.Errorf("last id = %s, want 4", got[len(got)-1])
 			}
 		})
 	}
@@ -653,9 +655,11 @@ func TestWriteData_Split3ByteCJK(t *testing.T) {
 				}
 			}
 
-			got := buf.String()
-			if !bytes.Contains([]byte(got), []byte("世")) {
-				t.Errorf("CJK char not found in output: %q", got)
+			if got := extractSSEData(buf.String()); got != "世" {
+				t.Errorf("round-trip data = %q, want %q", got, "世")
+			}
+			if got := extractSSEIDs(buf.String()); got[len(got)-1] != "3" {
+				t.Errorf("last id = %s, want 3", got[len(got)-1])
 			}
 		})
 	}
@@ -863,5 +867,40 @@ func TestWriteData_CRLFAtBoundaryOfWrites(t *testing.T) {
 	}
 	if got := extractSSEIDs(buf.String()); !slices.Equal(got, []string{"5", "12"}) {
 		t.Errorf("got ids %v, want [5 12]", got)
+	}
+}
+
+// errWriter returns a fixed error on every Write call.
+type errWriter struct{ err error }
+
+func (w *errWriter) Write([]byte) (int, error) { return 0, w.err }
+
+func TestWriteData_PropagatesWriteError(t *testing.T) {
+	want := errors.New("disk full")
+	w := NewWriter(&errWriter{want})
+
+	// WriteData with enough data to trigger a write (not just pending)
+	if err := w.WriteData([]byte("hello")); !errors.Is(err, want) {
+		t.Errorf("WriteData error = %v, want %v", err, want)
+	}
+}
+
+func TestFinish_PropagatesWriteError(t *testing.T) {
+	want := errors.New("broken pipe")
+	w := NewWriter(&errWriter{want})
+
+	// Buffer a partial UTF-8 sequence so Finish has something to flush
+	_ = w.WriteData([]byte("\xc3"))
+	if err := w.Finish(); !errors.Is(err, want) {
+		t.Errorf("Finish error = %v, want %v", err, want)
+	}
+}
+
+func TestWriteKeepalive_PropagatesWriteError(t *testing.T) {
+	want := errors.New("connection reset")
+	w := NewWriter(&errWriter{want})
+
+	if err := w.WriteKeepalive(); !errors.Is(err, want) {
+		t.Errorf("WriteKeepalive error = %v, want %v", err, want)
 	}
 }

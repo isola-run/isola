@@ -416,6 +416,7 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 			keepaliveTicker := time.NewTicker(sseKeepaliveInterval)
 			defer keepaliveTicker.Stop()
 
+			processDone := false
 			for {
 				n, readErr := f.Read(buf)
 				if n > 0 {
@@ -423,22 +424,34 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 						if isClientDisconnect(werr) {
 							h.logger.Warn("client disconnected during command stream", "error", werr, "cmdID", cmdID)
 						} else {
-							h.logger.Error("unexpected error streaming command output", "error", werr, "cmdID", cmdID)
+							h.logger.Error("failed to write SSE data", "error", werr, "cmdID", cmdID)
 						}
 						return
 					}
 					keepaliveTicker.Reset(sseKeepaliveInterval)
-					continue
+					continue // tight loop while data is flowing
 				}
+
 				if readErr != nil && readErr != io.EOF {
-					h.logger.Error("unexpected error reading command output", "error", readErr, "cmdID", cmdID)
+					h.logger.Error("failed to read command output", "error", readErr, "cmdID", cmdID)
 					return
 				}
-				// EOF — poll for more data or exit
+
+				// EOF - no more data to read at this timee
+				if processDone {
+					if err := sse.Finish(); err != nil {
+						if isClientDisconnect(err) {
+							h.logger.Warn("client disconnected during command stream", "error", err, "cmdID", cmdID)
+						} else {
+							h.logger.Error("failed to finish SSE writer", "error", err, "cmdID", cmdID)
+						}
+					}
+					return
+				}
+
 				select {
 				case <-entry.done:
-					h.drainSSE(f, sse, buf, cmdID)
-					return
+					processDone = true
 				case <-ctx.Context().Done():
 					h.logger.Warn("client disconnected during command stream", "cmdID", cmdID)
 					return
@@ -447,7 +460,7 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 						if isClientDisconnect(werr) {
 							h.logger.Warn("client disconnected during command stream", "error", werr, "cmdID", cmdID)
 						} else {
-							h.logger.Error("unexpected error writing keepalive", "error", werr, "cmdID", cmdID)
+							h.logger.Error("failed to write SSE keepalive", "error", werr, "cmdID", cmdID)
 						}
 						return
 					}
@@ -457,34 +470,6 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 			}
 		},
 	}, nil
-}
-
-// drainSSE reads remaining bytes from f after the process exits and writes them as SSE events.
-func (h *Handlers) drainSSE(f *os.File, sse *sseutil.Writer, buf []byte, cmdID string) {
-	for {
-		n, readErr := f.Read(buf)
-		if n > 0 {
-			if werr := sse.WriteData(buf[:n]); werr != nil {
-				if isClientDisconnect(werr) {
-					h.logger.Warn("client disconnected during command stream", "error", werr, "cmdID", cmdID)
-				} else {
-					h.logger.Error("error during final drain of command output", "error", werr, "cmdID", cmdID)
-				}
-				return
-			}
-		}
-		if readErr != nil {
-			if readErr != io.EOF {
-				h.logger.Error("error during final drain of command output", "error", readErr, "cmdID", cmdID)
-			}
-			if ferr := sse.Finish(); ferr != nil {
-				if !isClientDisconnect(ferr) {
-					h.logger.Error("error flushing SSE writer", "error", ferr, "cmdID", cmdID)
-				}
-			}
-			return
-		}
-	}
 }
 
 func (h *Handlers) PostCommandStdin(_ context.Context, input *PostCommandStdinInput) (*struct{}, error) {
