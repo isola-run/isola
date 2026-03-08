@@ -180,13 +180,19 @@ def test_sync_stream_multiline_data() -> None:
 
 def test_sync_stream_filters_keepalive() -> None:
     """SSE comment lines are invisible to the consumer."""
-    api = _FakeSyncAPI([
-        _FakeSyncCM(_FakeSyncResponse([
-            _sse_event("hello", 5),
-            ": keepalive\n\n",
-            _sse_event("world", 10),
-        ]))
-    ])
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(
+                _FakeSyncResponse(
+                    [
+                        _sse_event("hello", 5),
+                        ": keepalive\n\n",
+                        _sse_event("world", 10),
+                    ]
+                )
+            )
+        ]
+    )
 
     assert StreamReader(api, "/path").read() == "helloworld"
 
@@ -206,10 +212,12 @@ def test_sync_stream_preserves_trailing_newline() -> None:
 def test_sync_stream_reconnects_and_resumes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
 
-    api = _FakeSyncAPI([
-        _FakeSyncCM(_FakeSyncResponse([_sse_event("ab", 2)], raise_after=httpx.ConnectError("drop"))),
-        _FakeSyncCM(_FakeSyncResponse([_sse_event("cd", 4)])),
-    ])
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("ab", 2)], raise_after=httpx.ConnectError("drop"))),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("cd", 4)])),
+        ]
+    )
 
     assert StreamReader(api, "/path").read() == "abcd"
     assert api.calls == [0, 2]
@@ -228,10 +236,12 @@ def test_sync_stream_reconnects_and_resumes(monkeypatch: pytest.MonkeyPatch) -> 
 def test_sync_stream_reconnects_on_network_error(monkeypatch: pytest.MonkeyPatch, error: Exception) -> None:
     monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
 
-    api = _FakeSyncAPI([
-        _FakeSyncCM(_FakeSyncResponse([_sse_event("ab", 2)], raise_after=error)),
-        _FakeSyncCM(_FakeSyncResponse([_sse_event("cd", 4)])),
-    ])
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("ab", 2)], raise_after=error)),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("cd", 4)])),
+        ]
+    )
 
     assert StreamReader(api, "/path").read() == "abcd"
     assert api.calls == [0, 2]
@@ -240,10 +250,12 @@ def test_sync_stream_reconnects_on_network_error(monkeypatch: pytest.MonkeyPatch
 def test_sync_stream_reconnects_on_enter_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
 
-    api = _FakeSyncAPI([
-        _FakeSyncCM(enter_exc=httpx.ConnectError("refused")),
-        _FakeSyncCM(_FakeSyncResponse([_sse_event("hello", 5)])),
-    ])
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(enter_exc=httpx.ConnectError("refused")),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("hello", 5)])),
+        ]
+    )
 
     assert StreamReader(api, "/path").read() == "hello"
     assert api.calls == [0, 0]
@@ -274,11 +286,13 @@ def test_sync_stream_http_error_propagates() -> None:
 def test_sync_stream_retries_transient_http_error(monkeypatch: pytest.MonkeyPatch, status: int) -> None:
     monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
 
-    api = _FakeSyncAPI([
-        _FakeSyncCM(_FakeSyncResponse([_sse_event("ab", 2)], raise_after=httpx.ReadError("reset"))),
-        _FakeSyncCM(_FakeSyncResponse([], status_code=status)),
-        _FakeSyncCM(_FakeSyncResponse([_sse_event("cd", 4)])),
-    ])
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("ab", 2)], raise_after=httpx.ReadError("reset"))),
+            _FakeSyncCM(_FakeSyncResponse([], status_code=status)),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("cd", 4)])),
+        ]
+    )
 
     assert StreamReader(api, "/path").read() == "abcd"
     assert api.calls == [0, 2, 2]
@@ -338,10 +352,12 @@ async def test_async_stream_reconnects_and_resumes(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
 
-    api = _FakeAsyncAPI([
-        _FakeAsyncCM(_FakeAsyncResponse([_sse_event("a", 1)], raise_after=httpx.ConnectError("drop"))),
-        _FakeAsyncCM(_FakeAsyncResponse([_sse_event("b", 2), _sse_event("c", 3)])),
-    ])
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("a", 1)], raise_after=httpx.ConnectError("drop"))),
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("b", 2), _sse_event("c", 3)])),
+        ]
+    )
 
     assert await AsyncStreamReader(api, "/path").read() == "abc"
     assert api.calls == [0, 1]
@@ -383,11 +399,13 @@ async def test_async_stream_retries_transient_http_error(monkeypatch: pytest.Mon
 
     monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
 
-    api = _FakeAsyncAPI([
-        _FakeAsyncCM(_FakeAsyncResponse([_sse_event("ab", 2)], raise_after=httpx.ReadError("reset"))),
-        _FakeAsyncCM(_FakeAsyncResponse([], status_code=status)),
-        _FakeAsyncCM(_FakeAsyncResponse([_sse_event("cd", 4)])),
-    ])
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("ab", 2)], raise_after=httpx.ReadError("reset"))),
+            _FakeAsyncCM(_FakeAsyncResponse([], status_code=status)),
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("cd", 4)])),
+        ]
+    )
 
     assert await AsyncStreamReader(api, "/path").read() == "abcd"
     assert api.calls == [0, 2, 2]
