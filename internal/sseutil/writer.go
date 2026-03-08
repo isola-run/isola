@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"io"
 	"strconv"
-	"strings"
 	"unicode/utf8"
 )
 
@@ -26,18 +25,13 @@ var keepalive = []byte(": keepalive\n\n")
 
 // Writer wraps an io.Writer and emits Server-Sent Events.
 //
-// Data events carry raw stdout/stderr text with an id: field for resume
-// via Last-Event-ID. Keepalive comments (": keepalive") keep connections
-// alive through intermediate infrastructure with idle timeouts.
-//
 // The writer performs incremental UTF-8 validation, replacing invalid byte
-// sequences with U+FFFD (�). Partial multi-byte sequences are buffered
+// sequences with U+FFFD. Partial multi-byte sequences are buffered
 // across WriteData calls.
 //
-// The writer owns byte-offset accounting for resumable streams. It only emits
-// ids for bytes whose effect is already visible to the client, buffering
-// ambiguous tails (for example an incomplete UTF-8 sequence or a trailing \r
-// that might become part of a later \r\n).
+// It only emits ids for bytes whose effect is already visible to the client,
+// buffering ambiguous tails (for example an incomplete UTF-8 sequence
+// or a trailing \r that might become part of a later \r\n).
 type Writer struct {
 	w       io.Writer
 	offset  int64
@@ -57,9 +51,6 @@ func NewWriterAtOffset(w io.Writer, offset int64) *Writer {
 // WriteData writes an SSE data event for the given raw bytes.
 // The data is validated as UTF-8 with invalid sequences replaced by U+FFFD.
 // Newlines (\n, \r\n, \r) split the payload into multiple data: lines per the SSE spec.
-// If the payload ends with a newline, an extra empty data: line is emitted so the
-// SSE parser's trailing-LF-stripping preserves it.
-// Zero-byte writes are ignored (no event emitted).
 func (w *Writer) WriteData(data []byte) error {
 	if len(data) == 0 {
 		return nil
@@ -67,41 +58,56 @@ func (w *Writer) WriteData(data []byte) error {
 
 	w.offset += int64(len(data))
 
-	combined := data
-	if len(w.pending) > 0 {
+	var combined []byte
+	if len(w.pending) == 0 {
+		combined = data
+	} else {
 		combined = make([]byte, 0, len(w.pending)+len(data))
 		combined = append(combined, w.pending...)
 		combined = append(combined, data...)
 	}
 
 	safeLen := safePrefixLen(combined)
-	w.pending = append(w.pending[:0], combined[safeLen:]...)
+	w.pending = append(w.pending[:0], combined[safeLen:]...) // pending unsafe suffix
 	if safeLen == 0 {
 		return nil
 	}
 
-	// Validate UTF-8, replacing invalid sequences with U+FFFD
-	validated := validateUTF8(combined[:safeLen])
+	sanitized := sanitizeUTF8(combined[:safeLen])
 
 	var event bytes.Buffer
-	writeDataLines(&event, validated)
+	writeDataLines(&event, sanitized)
 	writeID(&event, w.offset-int64(len(w.pending)))
 	_, err := w.w.Write(event.Bytes())
 	return err
 }
 
-// Flush writes any buffered tail bytes now that no future data can disambiguate them.
-func (w *Writer) Flush() error {
+// Finish finalizes any buffered tail bytes now that no future data can
+// disambiguate them. It does not close the underlying writer.
+//
+// Only call Finish when the input stream is genuinely complete (e.g. process
+// exited and all output drained). Calling it mid-stream replaces incomplete
+// UTF-8 tails with U+FFFD and commits the final byte offset as an SSE id.
+// A client resuming from that id would skip the real bytes, corrupting the
+// stream. On abnormal termination (client disconnect, write error), simply
+// discard the writer — the uncommitted pending bytes will be re-read on
+// the next resume.
+func (w *Writer) Finish() error {
 	if len(w.pending) == 0 {
 		return nil
 	}
 
 	tail := incompleteUTF8Tail(w.pending)
-	flushed := validateUTF8(w.pending[:len(w.pending)-tail]) + strings.Repeat("\uFFFD", tail)
+	sanitized := sanitizeUTF8(w.pending[:len(w.pending)-tail])
+	if tail > 0 {
+		// An unfinished UTF-8 prefix at end-of-stream is one maximal subpart and
+		// therefore becomes a single replacement character.
+		sanitized += "\uFFFD"
+	}
 	w.pending = w.pending[:0]
 
 	var event bytes.Buffer
-	writeDataLines(&event, flushed)
+	writeDataLines(&event, sanitized)
 	writeID(&event, w.offset)
 	_, err := w.w.Write(event.Bytes())
 	return err
@@ -129,8 +135,15 @@ func writeID(buf *bytes.Buffer, offset int64) {
 }
 
 // writeDataLines splits s on \n, \r\n, and bare \r into "data:" lines.
-// If s ends with a newline, an extra empty "data:" line is written so the
-// SSE parser's trailing-LF-stripping preserves it.
+//
+//	"hello"    -> data: hello
+//	"a\nb"     -> data: a / data: b
+//	"hello\n"  -> data: hello / data:
+//
+// The trailing-newline case matters: the SSE spec strips one trailing LF when
+// concatenating data fields, so the extra empty "data:" line preserves the
+// original \n. Without it the client receives "hello" instead of "hello\n",
+// which breaks byte-offset resume (resuming with Last-Event-ID header).
 func writeDataLines(buf *bytes.Buffer, s string) {
 	for {
 		line, rest, hasNewline := nextChunk(s)
@@ -139,16 +152,15 @@ func writeDataLines(buf *bytes.Buffer, s string) {
 			return
 		}
 		s = rest
-		if s == "" {
-			// Input ended with a newline — emit extra empty data: line
-			writeDataLine(buf, "")
-			return
-		}
 	}
 }
 
-// nextChunk returns the text before the first newline (\n, \r\n, or \r),
-// the remaining text after it, and whether a newline was found.
+// nextChunk splits s at the first newline (\n, \r\n, or \r).
+// Returns the text before it, the text after it, and whether one was found.
+//
+//	"a\nb"  -> ("a", "b", true)
+//	"a\r\n" -> ("a", "",  true)
+//	"hello" -> ("hello", "", false)
 func nextChunk(s string) (chunk, remaining string, hasNewline bool) {
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
@@ -168,6 +180,8 @@ func nextChunk(s string) (chunk, remaining string, hasNewline bool) {
 // emitted immediately without advancing the resume offset past ambiguous bytes.
 func safePrefixLen(data []byte) int {
 	n := len(data) - incompleteUTF8Tail(data)
+	// SSE line endings are \r\n, \r or \n. If we got \r,
+	// we still don't know whether the next byte will be \n (ambiguous).
 	if n > 0 && data[n-1] == '\r' {
 		n--
 	}
@@ -190,21 +204,23 @@ func incompleteUTF8Tail(data []byte) int {
 	return 0
 }
 
-// validateUTF8 returns s with invalid UTF-8 sequences replaced by U+FFFD.
-func validateUTF8(data []byte) string {
+// sanitizeUTF8 returns s with invalid UTF-8 sequences replaced by U+FFFD.
+func sanitizeUTF8(data []byte) string {
 	if utf8.Valid(data) {
 		return string(data)
 	}
 
 	result := make([]byte, 0, len(data))
 	for len(data) > 0 {
-		r, size := utf8.DecodeRune(data)
-		if r == utf8.RuneError && size == 1 {
+		// DecodeRune unpacks the first UTF-8 encoding in p and returns the rune
+		firstRune, size := utf8.DecodeRune(data)
+		invalidEncoding := firstRune == utf8.RuneError && size == 1
+		if invalidEncoding {
 			result = append(result, "\uFFFD"...)
 		} else {
 			result = append(result, data[:size]...)
 		}
-		data = data[size:]
+		data = data[size:] // skip the handled rune for next iteration
 	}
 	return string(result)
 }

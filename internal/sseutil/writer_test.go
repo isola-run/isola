@@ -337,7 +337,7 @@ func TestWriteData_TrailingCR(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 
-	if err := w.Flush(); err != nil {
+	if err := w.Finish(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -361,7 +361,7 @@ func TestWriteData_TrailingCRLF(t *testing.T) {
 	}
 }
 
-func TestFlush_IncompleteSequence(t *testing.T) {
+func TestFinish_IncompleteSequence(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
@@ -373,7 +373,7 @@ func TestFlush_IncompleteSequence(t *testing.T) {
 		t.Errorf("expected empty output for partial multibyte, got %q", got)
 	}
 
-	if err := w.Flush(); err != nil {
+	if err := w.Finish(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -383,11 +383,34 @@ func TestFlush_IncompleteSequence(t *testing.T) {
 	}
 }
 
-func TestFlush_NothingBuffered(t *testing.T) {
+func TestFinish_IncompleteSequence_UsesSingleReplacementForMaximalSubpart(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.Flush(); err != nil {
+	// E4 B8 is a valid prefix of a 3-byte UTF-8 sequence, so at end-of-stream
+	// it is one unfinished sequence and should become one replacement character.
+	if err := w.WriteData([]byte{0xE4, 0xB8}); err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); got != "" {
+		t.Errorf("expected empty output for incomplete prefix, got %q", got)
+	}
+
+	if err := w.Finish(); err != nil {
+		t.Fatal(err)
+	}
+
+	want := "data: \uFFFD\nid: 2\n\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFinish_NothingBuffered(t *testing.T) {
+	var buf bytes.Buffer
+	w := NewWriter(&buf)
+
+	if err := w.Finish(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -773,6 +796,52 @@ func TestWriteData_KeepaliveDoesNotInterfereWithEvents(t *testing.T) {
 	want := "data: first\nid: 5\n\n: keepalive\n\ndata: second\nid: 11\n\n"
 	if got := buf.String(); got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestWriteData_TrailingNewlineRoundTrip(t *testing.T) {
+	// Regression: trailing newline preservation is load-bearing for byte-offset
+	// resume. Without the extra empty "data:" line, the SSE parser strips the
+	// trailing \n, making the reconstructed data shorter than the byte offset
+	// reported in the id field. A resumed writer would then skip a byte the
+	// client never received, corrupting the stream.
+	var buf bytes.Buffer
+	w := NewWriter(&buf)
+
+	// Simulate two stdout writes, each ending with \n (the common case).
+	if err := w.WriteData([]byte("line1\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.WriteData([]byte("line2\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	data := extractSSEData(buf.String())
+	ids := extractSSEIDs(buf.String())
+
+	// The round-tripped data must exactly match the original bytes.
+	if data != "line1\nline2\n" {
+		t.Fatalf("round-trip data = %q, want %q", data, "line1\nline2\n")
+	}
+
+	// The last id must equal the total byte count so a resumed writer
+	// picks up at the right position.
+	lastID := ids[len(ids)-1]
+	if lastID != "12" {
+		t.Fatalf("last id = %s, want 12", lastID)
+	}
+
+	// Simulate resume: a new writer at the last id writes more data.
+	var buf2 bytes.Buffer
+	w2 := NewWriterAtOffset(&buf2, 12)
+	if err := w2.WriteData([]byte("line3\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	// The combined reconstructed data must be the full original stream.
+	combined := data + extractSSEData(buf2.String())
+	if combined != "line1\nline2\nline3\n" {
+		t.Errorf("combined round-trip = %q, want %q", combined, "line1\nline2\nline3\n")
 	}
 }
 

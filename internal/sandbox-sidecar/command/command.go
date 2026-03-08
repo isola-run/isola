@@ -477,7 +477,7 @@ func (h *Handlers) drainSSE(f *os.File, sse *sseutil.Writer, buf []byte, cmdID s
 			if readErr != io.EOF {
 				h.logger.Error("error during final drain of command output", "error", readErr, "cmdID", cmdID)
 			}
-			if ferr := sse.Flush(); ferr != nil {
+			if ferr := sse.Finish(); ferr != nil {
 				if !isClientDisconnect(ferr) {
 					h.logger.Error("error flushing SSE writer", "error", ferr, "cmdID", cmdID)
 				}
