@@ -285,6 +285,40 @@ var _ = Describe("Command Handlers", func() {
 			resp := commandAPI.Get("/commands/00000000-0000-0000-0000-000000000000/stdout")
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
+
+		It("emits id: field with byte offset in each event", func() {
+			code, result := postCommand(`{"args": ["echo", "-n", "hello"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			var body string
+			Eventually(func() string {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+				body = resp.Body.String()
+				return extractSSEData(body)
+			}).Should(Equal("hello"))
+
+			Expect(body).To(MatchRegexp(`(?m)^id: \d+$`))
+		})
+
+		It("preserves multiline output through SSE", func() {
+			code, result := postCommand(`{"args": ["printf", "line1\\nline2"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() string {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+				return extractSSEData(resp.Body.String())
+			}).Should(Equal("line1\nline2"))
+		})
+
+		It("preserves trailing newline in output", func() {
+			code, result := postCommand(`{"args": ["echo", "hello"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() string {
+				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/stdout", result.CommandID))
+				return extractSSEData(resp.Body.String())
+			}).Should(Equal("hello\n"))
+		})
 	})
 
 	Describe("GET /commands/{cmdId}/stderr", func() {
