@@ -176,37 +176,17 @@ func nextChunk(s string) (chunk, remaining string, hasNewline bool) {
 
 // incompleteUTF8Tail returns the number of bytes at the end of data that form
 // an incomplete multi-byte UTF-8 sequence. Returns 0 if the data ends with
-// complete sequences.
+// complete sequences or only invalid bytes (which validateUTF8 handles).
 func incompleteUTF8Tail(data []byte) int {
-	if len(data) == 0 {
-		return 0
-	}
-
-	// Check the last 1-3 bytes for a start byte without enough continuation bytes
-	for i := 1; i <= 3 && i <= len(data); i++ {
-		b := data[len(data)-i]
-		if b < 0x80 {
+	for i := len(data) - 1; i >= 0 && i >= len(data)-3; i-- {
+		if !utf8.RuneStart(data[i]) {
+			continue
+		}
+		if utf8.FullRune(data[i:]) {
 			return 0
 		}
-		if b&0xC0 == 0xC0 {
-			var expected int
-			switch {
-			case b&0xE0 == 0xC0:
-				expected = 2
-			case b&0xF0 == 0xE0:
-				expected = 3
-			case b&0xF8 == 0xF0:
-				expected = 4
-			default:
-				return 0
-			}
-			if i < expected {
-				return i
-			}
-			return 0
-		}
+		return len(data) - i
 	}
-
 	return 0
 }
 
