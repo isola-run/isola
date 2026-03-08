@@ -222,7 +222,7 @@ Tool versions are pinned and must be kept in sync:
 | lefthook | `hack/setup.sh` | - |
 | controller-gen | `hack/setup.sh` | `.github/workflows/codegen.yml` |
 | gVisor | `hack/setup.sh` | `.github/workflows/e2e.yml` |
-| Python | `.python-version` | `sdks/python/pyproject.toml` `requires-python` |
+| Python | `sdks/python/pyproject.toml` `requires-python`, CI workflows | - |
 | uv | - | Manages `sdks/python/uv.lock` |
 | ruff | `sdks/python/pyproject.toml` | - |
 | mypy | `sdks/python/pyproject.toml` | - |
