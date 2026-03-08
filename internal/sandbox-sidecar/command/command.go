@@ -47,7 +47,8 @@ import (
 const waitDelayGracePeriod = 5 * time.Second
 
 // sseKeepaliveInterval controls how often keepalive comments are sent on SSE streams
-// to prevent proxies from dropping idle connections.
+// to prevent proxies from dropping idle connections. 15s gives margin below typical
+// proxy idle timeouts (30-60s) while avoiding excessive overhead.
 const sseKeepaliveInterval = 15 * time.Second
 
 // CommandBuilder abstracts command construction for testability.
