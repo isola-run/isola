@@ -18,6 +18,7 @@ import (
 	"bufio"
 	"io"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -33,69 +34,72 @@ var keepalive = []byte(": keepalive\n\n")
 // sequences with U+FFFD (�). Partial multi-byte sequences are buffered
 // across WriteData calls.
 //
-// All parts of an SSE event (data: lines, id: line, blank terminator)
-// are accumulated in a bufio.Writer and flushed as a single Write call
-// to minimize overhead through the deadline/flush writer chain.
+// The writer owns byte-offset accounting for resumable streams. It only emits
+// ids for bytes whose effect is already visible to the client, buffering
+// ambiguous tails (for example an incomplete UTF-8 sequence or a trailing \r
+// that might become part of a later \r\n).
 type Writer struct {
 	w       *bufio.Writer
-	partial []byte // incomplete UTF-8 multi-byte sequence from previous WriteData call
+	offset  int64
+	pending []byte // raw bytes withheld until they can be emitted with a stable resume offset
 }
 
 // NewWriter creates a new SSE writer wrapping w.
 func NewWriter(w io.Writer) *Writer {
-	return &Writer{w: bufio.NewWriter(w)}
+	return NewWriterAtOffset(w, 0)
 }
 
-// WriteData writes an SSE data event with the given raw bytes and byte offset as the event id.
+// NewWriterAtOffset creates a new SSE writer whose first event id starts at offset.
+func NewWriterAtOffset(w io.Writer, offset int64) *Writer {
+	return &Writer{w: bufio.NewWriter(w), offset: offset}
+}
+
+// WriteData writes an SSE data event for the given raw bytes.
 // The data is validated as UTF-8 with invalid sequences replaced by U+FFFD.
 // Newlines (\n, \r\n, \r) split the payload into multiple data: lines per the SSE spec.
 // If the payload ends with a newline, an extra empty data: line is emitted so the
 // SSE parser's trailing-LF-stripping preserves it.
 // Zero-byte writes are ignored (no event emitted).
-func (w *Writer) WriteData(data []byte, offset int64) error {
+func (w *Writer) WriteData(data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
 
-	// Prepend any buffered partial multi-byte sequence from previous call
-	if len(w.partial) > 0 {
-		data = append(w.partial, data...)
-		w.partial = w.partial[:0]
+	w.offset += int64(len(data))
+
+	combined := data
+	if len(w.pending) > 0 {
+		combined = make([]byte, 0, len(w.pending)+len(data))
+		combined = append(combined, w.pending...)
+		combined = append(combined, data...)
 	}
 
-	// Check for incomplete UTF-8 sequence at end of data
-	if tail := incompleteUTF8Tail(data); tail > 0 {
-		w.partial = append(w.partial[:0], data[len(data)-tail:]...)
-		data = data[:len(data)-tail]
-		if len(data) == 0 {
-			return nil
-		}
+	safeLen := safePrefixLen(combined)
+	w.pending = append(w.pending[:0], combined[safeLen:]...)
+	if safeLen == 0 {
+		return nil
 	}
 
 	// Validate UTF-8, replacing invalid sequences with U+FFFD
-	validated := validateUTF8(data)
+	validated := validateUTF8(combined[:safeLen])
 
-	// Write data: lines and id into the bufio buffer, then flush once
 	w.writeDataLines(validated)
-	w.writeID(offset)
+	w.writeID(w.offset - int64(len(w.pending)))
 	return w.w.Flush()
 }
 
-// Flush writes any buffered partial UTF-8 sequence as U+FFFD replacement characters.
-// Call this when the stream ends to flush any incomplete multi-byte sequences.
-func (w *Writer) Flush(offset int64) error {
-	if len(w.partial) == 0 {
+// Flush writes any buffered tail bytes now that no future data can disambiguate them.
+func (w *Writer) Flush() error {
+	if len(w.pending) == 0 {
 		return nil
 	}
-	// Replace each byte of the incomplete sequence with U+FFFD
-	replacement := make([]byte, 0, len(w.partial)*3)
-	for range w.partial {
-		replacement = append(replacement, "\uFFFD"...)
-	}
-	w.partial = w.partial[:0]
 
-	w.writeDataLine(string(replacement))
-	w.writeID(offset)
+	tail := incompleteUTF8Tail(w.pending)
+	flushed := validateUTF8(w.pending[:len(w.pending)-tail]) + strings.Repeat("\uFFFD", tail)
+	w.pending = w.pending[:0]
+
+	w.writeDataLines(flushed)
+	w.writeID(w.offset)
 	return w.w.Flush()
 }
 
@@ -154,6 +158,16 @@ func nextChunk(s string) (chunk, remaining string, hasNewline bool) {
 		}
 	}
 	return s, "", false
+}
+
+// safePrefixLen returns the number of bytes at the start of data that can be
+// emitted immediately without advancing the resume offset past ambiguous bytes.
+func safePrefixLen(data []byte) int {
+	n := len(data) - incompleteUTF8Tail(data)
+	if n > 0 && data[n-1] == '\r' {
+		n--
+	}
+	return n
 }
 
 // incompleteUTF8Tail returns the number of bytes at the end of data that form

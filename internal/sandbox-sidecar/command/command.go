@@ -411,7 +411,7 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 			fw := httputil.NewTimedFlushWriter(dw, 100*time.Millisecond)
 			defer fw.Stop()
 
-			sse := sseutil.NewWriter(fw)
+			sse := sseutil.NewWriterAtOffset(fw, offset)
 			buf := make([]byte, 32*1024)
 			keepaliveTicker := time.NewTicker(sseKeepaliveInterval)
 			defer keepaliveTicker.Stop()
@@ -419,8 +419,7 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 			for {
 				n, readErr := f.Read(buf)
 				if n > 0 {
-					offset += int64(n)
-					if werr := sse.WriteData(buf[:n], offset); werr != nil {
+					if werr := sse.WriteData(buf[:n]); werr != nil {
 						if isClientDisconnect(werr) {
 							h.logger.Warn("client disconnected during command stream", "error", werr, "cmdID", cmdID)
 						} else {
@@ -438,7 +437,7 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 				// EOF — poll for more data or exit
 				select {
 				case <-entry.done:
-					h.drainSSE(f, sse, buf, offset, cmdID)
+					h.drainSSE(f, sse, buf, cmdID)
 					return
 				case <-ctx.Context().Done():
 					h.logger.Warn("client disconnected during command stream", "cmdID", cmdID)
@@ -461,12 +460,11 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 }
 
 // drainSSE reads remaining bytes from f after the process exits and writes them as SSE events.
-func (h *Handlers) drainSSE(f *os.File, sse *sseutil.Writer, buf []byte, offset int64, cmdID string) {
+func (h *Handlers) drainSSE(f *os.File, sse *sseutil.Writer, buf []byte, cmdID string) {
 	for {
 		n, readErr := f.Read(buf)
 		if n > 0 {
-			offset += int64(n)
-			if werr := sse.WriteData(buf[:n], offset); werr != nil {
+			if werr := sse.WriteData(buf[:n]); werr != nil {
 				if isClientDisconnect(werr) {
 					h.logger.Warn("client disconnected during command stream", "error", werr, "cmdID", cmdID)
 				} else {
@@ -479,8 +477,7 @@ func (h *Handlers) drainSSE(f *os.File, sse *sseutil.Writer, buf []byte, offset 
 			if readErr != io.EOF {
 				h.logger.Error("error during final drain of command output", "error", readErr, "cmdID", cmdID)
 			}
-			// Flush any incomplete UTF-8 sequence
-			if ferr := sse.Flush(offset); ferr != nil {
+			if ferr := sse.Flush(); ferr != nil {
 				if !isClientDisconnect(ferr) {
 					h.logger.Error("error flushing SSE writer", "error", ferr, "cmdID", cmdID)
 				}

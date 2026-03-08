@@ -16,14 +16,47 @@ package sseutil
 
 import (
 	"bytes"
+	"slices"
+	"strings"
 	"testing"
 )
+
+func extractSSEData(body string) string {
+	var result strings.Builder
+	var dataParts []string
+
+	for line := range strings.SplitSeq(body, "\n") {
+		switch {
+		case strings.HasPrefix(line, "data: "):
+			dataParts = append(dataParts, line[6:])
+		case line == "data:":
+			dataParts = append(dataParts, "")
+		case line == "":
+			if len(dataParts) > 0 {
+				result.WriteString(strings.Join(dataParts, "\n"))
+				dataParts = dataParts[:0]
+			}
+		}
+	}
+
+	return result.String()
+}
+
+func extractSSEIDs(body string) []string {
+	var ids []string
+	for line := range strings.SplitSeq(body, "\n") {
+		if id, ok := strings.CutPrefix(line, "id: "); ok {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
 
 func TestWriteData_Simple(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("hello world"), 11); err != nil {
+	if err := w.WriteData([]byte("hello world")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -37,7 +70,7 @@ func TestWriteData_Multiline(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("line1\nline2"), 11); err != nil {
+	if err := w.WriteData([]byte("line1\nline2")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -52,7 +85,7 @@ func TestWriteData_TrailingNewline(t *testing.T) {
 	w := NewWriter(&buf)
 
 	// "hello\n" should produce data: hello\ndata: \n so the parser yields "hello\n"
-	if err := w.WriteData([]byte("hello\n"), 6); err != nil {
+	if err := w.WriteData([]byte("hello\n")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -66,7 +99,7 @@ func TestWriteData_CRLF(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("a\r\nb"), 4); err != nil {
+	if err := w.WriteData([]byte("a\r\nb")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -80,7 +113,7 @@ func TestWriteData_BareCarriageReturn(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("a\rb"), 3); err != nil {
+	if err := w.WriteData([]byte("a\rb")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -94,7 +127,7 @@ func TestWriteData_LeadingSpace(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("  indented"), 10); err != nil {
+	if err := w.WriteData([]byte("  indented")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -109,7 +142,7 @@ func TestWriteData_EmptyLines(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("a\n\nb"), 4); err != nil {
+	if err := w.WriteData([]byte("a\n\nb")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -123,7 +156,7 @@ func TestWriteData_ZeroByte(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte{}, 0); err != nil {
+	if err := w.WriteData([]byte{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -136,7 +169,7 @@ func TestWriteData_NilSlice(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData(nil, 0); err != nil {
+	if err := w.WriteData(nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -150,7 +183,7 @@ func TestWriteData_InvalidUTF8(t *testing.T) {
 	w := NewWriter(&buf)
 
 	// 0xFF is not a valid UTF-8 byte
-	if err := w.WriteData([]byte("hello\xffworld"), 11); err != nil {
+	if err := w.WriteData([]byte("hello\xffworld")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -165,22 +198,59 @@ func TestWriteData_SplitMultibyte(t *testing.T) {
 	w := NewWriter(&buf)
 
 	// é = 0xC3 0xA9 — split across two WriteData calls.
-	// The writer emits the valid prefix "caf" and buffers the incomplete 0xC3.
-	if err := w.WriteData([]byte("caf\xc3"), 4); err != nil {
+	// The writer emits the valid prefix "caf" but holds the resume id at byte 3
+	// until the buffered 0xC3 can be completed on a later write.
+	if err := w.WriteData([]byte("caf\xc3")); err != nil {
 		t.Fatal(err)
 	}
-	want1 := "data: caf\nid: 4\n\n"
+	want1 := "data: caf\nid: 3\n\n"
 	if got := buf.String(); got != want1 {
 		t.Errorf("after first write: got %q, want %q", got, want1)
 	}
 
-	if err := w.WriteData([]byte("\xa9!"), 6); err != nil {
+	if err := w.WriteData([]byte("\xa9!")); err != nil {
 		t.Fatal(err)
 	}
 
-	want := "data: caf\nid: 4\n\ndata: é!\nid: 6\n\n"
+	want := "data: caf\nid: 3\n\ndata: é!\nid: 6\n\n"
 	if got := buf.String(); got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestWriteData_SplitMultibyteAtReadBoundary(t *testing.T) {
+	var buf bytes.Buffer
+	w := NewWriter(&buf)
+
+	// Simulate a 32 KiB file read that ends with the first byte of a 2-byte rune.
+	chunk := append(bytes.Repeat([]byte{'a'}, 32767), 0xC3)
+	if err := w.WriteData(chunk); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := extractSSEData(buf.String()); got != strings.Repeat("a", 32767) {
+		t.Errorf("got data len %d, want %d", len(got), 32767)
+	}
+	if got := extractSSEIDs(buf.String()); !slices.Equal(got, []string{"32767"}) {
+		t.Errorf("got ids %v, want [32767]", got)
+	}
+}
+
+func TestNewWriterAtOffset_ResumeFromSplitMultibyteBoundary(t *testing.T) {
+	var buf bytes.Buffer
+	w := NewWriterAtOffset(&buf, 32767)
+
+	// Resume from the last committed byte and deliver the buffered rune plus the
+	// following ASCII byte as one event.
+	if err := w.WriteData([]byte{0xC3, 0xA9, '!'}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := extractSSEData(buf.String()); got != "é!" {
+		t.Errorf("got data %q, want %q", got, "é!")
+	}
+	if got := extractSSEIDs(buf.String()); !slices.Equal(got, []string{"32770"}) {
+		t.Errorf("got ids %v, want [32770]", got)
 	}
 }
 
@@ -189,7 +259,7 @@ func TestWriteData_SplitMultibyte_OnlyPartial(t *testing.T) {
 	w := NewWriter(&buf)
 
 	// Write only the first byte of a 2-byte sequence — nothing should be emitted
-	if err := w.WriteData([]byte("\xc3"), 1); err != nil {
+	if err := w.WriteData([]byte("\xc3")); err != nil {
 		t.Fatal(err)
 	}
 	if got := buf.String(); got != "" {
@@ -197,7 +267,7 @@ func TestWriteData_SplitMultibyte_OnlyPartial(t *testing.T) {
 	}
 
 	// Complete the sequence
-	if err := w.WriteData([]byte("\xa9"), 2); err != nil {
+	if err := w.WriteData([]byte("\xa9")); err != nil {
 		t.Fatal(err)
 	}
 	want := "data: é\nid: 2\n\n"
@@ -224,10 +294,10 @@ func TestWriteData_OffsetTracking(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("ab"), 2); err != nil {
+	if err := w.WriteData([]byte("ab")); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.WriteData([]byte("cd"), 4); err != nil {
+	if err := w.WriteData([]byte("cd")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -237,17 +307,43 @@ func TestWriteData_OffsetTracking(t *testing.T) {
 	}
 }
 
+func TestNewWriterAtOffset(t *testing.T) {
+	var buf bytes.Buffer
+	w := NewWriterAtOffset(&buf, 10)
+
+	if err := w.WriteData([]byte("ab")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.WriteData([]byte("cd")); err != nil {
+		t.Fatal(err)
+	}
+
+	want := "data: ab\nid: 12\n\ndata: cd\nid: 14\n\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 func TestWriteData_TrailingCR(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("hello\r"), 6); err != nil {
+	if err := w.WriteData([]byte("hello\r")); err != nil {
 		t.Fatal(err)
 	}
 
-	want := "data: hello\ndata: \nid: 6\n\n"
+	want := "data: hello\nid: 5\n\n"
 	if got := buf.String(); got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	want = "data: hello\nid: 5\n\ndata: \ndata: \nid: 6\n\n"
+	if got := buf.String(); got != want {
+		t.Errorf("after flush: got %q, want %q", got, want)
 	}
 }
 
@@ -255,7 +351,7 @@ func TestWriteData_TrailingCRLF(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("hello\r\n"), 7); err != nil {
+	if err := w.WriteData([]byte("hello\r\n")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -270,14 +366,14 @@ func TestFlush_IncompleteSequence(t *testing.T) {
 	w := NewWriter(&buf)
 
 	// Buffer a partial multi-byte sequence
-	if err := w.WriteData([]byte("\xc3"), 1); err != nil {
+	if err := w.WriteData([]byte("\xc3")); err != nil {
 		t.Fatal(err)
 	}
 	if got := buf.String(); got != "" {
 		t.Errorf("expected empty output for partial multibyte, got %q", got)
 	}
 
-	if err := w.Flush(1); err != nil {
+	if err := w.Flush(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -291,7 +387,7 @@ func TestFlush_NothingBuffered(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.Flush(0); err != nil {
+	if err := w.Flush(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -304,10 +400,9 @@ func TestWriteData_NullByte(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	// Null bytes are valid UTF-8 (U+0000) but the SSE spec says to replace them.
-	// However, per our plan, we only replace invalid UTF-8 sequences.
-	// Null bytes pass through as-is since they're valid UTF-8.
-	if err := w.WriteData([]byte("a\x00b"), 3); err != nil {
+	// U+0000 is allowed in SSE field values. The parser only rejects NUL inside
+	// id fields; data fields keep it as payload.
+	if err := w.WriteData([]byte("a\x00b")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -321,7 +416,7 @@ func TestWriteData_MultipleConsecutiveNewlines(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("\n\n"), 2); err != nil {
+	if err := w.WriteData([]byte("\n\n")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -339,11 +434,11 @@ func TestWriteData_MixedNewlineStyles(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("line1\nline2\r\nline3\rline4"), 23); err != nil {
+	if err := w.WriteData([]byte("line1\nline2\r\nline3\rline4")); err != nil {
 		t.Fatal(err)
 	}
 
-	want := "data: line1\ndata: line2\ndata: line3\ndata: line4\nid: 23\n\n"
+	want := "data: line1\ndata: line2\ndata: line3\ndata: line4\nid: 24\n\n"
 	if got := buf.String(); got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -355,7 +450,7 @@ func TestWriteData_DataContainingColons(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("key: value"), 10); err != nil {
+	if err := w.WriteData([]byte("key: value")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -373,7 +468,7 @@ func TestWriteData_ParserSpaceStripping(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte(" x"), 2); err != nil {
+	if err := w.WriteData([]byte(" x")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -391,7 +486,7 @@ func TestWriteData_BOM(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("\xEF\xBB\xBFhello"), 8); err != nil {
+	if err := w.WriteData([]byte("\xEF\xBB\xBFhello")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -405,7 +500,7 @@ func TestWriteData_StartsWithNewline(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("\nhello"), 6); err != nil {
+	if err := w.WriteData([]byte("\nhello")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -419,7 +514,7 @@ func TestWriteData_OnlyNewline(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("\n"), 1); err != nil {
+	if err := w.WriteData([]byte("\n")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -437,11 +532,11 @@ func TestWriteData_Emoji4Byte(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("🎉🚀✨"), 13); err != nil {
+	if err := w.WriteData([]byte("🎉🚀✨")); err != nil {
 		t.Fatal(err)
 	}
 
-	want := "data: 🎉🚀✨\nid: 13\n\n"
+	want := "data: 🎉🚀✨\nid: 11\n\n"
 	if got := buf.String(); got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -452,7 +547,7 @@ func TestWriteData_CJK3Byte(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("世界你好"), 12); err != nil {
+	if err := w.WriteData([]byte("世界你好")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -466,11 +561,11 @@ func TestWriteData_MixedASCIIAndMultibyte(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("hello 世界!\n🎉 done"), 24); err != nil {
+	if err := w.WriteData([]byte("hello 世界!\n🎉 done")); err != nil {
 		t.Fatal(err)
 	}
 
-	want := "data: hello 世界!\ndata: 🎉 done\nid: 24\n\n"
+	want := "data: hello 世界!\ndata: 🎉 done\nid: 23\n\n"
 	if got := buf.String(); got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -495,11 +590,9 @@ func TestWriteData_Split4ByteEmoji(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			w := NewWriter(&buf)
-			offset := int64(0)
 
 			for _, part := range tc.splits {
-				offset += int64(len(part))
-				if err := w.WriteData(part, offset); err != nil {
+				if err := w.WriteData(part); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -530,11 +623,9 @@ func TestWriteData_Split3ByteCJK(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			w := NewWriter(&buf)
-			offset := int64(0)
 
 			for _, part := range tc.splits {
-				offset += int64(len(part))
-				if err := w.WriteData(part, offset); err != nil {
+				if err := w.WriteData(part); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -585,7 +676,7 @@ func TestWriteData_InvalidUTF8_Positions(t *testing.T) {
 			var buf bytes.Buffer
 			w := NewWriter(&buf)
 
-			if err := w.WriteData(tc.input, int64(len(tc.input))); err != nil {
+			if err := w.WriteData(tc.input); err != nil {
 				t.Fatal(err)
 			}
 
@@ -601,7 +692,7 @@ func TestWriteData_OverlongUTF8(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("\xc0\xaf"), 2); err != nil {
+	if err := w.WriteData([]byte("\xc0\xaf")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -617,7 +708,7 @@ func TestWriteData_SurrogateHalf(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("\xed\xa0\x80"), 3); err != nil {
+	if err := w.WriteData([]byte("\xed\xa0\x80")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -632,7 +723,7 @@ func TestWriteData_ValidMultibyteOnNewlineBoundary(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("é\né"), 5); err != nil {
+	if err := w.WriteData([]byte("é\né")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -649,7 +740,7 @@ func TestWriteData_LargePayload(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData(large, int64(len(large))); err != nil {
+	if err := w.WriteData(large); err != nil {
 		t.Fatal(err)
 	}
 
@@ -669,13 +760,13 @@ func TestWriteData_KeepaliveDoesNotInterfereWithEvents(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("first"), 5); err != nil {
+	if err := w.WriteData([]byte("first")); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.WriteKeepalive(); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.WriteData([]byte("second"), 11); err != nil {
+	if err := w.WriteData([]byte("second")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -686,21 +777,22 @@ func TestWriteData_KeepaliveDoesNotInterfereWithEvents(t *testing.T) {
 }
 
 func TestWriteData_CRLFAtBoundaryOfWrites(t *testing.T) {
-	// \r at end of one write, \n at start of next — they should NOT be
-	// treated as a single \r\n across calls (they're separate WriteData calls
-	// = separate events).
+	// The parser sees one continuous byte stream, not two logical records, so a
+	// trailing \r followed by a later \n still forms one CRLF line ending.
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 
-	if err := w.WriteData([]byte("hello\r"), 6); err != nil {
+	if err := w.WriteData([]byte("hello\r")); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.WriteData([]byte("\nworld"), 12); err != nil {
+	if err := w.WriteData([]byte("\nworld")); err != nil {
 		t.Fatal(err)
 	}
 
-	want := "data: hello\ndata: \nid: 6\n\ndata: \ndata: world\nid: 12\n\n"
-	if got := buf.String(); got != want {
-		t.Errorf("got %q, want %q", got, want)
+	if got := extractSSEData(buf.String()); got != "hello\nworld" {
+		t.Errorf("got data %q, want %q", got, "hello\nworld")
+	}
+	if got := extractSSEIDs(buf.String()); !slices.Equal(got, []string{"5", "12"}) {
+		t.Errorf("got ids %v, want [5 12]", got)
 	}
 }
