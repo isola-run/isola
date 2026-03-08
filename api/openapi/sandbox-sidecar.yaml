@@ -313,7 +313,7 @@ paths:
         - commands
   /commands/{cmdId}/stderr:
     get:
-      description: Streams the command's stderr as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.
+      description: Streams the command's stderr as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.
       operationId: getCommandStderr
       parameters:
         - description: Command identifier
@@ -324,22 +324,17 @@ paths:
             description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
-        - description: Byte offset to resume from (default 0)
-          explode: false
-          in: query
-          name: offset
+        - description: Byte offset to resume from (SSE Last-Event-ID)
+          in: header
+          name: Last-Event-ID
           schema:
-            description: Byte offset to resume from (default 0)
-            format: int64
-            minimum: 0
-            type: integer
+            description: Byte offset to resume from (SSE Last-Event-ID)
+            type: string
       responses:
         "200":
           content:
-            application/octet-stream:
+            text/event-stream:
               schema:
-                contentMediaType: application/octet-stream
-                format: binary
                 type: string
           description: Command stderr stream
         "404":
@@ -459,7 +454,7 @@ paths:
         - commands
   /commands/{cmdId}/stdout:
     get:
-      description: Streams the command's stdout as raw bytes. The connection remains open until the command exits. Supports resuming via ?offset=N query parameter.
+      description: Streams the command's stdout as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.
       operationId: getCommandStdout
       parameters:
         - description: Command identifier
@@ -470,22 +465,17 @@ paths:
             description: Command identifier
             pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
             type: string
-        - description: Byte offset to resume from (default 0)
-          explode: false
-          in: query
-          name: offset
+        - description: Byte offset to resume from (SSE Last-Event-ID)
+          in: header
+          name: Last-Event-ID
           schema:
-            description: Byte offset to resume from (default 0)
-            format: int64
-            minimum: 0
-            type: integer
+            description: Byte offset to resume from (SSE Last-Event-ID)
+            type: string
       responses:
         "200":
           content:
-            application/octet-stream:
+            text/event-stream:
               schema:
-                contentMediaType: application/octet-stream
-                format: binary
                 type: string
           description: Command stdout stream
         "404":

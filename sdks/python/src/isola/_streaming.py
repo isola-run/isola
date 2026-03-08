@@ -15,12 +15,12 @@
 from __future__ import annotations
 
 import asyncio
-import codecs
 import time
 from collections.abc import AsyncIterator, Generator, Iterator
 from typing import Any, Protocol
 
 import httpx
+from httpx_sse import EventSource
 
 from ._exceptions import APIError, connection_error_from_request, error_from_http, is_transient
 
@@ -37,6 +37,7 @@ class _SyncStreamAPI(Protocol):
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = None,
     ) -> Any: ...
 
@@ -47,6 +48,7 @@ class _AsyncStreamAPI(Protocol):
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = None,
     ) -> Any: ...
 
@@ -57,10 +59,10 @@ class StreamReader:
     def __init__(self, api: _SyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
-        self._offset = 0
+        self._last_event_id = 0
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
-            read=None,
+            read=None, # wait forever / until server error for data
             write=STREAM_WRITE_TIMEOUT,
             pool=STREAM_POOL_TIMEOUT,
         )
@@ -75,34 +77,26 @@ class StreamReader:
     def read(self) -> str:
         return "".join(self)
 
-    # todo benl: there's a big problem here - if server doesn't have anything to stream for a while (e.g. no stdout)
-    # will close the connections enough times to cause the stream to end without reading the whole stdout
     def _generate(self) -> Generator[str, None, None]:
-        decoder = codecs.getincrementaldecoder("utf-8")("replace")
         reconnects = 0
 
         while True:
             try:
+                headers = {"Last-Event-ID": str(self._last_event_id)} if self._last_event_id > 0 else None
                 with self._api.open_stream(
                     self._path,
-                    params={"offset": self._offset},
+                    headers=headers,
                     timeout=self._httpx_timeout,
                 ) as response:
                     if response.status_code >= 400:
                         raise error_from_http(response.status_code, None, response.read())
 
-                    for chunk in response.iter_bytes():
-                        if not chunk:
-                            continue
-                        self._offset += len(chunk)
-                        reconnects = 0
-                        decoded = decoder.decode(chunk)
-                        if decoded:
-                            yield decoded
-
-                    final = decoder.decode(b"", final=True)
-                    if final:
-                        yield final
+                    for sse in EventSource(response).iter_sse():
+                        if sse.id:
+                            self._last_event_id = int(sse.id)
+                        if sse.data:
+                            reconnects = 0
+                            yield sse.data
 
                     return
 
@@ -120,13 +114,14 @@ class StreamReader:
 class AsyncStreamReader:
     """Single-use async iterable stream with transparent reconnect."""
 
+
     def __init__(self, api: _AsyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
-        self._offset = 0
+        self._last_event_id = 0
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
-            read=None,
+            read=None, # wait forever / until server error for data
             write=STREAM_WRITE_TIMEOUT,
             pool=STREAM_POOL_TIMEOUT,
         )
@@ -137,31 +132,25 @@ class AsyncStreamReader:
             raise RuntimeError("AsyncStreamReader is single-use and has already been consumed")
         self._consumed = True
 
-        decoder = codecs.getincrementaldecoder("utf-8")("replace")
         reconnects = 0
 
         while True:
             try:
+                headers = {"Last-Event-ID": str(self._last_event_id)} if self._last_event_id > 0 else None
                 async with self._api.open_stream(
                     self._path,
-                    params={"offset": self._offset},
+                    headers=headers,
                     timeout=self._httpx_timeout,
                 ) as response:
                     if response.status_code >= 400:
                         raise error_from_http(response.status_code, None, await response.aread())
 
-                    async for chunk in response.aiter_bytes():
-                        if not chunk:
-                            continue
-                        self._offset += len(chunk)
-                        reconnects = 0
-                        decoded = decoder.decode(chunk)
-                        if decoded:
-                            yield decoded
-
-                    final = decoder.decode(b"", final=True)
-                    if final:
-                        yield final
+                    async for sse in EventSource(response).aiter_sse():
+                        if sse.id:
+                            self._last_event_id = int(sse.id)
+                        if sse.data:
+                            reconnects = 0
+                            yield sse.data
 
                     return
 
