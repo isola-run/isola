@@ -15,7 +15,7 @@
 package sseutil
 
 import (
-	"bufio"
+	"bytes"
 	"io"
 	"strconv"
 	"strings"
@@ -39,7 +39,7 @@ var keepalive = []byte(": keepalive\n\n")
 // ambiguous tails (for example an incomplete UTF-8 sequence or a trailing \r
 // that might become part of a later \r\n).
 type Writer struct {
-	w       *bufio.Writer
+	w       io.Writer
 	offset  int64
 	pending []byte // raw bytes withheld until they can be emitted with a stable resume offset
 }
@@ -51,7 +51,7 @@ func NewWriter(w io.Writer) *Writer {
 
 // NewWriterAtOffset creates a new SSE writer whose first event id starts at offset.
 func NewWriterAtOffset(w io.Writer, offset int64) *Writer {
-	return &Writer{w: bufio.NewWriter(w), offset: offset}
+	return &Writer{w: w, offset: offset}
 }
 
 // WriteData writes an SSE data event for the given raw bytes.
@@ -83,9 +83,11 @@ func (w *Writer) WriteData(data []byte) error {
 	// Validate UTF-8, replacing invalid sequences with U+FFFD
 	validated := validateUTF8(combined[:safeLen])
 
-	w.writeDataLines(validated)
-	w.writeID(w.offset - int64(len(w.pending)))
-	return w.w.Flush()
+	var event bytes.Buffer
+	writeDataLines(&event, validated)
+	writeID(&event, w.offset-int64(len(w.pending)))
+	_, err := w.w.Write(event.Bytes())
+	return err
 }
 
 // Flush writes any buffered tail bytes now that no future data can disambiguate them.
@@ -98,46 +100,48 @@ func (w *Writer) Flush() error {
 	flushed := validateUTF8(w.pending[:len(w.pending)-tail]) + strings.Repeat("\uFFFD", tail)
 	w.pending = w.pending[:0]
 
-	w.writeDataLines(flushed)
-	w.writeID(w.offset)
-	return w.w.Flush()
+	var event bytes.Buffer
+	writeDataLines(&event, flushed)
+	writeID(&event, w.offset)
+	_, err := w.w.Write(event.Bytes())
+	return err
 }
 
 // WriteKeepalive writes an SSE comment line that keeps the connection alive
 // through intermediate infrastructure without being visible to SSE clients.
 func (w *Writer) WriteKeepalive() error {
-	w.write(keepalive)
-	return w.w.Flush()
+	_, err := w.w.Write(keepalive)
+	return err
 }
 
 // writeDataLine writes a single "data: <line>\n" into the buffer.
-func (w *Writer) writeDataLine(line string) {
-	w.writeString("data: ")
-	w.writeString(line)
-	w.writeByte('\n')
+func writeDataLine(buf *bytes.Buffer, line string) {
+	buf.WriteString("data: ")
+	buf.WriteString(line)
+	buf.WriteByte('\n')
 }
 
 // writeID writes "id: <offset>\n\n" into the buffer.
-func (w *Writer) writeID(offset int64) {
-	w.writeString("id: ")
-	w.writeString(strconv.FormatInt(offset, 10))
-	w.writeString("\n\n")
+func writeID(buf *bytes.Buffer, offset int64) {
+	buf.WriteString("id: ")
+	buf.WriteString(strconv.FormatInt(offset, 10))
+	buf.WriteString("\n\n")
 }
 
 // writeDataLines splits s on \n, \r\n, and bare \r into "data:" lines.
 // If s ends with a newline, an extra empty "data:" line is written so the
 // SSE parser's trailing-LF-stripping preserves it.
-func (w *Writer) writeDataLines(s string) {
+func writeDataLines(buf *bytes.Buffer, s string) {
 	for {
 		line, rest, hasNewline := nextChunk(s)
-		w.writeDataLine(line)
+		writeDataLine(buf, line)
 		if !hasNewline {
 			return
 		}
 		s = rest
 		if s == "" {
 			// Input ended with a newline — emit extra empty data: line
-			w.writeDataLine("")
+			writeDataLine(buf, "")
 			return
 		}
 	}
@@ -158,20 +162,6 @@ func nextChunk(s string) (chunk, remaining string, hasNewline bool) {
 		}
 	}
 	return s, "", false
-}
-
-// bufio.Writer stores the first write error and returns it from Flush, so the
-// incremental writes below can safely ignore their direct return values.
-func (w *Writer) write(p []byte) {
-	_, _ = w.w.Write(p)
-}
-
-func (w *Writer) writeString(s string) {
-	_, _ = w.w.WriteString(s)
-}
-
-func (w *Writer) writeByte(b byte) {
-	_ = w.w.WriteByte(b)
 }
 
 // safePrefixLen returns the number of bytes at the start of data that can be
