@@ -54,12 +54,7 @@ class _AsyncStreamAPI(Protocol):
 
 
 class StreamReader:
-    """Single-use iterable stream with transparent reconnect.
-
-    Delegates SSE parsing to httpx-sse. Data events carry stdout/stderr text,
-    with ``id:`` fields tracking byte offsets for resume via the
-    ``Last-Event-ID`` header.
-    """
+    """Single-use iterable stream with transparent reconnect."""
 
     def __init__(self, api: _SyncStreamAPI, path: str) -> None:
         self._api = api
@@ -67,7 +62,7 @@ class StreamReader:
         self._last_event_id = 0
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
-            read=None,
+            read=None, # wait forever / until server error for data
             write=STREAM_WRITE_TIMEOUT,
             pool=STREAM_POOL_TIMEOUT,
         )
@@ -117,12 +112,8 @@ class StreamReader:
 
 
 class AsyncStreamReader:
-    """Single-use async iterable stream with transparent reconnect.
+    """Single-use async iterable stream with transparent reconnect."""
 
-    Delegates SSE parsing to httpx-sse. Data events carry stdout/stderr text,
-    with ``id:`` fields tracking byte offsets for resume via the
-    ``Last-Event-ID`` header.
-    """
 
     def __init__(self, api: _AsyncStreamAPI, path: str) -> None:
         self._api = api
@@ -130,7 +121,7 @@ class AsyncStreamReader:
         self._last_event_id = 0
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
-            read=None,
+            read=None, # wait forever / until server error for data
             write=STREAM_WRITE_TIMEOUT,
             pool=STREAM_POOL_TIMEOUT,
         )
