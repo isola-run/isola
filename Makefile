@@ -5,7 +5,7 @@ SHELL = /usr/bin/env bash -o pipefail
 
 # Go toolchain version — auto-downloads the correct Go toolchain regardless of
 # what's installed locally (requires Go 1.21+). Must match go.mod `go` directive.
-GO_VERSION ?= 1.26.0
+GO_VERSION ?= 1.26.1
 GOTOOLCHAIN = go$(GO_VERSION)
 export GOTOOLCHAIN
 
