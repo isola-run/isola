@@ -248,7 +248,10 @@ func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream, la
 			defer func() { _ = resp.Body.Close() }()
 
 			ctx.SetHeader("Content-Type", "text/event-stream")
+			// no-cache, since the stream change over time
+			// private, since the stream is of a specific sandbox
 			ctx.SetHeader("Cache-Control", "no-cache, private")
+			// X-Accel-Buffering: no, disable nginx buffering (serve immediately)
 			ctx.SetHeader("X-Accel-Buffering", "no")
 
 			rc := httputil.ResponseController(ctx)
