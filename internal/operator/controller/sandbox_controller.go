@@ -67,6 +67,10 @@ const (
 	CondReasonRootfsSnapshotTimeout        = "RootfsSnapshotTimeout"
 	CondReasonInvalidRuntime               = "InvalidRuntime"
 
+	// Restore-related reasons
+	CondReasonRootfsRestoreConfigError = "RootfsRestoreConfigurationError"
+	CondReasonNoRootfsSnapshot         = "NoRootfsSnapshot"
+
 	// NetworkPolicy-related reasons
 	CondReasonNetworkPolicyApplied = "NetworkPolicyApplied"
 	CondReasonNetworkPolicyFailed  = "NetworkPolicyFailed"
@@ -228,7 +232,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 				{
 					Type:               SandboxReadyCondition,
 					Status:             metav1.ConditionFalse,
-					Reason:             "RootfsRestoreConfigurationError",
+					Reason:             CondReasonRootfsRestoreConfigError,
 					Message:            err.Error(),
 					ObservedGeneration: sandbox.Generation,
 				},
@@ -573,7 +577,7 @@ func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1a
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             "NoRootfsSnapshot",
+			Reason:             CondReasonNoRootfsSnapshot,
 			Message:            "No shutdown rootfs snapshot exists",
 			ObservedGeneration: sandbox.Generation,
 		}

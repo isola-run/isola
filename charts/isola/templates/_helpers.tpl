@@ -248,12 +248,7 @@ RootfsSnapshot host mount path for restore (only when rootfssnapshot enabled)
 rclone image for rootfssnapshot FUSE DaemonSet
 */}}
 {{- define "isola.operator.rootfssnapshotRcloneImage" -}}
-{{- $img := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.isolaNodeMount.rclone.image -}}
-{{- if $img.registry -}}
-{{- printf "%s/%s:%s" $img.registry $img.repository $img.tag -}}
-{{- else -}}
-{{- printf "%s:%s" $img.repository $img.tag -}}
-{{- end -}}
+{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.isolaNodeMount.rclone.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
 
 {{/* ==========================================================================
