@@ -21,6 +21,7 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: rootfssnapshot-nodemount
     spec:
+      serviceAccountName: {{ include "isola.operator.rootfssnapshotServiceAccountName" . }}
       # hostPID is required so we can nsenter into the host mount namespace.
       # This ensures the FUSE mount is created directly on the host, making
       # snapshot tars visible to gVisor (runsc) which runs at the host level.

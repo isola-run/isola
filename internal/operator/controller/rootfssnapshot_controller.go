@@ -189,12 +189,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// Key path (rootfssnapshots/<snapshotName>.tar) is namespace-unaware - identical snapshot
 	// names in different namespaces map to the same bucket key.
-	snapshotName := snap.Spec.SnapshotName
-	if snapshotName == "" {
-		snapshotName = snap.Spec.SandboxName
-	}
-
-	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName, snapshotName)
+	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName, snap.Spec.SnapshotName)
 }
 
 func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(

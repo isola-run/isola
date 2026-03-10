@@ -106,8 +106,9 @@ func createRootfsSnapshotCRWithContainer(ctx context.Context, name, sandboxName,
 			Namespace: testNamespace,
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
-			SandboxName: sandboxName,
-			Container:   container,
+			SandboxName:  sandboxName,
+			SnapshotName: name,
+			Container:    container,
 		},
 	}
 	ExpectWithOffset(2, k8sClient.Create(ctx, snap)).To(Succeed())

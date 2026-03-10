@@ -80,9 +80,10 @@ spec:
                 type: string
               snapshotName:
                 description: |-
-                  SnapshotName is the name used for the snapshot object key in storage.
-                  If empty, defaults to the sandbox name.
+                  SnapshotName is the name used for the snapshot storage key.
+                  This is the value callers must pass as restoreRootfsFrom.rootfsSnapshotName to restore from this snapshot.
                 maxLength: 63
+                minLength: 1
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                 type: string
               ttlSecondsAfterFinished:
@@ -99,6 +100,7 @@ spec:
                 type: integer
             required:
             - sandboxName
+            - snapshotName
             type: object
           status:
             description: status defines the observed state

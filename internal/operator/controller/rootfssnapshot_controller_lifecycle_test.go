@@ -75,6 +75,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 					SandboxName:             sandboxName,
+					SnapshotName:            snapName,
 					TTLSecondsAfterFinished: func() *int32 { v := int32(10); return &v }(),
 				},
 			}
@@ -142,6 +143,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 					SandboxName:             sandboxName,
+					SnapshotName:            snapName,
 					TTLSecondsAfterFinished: func() *int32 { v := int32(60); return &v }(),
 				},
 			}
@@ -258,6 +260,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 					SandboxName:           sandboxName,
+					SnapshotName:          snapName,
 					ActiveDeadlineSeconds: &customDeadline,
 				},
 			}
