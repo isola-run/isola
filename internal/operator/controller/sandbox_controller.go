@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 	"github.com/isola-ai/isola/internal/constants"
@@ -1115,23 +1116,24 @@ func (r *SandboxReconciler) injectRootfsRestoreAnnotation(ctx context.Context, s
 	restore := sandbox.Spec.RestoreRootfsFrom
 
 	if r.RuntimeClassName == "" {
-		return fmt.Errorf("restoreRootfsFrom requires gVisor runtime (no RuntimeClassName configured)")
+		return reconcile.TerminalError(fmt.Errorf("restoreRootfsFrom requires gVisor runtime (no RuntimeClassName configured)"))
 	}
 	supported, err := snapshot.CheckRuntimeClassSupport(ctx, r.Client, r.RuntimeClassName)
 	if err != nil {
+		// K8s API error — may be transient, allow retry
 		return fmt.Errorf("failed to validate runtime for rootfs restore: %w", err)
 	}
 	if !supported {
-		return fmt.Errorf("restoreRootfsFrom requires a gVisor runtime (RuntimeClass %q handler is not runsc/gvisor)", r.RuntimeClassName)
+		return reconcile.TerminalError(fmt.Errorf("restoreRootfsFrom requires a gVisor runtime (RuntimeClass %q handler is not runsc/gvisor)", r.RuntimeClassName))
 	}
 
 	if r.RootfsSnapshotHostMountPath == "" {
-		return fmt.Errorf("restoreRootfsFrom requires rootfs snapshot restore to be configured (--rootfssnapshot-host-mount-path)")
+		return reconcile.TerminalError(fmt.Errorf("restoreRootfsFrom requires rootfs snapshot restore to be configured (--rootfssnapshot-host-mount-path)"))
 	}
 
 	containerName, err := resolveRestoreContainerName(pod, restore.Container)
 	if err != nil {
-		return err
+		return reconcile.TerminalError(err)
 	}
 
 	tarPath := fmt.Sprintf("%s/%s.tar", r.RootfsSnapshotHostMountPath, restore.RootfsSnapshotName)

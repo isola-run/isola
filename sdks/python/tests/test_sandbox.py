@@ -199,6 +199,9 @@ def test_create_sandbox_with_restore_rootfs_from(sandbox_response_copy: dict[str
         )
 
     assert sandbox.id == "sandbox-123"
+    assert sandbox.restore_rootfs_from is not None
+    assert sandbox.restore_rootfs_from.rootfs_snapshot_name == "my-snapshot"
+    assert sandbox.restore_rootfs_from.container == "my-container"
 
     payload = json.loads(create_route.calls[0].request.content)
     assert payload["restoreRootfsFrom"] == {

@@ -139,6 +139,18 @@ operator:
         # Isola node mount DaemonSet configuration.
         # When rootfssnapshot is enabled, a DaemonSet is deployed on each node
         # to FUSE-mount the snapshots bucket, making tars available for restore.
+        #
+        # Host prerequisites:
+        #   - fuse3 package (provides fusermount3) must be installed on each node.
+        #     Required by rclone 1.62+ for FUSE mount setup. Available by default on
+        #     Ubuntu 22.04+, Debian 12+, RHEL 9+, and Amazon Linux 2023.
+        #
+        # Cleanup on uninstall:
+        #   The FUSE mount is unmounted automatically on pod termination, but the
+        #   disk-based VFS cache directory (<hostMountPath>-cache) persists on each
+        #   node. rclone does not delete its cache on exit by design (allows warm
+        #   restarts). After `helm uninstall`, remove stale data from each node:
+        #     rm -rf /mnt/isola-snapshots-cache /mnt/isola-snapshots /opt/isola/bin/rclone
         isolaNodeMount:
           # Host path where snapshots are FUSE-mounted (readable by runsc on the node)
           hostMountPath: /mnt/isola-snapshots
