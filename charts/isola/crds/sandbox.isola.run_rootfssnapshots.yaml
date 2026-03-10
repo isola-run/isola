@@ -82,6 +82,8 @@ spec:
                 description: |-
                   SnapshotName is the name used for the snapshot object key in storage.
                   If empty, defaults to the sandbox name.
+                maxLength: 63
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                 type: string
               ttlSecondsAfterFinished:
                 default: 300

@@ -49,9 +49,10 @@ type PodTemplate struct {
 }
 
 type CreateSandboxRequest struct {
-	PodTemplate           PodTemplate  `json:"podTemplate" required:"true" doc:"Pod template"`
-	ActiveDeadlineSeconds *int64       `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
-	Network               *NetworkSpec `json:"network,omitempty" doc:"Network isolation config"`
+	PodTemplate           PodTemplate        `json:"podTemplate" required:"true" doc:"Pod template"`
+	ActiveDeadlineSeconds *int64             `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
+	Network               *NetworkSpec       `json:"network,omitempty" doc:"Network isolation config"`
+	RestoreRootfsFrom     *RootfsRestoreSpec `json:"restoreRootfsFrom,omitempty" doc:"Restore container rootfs from a snapshot"`
 }
 
 type ResourcesSpec struct {
@@ -70,6 +71,11 @@ type NetworkSpec struct {
 	AllowClusterDNS     *bool    `json:"allowClusterDNS,omitempty" doc:"Allow cluster DNS queries"`
 	AllowedEgressCIDRs  []string `json:"allowedEgressCIDRs,omitempty" doc:"Allowed egress CIDRs"`
 	Nameservers         []string `json:"nameservers,omitempty" maxItems:"3" doc:"Custom DNS servers (max 3)"`
+}
+
+type RootfsRestoreSpec struct {
+	RootfsSnapshotName string `json:"rootfsSnapshotName" required:"true" minLength:"1" doc:"Name of the rootfs snapshot to restore from"`
+	Container          string `json:"container,omitempty" doc:"Container to restore (defaults to sole container)"`
 }
 
 type GetSandboxInput struct {
@@ -106,12 +112,13 @@ type ListSandboxesOutput struct {
 }
 
 type SandboxResponse struct {
-	ID                    string          `json:"id" doc:"Sandbox identifier"`
-	PodTemplate           PodTemplateInfo `json:"podTemplate" doc:"Pod template"`
-	ActiveDeadlineSeconds *int64          `json:"activeDeadlineSeconds,omitempty" doc:"Max lifetime in seconds"`
-	Network               *NetworkSpec    `json:"network,omitempty" doc:"Network isolation config"`
-	Status                string          `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
-	CreationTimestamp     string          `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
+	ID                    string             `json:"id" doc:"Sandbox identifier"`
+	PodTemplate           PodTemplateInfo    `json:"podTemplate" doc:"Pod template"`
+	ActiveDeadlineSeconds *int64             `json:"activeDeadlineSeconds,omitempty" doc:"Max lifetime in seconds"`
+	Network               *NetworkSpec       `json:"network,omitempty" doc:"Network isolation config"`
+	RestoreRootfsFrom     *RootfsRestoreSpec `json:"restoreRootfsFrom,omitempty" doc:"Rootfs snapshot restore configuration"`
+	Status                string             `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
+	CreationTimestamp     string             `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
 
 type SandboxSummary struct {

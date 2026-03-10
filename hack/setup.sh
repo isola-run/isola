@@ -87,6 +87,12 @@ install_gvisor_in_node() {
     "
 
     if ! docker exec "$node" grep -q 'plugins.*containerd.*runtimes.*runsc' /etc/containerd/config.toml 2>/dev/null; then
+        # Create runsc config to enable rootfs tar restore annotation
+        docker exec "$node" sh -c 'cat > /etc/containerd/runsc.toml << "TOML"
+[runsc_config]
+  allow-rootfs-tar-annotation = "true"
+TOML'
+
         docker exec "$node" sh -c 'cat >> /etc/containerd/config.toml << "TOML"
 
 # gVisor (runsc) runtime configuration
@@ -96,6 +102,9 @@ install_gvisor_in_node() {
   # Required for dev.gvisor.flag.* annotations (e.g., overlay2) to work.
   # By default containerd filters out all annotations; this allowlist enables gVisor-specific ones.
   pod_annotations = ["dev.gvisor.*"]
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
+  TypeUrl = "io.containerd.runsc.v1.options"
+  ConfigPath = "/etc/containerd/runsc.toml"
 TOML'
     fi
 

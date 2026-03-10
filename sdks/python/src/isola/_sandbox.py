@@ -28,6 +28,7 @@ from ._models import (
     PodTemplate,
     ResourceList,
     ResourcesSpec,
+    RootfsRestoreSpec,
     SandboxData,
     SandboxStatus,
     SandboxSummary,
@@ -61,6 +62,7 @@ class Sandboxes:
         ephemeral_storage: str | None = None,
         timeout: int | None = None,
         network: NetworkSpec | None = None,
+        restore_rootfs_from: RootfsRestoreSpec | None = None,
     ) -> Sandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -74,6 +76,7 @@ class Sandboxes:
             ),
             timeout=timeout,
             network=network,
+            restore_rootfs_from=restore_rootfs_from,
         )
 
         data = self._api.request_model(
@@ -108,6 +111,7 @@ class AsyncSandboxes:
         ephemeral_storage: str | None = None,
         timeout: int | None = None,
         network: NetworkSpec | None = None,
+        restore_rootfs_from: RootfsRestoreSpec | None = None,
     ) -> AsyncSandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -121,6 +125,7 @@ class AsyncSandboxes:
             ),
             timeout=timeout,
             network=network,
+            restore_rootfs_from=restore_rootfs_from,
         )
 
         data = await self._api.request_model(
@@ -167,6 +172,10 @@ class Sandbox:
     def timeout(self) -> int | None:
         return self._data.timeout
 
+    @property
+    def restore_rootfs_from(self) -> RootfsRestoreSpec | None:
+        return self._data.restore_rootfs_from
+
     def __enter__(self) -> Sandbox:
         return self
 
@@ -203,6 +212,10 @@ class AsyncSandbox:
     @property
     def timeout(self) -> int | None:
         return self._data.timeout
+
+    @property
+    def restore_rootfs_from(self) -> RootfsRestoreSpec | None:
+        return self._data.restore_rootfs_from
 
     async def __aenter__(self) -> AsyncSandbox:
         return self

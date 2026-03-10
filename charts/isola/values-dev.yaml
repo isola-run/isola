@@ -40,6 +40,18 @@ operator:
             secretAccessKey: "test"
             region: "us-east-1"
 
+        isolaNodeMount:
+          hostMountPath: /mnt/isola-snapshots
+          rclone:
+            image:
+              registry: docker.io
+              repository: rclone/rclone
+              tag: "1.69.1"
+            cache:
+              maxSize: "2Gi"
+              maxAge: "1h"
+              dirCacheTime: "5s"
+
 apiGateway:
   image:
     registry: ""

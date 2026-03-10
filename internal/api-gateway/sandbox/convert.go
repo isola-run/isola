@@ -45,6 +45,7 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 
 	resp.ActiveDeadlineSeconds = sb.Spec.ActiveDeadlineSeconds
 	resp.Network = crdNetworkToREST(sb.Spec.Network)
+	resp.RestoreRootfsFrom = crdRootfsRestoreToREST(sb.Spec.RestoreRootfsFrom)
 
 	return resp
 }
@@ -165,6 +166,7 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 	}
 
 	sb.Spec.Network = restNetworkToCRD(req.Network)
+	sb.Spec.RestoreRootfsFrom = restRootfsRestoreToCRD(req.RestoreRootfsFrom)
 
 	return sb, nil
 }
@@ -204,6 +206,26 @@ func restResourceListToK8s(src *ResourceList) (corev1.ResourceList, error) {
 		return nil, nil
 	}
 	return rl, nil
+}
+
+func restRootfsRestoreToCRD(r *RootfsRestoreSpec) *sandboxv1alpha1.RootfsRestoreSpec {
+	if r == nil {
+		return nil
+	}
+	return &sandboxv1alpha1.RootfsRestoreSpec{
+		RootfsSnapshotName: r.RootfsSnapshotName,
+		Container:          r.Container,
+	}
+}
+
+func crdRootfsRestoreToREST(r *sandboxv1alpha1.RootfsRestoreSpec) *RootfsRestoreSpec {
+	if r == nil {
+		return nil
+	}
+	return &RootfsRestoreSpec{
+		RootfsSnapshotName: r.RootfsSnapshotName,
+		Container:          r.Container,
+	}
 }
 
 func restNetworkToCRD(n *NetworkSpec) *sandboxv1alpha1.NetworkSpec {

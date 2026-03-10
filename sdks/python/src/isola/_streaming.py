@@ -62,7 +62,7 @@ class StreamReader:
         self._last_event_id = 0
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
-            read=None, # wait forever / until server error for data
+            read=None,  # wait forever / until server error for data
             write=STREAM_WRITE_TIMEOUT,
             pool=STREAM_POOL_TIMEOUT,
         )
@@ -114,14 +114,13 @@ class StreamReader:
 class AsyncStreamReader:
     """Single-use async iterable stream with transparent reconnect."""
 
-
     def __init__(self, api: _AsyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
         self._last_event_id = 0
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
-            read=None, # wait forever / until server error for data
+            read=None,  # wait forever / until server error for data
             write=STREAM_WRITE_TIMEOUT,
             pool=STREAM_POOL_TIMEOUT,
         )

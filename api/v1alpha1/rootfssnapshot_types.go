@@ -50,6 +50,8 @@ type RootfsSnapshotSpec struct {
 	// SnapshotName is the name used for the snapshot object key in storage.
 	// If empty, defaults to the sandbox name.
 	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	SnapshotName string `json:"snapshotName,omitempty"`
 
 	// Container is the name of the container to snapshot.

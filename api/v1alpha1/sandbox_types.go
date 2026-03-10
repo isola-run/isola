@@ -98,9 +98,29 @@ type NetworkSpec struct {
 	Nameservers []string `json:"nameservers,omitempty"`
 }
 
+// RootfsRestoreSpec specifies a rootfs snapshot to restore when creating the sandbox.
+type RootfsRestoreSpec struct {
+	// RootfsSnapshotName is the name of the rootfs snapshot to restore from.
+	// Maps to the tar file at <hostMountPath>/<rootfsSnapshotName>.tar on the node.
+	// Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	RootfsSnapshotName string `json:"rootfsSnapshotName"`
+
+	// Container is the name of the container to apply the rootfs restore to.
+	// If omitted and the sandbox has exactly one user container, that container is used.
+	// Required when the sandbox has multiple user containers.
+	// +optional
+	Container string `json:"container,omitempty"`
+}
+
 // SandboxSpec defines the desired state of Sandbox
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.network) || has(self.network)",message="network cannot be removed once set"
 // +kubebuilder:validation:XValidation:rule="!has(self.network) || !has(oldSelf.network) || self.network == oldSelf.network",message="network is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.restoreRootfsFrom) || has(self.restoreRootfsFrom)",message="restoreRootfsFrom cannot be removed once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.restoreRootfsFrom) || !has(oldSelf.restoreRootfsFrom) || self.restoreRootfsFrom == oldSelf.restoreRootfsFrom",message="restoreRootfsFrom is immutable once set"
 type SandboxSpec struct {
 	// PodTemplate describes the pod that will be created to run the sandbox.
 	// The Sandbox controller will override specific security settings (runtimeClassName, etc.)
@@ -124,6 +144,11 @@ type SandboxSpec struct {
 	// Network configuration is immutable after sandbox creation.
 	// +optional
 	Network *NetworkSpec `json:"network,omitempty"`
+
+	// RestoreRootfsFrom specifies a rootfs snapshot to restore at sandbox creation.
+	// Requires gVisor runtime and the rootfs snapshot FUSE mount to be running on the node.
+	// +optional
+	RestoreRootfsFrom *RootfsRestoreSpec `json:"restoreRootfsFrom,omitempty"`
 }
 
 // SandboxStatus defines the observed state of Sandbox.

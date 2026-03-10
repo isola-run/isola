@@ -60,6 +60,59 @@ var _ = Describe("Conversion functions", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Command).To(BeNil())
 		})
+
+		It("passes restoreRootfsFrom through to the CRD", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Container: ContainerSpec{
+						Image: "python:3.12",
+					},
+				},
+				RestoreRootfsFrom: &RootfsRestoreSpec{
+					RootfsSnapshotName: "my-snapshot",
+					Container:          "my-container",
+				},
+			}
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.RestoreRootfsFrom).NotTo(BeNil())
+			Expect(sb.Spec.RestoreRootfsFrom.RootfsSnapshotName).To(Equal("my-snapshot"))
+			Expect(sb.Spec.RestoreRootfsFrom.Container).To(Equal("my-container"))
+		})
+	})
+
+	Describe("restRootfsRestoreToCRD", func() {
+		It("returns nil for nil input", func() {
+			Expect(restRootfsRestoreToCRD(nil)).To(BeNil())
+		})
+
+		It("converts RootfsRestoreSpec to CRD type", func() {
+			input := &RootfsRestoreSpec{
+				RootfsSnapshotName: "my-snapshot",
+				Container:          "my-container",
+			}
+			result := restRootfsRestoreToCRD(input)
+			Expect(result).NotTo(BeNil())
+			Expect(result.RootfsSnapshotName).To(Equal("my-snapshot"))
+			Expect(result.Container).To(Equal("my-container"))
+		})
+	})
+
+	Describe("crdRootfsRestoreToREST", func() {
+		It("returns nil for nil input", func() {
+			Expect(crdRootfsRestoreToREST(nil)).To(BeNil())
+		})
+
+		It("converts CRD RootfsRestoreSpec to REST type", func() {
+			input := &sandboxv1alpha1.RootfsRestoreSpec{
+				RootfsSnapshotName: "my-snapshot",
+				Container:          "my-container",
+			}
+			result := crdRootfsRestoreToREST(input)
+			Expect(result).NotTo(BeNil())
+			Expect(result.RootfsSnapshotName).To(Equal("my-snapshot"))
+			Expect(result.Container).To(Equal("my-container"))
+		})
 	})
 
 	Describe("sandboxToResponse", func() {
@@ -100,6 +153,28 @@ var _ = Describe("Conversion functions", func() {
 			}
 			resp := sandboxToResponse(sb)
 			Expect(resp.PodTemplate.Container.Command).To(BeNil())
+		})
+
+		It("includes restoreRootfsFrom in response", func() {
+			sb := &sandboxv1alpha1.Sandbox{
+				Spec: sandboxv1alpha1.SandboxSpec{
+					PodTemplate: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{Name: "sandbox", Image: "alpine:latest"},
+							},
+						},
+					},
+					RestoreRootfsFrom: &sandboxv1alpha1.RootfsRestoreSpec{
+						RootfsSnapshotName: "my-snapshot",
+						Container:          "my-container",
+					},
+				},
+			}
+			resp := sandboxToResponse(sb)
+			Expect(resp.RestoreRootfsFrom).NotTo(BeNil())
+			Expect(resp.RestoreRootfsFrom.RootfsSnapshotName).To(Equal("my-snapshot"))
+			Expect(resp.RestoreRootfsFrom.Container).To(Equal("my-container"))
 		})
 	})
 

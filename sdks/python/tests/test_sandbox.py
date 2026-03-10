@@ -175,3 +175,46 @@ async def test_async_create_properties_and_delete(sandbox_response_copy: dict[st
         await sandbox.delete()
 
     assert delete_route.called
+
+
+@respx.mock
+def test_create_sandbox_with_restore_rootfs_from(sandbox_response_copy: dict[str, object]) -> None:
+    sandbox_response_copy["restoreRootfsFrom"] = {
+        "rootfsSnapshotName": "my-snapshot",
+        "container": "my-container",
+    }
+    create_route = respx.post("http://localhost:8080/sandboxes").mock(
+        return_value=httpx.Response(201, json=sandbox_response_copy)
+    )
+
+    from isola import RootfsRestoreSpec
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.create(
+            image="python:3.12",
+            restore_rootfs_from=RootfsRestoreSpec(
+                rootfs_snapshot_name="my-snapshot",
+                container="my-container",
+            ),
+        )
+
+    assert sandbox.id == "sandbox-123"
+
+    payload = json.loads(create_route.calls[0].request.content)
+    assert payload["restoreRootfsFrom"] == {
+        "rootfsSnapshotName": "my-snapshot",
+        "container": "my-container",
+    }
+
+
+@respx.mock
+def test_create_sandbox_without_restore_rootfs_from_omits_key(sandbox_response_copy: dict[str, object]) -> None:
+    create_route = respx.post("http://localhost:8080/sandboxes").mock(
+        return_value=httpx.Response(201, json=sandbox_response_copy)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        client.sandboxes.create(image="python:3.12")
+
+    payload = json.loads(create_route.calls[0].request.content)
+    assert "restoreRootfsFrom" not in payload

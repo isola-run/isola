@@ -78,13 +78,14 @@ const SandboxFinalizer = "sandbox.isola.run/cleanup"
 
 type SandboxReconciler struct {
 	client.Client
-	Scheme              *runtime.Scheme
-	Recorder            events.EventRecorder
-	SandboxSidecarImage string
-	RuntimeClassName    string                        // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
-	PriorityClassName   string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
-	ImagePullSecrets    []corev1.LocalObjectReference // ImagePullSecrets for pulling sandbox-sidecar images from private registries.
-	Clock               Clock                         // Clock interface for time operations, allows mocking in tests
+	Scheme                      *runtime.Scheme
+	Recorder                    events.EventRecorder
+	SandboxSidecarImage         string
+	RuntimeClassName            string                        // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
+	PriorityClassName           string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
+	ImagePullSecrets            []corev1.LocalObjectReference // ImagePullSecrets for pulling sandbox-sidecar images from private registries.
+	Clock                       Clock                         // Clock interface for time operations, allows mocking in tests
+	RootfsSnapshotHostMountPath string                        // Host path where rootfs snapshot tars are FUSE-mounted (e.g., /mnt/isola-snapshots)
 }
 
 const (
@@ -219,6 +220,21 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			sandboxPod.Annotations = map[string]string{}
 		}
 		sandboxPod.Annotations["dev.gvisor.flag.overlay2"] = "root:self"
+	}
+
+	if sandbox.Spec.RestoreRootfsFrom != nil {
+		if err := r.injectRootfsRestoreAnnotation(ctx, sandbox, sandboxPod); err != nil {
+			_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+				{
+					Type:               SandboxReadyCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             "RootfsRestoreConfigurationError",
+					Message:            err.Error(),
+					ObservedGeneration: sandbox.Generation,
+				},
+			})
+			return err
+		}
 	}
 
 	// Enable shared PID namespace so the sidecar can locate the main container and access its filesystem via /proc/<pid>/root
@@ -530,6 +546,10 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 			reason = CondReasonPodSucceeded
 			message = "Pod completed"
 		}
+		if sandbox.Spec.RestoreRootfsFrom != nil && reason == CondReasonPodFailed {
+			message = fmt.Sprintf("%s (rootfs restore from snapshot %q was requested — verify the snapshot exists and the FUSE mount is healthy on the node)",
+				message, sandbox.Spec.RestoreRootfsFrom.RootfsSnapshotName)
+		}
 		return metav1.Condition{
 			Type:               SandboxPodReadyCondition,
 			Status:             metav1.ConditionFalse,
@@ -622,6 +642,10 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 		if sandboxPod.Status.Phase == corev1.PodSucceeded {
 			reason = CondReasonPodSucceeded
 			message = "Pod completed"
+		}
+		if sandbox.Spec.RestoreRootfsFrom != nil && reason == CondReasonPodFailed {
+			message = fmt.Sprintf("%s (rootfs restore from snapshot %q was requested — verify the snapshot exists and the FUSE mount is healthy on the node)",
+				message, sandbox.Spec.RestoreRootfsFrom.RootfsSnapshotName)
 		}
 		return metav1.Condition{
 			Type:               SandboxReadyCondition,
@@ -1081,6 +1105,65 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 	}
 
 	return ctrl.Result{RequeueAfter: time.Second}, false, nil
+}
+
+func (r *SandboxReconciler) injectRootfsRestoreAnnotation(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, pod *corev1.Pod) error {
+	restore := sandbox.Spec.RestoreRootfsFrom
+
+	if r.RuntimeClassName == "" {
+		return fmt.Errorf("restoreRootfsFrom requires gVisor runtime (no RuntimeClassName configured)")
+	}
+	supported, err := snapshot.CheckRuntimeClassSupport(ctx, r.Client, r.RuntimeClassName)
+	if err != nil {
+		return fmt.Errorf("failed to validate runtime for rootfs restore: %w", err)
+	}
+	if !supported {
+		return fmt.Errorf("restoreRootfsFrom requires a gVisor runtime (RuntimeClass %q handler is not runsc/gvisor)", r.RuntimeClassName)
+	}
+
+	if r.RootfsSnapshotHostMountPath == "" {
+		return fmt.Errorf("restoreRootfsFrom requires rootfs snapshot restore to be configured (--rootfssnapshot-host-mount-path)")
+	}
+
+	containerName, err := resolveRestoreContainerName(pod, restore.Container)
+	if err != nil {
+		return err
+	}
+
+	tarPath := fmt.Sprintf("%s/%s.tar", r.RootfsSnapshotHostMountPath, restore.RootfsSnapshotName)
+	annotationKey := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", containerName)
+	pod.Annotations[annotationKey] = tarPath
+	return nil
+}
+
+// resolveRestoreContainerName determines which container to restore.
+// The sandbox-sidecar is in InitContainers, so pod.Spec.Containers only has user containers.
+func resolveRestoreContainerName(pod *corev1.Pod, containerName string) (string, error) {
+	userContainers := pod.Spec.Containers
+
+	if containerName != "" {
+		for _, c := range userContainers {
+			if c.Name == containerName {
+				return containerName, nil
+			}
+		}
+		return "", fmt.Errorf("container %q not found in sandbox pod (available: %v)",
+			containerName, containerNames(userContainers))
+	}
+
+	if len(userContainers) == 1 {
+		return userContainers[0].Name, nil
+	}
+
+	return "", fmt.Errorf("container must be specified when sandbox has %d containers", len(userContainers))
+}
+
+func containerNames(containers []corev1.Container) []string {
+	names := make([]string, len(containers))
+	for i, c := range containers {
+		names[i] = c.Name
+	}
+	return names
 }
 
 // SetupWithManager sets up the controller with the Manager.

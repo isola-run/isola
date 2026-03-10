@@ -235,6 +235,27 @@ RootfsSnapshot service account name (from gvisor rootfssnapshot config)
 {{- end -}}
 {{- end }}
 
+{{/*
+RootfsSnapshot host mount path for restore (only when rootfssnapshot enabled)
+*/}}
+{{- define "isola.operator.rootfssnapshotHostMountPath" -}}
+{{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" -}}
+{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.isolaNodeMount.hostMountPath -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+rclone image for rootfssnapshot FUSE DaemonSet
+*/}}
+{{- define "isola.operator.rootfssnapshotRcloneImage" -}}
+{{- $img := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.isolaNodeMount.rclone.image -}}
+{{- if $img.registry -}}
+{{- printf "%s/%s:%s" $img.registry $img.repository $img.tag -}}
+{{- else -}}
+{{- printf "%s:%s" $img.repository $img.tag -}}
+{{- end -}}
+{{- end }}
+
 {{/* ==========================================================================
    API Gateway Helpers
    ========================================================================== */}}

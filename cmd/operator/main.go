@@ -66,6 +66,7 @@ func main() {
 	var rootfssnapshotEnabled bool
 	var gvisorRunscPath string
 	var gvisorRunscRoot string
+	var rootfssnapshotHostMountPath string
 	var logLevel string
 	var devMode bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to. Set to 0 to disable.")
@@ -84,6 +85,7 @@ func main() {
 	flag.BoolVar(&rootfssnapshotEnabled, "rootfssnapshot-enabled", false, "Enable rootfs snapshot capability (requires gVisor runtime and privileged operations)")
 	flag.StringVar(&gvisorRunscPath, "gvisor-runsc-path", "", "Path to the runsc binary on cluster nodes (for gVisor snapshot support)")
 	flag.StringVar(&gvisorRunscRoot, "gvisor-runsc-root", "", "Root directory where runsc stores runtime state (for gVisor snapshot support)")
+	flag.StringVar(&rootfssnapshotHostMountPath, "rootfssnapshot-host-mount-path", "", "Host path where rootfs snapshots are FUSE-mounted (for restore capability)")
 	flag.StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode (text logging)")
 	flag.Parse()
@@ -157,13 +159,14 @@ func main() {
 
 	// SandboxReconciler manages Sandbox resources.
 	if err := (&controller.SandboxReconciler{
-		Client:              mgr.GetClient(),
-		Scheme:              mgr.GetScheme(),
-		SandboxSidecarImage: sandboxSidecarImage,
-		RuntimeClassName:    runtimeClassName,
-		PriorityClassName:   priorityClassName,
-		ImagePullSecrets:    imagePullSecrets,
-		Clock:               controller.RealClock{},
+		Client:                      mgr.GetClient(),
+		Scheme:                      mgr.GetScheme(),
+		SandboxSidecarImage:         sandboxSidecarImage,
+		RuntimeClassName:            runtimeClassName,
+		PriorityClassName:           priorityClassName,
+		ImagePullSecrets:            imagePullSecrets,
+		Clock:                       controller.RealClock{},
+		RootfsSnapshotHostMountPath: rootfssnapshotHostMountPath,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
 		os.Exit(1)

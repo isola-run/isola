@@ -134,6 +134,9 @@ components:
         podTemplate:
           $ref: "#/components/schemas/PodTemplate"
           description: Pod template
+        restoreRootfsFrom:
+          $ref: "#/components/schemas/RootfsRestoreSpec"
+          description: Restore container rootfs from a snapshot
       required:
         - podTemplate
       type: object
@@ -331,6 +334,19 @@ components:
           $ref: "#/components/schemas/ResourceList"
           description: Resource requests
       type: object
+    RootfsRestoreSpec:
+      additionalProperties: false
+      properties:
+        container:
+          description: Container to restore (defaults to sole container)
+          type: string
+        rootfsSnapshotName:
+          description: Name of the rootfs snapshot to restore from
+          minLength: 1
+          type: string
+      required:
+        - rootfsSnapshotName
+      type: object
     SandboxResponse:
       additionalProperties: false
       properties:
@@ -357,6 +373,9 @@ components:
         podTemplate:
           $ref: "#/components/schemas/PodTemplateInfo"
           description: Pod template
+        restoreRootfsFrom:
+          $ref: "#/components/schemas/RootfsRestoreSpec"
+          description: Rootfs snapshot restore configuration
         status:
           description: Sandbox status
           enum:

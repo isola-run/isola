@@ -136,6 +136,38 @@ operator:
           name: "isola-rootfssnapshot-job"
           annotations: {}  # For IRSA/Workload Identity
 
+        # Isola node mount DaemonSet configuration.
+        # When rootfssnapshot is enabled, a DaemonSet is deployed on each node
+        # to FUSE-mount the snapshots bucket, making tars available for restore.
+        isolaNodeMount:
+          # Host path where snapshots are FUSE-mounted (readable by runsc on the node)
+          hostMountPath: /mnt/isola-snapshots
+
+          # rclone FUSE mount configuration
+          rclone:
+            image:
+              registry: docker.io
+              repository: rclone/rclone
+              # Pin to a specific stable version
+              tag: "1.69.1"
+              pullPolicy: IfNotPresent
+
+            # VFS cache settings (cached on local node disk as sparse files)
+            cache:
+              maxSize: "10Gi"
+              maxAge: "24h"
+              # How long to cache directory listings and file attributes.
+              # Lower values detect new snapshots faster but increase S3 API calls.
+              dirCacheTime: "1m"
+
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+
+            nodeSelector: {}
+            tolerations: []
+
     # Cluster default runtime configuration
     # Uses cluster default RuntimeClass (no special configuration needed)
     # RootfsSnapshot capability is not available with cluster default runtime
