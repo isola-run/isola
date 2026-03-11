@@ -58,9 +58,6 @@ var (
 	cfg       *rest.Config
 	k8sClient client.Client // Direct client for test reads/writes (no cache delay)
 	k8sCache  client.Client // Cached client for reconciler field index queries
-
-	// testRecorder captures events for test assertions
-	testRecorder *events.FakeRecorder
 )
 
 func TestControllers(t *testing.T) {
@@ -146,8 +143,6 @@ var _ = BeforeSuite(func() {
 	}
 	Expect(k8sClient.Create(ctx, priorityClass)).To(Succeed())
 
-	// Create fake event recorder for test assertions
-	testRecorder = events.NewFakeRecorder(100)
 })
 
 var _ = AfterSuite(func() {

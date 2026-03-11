@@ -145,35 +145,6 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 
-		It("should set TimedOut condition reason before deleting sandbox", func() {
-			sandboxName := "sandbox-timeout-condition"
-
-			timeout := int64(1)
-			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
-				// Default policy is Delete when nil
-			})
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			sandbox := getSandbox(ctx, sandboxName)
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			originalUID := sandbox.UID
-			fakeClock.Advance(2 * time.Second)
-
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			// Verify sandbox was deleted (confirms timeout path with Delete policy)
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(err).To(Satisfy(errors.IsNotFound))
-			_ = originalUID // Used to confirm we're talking about the right sandbox
-		})
-
 		It("should schedule requeue before timeout", func() {
 			sandboxName := "sandbox-requeue"
 

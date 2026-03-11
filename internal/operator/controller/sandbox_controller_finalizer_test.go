@@ -19,10 +19,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -139,26 +137,9 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Recreate pod with NodeName set (required for snapshotting)
-			pod := getPod(ctx, podName)
-			labels := pod.Labels
-			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
-
-			newPod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace, Labels: labels},
-				Spec: corev1.PodSpec{
-					RuntimeClassName: &runtimeClassName,
-					NodeName:         "test-node",
-					Containers:       []corev1.Container{{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}}},
-				},
-			}
-			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
-			newPod.Status.Phase = corev1.PodRunning
-			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
-			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{
-				{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
-			}
-			Expect(k8sClient.Status().Update(ctx, newPod)).To(Succeed())
+			// Bind pod to node (simulating the scheduler) and make it ready
+			pod := bindPodToNode(ctx, podName)
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
 
 			// Reconcile to update status
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{

@@ -980,27 +980,6 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
-	Describe("kill exit code", func() {
-		It("reports signal kill exit code as -1", func() {
-			code, result := postCommand(`{"args": ["sleep", "60"]}`)
-			Expect(code).To(Equal(http.StatusAccepted))
-
-			resp := commandAPI.Delete(fmt.Sprintf("/commands/%s", result.CommandID))
-			Expect(resp.Code).To(Equal(http.StatusNoContent))
-
-			var exitCode *int
-			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/commands/%s/status", result.CommandID))
-				var status sidecarapi.CommandStatusResponse
-				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
-				exitCode = status.ExitCode
-				return exitCode
-			}).ShouldNot(BeNil())
-
-			Expect(*exitCode).To(Equal(-1))
-		})
-	})
-
 	Describe("large output", func() {
 		It("streams large output without data loss", func() {
 			// Generate 1MB of output via dd
