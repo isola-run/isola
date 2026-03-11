@@ -236,6 +236,20 @@ RootfsSnapshot service account name (from gvisor rootfssnapshot config)
 {{- end }}
 
 {{/*
+Nodemount service account name (DaemonSet in kube-system, separate from snapshot job SA)
+*/}}
+{{- define "isola.operator.nodemountServiceAccountName" -}}
+{{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" -}}
+{{- $sa := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.isolaNodeMount.serviceAccount -}}
+{{- if $sa.create -}}
+{{- $sa.name | default (printf "%s-nodemount" (include "isola.operator.fullname" .)) -}}
+{{- else -}}
+{{- $sa.name -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 RootfsSnapshot host mount path for restore (only when rootfssnapshot enabled)
 */}}
 {{- define "isola.operator.rootfssnapshotHostMountPath" -}}

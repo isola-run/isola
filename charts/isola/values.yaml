@@ -155,6 +155,14 @@ operator:
           # Host path where snapshots are FUSE-mounted (readable by runsc on the node)
           hostMountPath: /mnt/isola-snapshots
 
+          # ServiceAccount for the nodemount DaemonSet (deployed in kube-system).
+          # Separate from the snapshot job SA because they run in different namespaces.
+          # For IRSA/Workload Identity, this SA needs read-only access to the bucket.
+          serviceAccount:
+            create: true
+            name: ""
+            annotations: {}  # For IRSA/Workload Identity
+
           # rclone FUSE mount configuration
           rclone:
             image:

@@ -82,6 +82,7 @@ spec:
                 description: |-
                   SnapshotName is the name used for the snapshot storage key.
                   This is the value callers must pass as restoreRootfsFrom.rootfsSnapshotName to restore from this snapshot.
+                  The SnapshotName validation is crucial as paths may be constructed from it.
                 maxLength: 63
                 minLength: 1
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$

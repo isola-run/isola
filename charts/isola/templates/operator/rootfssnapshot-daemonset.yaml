@@ -1,11 +1,21 @@
 {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" }}
 {{- $hostMountPath := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.isolaNodeMount.hostMountPath }}
 {{- $rclone := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.isolaNodeMount.rclone }}
+{{/*
+  Deployed in kube-system because this DaemonSet requires privileged: true
+  and Bidirectional mount propagation for FUSE, both forbidden by PSA
+  baseline/restricted. kube-system is implicitly privileged on all managed
+  K8s providers (EKS, GKE, AKS). This follows the pattern used by CSI node
+  plugins (EBS, GCE PD, NFS, etc.) which are functionally identical: a
+  privileged DaemonSet that mounts storage onto a host path.
+  Helm cannot reliably set PSA namespace labels (helm/helm#3503), so
+  deploying to a dedicated namespace would require manual labeling.
+*/}}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ include "isola.fullname" . }}-rootfssnapshot-nodemount
-  namespace: {{ include "isola.sandboxNamespace" . }}
+  namespace: kube-system
   labels:
     {{- include "isola.labels" . | nindent 4 }}
     app.kubernetes.io/component: rootfssnapshot-nodemount
@@ -21,7 +31,7 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: rootfssnapshot-nodemount
     spec:
-      serviceAccountName: {{ include "isola.operator.rootfssnapshotServiceAccountName" . }}
+      serviceAccountName: {{ include "isola.operator.nodemountServiceAccountName" . }}
       priorityClassName: system-node-critical
       terminationGracePeriodSeconds: 60
       {{- include "isola.imagePullSecrets" . | nindent 6 }}
