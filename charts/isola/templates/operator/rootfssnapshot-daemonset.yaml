@@ -22,10 +22,6 @@ spec:
         app.kubernetes.io/component: rootfssnapshot-nodemount
     spec:
       serviceAccountName: {{ include "isola.operator.rootfssnapshotServiceAccountName" . }}
-      # hostPID is required so we can nsenter into the host mount namespace.
-      # This ensures the FUSE mount is created directly on the host, making
-      # snapshot tars visible to gVisor (runsc) which runs at the host level.
-      hostPID: true
       priorityClassName: system-node-critical
       terminationGracePeriodSeconds: 60
       {{- include "isola.imagePullSecrets" . | nindent 6 }}
@@ -45,22 +41,17 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
         - |
-          HOST_MOUNT="{{ $hostMountPath }}"
-          HOST_CACHE="{{ $hostMountPath }}-cache"
-          HOST_BIN="/host-bin"
-
-          # Stage rclone binary onto the host so nsenter can execute it
-          cp "$(which rclone)" "$HOST_BIN/rclone"
+          MOUNT_PATH="{{ $hostMountPath }}"
+          CACHE_PATH="{{ $hostMountPath }}-cache"
 
           # Clean up stale FUSE mount from previous pod (if any).
-          if nsenter -t 1 -m -- mountpoint -q "$HOST_MOUNT" 2>/dev/null; then
-            echo "Cleaning up stale mount at $HOST_MOUNT"
-            nsenter -t 1 -m -- fusermount3 -u -z "$HOST_MOUNT" 2>/dev/null || \
-              nsenter -t 1 -m -- umount -l "$HOST_MOUNT" 2>/dev/null || true
+          if mountpoint -q "$MOUNT_PATH" 2>/dev/null; then
+            echo "Cleaning up stale mount at $MOUNT_PATH"
+            fusermount3 -u -z "$MOUNT_PATH" 2>/dev/null || \
+              umount -l "$MOUNT_PATH" 2>/dev/null || true
           fi
 
-          # Ensure mount and cache directories exist on the host
-          nsenter -t 1 -m -- mkdir -p "$HOST_MOUNT" "$HOST_CACHE"
+          mkdir -p "$MOUNT_PATH" "$CACHE_PATH"
 
           # Parse gocloud.dev bucket URL into rclone env vars.
           # Using env vars avoids connection string parsing issues with URLs
@@ -88,28 +79,17 @@ spec:
             *) echo "Unsupported bucket scheme: $SCHEME" >&2; exit 1 ;;
           esac
 
-          # Resolve any DNS names in the S3 endpoint before entering the host
-          # mount namespace, because the host's /etc/resolv.conf may not have
-          # access to Kubernetes cluster DNS (e.g., localstack in dev).
-          if [ -n "$RCLONE_S3_ENDPOINT" ]; then
-            EP_HOST=$(echo "$RCLONE_S3_ENDPOINT" | sed 's|.*://||; s|:.*||; s|/.*||')
-            RESOLVED=$(getent hosts "$EP_HOST" 2>/dev/null | awk '{print $1}' | head -1)
-            if [ -n "$RESOLVED" ] && [ "$RESOLVED" != "$EP_HOST" ]; then
-              export RCLONE_S3_ENDPOINT=$(echo "$RCLONE_S3_ENDPOINT" | sed "s|$EP_HOST|$RESOLVED|")
-              echo "Resolved endpoint $EP_HOST -> $RESOLVED"
-            fi
-          fi
+          echo "Mounting $REMOTE at $MOUNT_PATH"
 
-          echo "Mounting $REMOTE at $HOST_MOUNT (via nsenter into host mount namespace)"
-
-          # Run rclone in the host mount namespace so the FUSE mount is
-          # directly visible to gVisor (runsc) on the node.
-          exec nsenter -t 1 -m -- /opt/isola/bin/rclone mount \
+          # Rclone runs inside the container. The parent directory is mounted
+          # with Bidirectional propagation, so the FUSE child mount at
+          # $MOUNT_PATH propagates to the host for gVisor (runsc) to access.
+          exec rclone mount \
             --allow-other \
             --allow-non-empty \
             --read-only \
             --vfs-cache-mode full \
-            --cache-dir "$HOST_CACHE" \
+            --cache-dir "$CACHE_PATH" \
             --vfs-cache-max-size "$CACHE_MAX_SIZE" \
             --vfs-cache-max-age "$CACHE_MAX_AGE" \
             --vfs-read-ahead 128M \
@@ -117,7 +97,7 @@ spec:
             --dir-cache-time "$DIR_CACHE_TIME" \
             --attr-timeout "$DIR_CACHE_TIME" \
             --log-level INFO \
-            "$REMOTE" "$HOST_MOUNT"
+            "$REMOTE" "$MOUNT_PATH"
         env:
         - name: ISOLA_BUCKET_URL
           value: {{ include "isola.operator.storageBucketUrl" . | quote }}
@@ -133,34 +113,33 @@ spec:
         - secretRef:
             name: {{ $credentialSecretName }}
         {{- end }}
-        # Privileged is required because:
-        # - SYS_ADMIN + SYS_PTRACE: for nsenter into host mount namespace
-        # - Device cgroup access: to open /dev/fuse (no K8s-native alternative)
+        # Privileged is required for /dev/fuse access (no K8s-native alternative).
         securityContext:
           privileged: true
         resources:
           {{- toYaml $rclone.resources | nindent 10 }}
         volumeMounts:
-        - name: host-bin
-          mountPath: /host-bin
+        - name: host-mount-parent
+          mountPath: {{ dir $hostMountPath }}
+          mountPropagation: Bidirectional
         livenessProbe:
           exec:
-            command: ["/bin/sh", "-c", "nsenter -t 1 -m -- mountpoint -q {{ $hostMountPath }}"]
+            command: ["mountpoint", "-q", "{{ $hostMountPath }}"]
           timeoutSeconds: 10
           periodSeconds: 30
         readinessProbe:
           exec:
-            command: ["/bin/sh", "-c", "nsenter -t 1 -m -- mountpoint -q {{ $hostMountPath }}"]
+            command: ["mountpoint", "-q", "{{ $hostMountPath }}"]
           initialDelaySeconds: 5
           periodSeconds: 10
           timeoutSeconds: 10
         lifecycle:
           preStop:
             exec:
-              command: ["/bin/sh", "-c", "nsenter -t 1 -m -- fusermount3 -u -z {{ $hostMountPath }} || nsenter -t 1 -m -- umount -l {{ $hostMountPath }}"]
+              command: ["/bin/sh", "-c", "fusermount3 -u -z {{ $hostMountPath }} || umount -l {{ $hostMountPath }}"]
       volumes:
-      - name: host-bin
+      - name: host-mount-parent
         hostPath:
-          path: /opt/isola/bin
-          type: DirectoryOrCreate
+          path: {{ dir $hostMountPath }}
+          type: Directory
 {{- end }}
