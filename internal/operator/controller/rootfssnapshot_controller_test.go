@@ -62,6 +62,38 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 	})
 
 	Context("Basic Operations", func() {
+		It("should fail when rootfs snapshot capability is disabled", func() {
+			snapName := "snap-disabled"
+			sandboxName := "sandbox-disabled"
+
+			disabledReconciler := &RootfsSnapshotReconciler{
+				Client:          k8sClient,
+				Scheme:          k8sClient.Scheme(),
+				Recorder:        recorder,
+				Clock:           fakeClock,
+				BucketURL:       "s3://test-bucket?region=us-east-1",
+				Enabled:         false,
+				GvisorRunscPath: "/usr/local/bin/runsc",
+				GvisorRunscRoot: "/run/containerd/runsc/k8s.io",
+			}
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			_, err := disabledReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+
+			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
+			Expect(failedCond).NotTo(BeNil())
+			Expect(failedCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(failedCond.Message).To(ContainSubstring("not enabled"))
+		})
+
 		It("should fail when bucket URL is not configured", func() {
 			snapName := "snap-no-bucket"
 			sandboxName := "sandbox-no-bucket"

@@ -200,7 +200,7 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 - `SKIP` - Ginkgo skip pattern
 - `GO_TEST_FLAGS` - Additional go test flags
 
-**Operator tests** use a `FakeClock` (internal `Clock` interface) for deterministic timeout and snapshot testing — no flaky time.Sleep waits. Test fixtures in `internal/testutil/utils/fixtures.go` use functional options (`WithSandboxActiveDeadline`, `WithNetworkSpec`, `WithInternetAccess`, etc.).
+**Operator tests** use a `FakeClock` (internal `Clock` interface) for deterministic timeout and snapshot testing — no flaky time.Sleep waits. Test helpers in `sandbox_controller_helpers_test.go` use inline functional options (e.g., `func(s *sandboxv1alpha1.Sandbox) { ... }`) for sandbox customization.
 
 **API gateway tests** use `humatest.TestAPI` for HTTP request/response testing against a real envtest K8s backend. Tests use `Eventually()` for cache eventual consistency. Error injection tests use controller-runtime's `interceptor.Funcs` to inject fake K8s API errors.
 

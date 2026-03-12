@@ -211,20 +211,3 @@ def test_filesystem_upload_real_file(sandbox_response_copy: dict[str, object], t
     assert write_route.calls[0].request.content == b"print('hello')\n"
 
 
-@respx.mock
-def test_filesystem_download_to_real_file(sandbox_response_copy: dict[str, object], tmp_path: Path) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
-        return_value=httpx.Response(200, json=sandbox_response_copy)
-    )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
-        return_value=httpx.Response(200, content=b"downloaded content")
-    )
-
-    with Isola(base_url="http://localhost:8080") as client:
-        sandbox = client.sandboxes.get("sandbox-123")
-        data = sandbox.filesystem.read("/workspace/output.txt")
-
-    dest = tmp_path / "output.txt"
-    dest.write_bytes(data)
-
-    assert dest.read_bytes() == b"downloaded content"

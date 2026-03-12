@@ -59,11 +59,20 @@ func createSnapshotPod(ctx context.Context, name, runtimeClassName string, conta
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
 		Spec: corev1.PodSpec{
 			RuntimeClassName: &runtimeClassName,
-			NodeName:         "test-node",
 			Containers:       containers,
 		},
 	}
 	ExpectWithOffset(1, k8sClient.Create(ctx, pod)).To(Succeed())
+
+	// Bind the pod to a node via the binding subresource (mirroring the real scheduler)
+	binding := &corev1.Binding{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
+		Target:     corev1.ObjectReference{Name: "test-node"},
+	}
+	ExpectWithOffset(1, k8sClient.SubResource("binding").Create(ctx, pod, binding)).To(Succeed())
+
+	// Re-fetch after binding to get updated spec
+	ExpectWithOffset(1, k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pod)).To(Succeed())
 	pod.Status.Phase = corev1.PodRunning
 	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
 	pod.Status.ContainerStatuses = containerStatuses
@@ -75,11 +84,20 @@ func createSnapshotPodNotReady(ctx context.Context, name, runtimeClassName strin
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
 		Spec: corev1.PodSpec{
 			RuntimeClassName: &runtimeClassName,
-			NodeName:         "test-node",
 			Containers:       containers,
 		},
 	}
 	ExpectWithOffset(1, k8sClient.Create(ctx, pod)).To(Succeed())
+
+	// Bind the pod to a node via the binding subresource (mirroring the real scheduler)
+	binding := &corev1.Binding{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
+		Target:     corev1.ObjectReference{Name: "test-node"},
+	}
+	ExpectWithOffset(1, k8sClient.SubResource("binding").Create(ctx, pod, binding)).To(Succeed())
+
+	// Re-fetch after binding to get updated spec
+	ExpectWithOffset(1, k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pod)).To(Succeed())
 	pod.Status.Phase = corev1.PodPending
 	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionFalse, Reason: "ContainersNotReady"}}
 	ExpectWithOffset(1, k8sClient.Status().Update(ctx, pod)).To(Succeed())

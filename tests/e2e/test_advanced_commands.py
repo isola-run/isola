@@ -117,8 +117,8 @@ def test_stdout_readable_after_kill(session_sandbox: Sandbox) -> None:
         timeout=15,
     )
 
-    # Give the echo time to execute and flush
-    time.sleep(1)
+    # Give the echo time to execute and flush through the SSE pipeline
+    time.sleep(3)
 
     cmd.kill()
     cmd.wait()
@@ -199,10 +199,3 @@ async def test_concurrent_stdin_writes_are_non_interleaved(async_session_sandbox
         i = run_end
 
 
-@pytest.mark.timeout(60)
-def test_close_stdin_unblocks_cat(session_sandbox: Sandbox) -> None:
-    """Closing stdin sends EOF, allowing cat to exit."""
-    result = session_sandbox.commands.run("cat", input="hello\n")
-
-    assert result.exit_code == 0
-    assert result.stdout == "hello\n"

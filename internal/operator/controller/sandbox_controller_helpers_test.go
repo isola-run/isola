@@ -33,6 +33,7 @@ import (
 
 // Helper functions for sandbox controller tests
 
+//nolint:unparam // return value not used today but is the natural API for a create helper
 func createSandbox(ctx context.Context, name string, opts ...func(*sandboxv1alpha1.Sandbox)) *sandboxv1alpha1.Sandbox {
 	sandbox := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
@@ -169,27 +170,9 @@ func setShutdownSnapshotReady(ctx context.Context, sandboxName string, ready boo
 }
 
 func createSandboxWithNetwork(ctx context.Context, name string, network *sandboxv1alpha1.NetworkSpec) {
-	sandbox := &sandboxv1alpha1.Sandbox{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: testNamespace,
-		},
-		Spec: sandboxv1alpha1.SandboxSpec{
-			PodTemplate: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:    "sandbox",
-							Image:   "busybox:latest",
-							Command: []string{"sleep", "infinity"},
-						},
-					},
-				},
-			},
-			Network: network,
-		},
-	}
-	ExpectWithOffset(1, k8sClient.Create(ctx, sandbox)).To(Succeed())
+	createSandbox(ctx, name, func(s *sandboxv1alpha1.Sandbox) {
+		s.Spec.Network = network
+	})
 }
 
 func hasConditionWithReason(sandbox *sandboxv1alpha1.Sandbox, condType string, status metav1.ConditionStatus, reason string) bool {
@@ -197,35 +180,25 @@ func hasConditionWithReason(sandbox *sandboxv1alpha1.Sandbox, condType string, s
 	return cond != nil && cond.Status == status && cond.Reason == reason
 }
 
-// recreatePodWithNodeName deletes the existing pod and creates a new one with NodeName set
-// This is needed because Kubernetes doesn't allow updating NodeName on existing pods
-func recreatePodWithNodeName(ctx context.Context, podName, nodeName string, runtimeClassName *string) *corev1.Pod {
-	// Get the existing pod to copy labels
-	existingPod := getPod(ctx, podName)
-	ExpectWithOffset(1, existingPod).NotTo(BeNil())
-	if existingPod == nil {
-		return nil
-	}
-	labels := existingPod.Labels
-	ExpectWithOffset(1, k8sClient.Delete(ctx, existingPod)).To(Succeed())
+// bindPodToNode assigns a node to an existing pod via the binding subresource,
+// mirroring what the real Kubernetes scheduler does. This works in envtest
+// (which has no scheduler) and preserves the original pod object.
+func bindPodToNode(ctx context.Context, podName string) *corev1.Pod {
+	const nodeName = "test-node"
 
-	// Create new pod with NodeName
-	newPod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      podName,
-			Namespace: testNamespace,
-			Labels:    labels,
-		},
-		Spec: corev1.PodSpec{
-			RuntimeClassName: runtimeClassName,
-			NodeName:         nodeName,
-			Containers: []corev1.Container{
-				{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}},
-			},
-		},
+	pod := getPod(ctx, podName)
+	ExpectWithOffset(1, pod).NotTo(BeNil())
+
+	binding := &corev1.Binding{
+		ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace},
+		Target:     corev1.ObjectReference{Name: nodeName},
 	}
-	ExpectWithOffset(1, k8sClient.Create(ctx, newPod)).To(Succeed())
-	return newPod
+	ExpectWithOffset(1, k8sClient.SubResource("binding").Create(ctx, pod, binding)).To(Succeed())
+
+	// Re-fetch to get the updated spec with NodeName set
+	pod = getPod(ctx, podName)
+	ExpectWithOffset(1, pod).NotTo(BeNil())
+	return pod
 }
 
 // makePodReady updates pod status to make it appear ready
