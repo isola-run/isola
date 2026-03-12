@@ -124,7 +124,6 @@ spec:
                   snapshotName:
                     description: |-
                       SnapshotName is the name of the rootfs snapshot to restore from.
-                      Maps to the tar file at <hostMountPath>/<snapshotName>.tar on the node.
                       Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
                     maxLength: 63
                     minLength: 1

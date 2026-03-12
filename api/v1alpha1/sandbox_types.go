@@ -101,7 +101,6 @@ type NetworkSpec struct {
 // RootfsRestoreSpec specifies a rootfs snapshot to restore when creating the sandbox.
 type RootfsRestoreSpec struct {
 	// SnapshotName is the name of the rootfs snapshot to restore from.
-	// Maps to the tar file at <hostMountPath>/<snapshotName>.tar on the node.
 	// Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
 	// +required
 	// +kubebuilder:validation:MinLength=1
