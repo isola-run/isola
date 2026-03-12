@@ -98,15 +98,16 @@ type NetworkSpec struct {
 	Nameservers []string `json:"nameservers,omitempty"`
 }
 
-// RootfsRestoreSpec specifies a rootfs snapshot to restore when creating the sandbox.
-type RootfsRestoreSpec struct {
-	// SnapshotName is the name of the rootfs snapshot to restore from.
+// RootfsSnapshotSource specifies a rootfs snapshot to restore into a container at creation time.
+type RootfsSnapshotSource struct {
+	// SnapshotKey is the storage key of the rootfs snapshot to restore from.
+	// This matches the snapshotName field from the RootfsSnapshot CR that created it.
 	// Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
-	SnapshotName string `json:"snapshotName"`
+	SnapshotKey string `json:"snapshotKey"`
 
 	// Container is the name of the container to apply the rootfs restore to.
 	// If omitted and the sandbox has exactly one user container, that container is used.
@@ -118,8 +119,8 @@ type RootfsRestoreSpec struct {
 // SandboxSpec defines the desired state of Sandbox
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.network) || has(self.network)",message="network cannot be removed once set"
 // +kubebuilder:validation:XValidation:rule="!has(self.network) || !has(oldSelf.network) || self.network == oldSelf.network",message="network is immutable once set"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.restoreRootfsFrom) || has(self.restoreRootfsFrom)",message="restoreRootfsFrom cannot be removed once set"
-// +kubebuilder:validation:XValidation:rule="!has(self.restoreRootfsFrom) || !has(oldSelf.restoreRootfsFrom) || self.restoreRootfsFrom == oldSelf.restoreRootfsFrom",message="restoreRootfsFrom is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.rootfsSnapshotSources) || has(self.rootfsSnapshotSources)",message="rootfsSnapshotSources cannot be removed once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.rootfsSnapshotSources) || !has(oldSelf.rootfsSnapshotSources) || self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources",message="rootfsSnapshotSources is immutable once set"
 type SandboxSpec struct {
 	// PodTemplate describes the pod that will be created to run the sandbox.
 	// The Sandbox controller will override specific security settings (runtimeClassName, etc.)
@@ -144,10 +145,12 @@ type SandboxSpec struct {
 	// +optional
 	Network *NetworkSpec `json:"network,omitempty"`
 
-	// RestoreRootfsFrom specifies a rootfs snapshot to restore at sandbox creation.
+	// RootfsSnapshotSources specifies rootfs snapshots to restore into containers at creation time.
 	// Requires gVisor runtime and the rootfs snapshot FUSE mount to be running on the node.
 	// +optional
-	RestoreRootfsFrom *RootfsRestoreSpec `json:"restoreRootfsFrom,omitempty"`
+	// +listType=atomic
+	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(s, s.container != '')",message="container is required when multiple rootfsSnapshotSources are specified"
+	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty"`
 }
 
 // SandboxStatus defines the observed state of Sandbox.

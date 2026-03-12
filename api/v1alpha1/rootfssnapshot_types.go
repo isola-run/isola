@@ -48,7 +48,7 @@ type RootfsSnapshotSpec struct {
 	SandboxName string `json:"sandboxName"`
 
 	// SnapshotName is the name used for the snapshot storage key.
-	// This is the value callers must pass as restoreRootfsFrom.snapshotName to restore from this snapshot.
+	// This is the value callers must pass as rootfsSnapshotSources[].snapshotKey to restore from this snapshot.
 	// The SnapshotName validation is crucial as paths may be constructed from it.
 	// +required
 	// +kubebuilder:validation:MinLength=1

@@ -178,40 +178,39 @@ async def test_async_create_properties_and_delete(sandbox_response_copy: dict[st
 
 
 @respx.mock
-def test_create_sandbox_with_restore_rootfs_from(sandbox_response_copy: dict[str, object]) -> None:
-    sandbox_response_copy["restoreRootfsFrom"] = {
-        "snapshotName": "my-snapshot",
-        "container": "my-container",
-    }
+def test_create_sandbox_with_snapshot(sandbox_response_copy: dict[str, object]) -> None:
+    sandbox_response_copy["rootfsSnapshotSources"] = [
+        {
+            "snapshotKey": "my-snapshot",
+            "container": "my-container",
+        },
+    ]
     create_route = respx.post("http://localhost:8080/sandboxes").mock(
         return_value=httpx.Response(201, json=sandbox_response_copy)
     )
 
-    from isola import RootfsRestoreSpec
-
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.create(
             image="python:3.12",
-            restore_rootfs_from=RootfsRestoreSpec(
-                snapshot_name="my-snapshot",
-                container="my-container",
-            ),
+            snapshot="my-snapshot",
         )
 
     assert sandbox.id == "sandbox-123"
-    assert sandbox.restore_rootfs_from is not None
-    assert sandbox.restore_rootfs_from.snapshot_name == "my-snapshot"
-    assert sandbox.restore_rootfs_from.container == "my-container"
+    assert sandbox.rootfs_snapshot_sources is not None
+    assert len(sandbox.rootfs_snapshot_sources) == 1
+    assert sandbox.rootfs_snapshot_sources[0].snapshot_key == "my-snapshot"
+    assert sandbox.rootfs_snapshot_sources[0].container == "my-container"
 
     payload = json.loads(create_route.calls[0].request.content)
-    assert payload["restoreRootfsFrom"] == {
-        "snapshotName": "my-snapshot",
-        "container": "my-container",
-    }
+    assert payload["rootfsSnapshotSources"] == [
+        {
+            "snapshotKey": "my-snapshot",
+        },
+    ]
 
 
 @respx.mock
-def test_create_sandbox_without_restore_rootfs_from_omits_key(sandbox_response_copy: dict[str, object]) -> None:
+def test_create_sandbox_without_snapshot_omits_key(sandbox_response_copy: dict[str, object]) -> None:
     create_route = respx.post("http://localhost:8080/sandboxes").mock(
         return_value=httpx.Response(201, json=sandbox_response_copy)
     )
@@ -220,4 +219,4 @@ def test_create_sandbox_without_restore_rootfs_from_omits_key(sandbox_response_c
         client.sandboxes.create(image="python:3.12")
 
     payload = json.loads(create_route.calls[0].request.content)
-    assert "restoreRootfsFrom" not in payload
+    assert "rootfsSnapshotSources" not in payload

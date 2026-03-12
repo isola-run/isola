@@ -26,7 +26,7 @@ from ._exceptions import (
     ValidationError,
 )
 from ._filesystem import AsyncFilesystem, Filesystem
-from ._models import CommandResult, FileWriteResult, NetworkSpec, RootfsRestoreSpec, SandboxStatus, SandboxSummary
+from ._models import CommandResult, FileWriteResult, NetworkSpec, RootfsSnapshotSource, SandboxStatus, SandboxSummary
 from ._sandbox import AsyncSandbox, AsyncSandboxes, Sandbox, Sandboxes
 from ._streaming import AsyncStreamReader, StreamReader
 
@@ -47,7 +47,7 @@ __all__ = [
     "SandboxStatus",
     "SandboxSummary",
     "NetworkSpec",
-    "RootfsRestoreSpec",
+    "RootfsSnapshotSource",
     "StreamReader",
     "AsyncStreamReader",
     "FileWriteResult",

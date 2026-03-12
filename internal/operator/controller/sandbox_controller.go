@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"maps"
 	"path/filepath"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -228,8 +229,8 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		sandboxPod.Annotations["dev.gvisor.flag.overlay2"] = "root:self"
 	}
 
-	if sandbox.Spec.RestoreRootfsFrom != nil {
-		if err := r.injectRootfsRestoreAnnotation(ctx, sandbox, sandboxPod); err != nil {
+	if len(sandbox.Spec.RootfsSnapshotSources) > 0 {
+		if err := r.validateRootfsRestoreConfig(ctx); err != nil {
 			_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 				{
 					Type:               SandboxReadyCondition,
@@ -240,6 +241,20 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 				},
 			})
 			return err
+		}
+		for i := range sandbox.Spec.RootfsSnapshotSources {
+			if err := r.injectRootfsRestoreAnnotation(&sandbox.Spec.RootfsSnapshotSources[i], sandboxPod); err != nil {
+				_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+					{
+						Type:               SandboxReadyCondition,
+						Status:             metav1.ConditionFalse,
+						Reason:             CondReasonRootfsRestoreConfigError,
+						Message:            err.Error(),
+						ObservedGeneration: sandbox.Generation,
+					},
+				})
+				return err
+			}
 		}
 	}
 
@@ -552,9 +567,8 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 			reason = CondReasonPodSucceeded
 			message = "Pod completed"
 		}
-		if sandbox.Spec.RestoreRootfsFrom != nil && reason == CondReasonPodFailed {
-			message = fmt.Sprintf("%s (rootfs restore from snapshot %q was requested — verify the snapshot exists and the FUSE mount is healthy on the node)",
-				message, sandbox.Spec.RestoreRootfsFrom.SnapshotName)
+		if len(sandbox.Spec.RootfsSnapshotSources) > 0 && reason == CondReasonPodFailed {
+			message = appendSnapshotFailureHint(message, sandbox.Spec.RootfsSnapshotSources)
 		}
 		return metav1.Condition{
 			Type:               SandboxPodReadyCondition,
@@ -649,9 +663,8 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 			reason = CondReasonPodSucceeded
 			message = "Pod completed"
 		}
-		if sandbox.Spec.RestoreRootfsFrom != nil && reason == CondReasonPodFailed {
-			message = fmt.Sprintf("%s (rootfs restore from snapshot %q was requested — verify the snapshot exists and the FUSE mount is healthy on the node)",
-				message, sandbox.Spec.RestoreRootfsFrom.SnapshotName)
+		if len(sandbox.Spec.RootfsSnapshotSources) > 0 && reason == CondReasonPodFailed {
+			message = appendSnapshotFailureHint(message, sandbox.Spec.RootfsSnapshotSources)
 		}
 		return metav1.Condition{
 			Type:               SandboxReadyCondition,
@@ -1113,11 +1126,11 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 	return ctrl.Result{RequeueAfter: time.Second}, false, nil
 }
 
-func (r *SandboxReconciler) injectRootfsRestoreAnnotation(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, pod *corev1.Pod) error {
-	restore := sandbox.Spec.RestoreRootfsFrom
-
+// validateRootfsRestoreConfig checks that the reconciler is configured for rootfs restore
+// (runtime class + host mount path). Called once before processing individual sources.
+func (r *SandboxReconciler) validateRootfsRestoreConfig(ctx context.Context) error {
 	if r.RuntimeClassName == "" {
-		return reconcile.TerminalError(fmt.Errorf("restoreRootfsFrom requires gVisor runtime (no RuntimeClassName configured)"))
+		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires gVisor runtime (no RuntimeClassName configured)"))
 	}
 	supported, err := snapshot.CheckRuntimeClassSupport(ctx, r.Client, r.RuntimeClassName)
 	if err != nil {
@@ -1125,28 +1138,40 @@ func (r *SandboxReconciler) injectRootfsRestoreAnnotation(ctx context.Context, s
 		return fmt.Errorf("failed to validate runtime for rootfs restore: %w", err)
 	}
 	if !supported {
-		return reconcile.TerminalError(fmt.Errorf("restoreRootfsFrom requires a gVisor runtime (RuntimeClass %q handler is not runsc/gvisor)", r.RuntimeClassName))
+		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires a gVisor runtime (RuntimeClass %q handler is not runsc/gvisor)", r.RuntimeClassName))
 	}
 
 	if r.RootfsSnapshotHostMountPath == "" {
-		return reconcile.TerminalError(fmt.Errorf("restoreRootfsFrom requires rootfs snapshot restore to be configured (--rootfssnapshot-host-mount-path)"))
+		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires rootfs snapshot restore to be configured (--rootfssnapshot-host-mount-path)"))
 	}
+	return nil
+}
 
+func (r *SandboxReconciler) injectRootfsRestoreAnnotation(source *sandboxv1alpha1.RootfsSnapshotSource, pod *corev1.Pod) error {
 	// Defense in depth: CRD validation enforces the DNS label pattern, but verify here
-	// since SnapshotName is used to construct a host file path.
-	if !filepath.IsLocal(restore.SnapshotName) {
-		return reconcile.TerminalError(fmt.Errorf("invalid snapshot name %q: must be a safe local path component", restore.SnapshotName))
+	// since SnapshotKey is used to construct a host file path.
+	if !filepath.IsLocal(source.SnapshotKey) {
+		return reconcile.TerminalError(fmt.Errorf("invalid snapshot key %q: must be a safe local path component", source.SnapshotKey))
 	}
 
-	containerName, err := resolveRestoreContainerName(pod, restore.Container)
+	containerName, err := resolveRestoreContainerName(pod, source.Container)
 	if err != nil {
 		return reconcile.TerminalError(err)
 	}
 
-	tarPath := fmt.Sprintf("%s/%s.tar", r.RootfsSnapshotHostMountPath, restore.SnapshotName)
+	tarPath := fmt.Sprintf("%s/%s.tar", r.RootfsSnapshotHostMountPath, source.SnapshotKey)
 	annotationKey := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", containerName)
 	pod.Annotations[annotationKey] = tarPath
 	return nil
+}
+
+func appendSnapshotFailureHint(message string, sources []sandboxv1alpha1.RootfsSnapshotSource) string {
+	keys := make([]string, len(sources))
+	for i, s := range sources {
+		keys[i] = s.SnapshotKey
+	}
+	return fmt.Sprintf("%s (rootfs restore from snapshot(s) %s was requested — verify the snapshot exists and the FUSE mount is healthy on the node)",
+		message, strings.Join(keys, ", "))
 }
 
 // resolveRestoreContainerName determines which container to restore.
