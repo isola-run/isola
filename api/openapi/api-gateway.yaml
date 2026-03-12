@@ -340,12 +340,12 @@ components:
         container:
           description: Container to restore (defaults to sole container)
           type: string
-        rootfsSnapshotName:
+        snapshotName:
           description: Name of the rootfs snapshot to restore from
           minLength: 1
           type: string
       required:
-        - rootfsSnapshotName
+        - snapshotName
       type: object
     SandboxResponse:
       additionalProperties: false

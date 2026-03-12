@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"path/filepath"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -553,7 +554,7 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 		}
 		if sandbox.Spec.RestoreRootfsFrom != nil && reason == CondReasonPodFailed {
 			message = fmt.Sprintf("%s (rootfs restore from snapshot %q was requested — verify the snapshot exists and the FUSE mount is healthy on the node)",
-				message, sandbox.Spec.RestoreRootfsFrom.RootfsSnapshotName)
+				message, sandbox.Spec.RestoreRootfsFrom.SnapshotName)
 		}
 		return metav1.Condition{
 			Type:               SandboxPodReadyCondition,
@@ -650,7 +651,7 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 		}
 		if sandbox.Spec.RestoreRootfsFrom != nil && reason == CondReasonPodFailed {
 			message = fmt.Sprintf("%s (rootfs restore from snapshot %q was requested — verify the snapshot exists and the FUSE mount is healthy on the node)",
-				message, sandbox.Spec.RestoreRootfsFrom.RootfsSnapshotName)
+				message, sandbox.Spec.RestoreRootfsFrom.SnapshotName)
 		}
 		return metav1.Condition{
 			Type:               SandboxReadyCondition,
@@ -1131,12 +1132,18 @@ func (r *SandboxReconciler) injectRootfsRestoreAnnotation(ctx context.Context, s
 		return reconcile.TerminalError(fmt.Errorf("restoreRootfsFrom requires rootfs snapshot restore to be configured (--rootfssnapshot-host-mount-path)"))
 	}
 
+	// Defense in depth: CRD validation enforces the DNS label pattern, but verify here
+	// since SnapshotName is used to construct a host file path.
+	if !filepath.IsLocal(restore.SnapshotName) {
+		return reconcile.TerminalError(fmt.Errorf("invalid snapshot name %q: must be a safe local path component", restore.SnapshotName))
+	}
+
 	containerName, err := resolveRestoreContainerName(pod, restore.Container)
 	if err != nil {
 		return reconcile.TerminalError(err)
 	}
 
-	tarPath := fmt.Sprintf("%s/%s.tar", r.RootfsSnapshotHostMountPath, restore.RootfsSnapshotName)
+	tarPath := fmt.Sprintf("%s/%s.tar", r.RootfsSnapshotHostMountPath, restore.SnapshotName)
 	annotationKey := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", containerName)
 	pod.Annotations[annotationKey] = tarPath
 	return nil

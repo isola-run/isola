@@ -121,17 +121,17 @@ spec:
                       If omitted and the sandbox has exactly one user container, that container is used.
                       Required when the sandbox has multiple user containers.
                     type: string
-                  rootfsSnapshotName:
+                  snapshotName:
                     description: |-
-                      RootfsSnapshotName is the name of the rootfs snapshot to restore from.
-                      Maps to the tar file at <hostMountPath>/<rootfsSnapshotName>.tar on the node.
+                      SnapshotName is the name of the rootfs snapshot to restore from.
+                      Maps to the tar file at <hostMountPath>/<snapshotName>.tar on the node.
                       Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
                     maxLength: 63
                     minLength: 1
                     pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
-                - rootfsSnapshotName
+                - snapshotName
                 type: object
               shutdownPolicy:
                 description: ShutdownPolicy defines what to do when the sandbox ends

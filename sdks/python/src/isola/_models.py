@@ -83,7 +83,7 @@ class ContainerInfo(IsolaModel):
 
 
 class RootfsRestoreSpec(IsolaModel):
-    rootfs_snapshot_name: str
+    snapshot_name: str
     container: str | None = None
 
 

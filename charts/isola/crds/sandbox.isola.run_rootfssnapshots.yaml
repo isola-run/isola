@@ -81,7 +81,7 @@ spec:
               snapshotName:
                 description: |-
                   SnapshotName is the name used for the snapshot storage key.
-                  This is the value callers must pass as restoreRootfsFrom.rootfsSnapshotName to restore from this snapshot.
+                  This is the value callers must pass as restoreRootfsFrom.snapshotName to restore from this snapshot.
                   The SnapshotName validation is crucial as paths may be constructed from it.
                 maxLength: 63
                 minLength: 1
@@ -177,7 +177,7 @@ spec:
                 description: ContainerID is the container ID that was snapshotted
                 type: string
               snapshotKey:
-                description: SnapshotKey is the object key within the bucket (e.g.,
+                description: SnapshotKey is the object key within the bucket (e.g.
                   "rootfssnapshots/<name>.tar")
                 type: string
               startTime:

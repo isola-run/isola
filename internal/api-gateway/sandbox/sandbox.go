@@ -74,8 +74,8 @@ type NetworkSpec struct {
 }
 
 type RootfsRestoreSpec struct {
-	RootfsSnapshotName string `json:"rootfsSnapshotName" required:"true" minLength:"1" doc:"Name of the rootfs snapshot to restore from"`
-	Container          string `json:"container,omitempty" doc:"Container to restore (defaults to sole container)"`
+	SnapshotName string `json:"snapshotName" required:"true" minLength:"1" doc:"Name of the rootfs snapshot to restore from"`
+	Container    string `json:"container,omitempty" doc:"Container to restore (defaults to sole container)"`
 }
 
 type GetSandboxInput struct {

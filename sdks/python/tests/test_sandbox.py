@@ -180,7 +180,7 @@ async def test_async_create_properties_and_delete(sandbox_response_copy: dict[st
 @respx.mock
 def test_create_sandbox_with_restore_rootfs_from(sandbox_response_copy: dict[str, object]) -> None:
     sandbox_response_copy["restoreRootfsFrom"] = {
-        "rootfsSnapshotName": "my-snapshot",
+        "snapshotName": "my-snapshot",
         "container": "my-container",
     }
     create_route = respx.post("http://localhost:8080/sandboxes").mock(
@@ -193,19 +193,19 @@ def test_create_sandbox_with_restore_rootfs_from(sandbox_response_copy: dict[str
         sandbox = client.sandboxes.create(
             image="python:3.12",
             restore_rootfs_from=RootfsRestoreSpec(
-                rootfs_snapshot_name="my-snapshot",
+                snapshot_name="my-snapshot",
                 container="my-container",
             ),
         )
 
     assert sandbox.id == "sandbox-123"
     assert sandbox.restore_rootfs_from is not None
-    assert sandbox.restore_rootfs_from.rootfs_snapshot_name == "my-snapshot"
+    assert sandbox.restore_rootfs_from.snapshot_name == "my-snapshot"
     assert sandbox.restore_rootfs_from.container == "my-container"
 
     payload = json.loads(create_route.calls[0].request.content)
     assert payload["restoreRootfsFrom"] == {
-        "rootfsSnapshotName": "my-snapshot",
+        "snapshotName": "my-snapshot",
         "container": "my-container",
     }
 

@@ -69,14 +69,14 @@ var _ = Describe("Conversion functions", func() {
 					},
 				},
 				RestoreRootfsFrom: &RootfsRestoreSpec{
-					RootfsSnapshotName: "my-snapshot",
-					Container:          "my-container",
+					SnapshotName: "my-snapshot",
+					Container:    "my-container",
 				},
 			}
 			sb, err := requestToSandboxCR(req, "test-sb", "default")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sb.Spec.RestoreRootfsFrom).NotTo(BeNil())
-			Expect(sb.Spec.RestoreRootfsFrom.RootfsSnapshotName).To(Equal("my-snapshot"))
+			Expect(sb.Spec.RestoreRootfsFrom.SnapshotName).To(Equal("my-snapshot"))
 			Expect(sb.Spec.RestoreRootfsFrom.Container).To(Equal("my-container"))
 		})
 	})
@@ -88,12 +88,12 @@ var _ = Describe("Conversion functions", func() {
 
 		It("converts RootfsRestoreSpec to CRD type", func() {
 			input := &RootfsRestoreSpec{
-				RootfsSnapshotName: "my-snapshot",
-				Container:          "my-container",
+				SnapshotName: "my-snapshot",
+				Container:    "my-container",
 			}
 			result := restRootfsRestoreToCRD(input)
 			Expect(result).NotTo(BeNil())
-			Expect(result.RootfsSnapshotName).To(Equal("my-snapshot"))
+			Expect(result.SnapshotName).To(Equal("my-snapshot"))
 			Expect(result.Container).To(Equal("my-container"))
 		})
 	})
@@ -105,12 +105,12 @@ var _ = Describe("Conversion functions", func() {
 
 		It("converts CRD RootfsRestoreSpec to REST type", func() {
 			input := &sandboxv1alpha1.RootfsRestoreSpec{
-				RootfsSnapshotName: "my-snapshot",
-				Container:          "my-container",
+				SnapshotName: "my-snapshot",
+				Container:    "my-container",
 			}
 			result := crdRootfsRestoreToREST(input)
 			Expect(result).NotTo(BeNil())
-			Expect(result.RootfsSnapshotName).To(Equal("my-snapshot"))
+			Expect(result.SnapshotName).To(Equal("my-snapshot"))
 			Expect(result.Container).To(Equal("my-container"))
 		})
 	})
@@ -166,14 +166,14 @@ var _ = Describe("Conversion functions", func() {
 						},
 					},
 					RestoreRootfsFrom: &sandboxv1alpha1.RootfsRestoreSpec{
-						RootfsSnapshotName: "my-snapshot",
-						Container:          "my-container",
+						SnapshotName: "my-snapshot",
+						Container:    "my-container",
 					},
 				},
 			}
 			resp := sandboxToResponse(sb)
 			Expect(resp.RestoreRootfsFrom).NotTo(BeNil())
-			Expect(resp.RestoreRootfsFrom.RootfsSnapshotName).To(Equal("my-snapshot"))
+			Expect(resp.RestoreRootfsFrom.SnapshotName).To(Equal("my-snapshot"))
 			Expect(resp.RestoreRootfsFrom.Container).To(Equal("my-container"))
 		})
 	})

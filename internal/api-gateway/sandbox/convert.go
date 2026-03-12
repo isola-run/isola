@@ -213,8 +213,8 @@ func restRootfsRestoreToCRD(r *RootfsRestoreSpec) *sandboxv1alpha1.RootfsRestore
 		return nil
 	}
 	return &sandboxv1alpha1.RootfsRestoreSpec{
-		RootfsSnapshotName: r.RootfsSnapshotName,
-		Container:          r.Container,
+		SnapshotName: r.SnapshotName,
+		Container:    r.Container,
 	}
 }
 
@@ -223,8 +223,8 @@ func crdRootfsRestoreToREST(r *sandboxv1alpha1.RootfsRestoreSpec) *RootfsRestore
 		return nil
 	}
 	return &RootfsRestoreSpec{
-		RootfsSnapshotName: r.RootfsSnapshotName,
-		Container:          r.Container,
+		SnapshotName: r.SnapshotName,
+		Container:    r.Container,
 	}
 }
 
