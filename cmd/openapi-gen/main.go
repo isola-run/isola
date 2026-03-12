@@ -32,6 +32,7 @@ import (
 	"github.com/isola-ai/isola/internal/api-gateway/filesystem"
 	"github.com/isola-ai/isola/internal/api-gateway/health"
 	"github.com/isola-ai/isola/internal/api-gateway/sandbox"
+	"github.com/isola-ai/isola/internal/api-gateway/snapshot"
 	sidecarCmd "github.com/isola-ai/isola/internal/sandbox-sidecar/command"
 	sidecarFs "github.com/isola-ai/isola/internal/sandbox-sidecar/filesystem"
 	sidecarHealth "github.com/isola-ai/isola/internal/sandbox-sidecar/health"
@@ -84,6 +85,7 @@ func setupAPIGateway() huma.API {
 	// nil dependencies - handlers won't be called, only their signatures are inspected
 	health.Register(api, health.New(nil, nil))
 	sandbox.Register(api, sandbox.New(nil, "", nil))
+	snapshot.Register(api, snapshot.New(nil, "", nil))
 	filesystem.Register(api, filesystem.New(nil, "", nil, nil))
 	command.Register(api, command.New(nil, "", nil, nil))
 

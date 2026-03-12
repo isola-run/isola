@@ -113,6 +113,38 @@ components:
       required:
         - commandId
       type: object
+    CreateRootfsSnapshotRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/CreateRootfsSnapshotRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        activeDeadlineSeconds:
+          description: Max duration in seconds for the snapshot job
+          format: int64
+          minimum: 1
+          type: integer
+        container:
+          description: Container to snapshot (defaults to the first container)
+          type: string
+        snapshotName:
+          description: Snapshot name used for the storage key. Must be a valid DNS label.
+          maxLength: 63
+          minLength: 1
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          type: string
+        ttlSecondsAfterFinished:
+          description: Seconds after completion before auto-deletion
+          format: int32
+          minimum: 0
+          type: integer
+      required:
+        - snapshotName
+      type: object
     CreateSandboxRequest:
       additionalProperties: false
       properties:
@@ -346,6 +378,66 @@ components:
           type: string
       required:
         - rootfsSnapshotName
+      type: object
+    RootfsSnapshotResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/RootfsSnapshotResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        activeDeadlineSeconds:
+          description: Max duration in seconds for the snapshot job
+          format: int64
+          type: integer
+        completionTime:
+          description: When the snapshot finished (RFC3339)
+          type: string
+        container:
+          description: Container that was snapshotted
+          type: string
+        creationTimestamp:
+          description: Creation UTC timestamp in RFC3339 format
+          type: string
+        failureMessage:
+          description: Failure details when status is failed
+          type: string
+        id:
+          description: Rootfs snapshot identifier
+          type: string
+        sandboxId:
+          description: Sandbox identifier
+          type: string
+        snapshotKey:
+          description: Object storage key for the snapshot tarball
+          type: string
+        snapshotName:
+          description: Snapshot name used for the storage key
+          type: string
+        startTime:
+          description: When the snapshot job started (RFC3339)
+          type: string
+        status:
+          description: Snapshot status
+          enum:
+            - pending
+            - inProgress
+            - complete
+            - failed
+          type: string
+        ttlSecondsAfterFinished:
+          description: Seconds after completion before auto-deletion
+          format: int32
+          type: integer
+      required:
+        - id
+        - sandboxId
+        - snapshotName
+        - status
+        - creationTimestamp
       type: object
     SandboxResponse:
       additionalProperties: false
@@ -1244,3 +1336,100 @@ paths:
       tags:
         - sandboxes
         - filesystem
+  /sandboxes/{id}/rootfssnapshots:
+    post:
+      operationId: createRootfsSnapshot
+      parameters:
+        - description: Sandbox identifier
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Sandbox identifier
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRootfsSnapshotRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootfsSnapshotResponse"
+          description: Created
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+      summary: Create a rootfs snapshot
+      tags:
+        - rootfssnapshots
+  /sandboxes/{id}/rootfssnapshots/{snapId}:
+    get:
+      operationId: getRootfsSnapshot
+      parameters:
+        - description: Sandbox identifier
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Sandbox identifier
+            type: string
+        - description: Rootfs snapshot identifier
+          in: path
+          name: snapId
+          required: true
+          schema:
+            description: Rootfs snapshot identifier
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootfsSnapshotResponse"
+          description: OK
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+      summary: Get rootfs snapshot details
+      tags:
+        - rootfssnapshots

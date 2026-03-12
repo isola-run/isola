@@ -124,6 +124,35 @@ class SandboxData(IsolaModel):
     restore_rootfs_from: RootfsRestoreSpec | None = None
 
 
+class RootfsSnapshotStatus(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "inProgress"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class CreateRootfsSnapshotPayload(IsolaModel):
+    snapshot_name: str
+    container: str | None = None
+    active_deadline_seconds: int | None = None
+    ttl_seconds_after_finished: int | None = None
+
+
+class RootfsSnapshotData(IsolaModel):
+    id: str
+    sandbox_id: str
+    snapshot_name: str
+    container: str | None = None
+    status: RootfsSnapshotStatus
+    failure_message: str | None = None
+    snapshot_key: str | None = None
+    creation_timestamp: datetime
+    start_time: datetime | None = None
+    completion_time: datetime | None = None
+    active_deadline_seconds: int | None = None
+    ttl_seconds_after_finished: int | None = None
+
+
 class CreateCommandPayload(IsolaModel):
     args: list[str]
     env: dict[str, str] | None = None

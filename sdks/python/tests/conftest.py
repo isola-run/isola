@@ -71,3 +71,26 @@ def sandbox_summary_response() -> dict[str, object]:
 @pytest.fixture
 def sandbox_response_copy(sandbox_response: dict[str, object]) -> dict[str, object]:
     return copy.deepcopy(sandbox_response)
+
+
+@pytest.fixture
+def rootfs_snapshot_response() -> dict[str, object]:
+    return {
+        "id": "mysandbox-my-snapshot-x5k2m",
+        "sandboxId": "sandbox-123",
+        "snapshotName": "my-snapshot",
+        "container": "worker",
+        "status": "pending",
+        "failureMessage": None,
+        "snapshotKey": None,
+        "creationTimestamp": "2026-03-12T00:00:00Z",
+        "startTime": None,
+        "completionTime": None,
+        "activeDeadlineSeconds": 300,
+        "ttlSecondsAfterFinished": 300,
+    }
+
+
+@pytest.fixture
+def rootfs_snapshot_response_copy(rootfs_snapshot_response: dict[str, object]) -> dict[str, object]:
+    return copy.deepcopy(rootfs_snapshot_response)

@@ -33,6 +33,7 @@ from ._models import (
     SandboxStatus,
     SandboxSummary,
 )
+from ._rootfs_snapshots import AsyncRootfsSnapshots, RootfsSnapshots
 
 
 def _sandbox_path(sandbox_id: str) -> str:
@@ -151,6 +152,7 @@ class Sandbox:
         self._data = data
         self.commands = Commands(api, data.id)
         self.filesystem = Filesystem(api, data.id)
+        self.rootfs_snapshots = RootfsSnapshots(api, data.id)
 
     @property
     def id(self) -> str:
@@ -192,6 +194,7 @@ class AsyncSandbox:
         self._data = data
         self.commands = AsyncCommands(api, data.id)
         self.filesystem = AsyncFilesystem(api, data.id)
+        self.rootfs_snapshots = AsyncRootfsSnapshots(api, data.id)
 
     @property
     def id(self) -> str:

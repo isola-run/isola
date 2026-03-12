@@ -45,6 +45,7 @@ import (
 	"github.com/isola-ai/isola/internal/api-gateway/filesystem"
 	"github.com/isola-ai/isola/internal/api-gateway/health"
 	"github.com/isola-ai/isola/internal/api-gateway/sandbox"
+	"github.com/isola-ai/isola/internal/api-gateway/snapshot"
 	"github.com/isola-ai/isola/internal/env"
 	"github.com/isola-ai/isola/internal/logging"
 )
@@ -171,6 +172,7 @@ func main() {
 
 	health.Register(api, health.New(logger, mgr.GetClient()))
 	sandbox.Register(api, sandbox.New(logger, cfg.sandboxNamespace, mgr.GetClient()))
+	snapshot.Register(api, snapshot.New(logger, cfg.sandboxNamespace, mgr.GetClient()))
 
 	sandboxClient := initSandboxClient()
 

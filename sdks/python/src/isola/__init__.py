@@ -26,7 +26,16 @@ from ._exceptions import (
     ValidationError,
 )
 from ._filesystem import AsyncFilesystem, Filesystem
-from ._models import CommandResult, FileWriteResult, NetworkSpec, RootfsRestoreSpec, SandboxStatus, SandboxSummary
+from ._models import (
+    CommandResult,
+    FileWriteResult,
+    NetworkSpec,
+    RootfsRestoreSpec,
+    RootfsSnapshotStatus,
+    SandboxStatus,
+    SandboxSummary,
+)
+from ._rootfs_snapshots import AsyncRootfsSnapshot, AsyncRootfsSnapshots, RootfsSnapshot, RootfsSnapshots
 from ._sandbox import AsyncSandbox, AsyncSandboxes, Sandbox, Sandboxes
 from ._streaming import AsyncStreamReader, StreamReader
 
@@ -51,6 +60,11 @@ __all__ = [
     "StreamReader",
     "AsyncStreamReader",
     "FileWriteResult",
+    "RootfsSnapshot",
+    "AsyncRootfsSnapshot",
+    "RootfsSnapshots",
+    "AsyncRootfsSnapshots",
+    "RootfsSnapshotStatus",
     "IsolaError",
     "APIError",
     "BadRequestError",

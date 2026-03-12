@@ -121,7 +121,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **RootfsSnapshot** - Triggers a snapshot of a sandbox's filesystem. Creates an uploader Job that tarballs the container rootfs and uploads to cloud storage. Key spec fields:
 - `sandboxName` (required) - The sandbox to snapshot
-- `snapshotName` (optional) - Name used for the storage key (`rootfssnapshots/<snapshotName>.tar`); defaults to sandbox name
+- `snapshotName` (required) - Name used for the storage key (`rootfssnapshots/<snapshotName>.tar`)
 - `container` (optional) - Which container to snapshot; defaults to first
 - Supports TTL-based auto-deletion via `ttlSecondsAfterFinished`
 
@@ -143,6 +143,8 @@ The api-gateway is a thin passthrough to K8s — it validates input structure bu
 - `POST /sandboxes/{id}/commands/{cmdId}/stdin` — write to stdin
 - `POST /sandboxes/{id}/commands/{cmdId}/stdin/close` — close stdin pipe
 - `DELETE /sandboxes/{id}/commands/{cmdId}` — kill command (idempotent)
+- `POST /sandboxes/{id}/rootfssnapshots` — create rootfs snapshot
+- `GET /sandboxes/{id}/rootfssnapshots/{snapId}` — get rootfs snapshot details
 
 **REST ↔ CRD conversion (`sandbox/convert.go`):**
 REST types are separate from CRD types with explicit conversion in `sandbox/convert.go`. Key behaviors:
