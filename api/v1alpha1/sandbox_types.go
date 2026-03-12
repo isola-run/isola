@@ -113,6 +113,7 @@ type RootfsSnapshotSource struct {
 	// If omitted and the sandbox has exactly one user container, that container is used.
 	// Required when the sandbox has multiple user containers.
 	// +optional
+	// +kubebuilder:validation:MinLength=1
 	Container string `json:"container,omitempty"`
 }
 

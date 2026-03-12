@@ -126,6 +126,7 @@ spec:
                         Container is the name of the container to apply the rootfs restore to.
                         If omitted and the sandbox has exactly one user container, that container is used.
                         Required when the sandbox has multiple user containers.
+                      minLength: 1
                       type: string
                     snapshotKey:
                       description: |-

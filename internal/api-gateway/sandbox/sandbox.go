@@ -75,8 +75,8 @@ type NetworkSpec struct {
 }
 
 type RootfsSnapshotSource struct {
-	SnapshotKey string `json:"snapshotKey" required:"true" minLength:"1" doc:"Storage key of the rootfs snapshot to restore from. Only the overlay rootfs upper layer is captured, separate mounts like /tmp (gVisor internal tmpfs) are excluded."`
-	Container   string `json:"container,omitempty" doc:"Container to restore. If empty and there is only one container, that container will be used. Required if there are multiple containers."`
+	SnapshotKey string `json:"snapshotKey" required:"true" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Storage key of the rootfs snapshot to restore from. Only the overlay rootfs upper layer is captured, separate mounts like /tmp (gVisor internal tmpfs) are excluded."`
+	Container   string `json:"container,omitempty" minLength:"1" doc:"Container to restore. If empty and there is only one container, that container will be used. Required if there are multiple containers."`
 }
 
 type GetSandboxInput struct {
