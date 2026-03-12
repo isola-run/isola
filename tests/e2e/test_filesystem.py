@@ -120,7 +120,7 @@ def test_read_directory_returns_error(session_sandbox: Sandbox) -> None:
 
 def test_file_written_is_executable_by_command(session_sandbox: Sandbox) -> None:
     """A file uploaded via filesystem.write() is readable and executable by commands."""
-    
+
     unique = uuid.uuid4().hex
     path = f"/tmp/test_{unique}.sh"
     session_sandbox.filesystem.write(path, b"#!/bin/sh\necho cross_subsystem_works\n")

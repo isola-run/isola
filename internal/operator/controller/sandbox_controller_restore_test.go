@@ -61,7 +61,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sb-restore-basic"
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
-					{SnapshotKey: "my-snapshot"},
+					{SnapshotName: "my-snapshot"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -98,7 +98,7 @@ var _ = Describe("Sandbox Controller", func() {
 					},
 				}
 				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
-					{SnapshotKey: "snap1", Container: "my-app"},
+					{SnapshotName: "snap1", ContainerName: "my-app"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -128,7 +128,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sb-restore-bad-ctr"
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
-					{SnapshotKey: "snap1", Container: "nonexistent"},
+					{SnapshotName: "snap1", ContainerName: "nonexistent"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -153,7 +153,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sb-restore-no-runtime"
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
-					{SnapshotKey: "snap1"},
+					{SnapshotName: "snap1"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -182,7 +182,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sb-restore-no-mount"
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
-					{SnapshotKey: "snap1"},
+					{SnapshotName: "snap1"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -211,7 +211,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sb-restore-wrong-rt"
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
-					{SnapshotKey: "snap1"},
+					{SnapshotName: "snap1"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -252,7 +252,7 @@ var _ = Describe("Sandbox Controller", func() {
 					},
 				}
 				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
-					{SnapshotKey: "snap1"},
+					{SnapshotName: "snap1"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -282,7 +282,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sb-restore-pod-fail"
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
-					{SnapshotKey: "my-snap"},
+					{SnapshotName: "my-snap"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)

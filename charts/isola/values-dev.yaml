@@ -40,7 +40,7 @@ operator:
             secretAccessKey: "test"
             region: "us-east-1"
 
-        isolaNodeMount:
+        snapshotMounter:
           hostMountPath: /mnt/isola-snapshots
           rclone:
             image:

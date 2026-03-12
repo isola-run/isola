@@ -236,13 +236,13 @@ RootfsSnapshot service account name (from gvisor rootfssnapshot config)
 {{- end }}
 
 {{/*
-Nodemount service account name (DaemonSet in kube-system, separate from snapshot job SA)
+Snapshot mounter service account name (DaemonSet in kube-system, separate from snapshot job SA)
 */}}
-{{- define "isola.operator.nodemountServiceAccountName" -}}
+{{- define "isola.operator.snapshotMounterServiceAccountName" -}}
 {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" -}}
-{{- $sa := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.isolaNodeMount.serviceAccount -}}
+{{- $sa := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.serviceAccount -}}
 {{- if $sa.create -}}
-{{- $sa.name | default (printf "%s-nodemount" (include "isola.operator.fullname" .)) -}}
+{{- $sa.name | default (printf "%s-snapshot-mounter" (include "isola.operator.fullname" .)) -}}
 {{- else -}}
 {{- $sa.name -}}
 {{- end -}}
@@ -254,7 +254,7 @@ RootfsSnapshot host mount path for restore (only when rootfssnapshot enabled)
 */}}
 {{- define "isola.operator.rootfssnapshotHostMountPath" -}}
 {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" -}}
-{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.isolaNodeMount.hostMountPath -}}
+{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.hostMountPath -}}
 {{- end -}}
 {{- end }}
 
@@ -262,7 +262,7 @@ RootfsSnapshot host mount path for restore (only when rootfssnapshot enabled)
 rclone image for rootfssnapshot FUSE DaemonSet
 */}}
 {{- define "isola.operator.rootfssnapshotRcloneImage" -}}
-{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.isolaNodeMount.rclone.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.rclone.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
 
 {{/* ==========================================================================

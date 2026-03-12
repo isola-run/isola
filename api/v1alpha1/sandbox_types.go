@@ -100,21 +100,21 @@ type NetworkSpec struct {
 
 // RootfsSnapshotSource specifies a rootfs snapshot to restore into a container at creation time.
 type RootfsSnapshotSource struct {
-	// SnapshotKey is the storage key of the rootfs snapshot to restore from.
+	// SnapshotName is the name of the rootfs snapshot to restore from.
 	// This matches the snapshotName field from the RootfsSnapshot CR that created it.
 	// Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
-	SnapshotKey string `json:"snapshotKey"`
+	SnapshotName string `json:"snapshotName"`
 
-	// Container is the name of the container to apply the rootfs restore to.
+	// ContainerName is the name of the container to apply the rootfs restore to.
 	// If omitted and the sandbox has exactly one user container, that container is used.
 	// Required when the sandbox has multiple user containers.
 	// +optional
 	// +kubebuilder:validation:MinLength=1
-	Container string `json:"container,omitempty"`
+	ContainerName string `json:"containerName,omitempty"`
 }
 
 // SandboxSpec defines the desired state of Sandbox
@@ -153,7 +153,7 @@ type SandboxSpec struct {
 	// (e.g. /root, /home) to ensure it survives snapshot and restore.
 	// +optional
 	// +listType=atomic
-	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(s, s.container != '')",message="container is required when multiple rootfsSnapshotSources are specified"
+	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(s, s.containerName != '')",message="containerName is required when multiple rootfsSnapshotSources are specified"
 	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty"`
 }
 

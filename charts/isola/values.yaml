@@ -136,7 +136,7 @@ operator:
           name: "isola-rootfssnapshot-job"
           annotations: {}  # For IRSA/Workload Identity
 
-        # Isola node mount DaemonSet configuration.
+        # Isola snapshot mounter DaemonSet configuration.
         # When rootfssnapshot is enabled, a DaemonSet is deployed on each node
         # to FUSE-mount the snapshots bucket, making tars available for restore.
         #
@@ -151,11 +151,11 @@ operator:
         #   node. rclone does not delete its cache on exit by design (allows warm
         #   restarts). After `helm uninstall`, remove stale data from each node:
         #     rm -rf /mnt/isola-snapshots-cache /mnt/isola-snapshots /opt/isola/bin/rclone
-        isolaNodeMount:
+        snapshotMounter:
           # Host path where snapshots are FUSE-mounted (readable by runsc on the node)
           hostMountPath: /mnt/isola-snapshots
 
-          # ServiceAccount for the nodemount DaemonSet (deployed in kube-system).
+          # ServiceAccount for the snapshot-mounter DaemonSet (deployed in kube-system).
           # Separate from the snapshot job SA because they run in different namespaces.
           # For IRSA/Workload Identity, this SA needs read-only access to the bucket.
           serviceAccount:

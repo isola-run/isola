@@ -70,16 +70,16 @@ var _ = Describe("Conversion functions", func() {
 				},
 				RootfsSnapshotSources: []RootfsSnapshotSource{
 					{
-						SnapshotKey: "my-snapshot",
-						Container:   "my-container",
+						SnapshotName:  "my-snapshot",
+						ContainerName: "my-container",
 					},
 				},
 			}
 			sb, err := requestToSandboxCR(req, "test-sb", "default")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sb.Spec.RootfsSnapshotSources).To(HaveLen(1))
-			Expect(sb.Spec.RootfsSnapshotSources[0].SnapshotKey).To(Equal("my-snapshot"))
-			Expect(sb.Spec.RootfsSnapshotSources[0].Container).To(Equal("my-container"))
+			Expect(sb.Spec.RootfsSnapshotSources[0].SnapshotName).To(Equal("my-snapshot"))
+			Expect(sb.Spec.RootfsSnapshotSources[0].ContainerName).To(Equal("my-container"))
 		})
 	})
 
@@ -91,14 +91,14 @@ var _ = Describe("Conversion functions", func() {
 		It("converts RootfsSnapshotSource list to CRD type", func() {
 			input := []RootfsSnapshotSource{
 				{
-					SnapshotKey: "my-snapshot",
-					Container:   "my-container",
+					SnapshotName:  "my-snapshot",
+					ContainerName: "my-container",
 				},
 			}
 			result := restRootfsSnapshotSourcesToCRD(input)
 			Expect(result).To(HaveLen(1))
-			Expect(result[0].SnapshotKey).To(Equal("my-snapshot"))
-			Expect(result[0].Container).To(Equal("my-container"))
+			Expect(result[0].SnapshotName).To(Equal("my-snapshot"))
+			Expect(result[0].ContainerName).To(Equal("my-container"))
 		})
 	})
 
@@ -110,14 +110,14 @@ var _ = Describe("Conversion functions", func() {
 		It("converts CRD RootfsSnapshotSource list to REST type", func() {
 			input := []sandboxv1alpha1.RootfsSnapshotSource{
 				{
-					SnapshotKey: "my-snapshot",
-					Container:   "my-container",
+					SnapshotName:  "my-snapshot",
+					ContainerName: "my-container",
 				},
 			}
 			result := crdRootfsSnapshotSourcesToREST(input)
 			Expect(result).To(HaveLen(1))
-			Expect(result[0].SnapshotKey).To(Equal("my-snapshot"))
-			Expect(result[0].Container).To(Equal("my-container"))
+			Expect(result[0].SnapshotName).To(Equal("my-snapshot"))
+			Expect(result[0].ContainerName).To(Equal("my-container"))
 		})
 	})
 
@@ -173,16 +173,16 @@ var _ = Describe("Conversion functions", func() {
 					},
 					RootfsSnapshotSources: []sandboxv1alpha1.RootfsSnapshotSource{
 						{
-							SnapshotKey: "my-snapshot",
-							Container:   "my-container",
+							SnapshotName:  "my-snapshot",
+							ContainerName: "my-container",
 						},
 					},
 				},
 			}
 			resp := sandboxToResponse(sb)
 			Expect(resp.RootfsSnapshotSources).To(HaveLen(1))
-			Expect(resp.RootfsSnapshotSources[0].SnapshotKey).To(Equal("my-snapshot"))
-			Expect(resp.RootfsSnapshotSources[0].Container).To(Equal("my-container"))
+			Expect(resp.RootfsSnapshotSources[0].SnapshotName).To(Equal("my-snapshot"))
+			Expect(resp.RootfsSnapshotSources[0].ContainerName).To(Equal("my-container"))
 		})
 	})
 

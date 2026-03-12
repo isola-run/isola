@@ -73,7 +73,8 @@ func ConditionsToStatus(conditions []metav1.Condition) string {
 	case "Deleting":
 		return "shuttingDown"
 	case "PodFailed", "PodCreationFailed", "InvalidRuntime",
-		"NetworkPolicyFailed", "RootfsSnapshotFailed", "RootfsSnapshotTimeout":
+		"NetworkPolicyFailed", "RootfsSnapshotFailed", "RootfsSnapshotTimeout",
+		"RootfsRestoreConfigurationError":
 		return "failed"
 	case "PodSucceeded", "RootfsSnapshotComplete":
 		return "stopped"

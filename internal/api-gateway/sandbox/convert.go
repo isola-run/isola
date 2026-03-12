@@ -215,8 +215,8 @@ func restRootfsSnapshotSourcesToCRD(sources []RootfsSnapshotSource) []sandboxv1a
 	out := make([]sandboxv1alpha1.RootfsSnapshotSource, len(sources))
 	for i, s := range sources {
 		out[i] = sandboxv1alpha1.RootfsSnapshotSource{
-			SnapshotKey: s.SnapshotKey,
-			Container:   s.Container,
+			SnapshotName:  s.SnapshotName,
+			ContainerName: s.ContainerName,
 		}
 	}
 	return out
@@ -229,8 +229,8 @@ func crdRootfsSnapshotSourcesToREST(sources []sandboxv1alpha1.RootfsSnapshotSour
 	out := make([]RootfsSnapshotSource, len(sources))
 	for i, s := range sources {
 		out[i] = RootfsSnapshotSource{
-			SnapshotKey: s.SnapshotKey,
-			Container:   s.Container,
+			SnapshotName:  s.SnapshotName,
+			ContainerName: s.ContainerName,
 		}
 	}
 	return out

@@ -1,6 +1,6 @@
 {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" }}
-{{- $hostMountPath := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.isolaNodeMount.hostMountPath }}
-{{- $rclone := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.isolaNodeMount.rclone }}
+{{- $hostMountPath := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.hostMountPath }}
+{{- $rclone := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.rclone }}
 {{/*
   Deployed in kube-system because this DaemonSet requires privileged: true
   and Bidirectional mount propagation for FUSE, both forbidden by PSA
@@ -14,24 +14,24 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: {{ include "isola.fullname" . }}-rootfssnapshot-nodemount
+  name: {{ include "isola.fullname" . }}-snapshot-mounter
   namespace: kube-system
   labels:
     {{- include "isola.labels" . | nindent 4 }}
-    app.kubernetes.io/component: rootfssnapshot-nodemount
+    app.kubernetes.io/component: snapshot-mounter
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "isola.name" . }}-rootfssnapshot-nodemount
+      app.kubernetes.io/name: {{ include "isola.name" . }}-snapshot-mounter
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{ include "isola.name" . }}-rootfssnapshot-nodemount
+        app.kubernetes.io/name: {{ include "isola.name" . }}-snapshot-mounter
         app.kubernetes.io/instance: {{ .Release.Name }}
-        app.kubernetes.io/component: rootfssnapshot-nodemount
+        app.kubernetes.io/component: snapshot-mounter
     spec:
-      serviceAccountName: {{ include "isola.operator.nodemountServiceAccountName" . }}
+      serviceAccountName: {{ include "isola.operator.snapshotMounterServiceAccountName" . }}
       priorityClassName: system-node-critical
       terminationGracePeriodSeconds: 60
       {{- include "isola.imagePullSecrets" . | nindent 6 }}

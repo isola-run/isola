@@ -1129,6 +1129,10 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 // validateRootfsRestoreConfig checks that the reconciler is configured for rootfs restore
 // (runtime class + host mount path). Called once before processing individual sources.
 func (r *SandboxReconciler) validateRootfsRestoreConfig(ctx context.Context) error {
+	if r.RootfsSnapshotHostMountPath == "" {
+		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires rootfs snapshot restore to be configured (--rootfssnapshot-host-mount-path)"))
+	}
+
 	if r.RuntimeClassName == "" {
 		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires gVisor runtime (no RuntimeClassName configured)"))
 	}
@@ -1141,25 +1145,22 @@ func (r *SandboxReconciler) validateRootfsRestoreConfig(ctx context.Context) err
 		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires a gVisor runtime (RuntimeClass %q handler is not runsc/gvisor)", r.RuntimeClassName))
 	}
 
-	if r.RootfsSnapshotHostMountPath == "" {
-		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires rootfs snapshot restore to be configured (--rootfssnapshot-host-mount-path)"))
-	}
 	return nil
 }
 
 func (r *SandboxReconciler) injectRootfsRestoreAnnotation(source *sandboxv1alpha1.RootfsSnapshotSource, pod *corev1.Pod) error {
 	// Defense in depth: CRD validation enforces the DNS label pattern, but verify here
-	// since SnapshotKey is used to construct a host file path.
-	if !filepath.IsLocal(source.SnapshotKey) {
-		return reconcile.TerminalError(fmt.Errorf("invalid snapshot key %q: must be a safe local path component", source.SnapshotKey))
+	// as well since SnapshotName is used to construct a host file path.
+	if !filepath.IsLocal(source.SnapshotName) {
+		return reconcile.TerminalError(fmt.Errorf("invalid snapshot name %q: must be a safe local path component", source.SnapshotName))
 	}
 
-	containerName, err := resolveRestoreContainerName(pod, source.Container)
+	containerName, err := resolveRestoreContainerName(pod, source.ContainerName)
 	if err != nil {
 		return reconcile.TerminalError(err)
 	}
 
-	tarPath := fmt.Sprintf("%s/%s.tar", r.RootfsSnapshotHostMountPath, source.SnapshotKey)
+	tarPath := fmt.Sprintf("%s/%s.tar", r.RootfsSnapshotHostMountPath, source.SnapshotName)
 	annotationKey := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", containerName)
 	pod.Annotations[annotationKey] = tarPath
 	return nil
@@ -1168,14 +1169,13 @@ func (r *SandboxReconciler) injectRootfsRestoreAnnotation(source *sandboxv1alpha
 func appendSnapshotFailureHint(message string, sources []sandboxv1alpha1.RootfsSnapshotSource) string {
 	keys := make([]string, len(sources))
 	for i, s := range sources {
-		keys[i] = s.SnapshotKey
+		keys[i] = s.SnapshotName
 	}
 	return fmt.Sprintf("%s (rootfs restore from snapshot(s) %s was requested — verify the snapshot exists and the FUSE mount is healthy on the node)",
 		message, strings.Join(keys, ", "))
 }
 
 // resolveRestoreContainerName determines which container to restore.
-// The sandbox-sidecar is in InitContainers, so pod.Spec.Containers only has user containers.
 func resolveRestoreContainerName(pod *corev1.Pod, containerName string) (string, error) {
 	userContainers := pod.Spec.Containers
 

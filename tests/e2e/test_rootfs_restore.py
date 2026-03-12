@@ -31,19 +31,19 @@ class TestRootfsSnapshotSourcesField:
     def test_create_response_includes_rootfs_snapshot_sources(
         self, sandbox_factory: ..., isola_client: Isola
     ) -> None:
-        sb = sandbox_factory(snapshot="nonexistent-snap")
+        sb = sandbox_factory(rootfs_snapshot_source="nonexistent-snap")
         assert sb.rootfs_snapshot_sources is not None
         assert len(sb.rootfs_snapshot_sources) == 1
-        assert sb.rootfs_snapshot_sources[0].snapshot_key == "nonexistent-snap"
+        assert sb.rootfs_snapshot_sources[0].snapshot_name == "nonexistent-snap"
 
     def test_get_response_includes_rootfs_snapshot_sources(
         self, sandbox_factory: ..., isola_client: Isola
     ) -> None:
-        sb = sandbox_factory(snapshot="nonexistent-snap")
+        sb = sandbox_factory(rootfs_snapshot_source="nonexistent-snap")
         fetched = isola_client.sandboxes.get(sb.id)
         assert fetched.rootfs_snapshot_sources is not None
         assert len(fetched.rootfs_snapshot_sources) == 1
-        assert fetched.rootfs_snapshot_sources[0].snapshot_key == "nonexistent-snap"
+        assert fetched.rootfs_snapshot_sources[0].snapshot_name == "nonexistent-snap"
 
     def test_create_without_snapshot_has_no_sources(
         self, session_sandbox: Sandbox
@@ -54,7 +54,7 @@ class TestRootfsSnapshotSourcesField:
     def test_sandbox_with_nonexistent_snapshot_fails(
         self, sandbox_factory: ..., isola_client: Isola
     ) -> None:
-        sb = sandbox_factory(snapshot="does-not-exist")
+        sb = sandbox_factory(rootfs_snapshot_source="does-not-exist")
         failed = wait_for_status(isola_client, sb.id, SandboxStatus.FAILED, timeout=60)
         assert failed.status == SandboxStatus.FAILED
 
@@ -72,17 +72,17 @@ class TestRootfsRestoreWorkflow:
         assert result.exit_code == 0
 
         # 2. Create a RootfsSnapshot CR via kubectl
-        snapshot_key = f"e2e-restore-{sb.id}"
+        snapshot_name = f"e2e-restore-{sb.id}"
         snapshot_cr = {
             "apiVersion": "sandbox.isola.run/v1alpha1",
             "kind": "RootfsSnapshot",
             "metadata": {
-                "name": snapshot_key,
+                "name": snapshot_name,
                 "namespace": "isola-sandboxes",
             },
             "spec": {
                 "sandboxName": sb.id,
-                "snapshotName": snapshot_key,
+                "snapshotName": snapshot_name,
                 "ttlSecondsAfterFinished": 300,
             },
         }
@@ -96,10 +96,10 @@ class TestRootfsRestoreWorkflow:
         )
 
         # 3. Wait for snapshot to complete
-        _wait_for_snapshot_complete(snapshot_key, timeout=120)
+        _wait_for_snapshot_complete(snapshot_name, timeout=120)
 
         # 4. Create a new sandbox restoring from the snapshot
-        restored = sandbox_factory(snapshot=snapshot_key)
+        restored = sandbox_factory(rootfs_snapshot_source=snapshot_name)
         restored_running = wait_for_running(isola_client, restored.id)
 
         # 5. Verify the restored sandbox has the marker file
@@ -110,7 +110,7 @@ class TestRootfsRestoreWorkflow:
         # 6. Verify the rootfs_snapshot_sources property
         assert restored_running.rootfs_snapshot_sources is not None
         assert len(restored_running.rootfs_snapshot_sources) == 1
-        assert restored_running.rootfs_snapshot_sources[0].snapshot_key == snapshot_key
+        assert restored_running.rootfs_snapshot_sources[0].snapshot_name == snapshot_name
 
 
 def _wait_for_snapshot_complete(snapshot_name: str, timeout: float = 120) -> None:

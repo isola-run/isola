@@ -83,8 +83,8 @@ class ContainerInfo(IsolaModel):
 
 
 class RootfsSnapshotSource(IsolaModel):
-    snapshot_key: str
-    container: str | None = None
+    snapshot_name: str
+    container_name: str | None = None
 
 
 class PodTemplate(IsolaModel):

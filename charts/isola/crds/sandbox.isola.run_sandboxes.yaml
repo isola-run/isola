@@ -121,16 +121,16 @@ spec:
                   description: RootfsSnapshotSource specifies a rootfs snapshot to
                     restore into a container at creation time.
                   properties:
-                    container:
+                    containerName:
                       description: |-
-                        Container is the name of the container to apply the rootfs restore to.
+                        ContainerName is the name of the container to apply the rootfs restore to.
                         If omitted and the sandbox has exactly one user container, that container is used.
                         Required when the sandbox has multiple user containers.
                       minLength: 1
                       type: string
-                    snapshotKey:
+                    snapshotName:
                       description: |-
-                        SnapshotKey is the storage key of the rootfs snapshot to restore from.
+                        SnapshotName is the name of the rootfs snapshot to restore from.
                         This matches the snapshotName field from the RootfsSnapshot CR that created it.
                         Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
                       maxLength: 63
@@ -138,14 +138,14 @@ spec:
                       pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
                   required:
-                  - snapshotKey
+                  - snapshotName
                   type: object
                 type: array
                 x-kubernetes-list-type: atomic
                 x-kubernetes-validations:
-                - message: container is required when multiple rootfsSnapshotSources
+                - message: containerName is required when multiple rootfsSnapshotSources
                     are specified
-                  rule: self.size() <= 1 || self.all(s, s.container != '')
+                  rule: self.size() <= 1 || self.all(s, s.containerName != '')
               shutdownPolicy:
                 description: ShutdownPolicy defines what to do when the sandbox ends
                   (defaults to Delete if unspecified)

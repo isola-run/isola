@@ -39,10 +39,10 @@ def _sandbox_path(sandbox_id: str) -> str:
     return f"/sandboxes/{quote(sandbox_id, safe='')}"
 
 
-def _build_rootfs_snapshot_sources(snapshot: str | None) -> list[RootfsSnapshotSource] | None:
-    if snapshot is None:
+def _build_rootfs_snapshot_sources(rootfs_snapshot_source: str | None) -> list[RootfsSnapshotSource] | None:
+    if rootfs_snapshot_source is None:
         return None
-    return [RootfsSnapshotSource(snapshot_key=snapshot)]
+    return [RootfsSnapshotSource(snapshot_name=rootfs_snapshot_source)]
 
 
 def _build_resources(cpu: str | None, memory: str | None, ephemeral_storage: str | None) -> ResourcesSpec | None:
@@ -68,7 +68,7 @@ class Sandboxes:
         ephemeral_storage: str | None = None,
         timeout: int | None = None,
         network: NetworkSpec | None = None,
-        snapshot: str | None = None,
+        rootfs_snapshot_source: str | None = None,
     ) -> Sandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -82,7 +82,7 @@ class Sandboxes:
             ),
             timeout=timeout,
             network=network,
-            rootfs_snapshot_sources=_build_rootfs_snapshot_sources(snapshot),
+            rootfs_snapshot_sources=_build_rootfs_snapshot_sources(rootfs_snapshot_source),
         )
 
         data = self._api.request_model(
@@ -117,7 +117,7 @@ class AsyncSandboxes:
         ephemeral_storage: str | None = None,
         timeout: int | None = None,
         network: NetworkSpec | None = None,
-        snapshot: str | None = None,
+        rootfs_snapshot_source: str | None = None,
     ) -> AsyncSandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -131,7 +131,7 @@ class AsyncSandboxes:
             ),
             timeout=timeout,
             network=network,
-            rootfs_snapshot_sources=_build_rootfs_snapshot_sources(snapshot),
+            rootfs_snapshot_sources=_build_rootfs_snapshot_sources(rootfs_snapshot_source),
         )
 
         data = await self._api.request_model(

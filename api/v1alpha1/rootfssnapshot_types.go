@@ -33,10 +33,6 @@ const (
 const (
 	ReasonRootfsSnapshotSucceeded = "Succeeded"
 	ReasonRootfsSnapshotFailed    = "Failed"
-
-	// RuntimeSupported condition reasons
-	ReasonRuntimeSupported    = "Supported"
-	ReasonRuntimeNotSupported = "NotSupported"
 )
 
 // RootfsSnapshotSpec defines the desired state of RootfsSnapshot
@@ -48,7 +44,7 @@ type RootfsSnapshotSpec struct {
 	SandboxName string `json:"sandboxName"`
 
 	// SnapshotName is the name used for the snapshot storage key.
-	// This is the value callers must pass as rootfsSnapshotSources[].snapshotKey to restore from this snapshot.
+	// This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
 	// The SnapshotName validation is crucial as paths may be constructed from it.
 	// +required
 	// +kubebuilder:validation:MinLength=1
@@ -56,10 +52,10 @@ type RootfsSnapshotSpec struct {
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	SnapshotName string `json:"snapshotName"`
 
-	// Container is the name of the container to snapshot.
+	// ContainerName is the name of the container to snapshot.
 	// If empty, defaults to the first container in the sandbox pod.
 	// +optional
-	Container string `json:"container,omitempty"`
+	ContainerName string `json:"containerName,omitempty"`
 
 	// ActiveDeadlineSeconds specifies the duration in seconds for the snapshot job.
 	// If the job does not complete within this time, it will be terminated.

@@ -72,9 +72,9 @@ spec:
                 format: int64
                 minimum: 1
                 type: integer
-              container:
+              containerName:
                 description: |-
-                  Container is the name of the container to snapshot.
+                  ContainerName is the name of the container to snapshot.
                   If empty, defaults to the first container in the sandbox pod.
                 type: string
               sandboxName:
@@ -86,7 +86,7 @@ spec:
               snapshotName:
                 description: |-
                   SnapshotName is the name used for the snapshot storage key.
-                  This is the value callers must pass as rootfsSnapshotSources[].snapshotKey to restore from this snapshot.
+                  This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
                   The SnapshotName validation is crucial as paths may be constructed from it.
                 maxLength: 63
                 minLength: 1

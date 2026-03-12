@@ -169,8 +169,8 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	var containerName string
-	if snap.Spec.Container != "" {
-		containerName = snap.Spec.Container
+	if snap.Spec.ContainerName != "" {
+		containerName = snap.Spec.ContainerName
 		targetContainerInPod := slices.ContainsFunc(sandboxPod.Spec.Containers, func(c corev1.Container) bool {
 			return c.Name == containerName
 		})
