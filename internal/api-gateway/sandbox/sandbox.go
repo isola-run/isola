@@ -45,6 +45,7 @@ type ContainerSpec struct {
 }
 
 type PodTemplate struct {
+	// todo benl: list of containers?
 	Container ContainerSpec `json:"container" required:"true" doc:"Primary sandbox container"`
 }
 
@@ -52,7 +53,7 @@ type CreateSandboxRequest struct {
 	PodTemplate           PodTemplate            `json:"podTemplate" required:"true" doc:"Pod template"`
 	ActiveDeadlineSeconds *int64                 `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
 	Network               *NetworkSpec           `json:"network,omitempty" doc:"Network isolation config"`
-	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" doc:"Rootfs snapshots to restore into containers at creation time"`
+	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" doc:"Rootfs snapshots to restore into containers at creation time. Only overlay rootfs changes are captured, separate mounts like /tmp are excluded."`
 }
 
 type ResourcesSpec struct {
@@ -74,8 +75,8 @@ type NetworkSpec struct {
 }
 
 type RootfsSnapshotSource struct {
-	SnapshotKey string `json:"snapshotKey" required:"true" minLength:"1" doc:"Storage key of the rootfs snapshot to restore from"`
-	Container   string `json:"container,omitempty" doc:"Container to restore (defaults to sole container)"`
+	SnapshotKey string `json:"snapshotKey" required:"true" minLength:"1" doc:"Storage key of the rootfs snapshot to restore from. Only the overlay rootfs upper layer is captured, separate mounts like /tmp (gVisor internal tmpfs) are excluded."`
+	Container   string `json:"container,omitempty" doc:"Container to restore. If empty and there is only one container, that container will be used. Required if there are multiple containers."`
 }
 
 type GetSandboxInput struct {
@@ -116,7 +117,7 @@ type SandboxResponse struct {
 	PodTemplate           PodTemplateInfo        `json:"podTemplate" doc:"Pod template"`
 	ActiveDeadlineSeconds *int64                 `json:"activeDeadlineSeconds,omitempty" doc:"Max lifetime in seconds"`
 	Network               *NetworkSpec           `json:"network,omitempty" doc:"Network isolation config"`
-	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" doc:"Rootfs snapshot restore configuration"`
+	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" doc:"Rootfs snapshot restore configuration. Only overlay rootfs changes are captured, separate mounts like /tmp are excluded."`
 	Status                string                 `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
 	CreationTimestamp     string                 `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }

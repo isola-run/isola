@@ -68,7 +68,7 @@ class TestRootfsRestoreWorkflow:
         # 1. Create a sandbox and write a marker file
         sb = sandbox_factory()
         running = wait_for_running(isola_client, sb.id)
-        result = running.commands.run("sh", "-c", "echo 'restored-data-marker' > /tmp/restore-test.txt")
+        result = running.commands.run("sh", "-c", "echo 'restored-data-marker' > /root/restore-test.txt")
         assert result.exit_code == 0
 
         # 2. Create a RootfsSnapshot CR via kubectl
@@ -86,6 +86,7 @@ class TestRootfsRestoreWorkflow:
                 "ttlSecondsAfterFinished": 300,
             },
         }
+        # todo benl: remove once we have a client method for this
         subprocess.run(
             ["kubectl", "apply", "-f", "-"],
             input=json.dumps(snapshot_cr),
@@ -102,7 +103,7 @@ class TestRootfsRestoreWorkflow:
         restored_running = wait_for_running(isola_client, restored.id)
 
         # 5. Verify the restored sandbox has the marker file
-        read_result = restored_running.commands.run("cat", "/tmp/restore-test.txt")
+        read_result = restored_running.commands.run("cat", "/root/restore-test.txt")
         assert read_result.exit_code == 0
         assert "restored-data-marker" in read_result.stdout
 

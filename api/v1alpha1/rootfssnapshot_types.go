@@ -117,6 +117,11 @@ type RootfsSnapshotStatus struct {
 
 // RootfsSnapshot represents a request to snapshot a sandbox's root filesystem.
 // The controller creates a Job that uses gvisor's runsc to tar the overlay2 upper layer.
+//
+// Only changes to the overlay rootfs are captured. Files written to separate mounts
+// (e.g. /tmp, which gVisor mounts as an internal tmpfs for performance) are NOT included
+// in the snapshot. To persist data across snapshots, write to directories on the root
+// filesystem such as /root or /home.
 type RootfsSnapshot struct {
 	metav1.TypeMeta `json:",inline"`
 

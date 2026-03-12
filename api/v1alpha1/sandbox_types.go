@@ -147,6 +147,9 @@ type SandboxSpec struct {
 
 	// RootfsSnapshotSources specifies rootfs snapshots to restore into containers at creation time.
 	// Requires gVisor runtime and the rootfs snapshot FUSE mount to be running on the node.
+	// Only the overlay rootfs upper layer is captured/restored — separate mounts like /tmp
+	// (gVisor's internal tmpfs) are excluded. Write data to paths on the root filesystem
+	// (e.g. /root, /home) to ensure it survives snapshot and restore.
 	// +optional
 	// +listType=atomic
 	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(s, s.container != '')",message="container is required when multiple rootfsSnapshotSources are specified"
