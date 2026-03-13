@@ -113,6 +113,46 @@ def test_short_lived_command_sandbox_stops(
     )
 
 
+@pytest.mark.timeout(180)
+def test_crashed_container_sandbox_fails(
+    isola_client: Isola,
+    sandbox_factory,
+) -> None:
+    """A sandbox whose container exits non-zero should transition to failed.
+
+    Verifies that the native sidecar (init container with restartPolicy: Always)
+    does not keep the pod alive in a zombie Running state. The kubelet should
+    tear down the sidecar when all regular containers terminate, and the pod
+    should reach Failed phase.
+    """
+    sb = sandbox_factory(
+        image="alpine:3.21",
+        command=["sh", "-c", "sleep 3; exit 1"],
+    )
+
+    deadline = time.monotonic() + 120
+    last_status = None
+    while time.monotonic() < deadline:
+        try:
+            current = isola_client.sandboxes.get(sb.id)
+            last_status = current.status
+            if last_status == SandboxStatus.FAILED:
+                return
+            if last_status == SandboxStatus.STOPPED:
+                pytest.fail(
+                    f"Sandbox {sb.id} reached 'stopped' but expected 'failed' "
+                    f"(container exited non-zero)"
+                )
+        except NotFoundError:
+            return  # deleted after failing
+        time.sleep(POLL_INTERVAL)
+
+    pytest.fail(
+        f"Sandbox {sb.id} with exit 1 did not reach 'failed' state "
+        f"within 120s (last: {last_status})"
+    )
+
+
 @pytest.mark.timeout(30)
 def test_list_returns_list_not_null(isola_client: Isola) -> None:
     """sandboxes.list() always returns a list, never None."""
