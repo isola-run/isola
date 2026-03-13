@@ -135,7 +135,7 @@ components:
           $ref: "#/components/schemas/PodTemplate"
           description: Pod template
         rootfsSnapshotSources:
-          description: Rootfs snapshots to restore into containers at creation time. Only overlay rootfs changes are captured, separate mounts like /tmp are excluded.
+          description: Rootfs snapshots to restore into containers at creation time. Files on separately-mounted filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included.
           items:
             $ref: "#/components/schemas/RootfsSnapshotSource"
           type:
@@ -346,7 +346,7 @@ components:
           minLength: 1
           type: string
         snapshotName:
-          description: Name of the rootfs snapshot to restore from. Only the overlay rootfs upper layer is captured, separate mounts like /tmp (gVisor internal tmpfs) are excluded.
+          description: Name of the rootfs snapshot to restore from.
           maxLength: 63
           minLength: 1
           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
@@ -381,7 +381,7 @@ components:
           $ref: "#/components/schemas/PodTemplateInfo"
           description: Pod template
         rootfsSnapshotSources:
-          description: Rootfs snapshot restore configuration. Only overlay rootfs changes are captured, separate mounts like /tmp are excluded.
+          description: Rootfs snapshot restore configuration.
           items:
             $ref: "#/components/schemas/RootfsSnapshotSource"
           type:

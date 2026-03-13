@@ -39,10 +39,10 @@ spec:
           RootfsSnapshot represents a request to snapshot a sandbox's root filesystem.
           The controller creates a Job that uses gvisor's runsc to tar the overlay2 upper layer.
 
-          Only changes to the overlay rootfs are captured. Files written to separate mounts
-          (e.g. /tmp, which gVisor mounts as an internal tmpfs for performance) are NOT included
-          in the snapshot. To persist data across snapshots, write to directories on the root
-          filesystem such as /root or /home.
+          Only changes to the overlay rootfs upper layer are captured. Files on separately-mounted
+          filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included.
+          To persist data across snapshots, write to directories on the root filesystem
+          (e.g. /root, /home).
         properties:
           apiVersion:
             description: |-
