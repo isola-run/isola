@@ -50,8 +50,8 @@ import (
 )
 
 const (
-	shutdownGracePeriod        = 30 * time.Second
-	managerShutdownGracePeriod = 25 * time.Second // < shutdownGracePeriod
+	shutdownGracePeriod        = 25 * time.Second // < default k8s terminationGracePeriodSeconds (30 seconds)
+	managerShutdownGracePeriod = 20 * time.Second // < shutdownGracePeriod
 
 	serverReadHeaderTimeout = 10 * time.Second
 	serverReadTimeout       = 30 * time.Second
