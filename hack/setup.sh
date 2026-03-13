@@ -87,7 +87,6 @@ install_gvisor_in_node() {
     "
 
     if ! docker exec "$node" grep -q 'plugins.*containerd.*runtimes.*runsc' /etc/containerd/config.toml 2>/dev/null; then
-        # Create runsc config to enable rootfs tar restore annotation
         docker exec "$node" sh -c 'cat > /etc/containerd/runsc.toml << "TOML"
 [runsc_config]
   allow-rootfs-tar-annotation = "true"
@@ -108,7 +107,6 @@ TOML'
 TOML'
     fi
 
-    # Restart containerd to pick up the new runtime
     docker exec "$node" systemctl restart containerd
 
     if docker exec "$node" runsc --version &>/dev/null; then
