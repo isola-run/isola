@@ -76,6 +76,8 @@ spec:
                 description: |-
                   ContainerName is the name of the container to snapshot.
                   If empty, defaults to the first container in the sandbox pod.
+                maxLength: 63
+                minLength: 1
                 type: string
               sandboxName:
                 description: |-

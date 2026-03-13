@@ -114,6 +114,7 @@ type RootfsSnapshotSource struct {
 	// Required when the sandbox has multiple user containers.
 	// +optional
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
 	ContainerName string `json:"containerName,omitempty"`
 }
 
@@ -154,6 +155,7 @@ type SandboxSpec struct {
 	// survives snapshot and restore.
 	// +optional
 	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(s, s.containerName != '')",message="containerName is required when multiple rootfsSnapshotSources are specified"
 	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName != j.containerName))",message="each rootfsSnapshotSource must target a different container"
 	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty"`

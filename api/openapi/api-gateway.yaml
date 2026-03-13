@@ -138,6 +138,7 @@ components:
           description: Rootfs snapshots to restore into containers at creation time. Files on separately-mounted filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included.
           items:
             $ref: "#/components/schemas/RootfsSnapshotSource"
+          maxItems: 16
           type:
             - array
             - "null"
@@ -343,6 +344,7 @@ components:
       properties:
         containerName:
           description: Container to restore. If empty and there is only one container, that container will be used. Required if there are multiple containers.
+          maxLength: 63
           minLength: 1
           type: string
         snapshotName:

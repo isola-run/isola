@@ -55,6 +55,8 @@ type RootfsSnapshotSpec struct {
 	// ContainerName is the name of the container to snapshot.
 	// If empty, defaults to the first container in the sandbox pod.
 	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
 	ContainerName string `json:"containerName,omitempty"`
 
 	// ActiveDeadlineSeconds specifies the duration in seconds for the snapshot job.
