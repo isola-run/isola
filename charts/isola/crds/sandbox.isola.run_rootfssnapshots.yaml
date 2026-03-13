@@ -183,7 +183,7 @@ spec:
                 type: string
               snapshotKey:
                 description: SnapshotKey is the object key within the bucket (e.g.
-                  "rootfssnapshots/<name>.tar")
+                  "rootfssnapshots/<namespace>/<name>.tar")
                 type: string
               startTime:
                 description: StartTime is when the snapshot job was created

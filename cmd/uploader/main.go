@@ -56,9 +56,10 @@ import (
 )
 
 const (
-	EnvBucketURL    = "ISOLA_BUCKET_URL"
-	EnvSnapshotName = "SNAPSHOT_NAME"
-	EnvLogLevel     = "ISOLA_LOG_LEVEL"
+	EnvBucketURL         = "ISOLA_BUCKET_URL"
+	EnvSnapshotName      = "SNAPSHOT_NAME"
+	EnvSnapshotNamespace = "SNAPSHOT_NAMESPACE"
+	EnvLogLevel          = "ISOLA_LOG_LEVEL"
 
 	// EnvSnapshotFile is the path to the local file to upload
 	EnvSnapshotFile = "SNAPSHOT_FILE"
@@ -86,6 +87,7 @@ func run(logger *slog.Logger) error {
 	bucketURL := os.Getenv(EnvBucketURL)
 	snapshotFile := os.Getenv(EnvSnapshotFile)
 	snapshotName := os.Getenv(EnvSnapshotName)
+	snapshotNamespace := os.Getenv(EnvSnapshotNamespace)
 
 	if bucketURL == "" {
 		logger.Error("missing required environment variable", "var", EnvBucketURL)
@@ -99,6 +101,10 @@ func run(logger *slog.Logger) error {
 		logger.Error("missing required environment variable", "var", EnvSnapshotName)
 		return errMissingEnv(EnvSnapshotName)
 	}
+	if snapshotNamespace == "" {
+		logger.Error("missing required environment variable", "var", EnvSnapshotNamespace)
+		return errMissingEnv(EnvSnapshotNamespace)
+	}
 
 	logger.Info("opening bucket", "url", bucketURL)
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
@@ -108,7 +114,7 @@ func run(logger *slog.Logger) error {
 	}
 	defer func() { _ = bucket.Close() }()
 
-	snapshotKey := snapshotKeyPath(snapshotName)
+	snapshotKey := snapshotKeyPath(snapshotNamespace, snapshotName)
 
 	logger.Info("uploading rootfs snapshot",
 		"file", snapshotFile,
@@ -167,8 +173,8 @@ func run(logger *slog.Logger) error {
 	return nil
 }
 
-func snapshotKeyPath(snapshotName string) string {
-	return "rootfssnapshots/" + snapshotName + ".tar"
+func snapshotKeyPath(namespace, snapshotName string) string {
+	return "rootfssnapshots/" + namespace + "/" + snapshotName + ".tar"
 }
 
 func writeTerminationLog(result snapshot.UploadResult) error {

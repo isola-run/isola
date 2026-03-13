@@ -88,7 +88,7 @@ type RootfsSnapshotStatus struct {
 	// +optional
 	ContainerID string `json:"containerID,omitempty"`
 
-	// SnapshotKey is the object key within the bucket (e.g. "rootfssnapshots/<name>.tar")
+	// SnapshotKey is the object key within the bucket (e.g. "rootfssnapshots/<namespace>/<name>.tar")
 	// +optional
 	SnapshotKey string `json:"snapshotKey,omitempty"`
 

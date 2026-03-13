@@ -144,7 +144,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			// Create job pod with termination message and mark job complete
 			createSnapshotJobPodWithTerminationMessage(ctx, jobName, &snapshotpkg.UploadResult{
-				SnapshotKey:  "rootfssnapshots/" + sandboxName + ".tar",
+				SnapshotKey:  "rootfssnapshots/" + testNamespace + "/" + sandboxName + ".tar",
 				BytesWritten: 1024,
 			})
 			setSnapshotJobComplete(ctx, jobName)

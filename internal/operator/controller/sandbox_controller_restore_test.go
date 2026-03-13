@@ -74,7 +74,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod).NotTo(BeNil())
 			Expect(pod.Annotations).To(HaveKeyWithValue(
 				"dev.gvisor.tar.rootfs.upper.sandbox",
-				"/mnt/isola-snapshots/my-snapshot.tar",
+				"/mnt/isola-snapshots/"+testNamespace+"/my-snapshot.tar",
 			))
 		})
 
@@ -111,7 +111,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod).NotTo(BeNil())
 			Expect(pod.Annotations).To(HaveKeyWithValue(
 				"dev.gvisor.tar.rootfs.upper.my-app",
-				"/mnt/isola-snapshots/snap1.tar",
+				"/mnt/isola-snapshots/"+testNamespace+"/snap1.tar",
 			))
 		})
 

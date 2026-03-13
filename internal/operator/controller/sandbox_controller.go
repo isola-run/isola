@@ -241,7 +241,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			})
 			return err
 		}
-		if err := r.injectRootfsRestoreAnnotations(sandbox.Spec.RootfsSnapshotSources, sandboxPod); err != nil {
+		if err := r.injectRootfsRestoreAnnotations(sandbox.Spec.RootfsSnapshotSources, sandboxPod, sandbox.Namespace); err != nil {
 			_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 				{
 					Type:               SandboxReadyCondition,
@@ -1139,10 +1139,17 @@ func (r *SandboxReconciler) validateRootfsRestoreConfig(ctx context.Context) err
 	return nil
 }
 
-func (r *SandboxReconciler) injectRootfsRestoreAnnotations(sources []sandboxv1alpha1.RootfsSnapshotSource, pod *corev1.Pod) error {
+func (r *SandboxReconciler) injectRootfsRestoreAnnotations(sources []sandboxv1alpha1.RootfsSnapshotSource, pod *corev1.Pod, namespace string) error {
 	containers := make(map[string]struct{}, len(pod.Spec.Containers))
 	for _, c := range pod.Spec.Containers {
 		containers[c.Name] = struct{}{}
+	}
+
+	// Defense in depth: namespace comes from CR metadata (not user input),
+	// but verify it's a safe path component since it's used to construct a host file path.
+	if !filepath.IsLocal(namespace) {
+		return reconcile.TerminalError(fmt.Errorf(
+			"invalid namespace %q: must be a safe local path component", namespace))
 	}
 
 	for _, src := range sources {
@@ -1173,7 +1180,7 @@ func (r *SandboxReconciler) injectRootfsRestoreAnnotations(sources []sandboxv1al
 			return reconcile.TerminalError(fmt.Errorf(
 				"duplicate restore target: container %q", name))
 		}
-		pod.Annotations[key] = fmt.Sprintf("%s/%s.tar", r.RootfsSnapshotHostMountPath, src.SnapshotName)
+		pod.Annotations[key] = fmt.Sprintf("%s/%s/%s.tar", r.RootfsSnapshotHostMountPath, namespace, src.SnapshotName)
 	}
 	return nil
 }
