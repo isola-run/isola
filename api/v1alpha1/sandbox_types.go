@@ -154,6 +154,7 @@ type SandboxSpec struct {
 	// +optional
 	// +listType=atomic
 	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(s, s.containerName != '')",message="containerName is required when multiple rootfsSnapshotSources are specified"
+	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName != j.containerName))",message="each rootfsSnapshotSource must target a different container"
 	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty"`
 }
 

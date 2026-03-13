@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"maps"
 	"path/filepath"
-	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -242,19 +241,17 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			})
 			return err
 		}
-		for i := range sandbox.Spec.RootfsSnapshotSources {
-			if err := r.injectRootfsRestoreAnnotation(&sandbox.Spec.RootfsSnapshotSources[i], sandboxPod); err != nil {
-				_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-					{
-						Type:               SandboxReadyCondition,
-						Status:             metav1.ConditionFalse,
-						Reason:             CondReasonRootfsRestoreConfigError,
-						Message:            err.Error(),
-						ObservedGeneration: sandbox.Generation,
-					},
-				})
-				return err
-			}
+		if err := r.injectRootfsRestoreAnnotations(sandbox.Spec.RootfsSnapshotSources, sandboxPod); err != nil {
+			_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+				{
+					Type:               SandboxReadyCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonRootfsRestoreConfigError,
+					Message:            err.Error(),
+					ObservedGeneration: sandbox.Generation,
+				},
+			})
+			return err
 		}
 	}
 
@@ -567,9 +564,6 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 			reason = CondReasonPodSucceeded
 			message = "Pod completed"
 		}
-		if len(sandbox.Spec.RootfsSnapshotSources) > 0 && reason == CondReasonPodFailed {
-			message = appendSnapshotFailureHint(message, sandbox.Spec.RootfsSnapshotSources)
-		}
 		return metav1.Condition{
 			Type:               SandboxPodReadyCondition,
 			Status:             metav1.ConditionFalse,
@@ -662,9 +656,6 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 		if sandboxPod.Status.Phase == corev1.PodSucceeded {
 			reason = CondReasonPodSucceeded
 			message = "Pod completed"
-		}
-		if len(sandbox.Spec.RootfsSnapshotSources) > 0 && reason == CondReasonPodFailed {
-			message = appendSnapshotFailureHint(message, sandbox.Spec.RootfsSnapshotSources)
 		}
 		return metav1.Condition{
 			Type:               SandboxReadyCondition,
@@ -1148,60 +1139,43 @@ func (r *SandboxReconciler) validateRootfsRestoreConfig(ctx context.Context) err
 	return nil
 }
 
-func (r *SandboxReconciler) injectRootfsRestoreAnnotation(source *sandboxv1alpha1.RootfsSnapshotSource, pod *corev1.Pod) error {
-	// Defense in depth: CRD validation enforces the DNS label pattern, but verify here
-	// as well since SnapshotName is used to construct a host file path.
-	if !filepath.IsLocal(source.SnapshotName) {
-		return reconcile.TerminalError(fmt.Errorf("invalid snapshot name %q: must be a safe local path component", source.SnapshotName))
+func (r *SandboxReconciler) injectRootfsRestoreAnnotations(sources []sandboxv1alpha1.RootfsSnapshotSource, pod *corev1.Pod) error {
+	containers := make(map[string]struct{}, len(pod.Spec.Containers))
+	for _, c := range pod.Spec.Containers {
+		containers[c.Name] = struct{}{}
 	}
 
-	containerName, err := resolveRestoreContainerName(pod, source.ContainerName)
-	if err != nil {
-		return reconcile.TerminalError(err)
-	}
-
-	tarPath := fmt.Sprintf("%s/%s.tar", r.RootfsSnapshotHostMountPath, source.SnapshotName)
-	annotationKey := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", containerName)
-	pod.Annotations[annotationKey] = tarPath
-	return nil
-}
-
-func appendSnapshotFailureHint(message string, sources []sandboxv1alpha1.RootfsSnapshotSource) string {
-	keys := make([]string, len(sources))
-	for i, s := range sources {
-		keys[i] = s.SnapshotName
-	}
-	return fmt.Sprintf("%s (rootfs restore from snapshot(s) %s was requested — verify the snapshot exists and the FUSE mount is healthy on the node)",
-		message, strings.Join(keys, ", "))
-}
-
-// resolveRestoreContainerName determines which container to restore.
-func resolveRestoreContainerName(pod *corev1.Pod, containerName string) (string, error) {
-	userContainers := pod.Spec.Containers
-
-	if containerName != "" {
-		for _, c := range userContainers {
-			if c.Name == containerName {
-				return containerName, nil
+	for _, src := range sources {
+		name := src.ContainerName
+		if name == "" {
+			// CRD validation ensures this only happens with a single source.
+			if len(pod.Spec.Containers) != 1 {
+				return reconcile.TerminalError(fmt.Errorf(
+					"containerName must be specified when sandbox has %d containers", len(pod.Spec.Containers)))
 			}
+			name = pod.Spec.Containers[0].Name
 		}
-		return "", fmt.Errorf("container %q not found in sandbox pod (available: %v)",
-			containerName, containerNames(userContainers))
-	}
 
-	if len(userContainers) == 1 {
-		return userContainers[0].Name, nil
-	}
+		if _, ok := containers[name]; !ok {
+			return reconcile.TerminalError(fmt.Errorf(
+				"container %q not found in sandbox pod", name))
+		}
 
-	return "", fmt.Errorf("container must be specified when sandbox has %d containers", len(userContainers))
-}
+		// Defense in depth: CRD validation enforces the DNS label pattern, but verify here
+		// as well since SnapshotName is used to construct a host file path.
+		if !filepath.IsLocal(src.SnapshotName) {
+			return reconcile.TerminalError(fmt.Errorf(
+				"invalid snapshot name %q: must be a safe local path component", src.SnapshotName))
+		}
 
-func containerNames(containers []corev1.Container) []string {
-	names := make([]string, len(containers))
-	for i, c := range containers {
-		names[i] = c.Name
+		key := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", name)
+		if _, dup := pod.Annotations[key]; dup {
+			return reconcile.TerminalError(fmt.Errorf(
+				"duplicate restore target: container %q", name))
+		}
+		pod.Annotations[key] = fmt.Sprintf("%s/%s.tar", r.RootfsSnapshotHostMountPath, src.SnapshotName)
 	}
-	return names
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

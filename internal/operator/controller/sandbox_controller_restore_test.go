@@ -21,10 +21,8 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 )
@@ -271,53 +269,5 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(cond.Message).To(ContainSubstring("2 containers"))
 		})
 
-		It("should include restore context in pod failure message", func() {
-			runtimeClassName := "gvisor-restore"
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
-
-			reconciler := newTestReconcilerWithRestore(fakeClock, runtimeClassName, "/mnt/isola-snapshots")
-
-			sandboxName := "sb-restore-pod-fail"
-			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
-					{SnapshotName: "my-snap"},
-				}
-			})
-			defer deleteSandbox(ctx, sandboxName)
-
-			podName := sandboxName + "-pod"
-			defer deletePod(ctx, podName)
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, podName)
-			Expect(pod).NotTo(BeNil())
-
-			pod.Status.Phase = corev1.PodFailed
-			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
-				{Name: "sandbox", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1, Reason: "Error"}}},
-			}
-			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
-
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			sandbox := getSandbox(ctx, sandboxName)
-
-			podReadyCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxPodReadyCondition)
-			Expect(podReadyCond).NotTo(BeNil())
-			Expect(podReadyCond.Message).To(ContainSubstring("rootfs restore from snapshot"))
-			Expect(podReadyCond.Message).To(ContainSubstring("my-snap"))
-
-			readyCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
-			Expect(readyCond).NotTo(BeNil())
-			Expect(readyCond.Message).To(ContainSubstring("rootfs restore from snapshot"))
-			Expect(readyCond.Message).To(ContainSubstring("my-snap"))
-		})
 	})
 })
