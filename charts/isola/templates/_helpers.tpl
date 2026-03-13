@@ -230,7 +230,7 @@ RootfsSnapshot service account name (from gvisor rootfssnapshot config)
 {{- if .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.serviceAccount.create -}}
 {{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.serviceAccount.name | default (printf "%s-rootfssnapshot" (include "isola.operator.fullname" .)) -}}
 {{- else -}}
-{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.serviceAccount.name -}}
+{{- default "default" .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
@@ -244,7 +244,7 @@ Snapshot mounter service account name (DaemonSet in kube-system, separate from s
 {{- if $sa.create -}}
 {{- $sa.name | default (printf "%s-snapshot-mounter" (include "isola.operator.fullname" .)) -}}
 {{- else -}}
-{{- $sa.name -}}
+{{- default "default" $sa.name -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
