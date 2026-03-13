@@ -44,112 +44,112 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-      - name: rclone-mount
-        image: {{ include "isola.operator.rootfssnapshotRcloneImage" . }}
-        imagePullPolicy: {{ $rclone.image.pullPolicy }}
-        workingDir: /tmp
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          MOUNT_PATH="{{ $hostMountPath }}"
-          CACHE_PATH="{{ $hostMountPath }}-cache"
+        - name: rclone-mount
+          image: {{ include "isola.operator.rootfssnapshotRcloneImage" . }}
+          imagePullPolicy: {{ $rclone.image.pullPolicy }}
+          workingDir: /tmp
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              MOUNT_PATH="{{ $hostMountPath }}"
+              CACHE_PATH="{{ $hostMountPath }}-cache"
 
-          # Clean up stale FUSE mount from previous pod (if any).
-          if mountpoint -q "$MOUNT_PATH" 2>/dev/null; then
-            echo "Cleaning up stale mount at $MOUNT_PATH"
-            fusermount3 -u -z "$MOUNT_PATH" 2>/dev/null || \
-              umount -l "$MOUNT_PATH" 2>/dev/null || true
-          fi
+              # Clean up stale FUSE mount from previous pod (if any).
+              if mountpoint -q "$MOUNT_PATH" 2>/dev/null; then
+                echo "Cleaning up stale mount at $MOUNT_PATH"
+                fusermount3 -u -z "$MOUNT_PATH" 2>/dev/null || \
+                  umount -l "$MOUNT_PATH" 2>/dev/null || true
+              fi
 
-          mkdir -p "$MOUNT_PATH" "$CACHE_PATH"
+              mkdir -p "$MOUNT_PATH" "$CACHE_PATH"
 
-          # Parse gocloud.dev bucket URL into rclone env vars.
-          # Using env vars avoids connection string parsing issues with URLs
-          # containing :// (rclone uses : as a delimiter in connection strings).
-          SCHEME=$(echo "$ISOLA_BUCKET_URL" | sed 's|://.*||')
-          BUCKET=$(echo "$ISOLA_BUCKET_URL" | sed 's|^[a-z0-9]*://||; s|?.*||')
-          PARAMS=$(echo "$ISOLA_BUCKET_URL" | grep -o '?.*' | sed 's|^?||' || true)
+              # Parse gocloud.dev bucket URL into rclone env vars.
+              # Using env vars avoids connection string parsing issues with URLs
+              # containing :// (rclone uses : as a delimiter in connection strings).
+              SCHEME=$(echo "$ISOLA_BUCKET_URL" | sed 's|://.*||')
+              BUCKET=$(echo "$ISOLA_BUCKET_URL" | sed 's|^[a-z0-9]*://||; s|?.*||')
+              PARAMS=$(echo "$ISOLA_BUCKET_URL" | grep -o '?.*' | sed 's|^?||' || true)
 
-          case "$SCHEME" in
-            s3)
-              export RCLONE_S3_PROVIDER="Other"
-              for param in $(echo "$PARAMS" | tr '&' ' '); do
-                key=$(echo "$param" | cut -d= -f1)
-                val=$(echo "$param" | cut -d= -f2-)
-                case "$key" in
-                  region) export RCLONE_S3_REGION="$val" ;;
-                  endpoint) export RCLONE_S3_ENDPOINT="$val" ;;
-                  use_path_style) [ "$val" = "true" ] && export RCLONE_S3_FORCE_PATH_STYLE="true" ;;
-                esac
-              done
-              REMOTE=":s3:${BUCKET}/rootfssnapshots/"
-              ;;
-            gs)  REMOTE=":gcs:${BUCKET}/rootfssnapshots/" ;;
-            azblob) REMOTE=":azureblob:${BUCKET}/rootfssnapshots/" ;;
-            *) echo "Unsupported bucket scheme: $SCHEME" >&2; exit 1 ;;
-          esac
+              case "$SCHEME" in
+                s3)
+                  export RCLONE_S3_PROVIDER="Other"
+                  for param in $(echo "$PARAMS" | tr '&' ' '); do
+                    key=$(echo "$param" | cut -d= -f1)
+                    val=$(echo "$param" | cut -d= -f2-)
+                    case "$key" in
+                      region) export RCLONE_S3_REGION="$val" ;;
+                      endpoint) export RCLONE_S3_ENDPOINT="$val" ;;
+                      use_path_style) [ "$val" = "true" ] && export RCLONE_S3_FORCE_PATH_STYLE="true" ;;
+                    esac
+                  done
+                  REMOTE=":s3:${BUCKET}/rootfssnapshots/"
+                  ;;
+                gs)  REMOTE=":gcs:${BUCKET}/rootfssnapshots/" ;;
+                azblob) REMOTE=":azureblob:${BUCKET}/rootfssnapshots/" ;;
+                *) echo "Unsupported bucket scheme: $SCHEME" >&2; exit 1 ;;
+              esac
 
-          echo "Mounting $REMOTE at $MOUNT_PATH"
+              echo "Mounting $REMOTE at $MOUNT_PATH"
 
-          # Rclone runs inside the container. The parent directory is mounted
-          # with Bidirectional propagation, so the FUSE child mount at
-          # $MOUNT_PATH propagates to the host for gVisor (runsc) to access.
-          exec rclone mount \
-            --allow-other \
-            --allow-non-empty \
-            --read-only \
-            --vfs-cache-mode full \
-            --cache-dir "$CACHE_PATH" \
-            --vfs-cache-max-size "$CACHE_MAX_SIZE" \
-            --vfs-cache-max-age "$CACHE_MAX_AGE" \
-            --vfs-read-ahead 128M \
-            --no-modtime \
-            --dir-cache-time "$DIR_CACHE_TIME" \
-            --attr-timeout "$DIR_CACHE_TIME" \
-            --log-level INFO \
-            "$REMOTE" "$MOUNT_PATH"
-        env:
-        - name: ISOLA_BUCKET_URL
-          value: {{ include "isola.operator.storageBucketUrl" . | quote }}
-        - name: CACHE_MAX_SIZE
-          value: {{ $rclone.cache.maxSize | quote }}
-        - name: CACHE_MAX_AGE
-          value: {{ $rclone.cache.maxAge | quote }}
-        - name: DIR_CACHE_TIME
-          value: {{ $rclone.cache.dirCacheTime | default "1m" | quote }}
-        {{- $credentialSecretName := include "isola.operator.rootfssnapshotCredentialSecretName" . }}
-        {{- if $credentialSecretName }}
-        envFrom:
-        - secretRef:
-            name: {{ $credentialSecretName }}
-        {{- end }}
-        # Privileged is required for /dev/fuse access (no K8s-native alternative).
-        securityContext:
-          privileged: true
-        resources:
-          {{- toYaml $rclone.resources | nindent 10 }}
-        volumeMounts:
-        - name: host-mount-parent
-          mountPath: {{ dir $hostMountPath }}
-          mountPropagation: Bidirectional
-        livenessProbe:
-          exec:
-            command: ["mountpoint", "-q", "{{ $hostMountPath }}"]
-          timeoutSeconds: 10
-          periodSeconds: 30
-        readinessProbe:
-          exec:
-            command: ["mountpoint", "-q", "{{ $hostMountPath }}"]
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          timeoutSeconds: 10
-        lifecycle:
-          preStop:
+              # Rclone runs inside the container. The parent directory is mounted
+              # with Bidirectional propagation, so the FUSE child mount at
+              # $MOUNT_PATH propagates to the host for gVisor (runsc) to access.
+              exec rclone mount \
+                --allow-other \
+                --allow-non-empty \
+                --read-only \
+                --vfs-cache-mode full \
+                --cache-dir "$CACHE_PATH" \
+                --vfs-cache-max-size "$CACHE_MAX_SIZE" \
+                --vfs-cache-max-age "$CACHE_MAX_AGE" \
+                --vfs-read-ahead 128M \
+                --no-modtime \
+                --dir-cache-time "$DIR_CACHE_TIME" \
+                --attr-timeout "$DIR_CACHE_TIME" \
+                --log-level INFO \
+                "$REMOTE" "$MOUNT_PATH"
+          env:
+            - name: ISOLA_BUCKET_URL
+              value: {{ include "isola.operator.storageBucketUrl" . | quote }}
+            - name: CACHE_MAX_SIZE
+              value: {{ $rclone.cache.maxSize | quote }}
+            - name: CACHE_MAX_AGE
+              value: {{ $rclone.cache.maxAge | quote }}
+            - name: DIR_CACHE_TIME
+              value: {{ $rclone.cache.dirCacheTime | default "1m" | quote }}
+          {{- $credentialSecretName := include "isola.operator.rootfssnapshotCredentialSecretName" . }}
+          {{- if $credentialSecretName }}
+          envFrom:
+            - secretRef:
+                name: {{ $credentialSecretName }}
+          {{- end }}
+          # Privileged is required for /dev/fuse access (no K8s-native alternative).
+          securityContext:
+            privileged: true
+          resources:
+            {{- toYaml $rclone.resources | nindent 12 }}
+          volumeMounts:
+            - name: host-mount-parent
+              mountPath: {{ dir $hostMountPath }}
+              mountPropagation: Bidirectional
+          livenessProbe:
             exec:
-              command: ["/bin/sh", "-c", "fusermount3 -u -z {{ $hostMountPath }} || umount -l {{ $hostMountPath }}"]
+              command: ["mountpoint", "-q", "{{ $hostMountPath }}"]
+            timeoutSeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command: ["mountpoint", "-q", "{{ $hostMountPath }}"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "fusermount3 -u -z {{ $hostMountPath }} || umount -l {{ $hostMountPath }}"]
       volumes:
-      - name: host-mount-parent
-        hostPath:
-          path: {{ dir $hostMountPath }}
-          type: Directory
+        - name: host-mount-parent
+          hostPath:
+            path: {{ dir $hostMountPath }}
+            type: Directory
 {{- end }}

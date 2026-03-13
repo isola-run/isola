@@ -2,7 +2,7 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: sandbox-allow-internet-egress
+  name: {{ include "isola.fullname" . }}-sandbox-allow-internet-egress
   namespace: {{ include "isola.sandboxNamespace" . }}
   labels:
     {{- include "isola.operator.labels" . | nindent 4 }}

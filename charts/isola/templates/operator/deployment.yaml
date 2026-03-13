@@ -27,82 +27,82 @@ spec:
           type: RuntimeDefault
       terminationGracePeriodSeconds: 10
       containers:
-      - name: manager
-        image: {{ include "isola.operator.image" . }}
-        imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
-        command:
-        - /operator
-        args:
-        - --leader-elect
-        - --health-probe-bind-address=:8081
-        - "--metrics-bind-address=:{{ .Values.operator.metrics.port }}"
-        {{- $runtimeClass := include "isola.operator.runtimeClassName" . }}
-        {{- if $runtimeClass }}
-        - "--runtime-class={{ $runtimeClass }}"
-        {{- end }}
-        - "--log-level={{ .Values.operator.logging.level }}"
-        {{- if .Values.operator.logging.devMode }}
-        - --dev-mode
-        {{- end }}
-        {{- if .Values.operator.sandboxPriorityClassName }}
-        - "--priority-class={{ .Values.operator.sandboxPriorityClassName }}"
-        {{- end }}
-        {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" }}
-        - --rootfssnapshot-enabled
-        {{- end }}
-        {{- if eq .Values.operator.sandboxRuntime.type "gvisor" }}
-        {{- $bucketUrl := include "isola.operator.storageBucketUrl" . }}
-        {{- if $bucketUrl }}
-        - "--rootfssnapshot-bucket-url={{ $bucketUrl }}"
-        {{- $credentialSecretName := include "isola.operator.rootfssnapshotCredentialSecretName" . }}
-        {{- if $credentialSecretName }}
-        - "--rootfssnapshot-credential-secret={{ $credentialSecretName }}"
-        {{- end }}
-        {{- end }}
-        - "--rootfssnapshot-service-account={{ include "isola.operator.rootfssnapshotServiceAccountName" . }}"
-        - "--gvisor-runsc-path={{ include "isola.operator.gvisorRunscPath" . }}"
-        - "--gvisor-runsc-root={{ include "isola.operator.gvisorRunscRoot" . }}"
-        {{- $hostMountPath := include "isola.operator.rootfssnapshotHostMountPath" . }}
-        {{- if $hostMountPath }}
-        - "--rootfssnapshot-host-mount-path={{ $hostMountPath }}"
-        {{- end }}
-        {{- end }}
-        {{- $imagePullSecretNames := include "isola.imagePullSecretNames" . }}
-        {{- if $imagePullSecretNames }}
-        - "--image-pull-secrets={{ $imagePullSecretNames }}"
-        {{- end }}
-        env:
-        - name: ISOLA_SANDBOX_SIDECAR_IMAGE
-          value: "{{ include "isola.operator.sandboxSidecarImage" . }}"
-        - name: ISOLA_UPLOADER_IMAGE
-          value: "{{ include "isola.operator.uploaderImage" . }}"
-        ports:
-        - name: health
-          containerPort: 8081
-          protocol: TCP
-        - name: metrics
-          containerPort: {{ .Values.operator.metrics.port }}
-          protocol: TCP
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: health
-          initialDelaySeconds: 15
-          periodSeconds: 20
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: health
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        resources:
-          {{- toYaml .Values.operator.resources | nindent 10 }}
-        securityContext:
-          capabilities:
-            drop:
-            - ALL
-          readOnlyRootFilesystem: true
-          allowPrivilegeEscalation: false
+        - name: manager
+          image: {{ include "isola.operator.image" . }}
+          imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          command:
+            - /operator
+          args:
+            - --leader-elect
+            - --health-probe-bind-address=:8081
+            - "--metrics-bind-address=:{{ .Values.operator.metrics.port }}"
+            {{- $runtimeClass := include "isola.operator.runtimeClassName" . }}
+            {{- if $runtimeClass }}
+            - "--runtime-class={{ $runtimeClass }}"
+            {{- end }}
+            - "--log-level={{ .Values.operator.logging.level }}"
+            {{- if .Values.operator.logging.devMode }}
+            - --dev-mode
+            {{- end }}
+            {{- if .Values.operator.sandboxPriorityClassName }}
+            - "--priority-class={{ .Values.operator.sandboxPriorityClassName }}"
+            {{- end }}
+            {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" }}
+            - --rootfssnapshot-enabled
+            {{- end }}
+            {{- if eq .Values.operator.sandboxRuntime.type "gvisor" }}
+            {{- $bucketUrl := include "isola.operator.storageBucketUrl" . }}
+            {{- if $bucketUrl }}
+            - "--rootfssnapshot-bucket-url={{ $bucketUrl }}"
+            {{- $credentialSecretName := include "isola.operator.rootfssnapshotCredentialSecretName" . }}
+            {{- if $credentialSecretName }}
+            - "--rootfssnapshot-credential-secret={{ $credentialSecretName }}"
+            {{- end }}
+            {{- end }}
+            - "--rootfssnapshot-service-account={{ include "isola.operator.rootfssnapshotServiceAccountName" . }}"
+            - "--gvisor-runsc-path={{ include "isola.operator.gvisorRunscPath" . }}"
+            - "--gvisor-runsc-root={{ include "isola.operator.gvisorRunscRoot" . }}"
+            {{- $hostMountPath := include "isola.operator.rootfssnapshotHostMountPath" . }}
+            {{- if $hostMountPath }}
+            - "--rootfssnapshot-host-mount-path={{ $hostMountPath }}"
+            {{- end }}
+            {{- end }}
+            {{- $imagePullSecretNames := include "isola.imagePullSecretNames" . }}
+            {{- if $imagePullSecretNames }}
+            - "--image-pull-secrets={{ $imagePullSecretNames }}"
+            {{- end }}
+          env:
+            - name: ISOLA_SANDBOX_SIDECAR_IMAGE
+              value: "{{ include "isola.operator.sandboxSidecarImage" . }}"
+            - name: ISOLA_UPLOADER_IMAGE
+              value: "{{ include "isola.operator.uploaderImage" . }}"
+          ports:
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.operator.metrics.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.operator.resources | nindent 12 }}
+          securityContext:
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
       {{- with .Values.operator.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

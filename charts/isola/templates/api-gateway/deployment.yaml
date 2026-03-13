@@ -30,9 +30,9 @@ spec:
           image: {{ include "isola.apiGateway.image" . }}
           imagePullPolicy: {{ .Values.apiGateway.image.pullPolicy }}
           args:
-            - -log-level={{ .Values.apiGateway.logging.level }}
+            - "--log-level={{ .Values.apiGateway.logging.level }}"
             {{- if .Values.apiGateway.logging.devMode }}
-            - --dev
+            - --dev-mode
             {{- end }}
           ports:
             - name: http

@@ -127,6 +127,7 @@ spec:
                         ContainerName is the name of the container to apply the rootfs restore to.
                         If omitted and the sandbox has exactly one user container, that container is used.
                         Required when the sandbox has multiple user containers.
+                      maxLength: 63
                       minLength: 1
                       type: string
                     snapshotName:
@@ -141,6 +142,7 @@ spec:
                   required:
                   - snapshotName
                   type: object
+                maxItems: 16
                 type: array
                 x-kubernetes-list-type: atomic
                 x-kubernetes-validations:

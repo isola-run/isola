@@ -2,7 +2,7 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: sandbox-default-deny
+  name: {{ include "isola.fullname" . }}-sandbox-default-deny
   namespace: {{ include "isola.sandboxNamespace" . }}
   labels:
     {{- include "isola.operator.labels" . | nindent 4 }}

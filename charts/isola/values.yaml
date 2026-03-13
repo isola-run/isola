@@ -67,6 +67,7 @@ operator:
       repository: sandbox-sidecar
       tag: ""  # Defaults to Chart.appVersion
       digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+      pullPolicy: IfNotPresent
 
   # Sandbox runtime configuration
   # Selects which runtime to use for sandbox pods and configures runtime-specific features.
