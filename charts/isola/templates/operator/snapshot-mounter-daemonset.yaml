@@ -94,7 +94,9 @@ spec:
               # Rclone runs inside the container. The parent directory is mounted
               # with Bidirectional propagation, so the FUSE child mount at
               # $MOUNT_PATH propagates to the host for gVisor (runsc) to access.
+              # rc remote control is disabled by default, but make it explicit here for clarity and security.
               exec rclone mount \
+                --rc=false \
                 --allow-other \
                 --allow-non-empty \
                 --read-only \
