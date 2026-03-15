@@ -51,6 +51,11 @@ operator:
               maxSize: "2Gi"
               maxAge: "1h"
               dirCacheTime: "5s"
+          mounter:
+            image:
+              registry: ""
+              repository: snapshot-mounter
+              tag: "dev"
 
 apiGateway:
   image:

@@ -259,10 +259,17 @@ RootfsSnapshot host mount path for restore (only when rootfssnapshot enabled)
 {{- end }}
 
 {{/*
-rclone image for rootfssnapshot FUSE DaemonSet
+rclone image for rootfssnapshot NFS server container (unprivileged)
 */}}
 {{- define "isola.operator.rootfssnapshotRcloneImage" -}}
 {{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.rclone.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- end }}
+
+{{/*
+Mounter image for rootfssnapshot NFS mount container (privileged, minimal)
+*/}}
+{{- define "isola.operator.rootfssnapshotMounterImage" -}}
+{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.mounter.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
 
 {{/* ==========================================================================

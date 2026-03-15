@@ -139,21 +139,30 @@ operator:
 
         # Isola snapshot mounter DaemonSet configuration.
         # When rootfssnapshot is enabled, a DaemonSet is deployed on each node
-        # to FUSE-mount the snapshots bucket, making tars available for restore.
+        # running rclone as an NFSv3 server with a kernel NFS mount, making
+        # snapshot tars available for gVisor rootfs restore.
+        #
+        # NFS is used instead of FUSE for high availability: the kernel NFS
+        # hard mount survives server process restarts (blocks and retries)
+        # instead of failing with ENOTCONN like FUSE does.
         #
         # Host prerequisites:
-        #   - FUSE kernel module (CONFIG_FUSE_FS) must be enabled.
-        #     Built-in on all major managed K8s node images (EKS, GKE, AKS).
+        #   - NFS client kernel support (CONFIG_NFS_FS). Built-in on all major
+        #     managed K8s node images (EKS, GKE, AKS) and required by NFS CSI
+        #     drivers (EFS, Filestore, Azure Files).
         #
-        # Cleanup on uninstall: 
-        #   The FUSE mount is unmounted automatically on pod termination, but the
-        #   disk-based VFS cache directory (<hostMountPath>-cache) persists on each
-        #   node. rclone does not delete its cache on exit by design (allows warm
-        #   restarts). After `helm uninstall`, remove stale data from each node:
-        #     rm -rf /mnt/isola-snapshots-cache
+        # Cleanup on uninstall:
+        #   The NFS mount is intentionally NOT unmounted on pod termination
+        #   (this is what provides HA across restarts). After `helm uninstall`,
+        #   clean up on each node:
+        #     umount /mnt/isola-snapshots; rm -rf /var/cache/isola-snapshots
         snapshotMounter:
-          # Host path where snapshots are FUSE-mounted (readable by runsc on the node)
+          # Host path where snapshots are NFS-mounted (readable by runsc on the node)
           hostMountPath: /mnt/isola-snapshots
+
+          # Port for the rclone NFS server on the host loopback (127.0.0.1).
+          # Uses hostNetwork, so this port must not conflict with other services.
+          nfsPort: 12049
 
           # ServiceAccount for the snapshot-mounter DaemonSet (deployed in kube-system).
           # Separate from the snapshot job SA because they run in different namespaces.
@@ -163,7 +172,7 @@ operator:
             name: ""
             annotations: {}  # For IRSA/Workload Identity
 
-          # rclone FUSE mount configuration
+          # rclone NFS server configuration
           rclone:
             image:
               registry: docker.io
@@ -187,6 +196,14 @@ operator:
 
             nodeSelector: {}
             tolerations: []
+
+          # Privileged mounter container (creates NFS mount with Bidirectional
+          # propagation). Minimal image: only needs mount.nfs from nfs-utils.
+          mounter:
+            image:
+              registry: docker.io
+              repository: alpine
+              tag: "3.21"
 
     # Cluster default runtime configuration
     # Uses cluster default RuntimeClass (no special configuration needed)

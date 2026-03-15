@@ -1,13 +1,26 @@
 {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" }}
-{{- $hostMountPath := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.hostMountPath }}
-{{- $rclone := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.rclone }}
+{{- $snapshotMounter := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter }}
+{{- $hostMountPath := $snapshotMounter.hostMountPath }}
+{{- $cachePath := "/var/cache/isola-snapshots" }}
+{{- $rclone := $snapshotMounter.rclone }}
+{{- $nfsPort := $snapshotMounter.nfsPort | default 12049 }}
 {{/*
-  Deployed in kube-system because this DaemonSet requires privileged: true
-  and Bidirectional mount propagation for FUSE, both forbidden by PSA
-  baseline/restricted. kube-system is implicitly privileged on all managed
-  K8s providers (EKS, GKE, AKS). This follows the pattern used by CSI node
-  plugins (EBS, GCE PD, NFS, etc.) which are functionally identical: a
-  privileged DaemonSet that mounts storage onto a host path.
+  Deployed in kube-system because the nfs-mounter container requires
+  privileged: true and Bidirectional mount propagation, both forbidden
+  by PSA baseline/restricted. kube-system is implicitly privileged on
+  all managed K8s providers (EKS, GKE, AKS). This follows the pattern
+  used by CSI node plugins (EBS, GCE PD, NFS, etc.).
+
+  The pod has two containers with distinct privilege levels:
+    rclone-nfs:  Unprivileged, non-root. Runs the NFSv3 server (complex,
+                 has cloud credentials and external network access).
+    nfs-mounter: Privileged. Creates the kernel NFS mount (~10 lines
+                 of shell, no credentials, no external network).
+  This keeps the privileged surface minimal: only the mount(2) syscall
+  path runs privileged, not the rclone binary with its S3/GCS/Azure
+  client code. Same pattern as the kubernetes-csi/csi-driver-nfs node
+  DaemonSet, which runs only the nfs plugin container as privileged.
+
   Helm cannot reliably set PSA namespace labels (helm/helm#3503), so
   deploying to a dedicated namespace would require manual labeling.
 */}}
@@ -34,6 +47,11 @@ spec:
       serviceAccountName: {{ include "isola.operator.snapshotMounterServiceAccountName" . }}
       priorityClassName: system-node-critical
       terminationGracePeriodSeconds: 60
+      # hostNetwork is required so the NFS server runs on the host's loopback.
+      # When a container restarts, the kernel NFS client reconnects to
+      # 127.0.0.1:$NFS_PORT on the host -- no network namespace ambiguity.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       {{- include "isola.imagePullSecrets" . | nindent 6 }}
       {{- with $rclone.nodeSelector }}
       nodeSelector:
@@ -43,25 +61,31 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      initContainers:
+        # Set cache directory ownership so the unprivileged rclone
+        # container (uid 1009) can write VFS cache and NFS handles.
+        # Needed because hostPath DirectoryOrCreate creates root-owned dirs.
+        - name: init-cache-perms
+          image: {{ include "isola.operator.rootfssnapshotMounterImage" . }}
+          command: ["chown", "-R", "1009:1009", "{{ $cachePath }}"]
+          volumeMounts:
+            - name: cache
+              mountPath: {{ $cachePath }}
       containers:
-        - name: rclone-mount
+        # -----------------------------------------------------------
+        # rclone-nfs: NFSv3 server (unprivileged, non-root)
+        #
+        # Runs rclone serve nfs on the host loopback. This container
+        # has cloud credentials and external network access but does
+        # NOT need any elevated privileges.
+        # -----------------------------------------------------------
+        - name: rclone-nfs
           image: {{ include "isola.operator.rootfssnapshotRcloneImage" . }}
           imagePullPolicy: {{ $rclone.image.pullPolicy }}
-          workingDir: /tmp
           command: ["/bin/sh", "-c"]
           args:
             - |
-              MOUNT_PATH="{{ $hostMountPath }}"
-              CACHE_PATH="{{ $hostMountPath }}-cache"
-
-              # Clean up stale FUSE mount from previous pod (if any).
-              if mountpoint -q "$MOUNT_PATH" 2>/dev/null; then
-                echo "Cleaning up stale mount at $MOUNT_PATH"
-                fusermount3 -u -z "$MOUNT_PATH" 2>/dev/null || \
-                  umount -l "$MOUNT_PATH" 2>/dev/null || true
-              fi
-
-              mkdir -p "$MOUNT_PATH" "$CACHE_PATH"
+              mkdir -p "{{ $cachePath }}/vfs" "{{ $cachePath }}/nfs-handles"
 
               # Parse gocloud.dev bucket URL into rclone env vars.
               # Using env vars avoids connection string parsing issues with URLs
@@ -89,30 +113,32 @@ spec:
                 *) echo "Unsupported bucket scheme: $SCHEME" >&2; exit 1 ;;
               esac
 
-              echo "Mounting $REMOTE at $MOUNT_PATH"
+              echo "Starting NFS server for $REMOTE on 127.0.0.1:${NFS_PORT}"
 
-              # Rclone runs inside the container. The parent directory is mounted
-              # with Bidirectional propagation, so the FUSE child mount at
-              # $MOUNT_PATH propagates to the host for gVisor (runsc) to access.
-              # rc remote control is disabled by default, but make it explicit here for clarity and security.
-              exec rclone mount \
+              # --nfs-cache-type=disk persists filehandle-to-path mappings (MD5
+              # hashes) on disk so handles remain valid across server restarts --
+              # connected NFS clients don't notice the bounce.
+              # rc remote control is disabled by default, but make it explicit
+              # for security.
+              exec rclone serve nfs "$REMOTE" \
                 --rc=false \
-                --allow-other \
-                --allow-non-empty \
+                --addr "127.0.0.1:${NFS_PORT}" \
+                --nfs-cache-type disk \
+                --nfs-cache-dir "{{ $cachePath }}/nfs-handles" \
                 --read-only \
                 --vfs-cache-mode full \
-                --cache-dir "$CACHE_PATH" \
+                --cache-dir "{{ $cachePath }}/vfs" \
                 --vfs-cache-max-size "$CACHE_MAX_SIZE" \
                 --vfs-cache-max-age "$CACHE_MAX_AGE" \
                 --vfs-read-ahead 128M \
                 --no-modtime \
                 --dir-cache-time "$DIR_CACHE_TIME" \
-                --attr-timeout "$DIR_CACHE_TIME" \
-                --log-level INFO \
-                "$REMOTE" "$MOUNT_PATH"
+                --log-level INFO
           env:
             - name: ISOLA_BUCKET_URL
               value: {{ include "isola.operator.storageBucketUrl" . | quote }}
+            - name: NFS_PORT
+              value: {{ $nfsPort | quote }}
             - name: CACHE_MAX_SIZE
               value: {{ $rclone.cache.maxSize | quote }}
             - name: CACHE_MAX_AGE
@@ -125,33 +151,84 @@ spec:
             - secretRef:
                 name: {{ $credentialSecretName }}
           {{- end }}
-          # Privileged is required for /dev/fuse access (no K8s-native alternative).
+          # rclone doesn't need any elevated privileges. It's a TCP server on
+          # a port > 1024, reading from cloud storage and serving over NFS.
+          # Runs as the rclone user (1009) from the official rclone image.
           securityContext:
-            privileged: true
+            privileged: false
+            runAsNonRoot: true
+            runAsUser: 1009
+            runAsGroup: 1009
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           resources:
             {{- toYaml $rclone.resources | nindent 12 }}
+          volumeMounts:
+            - name: cache
+              mountPath: {{ $cachePath }}
+        # -----------------------------------------------------------
+        # nfs-mounter: kernel NFS mount (privileged)
+        #
+        # Creates the NFS hard mount at the host path via Bidirectional
+        # propagation. Minimal logic (~10 lines), no cloud credentials,
+        # no external network I/O. Privileged is required by Kubernetes
+        # for Bidirectional mount propagation (k/k PR #117812 to relax
+        # this was closed without merging).
+        # -----------------------------------------------------------
+        - name: nfs-mounter
+          image: {{ include "isola.operator.rootfssnapshotMounterImage" . }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              MOUNT_PATH="{{ $hostMountPath }}"
+              NFS_PORT="{{ $nfsPort }}"
+
+              # Check /proc/mounts (not filesystem I/O) to avoid blocking on
+              # a hard NFS mount whose server hasn't started yet.
+              if grep -q " ${MOUNT_PATH} nfs" /proc/mounts; then
+                echo "NFS mount already exists at $MOUNT_PATH (reconnecting to server)"
+              else
+                mkdir -p "$MOUNT_PATH"
+                echo "Waiting for NFS server to be ready..."
+                ATTEMPTS=0
+                while true; do
+                  mount -t nfs \
+                    -o hard,ro,vers=3,nolock,port=${NFS_PORT},mountport=${NFS_PORT},tcp \
+                    127.0.0.1:/ "$MOUNT_PATH" 2>/dev/null && break
+                  ATTEMPTS=$((ATTEMPTS + 1))
+                  if [ $ATTEMPTS -ge 60 ]; then
+                    echo "Failed to mount NFS after 30s" >&2
+                    exit 1
+                  fi
+                  sleep 0.5
+                done
+                echo "NFS mounted at $MOUNT_PATH"
+              fi
+
+              # Stay alive. The NFS mount lives in this container's mount
+              # namespace (propagated to host via Bidirectional). If this
+              # container exits, kubelet restarts it; the startup check
+              # finds the existing mount and skips re-mounting.
+              exec sleep infinity
+          # Privileged is required by Kubernetes for Bidirectional mount
+          # propagation (API validation rejects it otherwise).
+          securityContext:
+            privileged: true
           volumeMounts:
             - name: host-mount-parent
               mountPath: {{ dir $hostMountPath }}
               mountPropagation: Bidirectional
-          livenessProbe:
-            exec:
-              command: ["mountpoint", "-q", "{{ $hostMountPath }}"]
-            timeoutSeconds: 10
-            periodSeconds: 30
-          readinessProbe:
-            exec:
-              command: ["mountpoint", "-q", "{{ $hostMountPath }}"]
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 10
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "fusermount3 -u -z {{ $hostMountPath }} || umount -l {{ $hostMountPath }}"]
+          # No preStop hook: the NFS mount intentionally persists on the host
+          # across container restarts for high availability.
       volumes:
         - name: host-mount-parent
           hostPath:
             path: {{ dir $hostMountPath }}
             type: Directory
+        - name: cache
+          hostPath:
+            path: {{ $cachePath }}
+            type: DirectoryOrCreate
 {{- end }}

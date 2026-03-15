@@ -66,6 +66,12 @@ docker_build(
     match_in_env_vars=True,
 )
 
+docker_build(
+    'snapshot-mounter',
+    context='build/snapshot-mounter',
+    dockerfile='build/snapshot-mounter/Dockerfile',
+)
+
 namespace_create('isola-system')
 
 k8s_yaml(helm(
