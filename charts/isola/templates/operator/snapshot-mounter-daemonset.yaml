@@ -5,22 +5,11 @@
 {{- $rclone := $snapshotMounter.rclone }}
 {{- $nfsPort := $snapshotMounter.nfsPort | default 12049 }}
 {{/*
-  Deployed in kube-system because the nfs-mounter container requires
-  privileged: true and Bidirectional mount propagation, both forbidden
-  by Pod Security Admission's baseline/restricted Pod Security Standards.
-  kube-system is implicitly privileged on all managed K8s providers (EKS, GKE, AKS).
   The pod has two containers with distinct privilege levels:
-    rclone-nfs:  Unprivileged, non-root. Runs the NFSv3 server (complex,
-                 has cloud credentials and external network access).
-    nfs-mounter: Privileged. Creates the kernel NFS mount (~10 lines
-                 of shell, no credentials, no external network).
+    rclone-nfs:  Unprivileged, non-root. Runs the NFSv3 server.
+    nfs-mounter: Privileged. Creates the kernel NFS mount.
   This keeps the privileged surface minimal: only the mount(2) syscall
-  path runs privileged, not the rclone binary with its S3/GCS/Azure
-  client code. Same pattern as the kubernetes-csi/csi-driver-nfs node
-  DaemonSet, which runs only the nfs plugin container as privileged.
-
-  Helm cannot reliably set PSA namespace labels (helm/helm#3503), so
-  deploying to a dedicated namespace would require manual labeling.
+  path runs privileged, not the rclone binary.
 */}}
 apiVersion: apps/v1
 kind: DaemonSet
@@ -46,8 +35,6 @@ spec:
       priorityClassName: system-node-critical
       terminationGracePeriodSeconds: 60
       # hostNetwork is required so the NFS server runs on the host's loopback.
-      # When a container restarts, the kernel NFS client reconnects to
-      # 127.0.0.1:$NFS_PORT on the host -- no network namespace ambiguity.
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       {{- include "isola.imagePullSecrets" . | nindent 6 }}
@@ -60,9 +47,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        # Set cache directory ownership so the unprivileged rclone
-        # container (uid 1009) can write NFS handle cache.
-        # Needed because hostPath DirectoryOrCreate creates root-owned dirs.
+      # set the cache directory ownership to the rclone user (1009).
         - name: init-cache-perms
           image: {{ include "isola.operator.rootfssnapshotMounterImage" . }}
           command: ["chown", "-R", "1009:1009", "{{ $cachePath }}"]
@@ -70,13 +55,6 @@ spec:
             - name: cache
               mountPath: {{ $cachePath }}
       containers:
-        # -----------------------------------------------------------
-        # rclone-nfs: NFSv3 server (unprivileged, non-root)
-        #
-        # Runs rclone serve nfs on the host loopback. This container
-        # has cloud credentials and external network access but does
-        # NOT need any elevated privileges.
-        # -----------------------------------------------------------
         - name: rclone-nfs
           image: {{ include "isola.operator.rootfssnapshotRcloneImage" . }}
           imagePullPolicy: {{ default "IfNotPresent" $rclone.image.pullPolicy }}
@@ -138,9 +116,6 @@ spec:
             - secretRef:
                 name: {{ $credentialSecretName }}
           {{- end }}
-          # rclone doesn't need any elevated privileges. It's a TCP server on
-          # a port > 1024, reading from cloud storage and serving over NFS.
-          # Runs as the rclone user (1009) from the official rclone image.
           securityContext:
             privileged: false
             runAsNonRoot: true
@@ -155,15 +130,6 @@ spec:
           volumeMounts:
             - name: cache
               mountPath: {{ $cachePath }}
-        # -----------------------------------------------------------
-        # nfs-mounter: kernel NFS mount (privileged)
-        #
-        # Creates the NFS hard mount at the host path via Bidirectional
-        # propagation. Minimal logic (~10 lines), no cloud credentials,
-        # no external network I/O. Privileged is required by Kubernetes
-        # for Bidirectional mount propagation (k/k PR #117812 to relax
-        # this was closed without merging).
-        # -----------------------------------------------------------
         - name: nfs-mounter
           image: {{ include "isola.operator.rootfssnapshotMounterImage" . }}
           command: ["/bin/sh", "-c"]
@@ -183,12 +149,10 @@ spec:
                 while true; do
                   # lookupcache=positive: never cache negative lookups (ENOENT),
                   #   so newly uploaded tars are visible immediately after
-                  #   rclone's dir-cache-time expires. Positive lookups are
-                  #   still cached (safe: snapshot tars are not deleted).
+                  #   rclone's dir-cache-time expires.
                   # actimeo=0: disable kernel attribute caching so file
                   #   overwrites (same key, new content) are detected
-                  #   immediately via mtime change. Over localhost the extra
-                  #   GETATTR RPCs cost ~50-200us each.
+                  #   immediately via mtime change.
                   mount -t nfs \
                     -o hard,ro,vers=3,nolock,port=${NFS_PORT},mountport=${NFS_PORT},tcp,lookupcache=positive,actimeo=0 \
                     127.0.0.1:/ "$MOUNT_PATH" 2>/dev/null && break
@@ -207,16 +171,13 @@ spec:
               # container exits, kubelet restarts it; the startup check
               # finds the existing mount and skips re-mounting.
               exec sleep infinity
-          # Privileged is required by Kubernetes for Bidirectional mount
-          # propagation (API validation rejects it otherwise).
+          # Privileged is required by Kubernetes for Bidirectional mount propagation.
           securityContext:
             privileged: true
           volumeMounts:
             - name: host-mount-parent
               mountPath: {{ dir $hostMountPath }}
               mountPropagation: Bidirectional
-          # No preStop hook: the NFS mount intentionally persists on the host
-          # across container restarts for high availability.
       volumes:
         - name: host-mount-parent
           hostPath:
