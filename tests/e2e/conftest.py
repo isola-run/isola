@@ -24,6 +24,20 @@ import pytest_asyncio
 
 from isola import AsyncIsola, AsyncSandbox, Isola, NotFoundError, Sandbox, SandboxStatus
 
+
+def pytest_addoption(parser):
+    parser.addoption("--slow", action="store_true", default=False, help="include @pytest.mark.slow tests")
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--slow"):
+        return
+    skip_slow = pytest.mark.skip(reason="need --slow option to run")
+    for item in items:
+        if item.get_closest_marker("slow"):
+            item.add_marker(skip_slow)
+
+
 ISOLA_BASE_URL = os.environ.get("ISOLA_BASE_URL", "http://localhost:8080")
 ISOLA_METRICS_URL = os.environ.get("ISOLA_METRICS_URL", "http://localhost:8082")
 
@@ -38,7 +52,12 @@ def wait_for_running(client: Isola, sandbox_id: str, timeout: float = POLL_TIMEO
     deadline = time.monotonic() + timeout
     last_status = None
     while time.monotonic() < deadline:
-        sb = client.sandboxes.get(sandbox_id)
+        try:
+            sb = client.sandboxes.get(sandbox_id)
+        except NotFoundError:
+            # Sandbox may not be visible in the api-gateway's K8s cache yet.
+            time.sleep(POLL_INTERVAL)
+            continue
         last_status = sb.status
         if sb.status == SandboxStatus.RUNNING:
             return sb
@@ -57,7 +76,11 @@ def wait_for_status(
     deadline = time.monotonic() + timeout
     last_status = None
     while time.monotonic() < deadline:
-        sb = client.sandboxes.get(sandbox_id)
+        try:
+            sb = client.sandboxes.get(sandbox_id)
+        except NotFoundError:
+            time.sleep(POLL_INTERVAL)
+            continue
         last_status = sb.status
         if sb.status == target:
             return sb
@@ -74,7 +97,11 @@ async def wait_for_running_async(
     deadline = time.monotonic() + timeout
     last_status = None
     while time.monotonic() < deadline:
-        sb = await client.sandboxes.get(sandbox_id)
+        try:
+            sb = await client.sandboxes.get(sandbox_id)
+        except NotFoundError:
+            await asyncio.sleep(POLL_INTERVAL)
+            continue
         last_status = sb.status
         if sb.status == SandboxStatus.RUNNING:
             return sb

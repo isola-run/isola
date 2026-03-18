@@ -63,6 +63,7 @@ def test_stream_survives_20s_idle_gap(session_sandbox: Sandbox) -> None:
     assert cmd.wait() == 0
 
 
+@pytest.mark.slow
 @pytest.mark.timeout(120)
 def test_stream_survives_50s_idle_gap(session_sandbox: Sandbox) -> None:
     """Stream survives a 50s output gap (> 45s gateway WriteTimeout).
@@ -80,6 +81,7 @@ def test_stream_survives_50s_idle_gap(session_sandbox: Sandbox) -> None:
     assert cmd.wait() == 0
 
 
+@pytest.mark.slow
 @pytest.mark.timeout(180)
 def test_stream_survives_80s_idle_gap(session_sandbox: Sandbox) -> None:
     """Stream survives an 80s output gap (> 75s sidecar WriteTimeout).

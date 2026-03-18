@@ -262,6 +262,7 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/sandboxes",
 		Summary:     "List sandboxes",
+		Description: "Eventually consistent: a sandbox returned by POST may not appear immediately in the list. Clients should retry or poll if a recently-created sandbox is missing.",
 		Tags:        []string{"sandboxes"},
 	}, h.ListSandboxes)
 
@@ -270,6 +271,7 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/sandboxes/{id}",
 		Summary:     "Get sandbox details",
+		Description: "Eventually consistent: a sandbox returned by POST may briefly return 404 on GET. Clients should retry if polling a recently-created sandbox.",
 		Tags:        []string{"sandboxes"},
 		Errors:      []int{http.StatusNotFound},
 	}, h.GetSandbox)

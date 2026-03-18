@@ -22,9 +22,11 @@ make test-sdk-python    # Run Python SDK tests
 make test-sdk-python-verbose  # Run with verbose output
 
 # Testing (E2E) — requires running cluster: tilt up
-make test-e2e           # Run E2E tests
+make test-e2e           # Run E2E tests in parallel (20 workers, skips @slow)
+make test-e2e-slow      # Include slow tests (50s+ idle gaps, late tar)
 make test-e2e-verbose   # Verbose output
 make test-e2e FOCUS="pattern"  # Run specific tests matching pattern
+make test-e2e E2E_WORKERS=8  # Override parallel worker count (default: 20)
 
 # Build
 make build              # Build all binaries to bin/

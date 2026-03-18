@@ -157,13 +157,19 @@ test-sdk-python-verbose: ## Run Python SDK tests with verbose output
 
 ##@ E2E Testing
 
+E2E_WORKERS ?= 20
+
 .PHONY: test-e2e
-test-e2e: ## Run E2E tests (requires running cluster: tilt up)
-	cd tests/e2e && uv run --frozen pytest -q $(if $(FOCUS),-k "$(FOCUS)")
+test-e2e: ## Run E2E tests in parallel (requires running cluster: tilt up)
+	cd tests/e2e && uv run --frozen pytest -n $(E2E_WORKERS) --dist load -q $(if $(FOCUS),-k "$(FOCUS)")
+
+.PHONY: test-e2e-slow
+test-e2e-slow: ## Run E2E tests including slow tests
+	cd tests/e2e && uv run --frozen pytest -n $(E2E_WORKERS) --dist load --slow -q $(if $(FOCUS),-k "$(FOCUS)")
 
 .PHONY: test-e2e-verbose
-test-e2e-verbose: ## Run E2E tests with verbose output
-	cd tests/e2e && uv run --frozen pytest -v $(if $(FOCUS),-k "$(FOCUS)")
+test-e2e-verbose: ## Run E2E tests in parallel with verbose output
+	cd tests/e2e && uv run --frozen pytest -n $(E2E_WORKERS) --dist load -v $(if $(FOCUS),-k "$(FOCUS)")
 
 ##@ Build
 

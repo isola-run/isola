@@ -181,13 +181,14 @@ operator:
               tag: "1.69.1"
               pullPolicy: IfNotPresent
 
-            # VFS cache settings (cached on local node disk as sparse files)
-            cache:
-              maxSize: "10Gi"
-              maxAge: "24h"
-              # How long to cache directory listings and file attributes.
-              # Lower values detect new snapshots faster but increase S3 API calls.
-              dirCacheTime: "1m"
+            # Maximum total size of VFS file cache on disk (--vfs-cache-max-size).
+            # When exceeded, least-recently-used files are evicted.
+            vfsCacheMaxSize: "10Gi"
+            # Maximum time a cached file can go unaccessed before eviction (--vfs-cache-max-age).
+            vfsCacheMaxAge: "24h"
+            # How long to cache directory listings (--dir-cache-time).
+            # Lower values detect new snapshots faster but increase cloud API calls.
+            dirCacheTime: "1m"
 
             resources:
               requests:

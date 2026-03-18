@@ -118,6 +118,9 @@ spec:
               # --nfs-cache-type=disk persists filehandle-to-path mappings (MD5
               # hashes) on disk so handles remain valid across server restarts --
               # connected NFS clients don't notice the bounce.
+              # --use-server-modtime returns the backend's native LastModified
+              # (from LIST, no extra HEAD) so the NFS client can detect file
+              # overwrites via mtime changes and invalidate its page cache.
               # rc remote control is disabled by default, but make it explicit
               # for security.
               exec rclone serve nfs "$REMOTE" \
@@ -128,23 +131,17 @@ spec:
                 --read-only \
                 --vfs-cache-mode full \
                 --cache-dir "{{ $cachePath }}/vfs" \
-                --vfs-cache-max-size "$CACHE_MAX_SIZE" \
-                --vfs-cache-max-age "$CACHE_MAX_AGE" \
+                --vfs-cache-max-size {{ $rclone.vfsCacheMaxSize | default "10Gi" | quote }} \
+                --vfs-cache-max-age {{ $rclone.vfsCacheMaxAge | default "24h" | quote }} \
                 --vfs-read-ahead 128M \
-                --no-modtime \
-                --dir-cache-time "$DIR_CACHE_TIME" \
+                --use-server-modtime \
+                --dir-cache-time {{ $rclone.dirCacheTime | default "1m" | quote }} \
                 --log-level INFO
           env:
             - name: ISOLA_BUCKET_URL
               value: {{ include "isola.operator.storageBucketUrl" . | quote }}
             - name: NFS_PORT
               value: {{ $nfsPort | quote }}
-            - name: CACHE_MAX_SIZE
-              value: {{ $rclone.cache.maxSize | quote }}
-            - name: CACHE_MAX_AGE
-              value: {{ $rclone.cache.maxAge | quote }}
-            - name: DIR_CACHE_TIME
-              value: {{ $rclone.cache.dirCacheTime | default "1m" | quote }}
           {{- $credentialSecretName := include "isola.operator.rootfssnapshotCredentialSecretName" . }}
           {{- if $credentialSecretName }}
           envFrom:
@@ -194,8 +191,16 @@ spec:
                 echo "Waiting for NFS server to be ready..."
                 ATTEMPTS=0
                 while true; do
+                  # lookupcache=positive: never cache negative lookups (ENOENT),
+                  #   so newly uploaded tars are visible immediately after
+                  #   rclone's dir-cache-time expires. Positive lookups are
+                  #   still cached (safe: snapshot tars are not deleted).
+                  # actimeo=0: disable kernel attribute caching so file
+                  #   overwrites (same key, new content) are detected
+                  #   immediately via mtime change. Over localhost the extra
+                  #   GETATTR RPCs cost ~50-200us each.
                   mount -t nfs \
-                    -o hard,ro,vers=3,nolock,port=${NFS_PORT},mountport=${NFS_PORT},tcp \
+                    -o hard,ro,vers=3,nolock,port=${NFS_PORT},mountport=${NFS_PORT},tcp,lookupcache=positive,actimeo=0 \
                     127.0.0.1:/ "$MOUNT_PATH" 2>/dev/null && break
                   ATTEMPTS=$((ATTEMPTS + 1))
                   if [ $ATTEMPTS -ge 60 ]; then

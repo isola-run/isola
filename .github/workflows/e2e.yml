@@ -174,7 +174,7 @@ jobs:
       - name: Run E2E tests
         working-directory: tests/e2e
         run: |
-          uv run pytest -v --tb=short --junitxml=test-results.xml
+          uv run --frozen pytest -n 4 --dist load --slow -v --tb=short --junitxml=test-results.xml
 
       - name: Upload test results
         if: always()

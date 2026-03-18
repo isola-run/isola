@@ -522,6 +522,7 @@ paths:
         - health
   /sandboxes:
     get:
+      description: "Eventually consistent: a sandbox returned by POST may not appear immediately in the list. Clients should retry or poll if a recently-created sandbox is missing."
       operationId: listSandboxes
       responses:
         "200":
@@ -605,6 +606,7 @@ paths:
       tags:
         - sandboxes
     get:
+      description: "Eventually consistent: a sandbox returned by POST may briefly return 404 on GET. Clients should retry if polling a recently-created sandbox."
       operationId: getSandbox
       parameters:
         - description: Sandbox identifier

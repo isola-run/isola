@@ -23,18 +23,17 @@ from isola import Isola, IsolaError, NotFoundError, Sandbox, SandboxStatus
 from conftest import wait_for_running
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(60)
 def test_active_deadline_sandbox_stops(
     isola_client: Isola,
     sandbox_factory,
 ) -> None:
     """A sandbox with timeout should stop or be deleted after the deadline passes."""
-    sb = sandbox_factory(image="alpine:3.21", timeout=30)
+    sb = sandbox_factory(image="alpine:3.21", timeout=10)
     wait_for_running(isola_client, sb.id)
 
-    # Wait up to 60s beyond when the sandbox became running for it to reach a
-    # terminal state (stopped, failed) or be deleted entirely (NotFoundError).
-    deadline = time.monotonic() + 60
+    # Wait for the 5s deadline to fire + operator reconciliation.
+    deadline = time.monotonic() + 30
     last_status = None
     while time.monotonic() < deadline:
         try:
@@ -47,7 +46,7 @@ def test_active_deadline_sandbox_stops(
         time.sleep(1.0)
 
     pytest.fail(
-        f"Sandbox {sb.id} did not stop or disappear within 60s after reaching running "
+        f"Sandbox {sb.id} did not stop or disappear within 30s after reaching running "
         f"(last status: {last_status})"
     )
 
@@ -85,17 +84,17 @@ def test_no_deadline_stays_alive(
     )
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(60)
 def test_operations_on_timed_out_sandbox(
     isola_client: Isola,
     sandbox_factory,
 ) -> None:
     """After a sandbox times out and stops/disappears, running a command on it should fail."""
-    sb = sandbox_factory(image="alpine:3.21", timeout=30)
+    sb = sandbox_factory(image="alpine:3.21", timeout=10)
     running = wait_for_running(isola_client, sb.id)
 
-    # Wait for the sandbox to stop or be deleted.
-    deadline = time.monotonic() + 60
+    # Wait for the 5s deadline to fire + operator reconciliation.
+    deadline = time.monotonic() + 30
     sandbox_gone = False
     last_status = None
     while time.monotonic() < deadline:
@@ -111,7 +110,7 @@ def test_operations_on_timed_out_sandbox(
         time.sleep(1.0)
 
     assert sandbox_gone, (
-        f"Sandbox {sb.id} did not reach a terminal state within 60s "
+        f"Sandbox {sb.id} did not reach a terminal state within 30s "
         f"(last status: {last_status})"
     )
 
