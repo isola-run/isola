@@ -61,7 +61,7 @@ spec:
       {{- end }}
       initContainers:
         # Set cache directory ownership so the unprivileged rclone
-        # container (uid 1009) can write VFS cache and NFS handles.
+        # container (uid 1009) can write NFS handle cache.
         # Needed because hostPath DirectoryOrCreate creates root-owned dirs.
         - name: init-cache-perms
           image: {{ include "isola.operator.rootfssnapshotMounterImage" . }}
@@ -83,7 +83,7 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              mkdir -p "{{ $cachePath }}/vfs" "{{ $cachePath }}/nfs-handles"
+              mkdir -p "{{ $cachePath }}/nfs-handles"
 
               # Parse gocloud.dev bucket URL into rclone env vars.
               # Using env vars avoids connection string parsing issues with URLs
@@ -113,28 +113,20 @@ spec:
 
               echo "Starting NFS server for $REMOTE on 127.0.0.1:${NFS_PORT}"
 
-              # --nfs-cache-type=disk persists filehandle-to-path mappings (MD5
-              # hashes) on disk so handles remain valid across server restarts --
-              # connected NFS clients don't notice the bounce.
-              # --use-server-modtime returns the backend's native LastModified
-              # (from LIST, no extra HEAD) so the NFS client can detect file
-              # overwrites via mtime changes and invalidate its page cache.
-              # rc remote control is disabled by default, but make it explicit
-              # for security.
+              # nfs with hard mount (unlike FUSE) would block reads if the daemonset pod restarts/is down, allowing resilient deployments and surviving hiccups.
+              # --nfs-cache-type disk survives restarts of the daemonset, allowing serving the file after it's back up.
+              # --vfs-cache-mode off for simplicitly until demand raises for caching cloud files content on disk.
+              # --use-server-modtime since all we need to know is the server's modified time to detect changes.
               exec rclone serve nfs "$REMOTE" \
-                --rc=false \
-                --addr "127.0.0.1:${NFS_PORT}" \
-                --nfs-cache-type disk \
-                --nfs-cache-dir "{{ $cachePath }}/nfs-handles" \
-                --read-only \
-                --vfs-cache-mode full \
-                --cache-dir "{{ $cachePath }}/vfs" \
-                --vfs-cache-max-size {{ $rclone.vfsCacheMaxSize | default "10Gi" | quote }} \
-                --vfs-cache-max-age {{ $rclone.vfsCacheMaxAge | default "24h" | quote }} \
-                --vfs-read-ahead 128M \
-                --use-server-modtime \
-                --dir-cache-time {{ $rclone.dirCacheTime | default "1m" | quote }} \
-                --log-level INFO
+              --addr "127.0.0.1:${NFS_PORT}" \
+              --nfs-cache-type disk \
+              --nfs-cache-dir "{{ $cachePath }}/nfs-handles" \
+              --read-only \
+              --vfs-cache-mode off \
+              --use-server-modtime \
+              --dir-cache-time {{ $rclone.dirCacheTime | default "1m" | quote }} \
+              --log-level INFO
+
           env:
             - name: ISOLA_BUCKET_URL
               value: {{ include "isola.operator.storageBucketUrl" . | quote }}

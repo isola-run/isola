@@ -47,8 +47,6 @@ operator:
               registry: docker.io
               repository: rclone/rclone
               tag: "1.69.1"
-            vfsCacheMaxSize: "2Gi"
-            vfsCacheMaxAge: "1h"
             dirCacheTime: "2s"
           mounter:
             image:
