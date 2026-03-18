@@ -15,14 +15,13 @@ global:
   imagePullSecrets: []
 
 
-# Namespace where sandbox pods are created
-sandboxNamespace: isola-sandboxes
-
-# Whether to create the sandbox namespace (set to false if it already exists).
-# The sandbox namespace is different from the namespace this helm charts installs
-# the isola system components to (operator, api-gateway), and is used to orchestrate
-# the sandboxes and related resource in.
-createSandboxNamespace: true
+# Namespace where sandbox pods are created. The api-gateway would create sandboxes in this namespace.
+# Note: sandboxes manually created outside this namespace won't enjoy full functionality like the isola network policies.
+sandboxNamespace:
+  name: isola-sandboxes
+  # Set to true to have the chart create it (note: if true, helm uninstall will cascade-delete
+  # the namespace and everything inside it).
+  create: false
 
 
 operator:
@@ -164,8 +163,9 @@ operator:
           # Uses hostNetwork, so this port must not conflict with other services.
           nfsPort: 12049
 
-          # ServiceAccount for the snapshot-mounter DaemonSet (deployed in kube-system).
-          # Separate from the snapshot job SA because they run in different namespaces.
+          # ServiceAccount for the snapshot-mounter DaemonSet.
+          # Separate from the snapshot job SA because they run in different namespaces
+          # (release namespace vs sandbox namespace).
           # For IRSA/Workload Identity, this SA needs read-only access to the bucket.
           serviceAccount:
             create: true
@@ -177,8 +177,7 @@ operator:
             image:
               registry: docker.io
               repository: rclone/rclone
-              # Pin to a specific stable version
-              tag: "1.69.1"
+              tag: "1.73.2"
               pullPolicy: IfNotPresent
 
             # How long to cache directory listings (--dir-cache-time).

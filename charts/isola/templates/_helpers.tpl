@@ -44,7 +44,7 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 Sandbox namespace
 */}}
 {{- define "isola.sandboxNamespace" -}}
-{{- .Values.sandboxNamespace }}
+{{- .Values.sandboxNamespace.name }}
 {{- end }}
 
 {{/*
@@ -236,7 +236,7 @@ RootfsSnapshot service account name (from gvisor rootfssnapshot config)
 {{- end }}
 
 {{/*
-Snapshot mounter service account name (DaemonSet in kube-system, separate from snapshot job SA)
+Snapshot mounter service account name (DaemonSet in release namespace, separate from snapshot job SA)
 */}}
 {{- define "isola.operator.snapshotMounterServiceAccountName" -}}
 {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" -}}

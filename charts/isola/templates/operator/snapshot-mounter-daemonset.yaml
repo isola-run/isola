@@ -10,12 +10,15 @@
     nfs-mounter: Privileged. Creates the kernel NFS mount.
   This keeps the privileged surface minimal: only the mount(2) syscall
   path runs privileged, not the rclone binary.
+
+  The DaemonSet requires privileged: true and Bidirectional mount propagation.
+  If your cluster enforces Pod Security Admission on this namespace, label it:
+    kubectl label namespace <release-ns> pod-security.kubernetes.io/enforce=privileged
 */}}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ include "isola.fullname" . }}-snapshot-mounter
-  namespace: kube-system
   labels:
     {{- include "isola.labels" . | nindent 4 }}
     app.kubernetes.io/component: snapshot-mounter

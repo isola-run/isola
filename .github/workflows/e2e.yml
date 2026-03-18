@@ -142,6 +142,9 @@ jobs:
             -f charts/localstack-values.yaml \
             --wait --timeout 3m
 
+      - name: Create sandbox namespace
+        run: kubectl create namespace isola-sandboxes
+
       - name: Deploy isola
         run: |
           helm install isola charts/isola \

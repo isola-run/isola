@@ -73,6 +73,7 @@ docker_build(
 )
 
 namespace_create('isola-system')
+namespace_create('isola-sandboxes')
 
 k8s_yaml(helm(
     'charts/isola',

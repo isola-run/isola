@@ -6,7 +6,7 @@ COMPONENTS DEPLOYED:
   - API Gateway: REST API for sandbox orchestration
 {{- end }}
 
-SANDBOX NAMESPACE: {{ .Values.sandboxNamespace }}
+SANDBOX NAMESPACE: {{ .Values.sandboxNamespace.name }}
 
 {{- if .Values.apiGateway.enabled }}
 
