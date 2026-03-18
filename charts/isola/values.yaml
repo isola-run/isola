@@ -189,9 +189,6 @@ operator:
                 cpu: 50m
                 memory: 128Mi
 
-            nodeSelector: {}
-            tolerations: []
-
           # Privileged mounter container (creates NFS mount with Bidirectional
           # propagation). Minimal image: only needs mount.nfs from nfs-utils.
           mounter:
@@ -199,6 +196,12 @@ operator:
               registry: docker.io
               repository: alpine
               tag: "3.21"
+              pullPolicy: IfNotPresent
+            resources: {}
+
+          podAnnotations: {}
+          nodeSelector: {}
+          tolerations: []
 
     # Cluster default runtime configuration
     # Uses cluster default RuntimeClass (no special configuration needed)

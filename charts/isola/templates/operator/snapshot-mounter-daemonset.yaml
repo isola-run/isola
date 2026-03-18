@@ -3,6 +3,7 @@
 {{- $hostMountPath := $snapshotMounter.hostMountPath }}
 {{- $cachePath := "/var/cache/isola-snapshots" }}
 {{- $rclone := $snapshotMounter.rclone }}
+{{- $mounter := $snapshotMounter.mounter }}
 {{- $nfsPort := $snapshotMounter.nfsPort | default 12049 }}
 {{/*
   The pod has two containers with distinct privilege levels:
@@ -18,21 +19,21 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: {{ include "isola.fullname" . }}-snapshot-mounter
+  name: {{ include "isola.snapshotMounter.fullname" . }}
   labels:
-    {{- include "isola.labels" . | nindent 4 }}
-    app.kubernetes.io/component: snapshot-mounter
+    {{- include "isola.snapshotMounter.labels" . | nindent 4 }}
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "isola.name" . }}-snapshot-mounter
-      app.kubernetes.io/instance: {{ .Release.Name }}
+      {{- include "isola.snapshotMounter.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- with $snapshotMounter.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       labels:
-        app.kubernetes.io/name: {{ include "isola.name" . }}-snapshot-mounter
-        app.kubernetes.io/instance: {{ .Release.Name }}
-        app.kubernetes.io/component: snapshot-mounter
+        {{- include "isola.snapshotMounter.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "isola.operator.snapshotMounterServiceAccountName" . }}
       priorityClassName: system-node-critical
@@ -41,11 +42,11 @@ spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       {{- include "isola.imagePullSecrets" . | nindent 6 }}
-      {{- with $rclone.nodeSelector }}
+      {{- with $snapshotMounter.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $rclone.tolerations }}
+      {{- with $snapshotMounter.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -53,7 +54,10 @@ spec:
       # set the cache directory ownership to the rclone user (1009).
         - name: init-cache-perms
           image: {{ include "isola.operator.rootfssnapshotMounterImage" . }}
+          imagePullPolicy: {{ default "IfNotPresent" $mounter.image.pullPolicy }}
           command: ["chown", "-R", "1009:1009", "{{ $cachePath }}"]
+          resources:
+            {{- toYaml $mounter.resources | nindent 12 }}
           volumeMounts:
             - name: cache
               mountPath: {{ $cachePath }}
@@ -135,6 +139,7 @@ spec:
               mountPath: {{ $cachePath }}
         - name: nfs-mounter
           image: {{ include "isola.operator.rootfssnapshotMounterImage" . }}
+          imagePullPolicy: {{ default "IfNotPresent" $mounter.image.pullPolicy }}
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -177,6 +182,8 @@ spec:
           # Privileged is required by Kubernetes for Bidirectional mount propagation.
           securityContext:
             privileged: true
+          resources:
+            {{- toYaml $mounter.resources | nindent 12 }}
           volumeMounts:
             - name: host-mount-parent
               mountPath: {{ dir $hostMountPath }}

@@ -273,6 +273,36 @@ Mounter image for rootfssnapshot NFS mount container (privileged, minimal)
 {{- end }}
 
 {{/* ==========================================================================
+   Snapshot Mounter Helpers
+   ========================================================================== */}}
+
+{{/*
+Snapshot mounter fullname
+*/}}
+{{- define "isola.snapshotMounter.fullname" -}}
+{{- printf "%s-snapshot-mounter" (include "isola.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Snapshot mounter labels
+*/}}
+{{- define "isola.snapshotMounter.labels" -}}
+{{ include "isola.labels" . }}
+app.kubernetes.io/name: {{ include "isola.name" . }}-snapshot-mounter
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: snapshot-mounter
+{{- end }}
+
+{{/*
+Snapshot mounter selector labels
+*/}}
+{{- define "isola.snapshotMounter.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "isola.name" . }}-snapshot-mounter
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: snapshot-mounter
+{{- end }}
+
+{{/* ==========================================================================
    API Gateway Helpers
    ========================================================================== */}}
 
