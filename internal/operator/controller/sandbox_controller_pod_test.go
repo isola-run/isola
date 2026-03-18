@@ -177,6 +177,33 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.overlay2"))
 		})
 
+		It("should strip user-injected gVisor tar annotations from PodTemplate", func() {
+			sandboxName := "sandbox-strip-tar-annot"
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.PodTemplate.ObjectMeta = metav1.ObjectMeta{
+					Annotations: map[string]string{
+						"dev.gvisor.tar.rootfs.upper.sandbox": "/etc/shadow",
+						"dev.gvisor.tar.rootfs.upper.other":   "/mnt/isola-snapshots/other-ns/secret.tar",
+						"safe-annotation":                     "keep-me",
+					},
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.tar.rootfs.upper.sandbox"))
+			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.tar.rootfs.upper.other"))
+			Expect(pod.Annotations).To(HaveKeyWithValue("safe-annotation", "keep-me"))
+		})
+
 		It("should inject sleep infinity when no command is specified", func() {
 			sandboxName := "sandbox-default-cmd"
 
