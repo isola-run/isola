@@ -91,10 +91,18 @@ jobs:
           "
 
           echo "Configuring containerd for gVisor..."
+          docker exec "$NODE" sh -c 'cat > /etc/containerd/runsc.toml << "TOML"
+          [runsc_config]
+            allow-rootfs-tar-annotation = "true"
+          TOML'
+
           GVISOR_CONFIG='
           [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
             runtime_type = "io.containerd.runsc.v1"
             pod_annotations = ["dev.gvisor.*"]
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
+            TypeUrl = "io.containerd.runsc.v1.options"
+            ConfigPath = "/etc/containerd/runsc.toml"
           '
           docker exec "$NODE" sh -c "echo '$GVISOR_CONFIG' >> /etc/containerd/config.toml"
 

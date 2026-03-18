@@ -95,7 +95,7 @@ local_resource(
     deps=['tests/e2e/'],
     auto_init=False,
     trigger_mode=TRIGGER_MODE_MANUAL,
-    resource_deps=['isola-api-gateway'],
+    resource_deps=['isola-api-gateway', 'isola-snapshot-mounter'],
     allow_parallel=True,
     labels=['tests'],
 )

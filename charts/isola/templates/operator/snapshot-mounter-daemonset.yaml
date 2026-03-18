@@ -7,10 +7,8 @@
 {{/*
   Deployed in kube-system because the nfs-mounter container requires
   privileged: true and Bidirectional mount propagation, both forbidden
-  by PSA baseline/restricted. kube-system is implicitly privileged on
-  all managed K8s providers (EKS, GKE, AKS). This follows the pattern
-  used by CSI node plugins (EBS, GCE PD, NFS, etc.).
-
+  by Pod Security Admission's baseline/restricted Pod Security Standards.
+  kube-system is implicitly privileged on all managed K8s providers (EKS, GKE, AKS).
   The pod has two containers with distinct privilege levels:
     rclone-nfs:  Unprivileged, non-root. Runs the NFSv3 server (complex,
                  has cloud credentials and external network access).
@@ -81,7 +79,7 @@ spec:
         # -----------------------------------------------------------
         - name: rclone-nfs
           image: {{ include "isola.operator.rootfssnapshotRcloneImage" . }}
-          imagePullPolicy: {{ $rclone.image.pullPolicy }}
+          imagePullPolicy: {{ default "IfNotPresent" $rclone.image.pullPolicy }}
           command: ["/bin/sh", "-c"]
           args:
             - |
