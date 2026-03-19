@@ -186,6 +186,9 @@ jobs:
           echo "Waiting for isola-api-gateway..."
           kubectl rollout status deployment/isola-api-gateway -n isola-system --timeout=120s
 
+          echo "Waiting for isola-snapshot-mounter..."
+          kubectl rollout status daemonset/isola-snapshot-mounter -n isola-system --timeout=120s
+
           echo "Checking pod status..."
           kubectl get pods -n isola-system
 
@@ -232,6 +235,9 @@ jobs:
 
           echo "=== api-gateway logs ===" > ./debug-logs/api.log
           kubectl logs -l app.kubernetes.io/name=isola-api-gateway -n isola-system --tail=500 >> ./debug-logs/api.log 2>&1 || true
+
+          echo "=== snapshot-mounter logs ===" > ./debug-logs/snapshot-mounter.log
+          kubectl logs -l app.kubernetes.io/component=snapshot-mounter -n isola-system --all-containers --tail=500 >> ./debug-logs/snapshot-mounter.log 2>&1 || true
 
           echo "=== Sandboxes ===" > ./debug-logs/sandboxes.txt
           kubectl get sandboxes -A -o wide >> ./debug-logs/sandboxes.txt 2>&1 || true
