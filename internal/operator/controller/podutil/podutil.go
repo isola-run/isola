@@ -23,6 +23,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// PodStartTime returns the pod's start time (when kubelet acknowledged the pod).
+// Returns nil if the pod is nil or StartTime is not yet set.
+func PodStartTime(pod *corev1.Pod) *metav1.Time {
+	if pod == nil {
+		return nil
+	}
+	return pod.Status.StartTime
+}
+
 // PodReadyTime returns the time the pod first became ready (PodReady condition's LastTransitionTime).
 // Returns nil if the pod is nil, not ready, or the transition time is zero.
 func PodReadyTime(pod *corev1.Pod) *metav1.Time {

@@ -480,13 +480,13 @@ func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandb
 		return nil
 	}
 
-	podReadyTime := podutil.PodReadyTime(sandboxPod)
-	if podReadyTime == nil {
+	startTime := podutil.PodStartTime(sandboxPod)
+	if startTime == nil {
 		return nil
 	}
 
-	timeoutAt := podReadyTime.Add(time.Duration(*sandbox.Spec.ActiveDeadlineSeconds) * time.Second)
-	log.Info("calculated sandbox timeout from PodReady time", "podReadyTime", podReadyTime.Time, "timeoutAt", timeoutAt)
+	timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.ActiveDeadlineSeconds) * time.Second)
+	log.Info("calculated sandbox timeout from pod start time", "startTime", startTime.Time, "timeoutAt", timeoutAt)
 	return &metav1.Time{Time: timeoutAt}
 }
 
@@ -497,8 +497,8 @@ func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv
 	}
 
 	calculated := r.calculateTimeout(ctx, sandbox, sandboxPod)
-	// Set once: anchor timeout to the first PodReady transition. A crashlooping pod
-	// must not push the timeout forward on each restart.
+	// Set once: anchor timeout to pod start time. Pod start time is immutable,
+	// so this naturally prevents crashlooping pods from pushing the timeout forward.
 	if calculated != nil && sandbox.Status.TimeoutAt == nil {
 		sandbox.Status.TimeoutAt = calculated
 

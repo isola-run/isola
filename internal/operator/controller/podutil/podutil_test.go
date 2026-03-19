@@ -24,6 +24,54 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func TestPodStartTime(t *testing.T) {
+	now := time.Now()
+	startTime := metav1.NewTime(now)
+
+	tests := []struct {
+		name string
+		pod  *corev1.Pod
+		want *metav1.Time
+	}{
+		{
+			name: "nil pod",
+			pod:  nil,
+			want: nil,
+		},
+		{
+			name: "pod with no StartTime",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Phase: corev1.PodPending,
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "pod with valid StartTime",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					StartTime: &startTime,
+				},
+			},
+			want: &startTime,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			got := PodStartTime(tt.pod)
+			if tt.want == nil {
+				g.Expect(got).To(BeNil())
+			} else {
+				g.Expect(got).NotTo(BeNil())
+				g.Expect(got.Time).To(BeTemporally("==", tt.want.Time))
+			}
+		})
+	}
+}
+
 func TestPodReadyTime(t *testing.T) {
 	now := time.Now()
 	readyTime := metav1.NewTime(now)

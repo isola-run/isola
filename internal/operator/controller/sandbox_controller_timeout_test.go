@@ -58,7 +58,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(sandbox.Status.TimeoutAt).To(BeNil())
 		})
 
-		It("should calculate TimeoutAt from PodReady time", func() {
+		It("should calculate TimeoutAt from pod start time", func() {
 			sandboxName := "sandbox-timeout-pod-ready"
 
 			timeout := int64(60)
@@ -78,7 +78,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod).NotTo(BeNil())
 
 			// Set StartTime to an earlier time, PodReady LTT to a later time
-			// to verify timeout is anchored to PodReady, not StartTime
+			// to verify timeout is anchored to StartTime, not PodReady
 			startTime := metav1.NewTime(fakeClock.Now().Add(-10 * time.Second))
 			podReadyTime := metav1.NewTime(fakeClock.Now())
 			pod.Status.StartTime = &startTime
@@ -93,11 +93,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(sandbox.Status.TimeoutAt).NotTo(BeNil())
-			expectedTimeout := podReadyTime.Add(time.Duration(timeout) * time.Second)
+			expectedTimeout := startTime.Add(time.Duration(timeout) * time.Second)
 			Expect(sandbox.Status.TimeoutAt.Time).To(BeTemporally("~", expectedTimeout, time.Second))
 		})
 
-		It("should not set TimeoutAt when pod is not ready", func() {
+		It("should set TimeoutAt from StartTime even when pod is not ready", func() {
 			sandboxName := "sandbox-timeout-not-ready"
 
 			timeout := int64(60)
@@ -105,14 +105,29 @@ var _ = Describe("Sandbox Controller", func() {
 				s.Spec.ActiveDeadlineSeconds = &timeout
 			})
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
 
 			// First reconcile creates the pod (pod is not ready yet)
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
+			// Set StartTime but do NOT make pod ready
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			startTime := metav1.NewTime(fakeClock.Now())
+			pod.Status.StartTime = &startTime
+			pod.Status.Phase = corev1.PodPending
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
 			sandbox := getSandbox(ctx, sandboxName)
-			Expect(sandbox.Status.TimeoutAt).To(BeNil())
+			Expect(sandbox.Status.TimeoutAt).NotTo(BeNil())
+			expectedTimeout := startTime.Add(time.Duration(timeout) * time.Second)
+			Expect(sandbox.Status.TimeoutAt.Time).To(BeTemporally("~", expectedTimeout, time.Second))
 		})
 
 		It("should delete sandbox with Delete policy when timeout exceeded", func() {
@@ -242,13 +257,14 @@ var _ = Describe("Sandbox Controller", func() {
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
 
-			// T1: Make pod Ready
+			// T1: Make pod Ready (makePodReady sets StartTime to clock.Now())
 			t1 := fakeClock.Now()
 			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
 
 			_, err = doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
+			// Timeout anchored to StartTime (set at T1 by makePodReady)
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(sandbox.Status.TimeoutAt).NotTo(BeNil())
 			expectedTimeout := t1.Add(time.Duration(timeout) * time.Second)
@@ -315,6 +331,52 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox = getSandbox(ctx, sandboxName)
 			Expect(sandbox.Status.TimeoutAt).NotTo(BeNil())
 			Expect(sandbox.Status.TimeoutAt.Time).To(BeTemporally("~", expectedTimeout, time.Second))
+		})
+		It("should timeout and delete sandbox that never became ready", func() {
+			sandboxName := "sandbox-timeout-never-ready"
+
+			timeout := int64(1) // 1 second timeout
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+					Strategy: sandboxv1alpha1.ShutdownStrategyDelete,
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile creates the pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Set StartTime but do NOT make pod ready (simulates crashlooping pod)
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			startTime := metav1.NewTime(fakeClock.Now())
+			pod.Status.StartTime = &startTime
+			pod.Status.Phase = corev1.PodPending
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			// Reconcile to persist TimeoutAt
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox.Status.TimeoutAt).NotTo(BeNil())
+
+			// Advance past timeout
+			fakeClock.Advance(2 * time.Second)
+
+			// Reconcile triggers timeout handling - removes finalizer and deletes
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
+			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 	})
 })
