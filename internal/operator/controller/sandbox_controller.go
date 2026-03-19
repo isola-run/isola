@@ -248,7 +248,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			})
 			return err
 		}
-		if err := r.injectRootfsRestoreAnnotations(sandbox.Spec.RootfsSnapshotSources, sandboxPod, sandbox.Namespace); err != nil {
+		if err := r.injectRootfsRestore(sandbox.Spec.RootfsSnapshotSources, sandboxPod, sandbox.Namespace); err != nil {
 			_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 				{
 					Type:               SandboxReadyCondition,
@@ -1138,7 +1138,7 @@ func (r *SandboxReconciler) validateRootfsRestoreConfig(ctx context.Context) err
 	return nil
 }
 
-func (r *SandboxReconciler) injectRootfsRestoreAnnotations(sources []sandboxv1alpha1.RootfsSnapshotSource, pod *corev1.Pod, namespace string) error {
+func (r *SandboxReconciler) injectRootfsRestore(sources []sandboxv1alpha1.RootfsSnapshotSource, pod *corev1.Pod, namespace string) error {
 	containers := make(map[string]struct{}, len(pod.Spec.Containers))
 	for _, c := range pod.Spec.Containers {
 		containers[c.Name] = struct{}{}
@@ -1180,6 +1180,24 @@ func (r *SandboxReconciler) injectRootfsRestoreAnnotations(sources []sandboxv1al
 				"duplicate restore target: container %q", name))
 		}
 		pod.Annotations[key] = fmt.Sprintf("%s/%s/%s.tar", r.RootfsSnapshotHostMountPath, namespace, src.SnapshotName)
+
+		// Add per-container restart rules so kubelet retries exit code 128
+		// (OCI runtime start failure, e.g. missing gVisor rootfs tar).
+		// Requires the ContainerRestartRules feature gate (K8s 1.34+, enabled by default in 1.35+).
+		rp := corev1.ContainerRestartPolicyNever
+		for i := range pod.Spec.Containers {
+			if pod.Spec.Containers[i].Name == name {
+				pod.Spec.Containers[i].RestartPolicy = &rp
+				pod.Spec.Containers[i].RestartPolicyRules = []corev1.ContainerRestartRule{{
+					Action: corev1.ContainerRestartRuleActionRestart,
+					ExitCodes: &corev1.ContainerRestartRuleOnExitCodes{
+						Operator: corev1.ContainerRestartRuleOnExitCodesOpIn,
+						Values:   []int32{128},
+					},
+				}}
+				break
+			}
+		}
 	}
 	return nil
 }

@@ -14,11 +14,20 @@
 
 from __future__ import annotations
 
+import subprocess
+import time
+
 import pytest
 
 from isola import Isola, Sandbox, SandboxStatus
 
-from conftest import create_rootfs_snapshot, wait_for_running, wait_for_snapshot_complete, wait_for_status
+from conftest import (
+    SANDBOXES_NAMESPACE,
+    create_rootfs_snapshot,
+    wait_for_running,
+    wait_for_snapshot_complete,
+    wait_for_status,
+)
 
 
 @pytest.mark.timeout(120)
@@ -48,12 +57,35 @@ class TestRootfsSnapshotSourcesField:
         sources = session_sandbox.rootfs_snapshot_sources
         assert sources is None or sources == []
 
-    def test_sandbox_with_nonexistent_snapshot_fails(
+    def test_sandbox_with_nonexistent_snapshot_retries(
         self, sandbox_factory: ..., isola_client: Isola
     ) -> None:
+        """With restartPolicyRules, a nonexistent snapshot causes exit 128 retries."""
         sb = sandbox_factory(rootfs_snapshot_source="does-not-exist")
-        failed = wait_for_status(isola_client, sb.id, SandboxStatus.FAILED, timeout=60)
-        assert failed.status == SandboxStatus.FAILED
+
+        # Wait for at least one restart (container exits 128, kubelet retries)
+        deadline = time.monotonic() + 60
+        restarts = 0
+        while time.monotonic() < deadline:
+            result = subprocess.run(
+                [
+                    "kubectl", "get", "pod", f"{sb.id}-pod",
+                    "-n", SANDBOXES_NAMESPACE,
+                    "-o", "jsonpath={.status.containerStatuses[0].restartCount}",
+                ],
+                capture_output=True, text=True,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                restarts = int(result.stdout.strip())
+                if restarts > 0:
+                    break
+            time.sleep(2)
+
+        assert restarts > 0, "Expected pod to restart on exit code 128"
+
+        # Sandbox should stay in creating (not failed)
+        current = isola_client.sandboxes.get(sb.id)
+        assert current.status == SandboxStatus.CREATING
 
 
 @pytest.mark.timeout(180)

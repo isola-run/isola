@@ -185,8 +185,11 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 1. Create a Sandbox with `rootfsSnapshotSources` referencing prior snapshot names
 2. Operator validates gVisor runtime and snapshot-mounter host path configuration
 3. Operator injects `dev.gvisor.tar.rootfs.upper.<container>` annotations on the pod, pointing to the NFS-mounted tar on the host (`<hostMountPath>/<namespace>/<snapshotName>.tar`)
-4. gVisor reads the tar annotations at container start and pre-populates the overlay upper layer
-5. The snapshot-mounter DaemonSet runs on each node, NFS-mounting snapshot tars from cloud storage so they are available at the configured host path
+4. Operator injects per-container `restartPolicyRules` on restored containers to retry exit code 128 (gVisor OCI runtime start failure when tar is missing). Retries follow kubelet exponential backoff (10s, 20s, 40s, ... capped at 5min). `activeDeadlineSeconds` bounds total retry time (anchored to pod start time); without it, retries are unbounded. User-facing sandbox status during retry: `creating`
+5. gVisor reads the tar annotations at container start and pre-populates the overlay upper layer
+6. The snapshot-mounter DaemonSet runs on each node, NFS-mounting snapshot tars from cloud storage so they are available at the configured host path
+
+**Rootfs restore retry (K8s version prerequisite):** `rootfsSnapshotSources` uses per-container `restartPolicyRules` to retry exit code 128 when the snapshot tar is not yet available on NFS. This requires the `ContainerRestartRules` feature gate: alpha in K8s 1.34 (must be explicitly enabled), beta/on-by-default in K8s 1.35+, not yet GA. Without the feature gate, `restartPolicyRules` fields are silently ignored and the container falls back to pod-level `RestartPolicy: Never` (pod fails permanently on missing tar, no retry).
 
 **Command execution:**
 - Commands run via `SysProcAttr.Chroot` to `/proc/<pid>/root`, entering the sandbox container's filesystem view without changing namespaces. The sidecar uses `/bin/sh -c 'exec "$@"'` for PATH lookup inside the container, and `exec` replaces the shell so SIGKILL reaches the user's process directly. Requires `CAP_SYS_PTRACE` (for gVisor's `/proc/<pid>/root` access check) and `CAP_SYS_CHROOT` (default capability set).

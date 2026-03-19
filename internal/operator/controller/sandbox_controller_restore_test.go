@@ -164,7 +164,7 @@ var _ = Describe("Sandbox Controller", func() {
 		})
 
 		// CRD-level CEL validation prevents duplicate container targets at the API layer.
-		// This tests the defense-in-depth check in injectRootfsRestoreAnnotations directly.
+		// This tests the defense-in-depth check in injectRootfsRestore directly.
 		It("should reject duplicate container target in annotation injection", func() {
 			reconciler := newTestReconcilerWithRestore(fakeClock, "gvisor", "/mnt/isola-snapshots")
 
@@ -185,7 +185,7 @@ var _ = Describe("Sandbox Controller", func() {
 				{SnapshotName: "snap-b", ContainerName: "app1"},
 			}
 
-			err := reconciler.injectRootfsRestoreAnnotations(sources, pod, testNamespace)
+			err := reconciler.injectRootfsRestore(sources, pod, testNamespace)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("duplicate restore target"))
 			Expect(err.Error()).To(ContainSubstring("app1"))
@@ -301,6 +301,127 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Reason).To(Equal(CondReasonRootfsRestoreConfigError))
 			Expect(cond.Message).To(ContainSubstring("not runsc/gvisor"))
+		})
+
+		It("should inject restartPolicyRules on container with restore annotation", func() {
+			runtimeClassName := "gvisor-restore"
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			reconciler := newTestReconcilerWithRestore(fakeClock, runtimeClassName, "/mnt/isola-snapshots")
+
+			sandboxName := "sb-restore-retry-rules"
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
+					{SnapshotName: "my-snapshot"},
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// The default "sandbox" container should have restart rules
+			ctr := pod.Spec.Containers[0]
+			Expect(ctr.Name).To(Equal("sandbox"))
+			rpNever := corev1.ContainerRestartPolicyNever
+			Expect(ctr.RestartPolicy).To(Equal(&rpNever))
+			Expect(ctr.RestartPolicyRules).To(HaveLen(1))
+			Expect(ctr.RestartPolicyRules[0].Action).To(Equal(corev1.ContainerRestartRuleActionRestart))
+			Expect(ctr.RestartPolicyRules[0].ExitCodes).NotTo(BeNil())
+			Expect(ctr.RestartPolicyRules[0].ExitCodes.Operator).To(Equal(corev1.ContainerRestartRuleOnExitCodesOpIn))
+			Expect(ctr.RestartPolicyRules[0].ExitCodes.Values).To(Equal([]int32{128}))
+		})
+
+		It("should inject restartPolicyRules only on restored containers", func() {
+			runtimeClassName := "gvisor-restore"
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			reconciler := newTestReconcilerWithRestore(fakeClock, runtimeClassName, "/mnt/isola-snapshots")
+
+			sandboxName := "sb-restore-partial-rules"
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.PodTemplate.Spec.Containers = []corev1.Container{
+					{
+						Name:    "app1",
+						Image:   "busybox:latest",
+						Command: []string{"sleep", "infinity"},
+					},
+					{
+						Name:    "app2",
+						Image:   "busybox:latest",
+						Command: []string{"sleep", "infinity"},
+					},
+				}
+				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
+					{SnapshotName: "snap-a", ContainerName: "app1"},
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// app1 should have restart rules
+			var app1, app2 corev1.Container
+			for _, c := range pod.Spec.Containers {
+				switch c.Name {
+				case "app1":
+					app1 = c
+				case "app2":
+					app2 = c
+				}
+			}
+			rpNever := corev1.ContainerRestartPolicyNever
+			Expect(app1.RestartPolicy).To(Equal(&rpNever))
+			Expect(app1.RestartPolicyRules).To(HaveLen(1))
+			Expect(app1.RestartPolicyRules[0].ExitCodes.Values).To(Equal([]int32{128}))
+
+			// app2 should NOT have restart rules
+			Expect(app2.RestartPolicy).To(BeNil())
+			Expect(app2.RestartPolicyRules).To(BeEmpty())
+		})
+
+		It("should not inject restartPolicyRules without restore sources", func() {
+			runtimeClassName := "gvisor-restore"
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			reconciler := newTestReconcilerWithRestore(fakeClock, runtimeClassName, "/mnt/isola-snapshots")
+
+			sandboxName := "sb-no-restore-rules"
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			for _, c := range pod.Spec.Containers {
+				Expect(c.RestartPolicy).To(BeNil(), "container %q should not have per-container RestartPolicy", c.Name)
+				Expect(c.RestartPolicyRules).To(BeEmpty(), "container %q should not have RestartPolicyRules", c.Name)
+			}
 		})
 
 		It("should fail when multiple containers and no container specified", func() {
