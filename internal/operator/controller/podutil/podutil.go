@@ -32,24 +32,6 @@ func PodStartTime(pod *corev1.Pod) *metav1.Time {
 	return pod.Status.StartTime
 }
 
-// PodReadyTime returns the time the pod first became ready (PodReady condition's LastTransitionTime).
-// Returns nil if the pod is nil, not ready, or the transition time is zero.
-func PodReadyTime(pod *corev1.Pod) *metav1.Time {
-	if pod == nil {
-		return nil
-	}
-	for i := range pod.Status.Conditions {
-		c := pod.Status.Conditions[i]
-		if c.Type == corev1.PodReady && c.Status == corev1.ConditionTrue {
-			if c.LastTransitionTime.IsZero() {
-				return nil
-			}
-			return &metav1.Time{Time: c.LastTransitionTime.Time}
-		}
-	}
-	return nil
-}
-
 func IsPodReady(pod *corev1.Pod) bool {
 	if pod == nil {
 		return false
