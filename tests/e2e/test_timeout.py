@@ -32,7 +32,7 @@ def test_active_deadline_sandbox_stops(
     sb = sandbox_factory(image="alpine:3.21", timeout=10)
     wait_for_running(isola_client, sb.id)
 
-    # Wait for the 5s deadline to fire + operator reconciliation.
+    # Wait for the 10s deadline to fire + operator reconciliation.
     deadline = time.monotonic() + 30
     last_status = None
     while time.monotonic() < deadline:
@@ -93,7 +93,7 @@ def test_operations_on_timed_out_sandbox(
     sb = sandbox_factory(image="alpine:3.21", timeout=10)
     running = wait_for_running(isola_client, sb.id)
 
-    # Wait for the 5s deadline to fire + operator reconciliation.
+    # Wait for the 10s deadline to fire + operator reconciliation.
     deadline = time.monotonic() + 30
     sandbox_gone = False
     last_status = None
