@@ -68,8 +68,8 @@ docker_build(
 
 docker_build(
     'snapshot-mounter',
-    context='build/snapshot-mounter',
-    dockerfile='build/snapshot-mounter/Dockerfile',
+    context='cmd/snapshot-mounter',
+    dockerfile='cmd/snapshot-mounter/Dockerfile',
 )
 
 namespace_create('isola-system')
