@@ -16,12 +16,88 @@ package podutil
 
 import (
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func TestPodReadyTime(t *testing.T) {
+	now := time.Now()
+	readyTime := metav1.NewTime(now)
+
+	tests := []struct {
+		name string
+		pod  *corev1.Pod
+		want *metav1.Time
+	}{
+		{
+			name: "nil pod",
+			pod:  nil,
+			want: nil,
+		},
+		{
+			name: "pending pod",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Phase: corev1.PodPending,
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "PodReady=False",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Phase: corev1.PodRunning,
+					Conditions: []corev1.PodCondition{
+						{Type: corev1.PodReady, Status: corev1.ConditionFalse, LastTransitionTime: readyTime},
+					},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "PodReady=True with zero LastTransitionTime",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Phase: corev1.PodRunning,
+					Conditions: []corev1.PodCondition{
+						{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+					},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "PodReady=True with valid LastTransitionTime",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Phase: corev1.PodRunning,
+					Conditions: []corev1.PodCondition{
+						{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: readyTime},
+					},
+				},
+			},
+			want: &metav1.Time{Time: now},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			got := PodReadyTime(tt.pod)
+			if tt.want == nil {
+				g.Expect(got).To(BeNil())
+			} else {
+				g.Expect(got).NotTo(BeNil())
+				g.Expect(got.Time).To(BeTemporally("==", tt.want.Time))
+			}
+		})
+	}
+}
 
 func TestIsPodReady(t *testing.T) {
 	tests := []struct {

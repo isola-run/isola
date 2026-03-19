@@ -476,48 +476,40 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 
 func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
 	log := logf.FromContext(ctx)
-	// todo benl: update sandbox condition(s) here?
 	if sandbox.Spec.ActiveDeadlineSeconds == nil {
 		return nil
 	}
 
-	var startTime time.Time
-	if sandboxPod != nil && sandboxPod.Status.StartTime != nil {
-		// sandboxPod.Status.StartTime set once when the pod is first scheduled onto a node (survives pod restarts)
-		// it is probably closer to user intent, so if exists we use that time
-		log.Info("deduced start time from pod", "startTime", sandboxPod.Status.StartTime.Time)
-		startTime = sandboxPod.Status.StartTime.Time
-	} else {
-		log.Info("deduced start time from sandbox", "startTime", sandbox.CreationTimestamp.Time)
-		startTime = sandbox.CreationTimestamp.Time
+	podReadyTime := podutil.PodReadyTime(sandboxPod)
+	if podReadyTime == nil {
+		return nil
 	}
 
-	timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.ActiveDeadlineSeconds) * time.Second)
-
-	log.Info("calculated sandbox timeout", "timeoutAt", timeoutAt)
+	timeoutAt := podReadyTime.Add(time.Duration(*sandbox.Spec.ActiveDeadlineSeconds) * time.Second)
+	log.Info("calculated sandbox timeout from PodReady time", "podReadyTime", podReadyTime.Time, "timeoutAt", timeoutAt)
 	return &metav1.Time{Time: timeoutAt}
 }
 
 func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time, err error) {
 	log := logf.FromContext(ctx)
-	optionalTimeoutAt = r.calculateTimeout(ctx, sandbox, sandboxPod)
-	if optionalTimeoutAt == nil {
-		// no timeout is configured
+	if sandbox.Spec.ActiveDeadlineSeconds == nil {
 		return nil, nil
 	}
 
-	// once the sandboxPod is created, timeout might change compared to the one calculated based on sandbox creation time
-	if sandbox.Status.TimeoutAt == nil || sandbox.Status.TimeoutAt.Time.Before(optionalTimeoutAt.Time) {
-		sandbox.Status.TimeoutAt = optionalTimeoutAt
+	calculated := r.calculateTimeout(ctx, sandbox, sandboxPod)
+	// Set once: anchor timeout to the first PodReady transition. A crashlooping pod
+	// must not push the timeout forward on each restart.
+	if calculated != nil && sandbox.Status.TimeoutAt == nil {
+		sandbox.Status.TimeoutAt = calculated
 
 		if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
 			log.Error(err, "Failed to patch sandbox TimeoutAt")
-			return optionalTimeoutAt, err
+			return calculated, err
 		}
-		log.Info("persisted timeoutAt", "timeoutAt", optionalTimeoutAt)
+		log.Info("persisted timeoutAt", "timeoutAt", calculated)
 	}
 
-	return optionalTimeoutAt, nil
+	return sandbox.Status.TimeoutAt, nil
 }
 
 func (r *SandboxReconciler) reconcileSandboxStatus(

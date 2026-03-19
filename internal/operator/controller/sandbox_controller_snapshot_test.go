@@ -175,7 +175,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			newPod.Status.Phase = corev1.PodRunning
 			newPod.Status.Conditions = []corev1.PodCondition{
-				{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+				{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.NewTime(fakeClock.Now())},
 			}
 			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{
 				{
@@ -218,7 +218,15 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Simulate pod being gone
+			// Make pod ready so TimeoutAt gets persisted
+			pod := getPod(ctx, sandboxName+"-pod")
+			Expect(pod).NotTo(BeNil())
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Simulate pod being gone after timeout was set
 			deletePod(ctx, sandboxName+"-pod")
 			fakeClock.Advance(2 * time.Second)
 
@@ -276,7 +284,7 @@ var _ = Describe("Sandbox Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
 			newPod.Status.Phase = corev1.PodRunning
-			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.NewTime(fakeClock.Now())}}
 			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{
 				{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
 			}
@@ -344,7 +352,7 @@ var _ = Describe("Sandbox Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
 			newPod.Status.Phase = corev1.PodRunning
-			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.NewTime(fakeClock.Now())}}
 			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
 			Expect(k8sClient.Status().Update(ctx, newPod)).To(Succeed())
 
@@ -405,7 +413,7 @@ var _ = Describe("Sandbox Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
 			newPod.Status.Phase = corev1.PodRunning
-			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.NewTime(fakeClock.Now())}}
 			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{
 				{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
 			}
@@ -490,7 +498,7 @@ var _ = Describe("Sandbox Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
 			newPod.Status.Phase = corev1.PodRunning
-			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.NewTime(fakeClock.Now())}}
 			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{
 				{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
 			}
