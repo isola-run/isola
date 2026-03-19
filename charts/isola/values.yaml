@@ -187,12 +187,12 @@ operator:
                 memory: 128Mi
 
           # Privileged mounter container (creates NFS mount with Bidirectional
-          # propagation). Minimal image: only needs mount.nfs from nfs-utils.
+          # propagation). Purpose-built image with nfs-utils for mount.nfs.
           mounter:
             image:
-              registry: docker.io
-              repository: alpine
-              tag: "3.21"
+              registry: ghcr.io/isola-ai
+              repository: snapshot-mounter
+              tag: ""  # Defaults to Chart.appVersion
               digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
               pullPolicy: IfNotPresent
             resources: {}
