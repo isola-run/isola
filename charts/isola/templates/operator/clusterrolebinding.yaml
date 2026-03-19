@@ -4,6 +4,7 @@ metadata:
   name: {{ include "isola.operator.fullname" . }}
   labels:
     {{- include "isola.operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole

@@ -129,6 +129,7 @@ spec:
                         Required when the sandbox has multiple user containers.
                       maxLength: 63
                       minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
                     snapshotName:
                       description: |-

@@ -97,6 +97,68 @@ Return imagePullSecret names as comma-separated string
 {{- end }}
 
 {{/* ==========================================================================
+   Values Validation
+   ========================================================================== */}}
+
+{{/*
+Aggregate all validation errors and fail with a single message.
+Invoked from the operator deployment template to catch misconfigurations at install time.
+*/}}
+{{- define "isola.validateValues" -}}
+{{- $messages := list -}}
+{{- $messages = append $messages (include "isola.validateValues.sandboxNamespace" .) -}}
+{{- $messages = append $messages (include "isola.validateValues.runtimeType" .) -}}
+{{- $messages = append $messages (include "isola.validateValues.rootfssnapshot" .) -}}
+{{- $messages = append $messages (include "isola.validateValues.rootfssnapshotCredentials" .) -}}
+{{- $messages = without $messages "" -}}
+{{- $message := join "\n" $messages -}}
+{{- if $message -}}
+{{-   printf "\nVALUES VALIDATION:\n%s" $message | fail -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "isola.validateValues.sandboxNamespace" -}}
+{{- if not .Values.sandboxNamespace.name -}}
+isola: sandboxNamespace.name
+    sandboxNamespace.name must not be empty.
+    This is the namespace where sandbox pods, network policies, and related resources are created.
+{{- end -}}
+{{- end -}}
+
+{{- define "isola.validateValues.runtimeType" -}}
+{{- $validTypes := list "gvisor" "clusterDefault" -}}
+{{- if not (has .Values.operator.sandboxRuntime.type $validTypes) -}}
+isola: operator.sandboxRuntime.type
+    Invalid runtime type "{{ .Values.operator.sandboxRuntime.type }}".
+    Must be one of: gvisor, clusterDefault
+{{- end -}}
+{{- end -}}
+
+{{- define "isola.validateValues.rootfssnapshot" -}}
+{{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" -}}
+{{- if not (include "isola.operator.storageBucketUrl" .) -}}
+isola: operator.sandboxRuntime.gvisor.rootfssnapshot.storage.bucketUrl
+    When rootfssnapshot is enabled (operator.sandboxRuntime.gvisor.rootfssnapshot.enabled=true),
+    you must provide a storage bucket URL.
+    Set operator.sandboxRuntime.gvisor.rootfssnapshot.storage.bucketUrl to a valid bucket URL.
+    Examples: s3://bucket-name?region=us-east-1, gs://bucket-name, azblob://container-name
+    Alternatively, disable rootfssnapshot: operator.sandboxRuntime.gvisor.rootfssnapshot.enabled=false
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "isola.validateValues.rootfssnapshotCredentials" -}}
+{{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" -}}
+{{- $creds := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage.credentials -}}
+{{- if or (and $creds.accessKeyId (not $creds.secretAccessKey)) (and (not $creds.accessKeyId) $creds.secretAccessKey) -}}
+isola: operator.sandboxRuntime.gvisor.rootfssnapshot.storage.credentials
+    Only one of accessKeyId/secretAccessKey is set. You must provide both together,
+    or use existingSecret, or leave both empty to use pod/workload identity (e.g. IRSA).
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* ==========================================================================
    Operator Helpers
    ========================================================================== */}}
 
@@ -108,13 +170,12 @@ Operator fullname
 {{- end }}
 
 {{/*
-Operator labels
+Operator labels (component labels are applied per-resource and not here)
 */}}
 {{- define "isola.operator.labels" -}}
 {{ include "isola.labels" . }}
 app.kubernetes.io/name: {{ include "isola.name" . }}-operator
 app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/component: operator
 {{- end }}
 
 {{/*
@@ -123,7 +184,6 @@ Operator selector labels
 {{- define "isola.operator.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "isola.name" . }}-operator
 app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/component: operator
 {{- end }}
 
 {{/*

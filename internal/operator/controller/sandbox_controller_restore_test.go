@@ -21,6 +21,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
 
@@ -113,6 +114,81 @@ var _ = Describe("Sandbox Controller", func() {
 				"dev.gvisor.tar.rootfs.upper.my-app",
 				"/mnt/isola-snapshots/"+testNamespace+"/snap1.tar",
 			))
+		})
+
+		It("should inject annotations for multiple sources targeting different containers", func() {
+			runtimeClassName := "gvisor-restore"
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			reconciler := newTestReconcilerWithRestore(fakeClock, runtimeClassName, "/mnt/isola-snapshots")
+
+			sandboxName := "sb-restore-multi-src"
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.PodTemplate.Spec.Containers = []corev1.Container{
+					{
+						Name:    "app1",
+						Image:   "busybox:latest",
+						Command: []string{"sleep", "infinity"},
+					},
+					{
+						Name:    "app2",
+						Image:   "busybox:latest",
+						Command: []string{"sleep", "infinity"},
+					},
+				}
+				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
+					{SnapshotName: "snap-a", ContainerName: "app1"},
+					{SnapshotName: "snap-b", ContainerName: "app2"},
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Annotations).To(HaveKeyWithValue(
+				"dev.gvisor.tar.rootfs.upper.app1",
+				"/mnt/isola-snapshots/"+testNamespace+"/snap-a.tar",
+			))
+			Expect(pod.Annotations).To(HaveKeyWithValue(
+				"dev.gvisor.tar.rootfs.upper.app2",
+				"/mnt/isola-snapshots/"+testNamespace+"/snap-b.tar",
+			))
+		})
+
+		// CRD-level CEL validation prevents duplicate container targets at the API layer.
+		// This tests the defense-in-depth check in injectRootfsRestoreAnnotations directly.
+		It("should reject duplicate container target in annotation injection", func() {
+			reconciler := newTestReconcilerWithRestore(fakeClock, "gvisor", "/mnt/isola-snapshots")
+
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "app1", Image: "busybox:latest"},
+						{Name: "app2", Image: "busybox:latest"},
+					},
+				},
+			}
+
+			sources := []sandboxv1alpha1.RootfsSnapshotSource{
+				{SnapshotName: "snap-a", ContainerName: "app1"},
+				{SnapshotName: "snap-b", ContainerName: "app1"},
+			}
+
+			err := reconciler.injectRootfsRestoreAnnotations(sources, pod, testNamespace)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("duplicate restore target"))
+			Expect(err.Error()).To(ContainSubstring("app1"))
 		})
 
 		It("should fail when container not found", func() {

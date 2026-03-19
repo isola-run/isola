@@ -192,7 +192,7 @@ spec:
         - name: host-mount-parent
           hostPath:
             path: {{ dir $hostMountPath }}
-            type: Directory
+            type: DirectoryOrCreate
         - name: cache
           hostPath:
             path: {{ $cachePath }}

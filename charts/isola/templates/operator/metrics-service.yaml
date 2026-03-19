@@ -4,6 +4,7 @@ metadata:
   name: {{ include "isola.operator.fullname" . }}-metrics
   labels:
     {{- include "isola.operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
 spec:
   type: ClusterIP
   ports:

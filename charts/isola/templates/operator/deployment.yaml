@@ -1,9 +1,11 @@
+{{- include "isola.validateValues" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "isola.operator.fullname" . }}
   labels:
     {{- include "isola.operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
 spec:
   replicas: {{ .Values.operator.replicaCount }}
   selector:
