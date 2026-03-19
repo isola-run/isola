@@ -141,19 +141,14 @@ operator:
         # running rclone as an NFSv3 server with a kernel NFS mount, making
         # snapshot tars available for gVisor rootfs restore.
         #
-        # NFS is used instead of FUSE for high availability: the kernel NFS
-        # hard mount survives server process restarts (blocks and retries)
-        # instead of failing with ENOTCONN like FUSE does.
-        #
         # Host prerequisites:
         #   - NFS client kernel support (CONFIG_NFS_FS). Built-in on all major
         #     managed K8s node images (EKS, GKE, AKS) and required by NFS CSI
         #     drivers (EFS, Filestore, Azure Files).
         #
         # Cleanup on uninstall:
-        #   The NFS mount is intentionally NOT unmounted on pod termination
-        #   (this is what provides HA across restarts). After `helm uninstall`,
-        #   clean up on each node:
+        #   The NFS mount is intentionally NOT unmounted on pod termination for restarts resiliency.
+        #   After `helm uninstall`, it is possible to it clean it up on each node:
         #     umount /mnt/isola-snapshots; rm -rf /var/cache/isola-snapshots
         snapshotMounter:
           # Host path where snapshots are NFS-mounted (readable by runsc on the node)
