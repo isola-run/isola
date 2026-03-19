@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"maps"
 	"path/filepath"
-	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -205,12 +204,6 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			Annotations: sandbox.Spec.PodTemplate.Annotations,
 		},
 		Spec: sandbox.Spec.PodTemplate.Spec,
-	}
-
-	for key := range sandboxPod.Annotations {
-		if strings.HasPrefix(key, "dev.gvisor.tar.") {
-			delete(sandboxPod.Annotations, key)
-		}
 	}
 
 	sandboxPod.Spec.RestartPolicy = corev1.RestartPolicyNever
