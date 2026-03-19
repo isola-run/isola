@@ -149,7 +149,7 @@ type SandboxSpec struct {
 	Network *NetworkSpec `json:"network,omitempty"`
 
 	// RootfsSnapshotSources specifies rootfs snapshots to restore into containers at creation time.
-	// Requires gVisor runtime and the rootfs snapshot FUSE mount to be running on the node.
+	// Requires gVisor runtime and the snapshot-mounter NFS mount to be running on the node.
 	// Only the overlay rootfs upper layer is captured/restored. Files on separately-mounted
 	// filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are excluded.
 	// Write data to paths on the root filesystem (e.g. /root, /home) to ensure it

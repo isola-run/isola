@@ -91,7 +91,7 @@ type SandboxReconciler struct {
 	PriorityClassName           string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
 	ImagePullSecrets            []corev1.LocalObjectReference // ImagePullSecrets for pulling sandbox-sidecar images from private registries.
 	Clock                       Clock                         // Clock interface for time operations, allows mocking in tests
-	RootfsSnapshotHostMountPath string                        // Host path where rootfs snapshot tars are FUSE-mounted (e.g., /mnt/isola-snapshots)
+	RootfsSnapshotHostMountPath string                        // Host path where rootfs snapshot tars are NFS-mounted (e.g., /mnt/isola-snapshots)
 }
 
 const (

@@ -85,7 +85,7 @@ func main() {
 	flag.BoolVar(&rootfssnapshotEnabled, "rootfssnapshot-enabled", false, "Enable rootfs snapshot capability (requires gVisor runtime and privileged operations)")
 	flag.StringVar(&gvisorRunscPath, "gvisor-runsc-path", "", "Path to the runsc binary on cluster nodes (for gVisor snapshot support)")
 	flag.StringVar(&gvisorRunscRoot, "gvisor-runsc-root", "", "Root directory where runsc stores runtime state (for gVisor snapshot support)")
-	flag.StringVar(&rootfssnapshotHostMountPath, "rootfssnapshot-host-mount-path", "", "Host path where snapshot mounter FUSE-mounts snapshot tars (readable by runsc on the node)")
+	flag.StringVar(&rootfssnapshotHostMountPath, "rootfssnapshot-host-mount-path", "", "Host path where snapshot-mounter NFS-mounts snapshot tars (readable by runsc on the node)")
 	flag.StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode (text logging)")
 	flag.Parse()
