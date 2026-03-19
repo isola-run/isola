@@ -5,8 +5,7 @@ metadata:
   name: {{ include "isola.fullname" . }}-sandbox-allow-internet-egress
   namespace: {{ include "isola.sandboxNamespace" . }}
   labels:
-    {{- include "isola.operator.labels" . | nindent 4 }}
-    app.kubernetes.io/component: sandbox
+    {{- include "isola.sandbox.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:

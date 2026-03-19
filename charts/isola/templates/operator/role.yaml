@@ -5,7 +5,6 @@ metadata:
   name: {{ include "isola.operator.fullname" . }}-leader-election
   labels:
     {{- include "isola.operator.labels" . | nindent 4 }}
-    app.kubernetes.io/component: operator
 rules:
   - apiGroups:
       - ""

@@ -129,6 +129,7 @@ operator:
             repository: isola-uploader
             tag: ""  # Defaults to Chart.appVersion
             digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+            pullPolicy: IfNotPresent
 
         # ServiceAccount for rootfs snapshot jobs (needs cloud storage permissions)
         serviceAccount:
@@ -173,6 +174,7 @@ operator:
               registry: docker.io
               repository: rclone/rclone
               tag: "1.73.2"
+              digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
               pullPolicy: IfNotPresent
 
             # How long to cache directory listings (--dir-cache-time).
@@ -191,6 +193,7 @@ operator:
               registry: docker.io
               repository: alpine
               tag: "3.21"
+              digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
               pullPolicy: IfNotPresent
             resources: {}
 
@@ -234,18 +237,18 @@ apiGateway:
       cpu: 10m
       memory: 64Mi
 
-  service:
-    type: ClusterIP
-    nodePort: null
+  serviceAccount:
+    create: true
+    name: ""
     annotations: {}
 
   logging:
     level: info
     devMode: false
 
-  serviceAccount:
-    create: true
-    name: ""
+  service:
+    type: ClusterIP
+    nodePort: null
     annotations: {}
 
   nodeSelector: {}

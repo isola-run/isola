@@ -170,12 +170,13 @@ Operator fullname
 {{- end }}
 
 {{/*
-Operator labels (component labels are applied per-resource and not here)
+Operator labels
 */}}
 {{- define "isola.operator.labels" -}}
 {{ include "isola.labels" . }}
 app.kubernetes.io/name: {{ include "isola.name" . }}-operator
 app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: operator
 {{- end }}
 
 {{/*
@@ -184,6 +185,27 @@ Operator selector labels
 {{- define "isola.operator.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "isola.name" . }}-operator
 app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: operator
+{{- end }}
+
+{{/*
+Sandbox infrastructure labels (network policies, namespace)
+*/}}
+{{- define "isola.sandbox.labels" -}}
+{{ include "isola.labels" . }}
+app.kubernetes.io/name: {{ include "isola.name" . }}-operator
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: sandbox
+{{- end }}
+
+{{/*
+RootfsSnapshot labels (snapshot jobs, credentials)
+*/}}
+{{- define "isola.rootfssnapshot.labels" -}}
+{{ include "isola.labels" . }}
+app.kubernetes.io/name: {{ include "isola.name" . }}-operator
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: rootfssnapshot
 {{- end }}
 
 {{/*

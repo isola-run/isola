@@ -5,7 +5,6 @@ metadata:
   name: {{ include "isola.operator.fullname" . }}
   labels:
     {{- include "isola.operator.labels" . | nindent 4 }}
-    app.kubernetes.io/component: operator
 spec:
   replicas: {{ .Values.operator.replicaCount }}
   selector:
@@ -13,13 +12,13 @@ spec:
       {{- include "isola.operator.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      labels:
+        {{- include "isola.operator.selectorLabels" . | nindent 8 }}
       annotations:
         kubectl.kubernetes.io/default-container: manager
         {{- with .Values.operator.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      labels:
-        {{- include "isola.operator.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "isola.operator.serviceAccountName" . }}
       {{- include "isola.imagePullSecrets" . | nindent 6 }}

@@ -28,12 +28,12 @@ spec:
       {{- include "isola.snapshotMounter.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      labels:
+        {{- include "isola.snapshotMounter.selectorLabels" . | nindent 8 }}
       {{- with $snapshotMounter.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      labels:
-        {{- include "isola.snapshotMounter.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "isola.operator.snapshotMounterServiceAccountName" . }}
       priorityClassName: system-node-critical
@@ -54,7 +54,7 @@ spec:
       # set the cache directory ownership to the rclone user (1009).
         - name: init-cache-perms
           image: {{ include "isola.operator.rootfssnapshotMounterImage" . }}
-          imagePullPolicy: {{ default "IfNotPresent" $mounter.image.pullPolicy }}
+          imagePullPolicy: {{ $mounter.image.pullPolicy }}
           command: ["chown", "-R", "1009:1009", "{{ $cachePath }}"]
           resources:
             {{- toYaml $mounter.resources | nindent 12 }}
@@ -64,7 +64,7 @@ spec:
       containers:
         - name: rclone-nfs
           image: {{ include "isola.operator.rootfssnapshotRcloneImage" . }}
-          imagePullPolicy: {{ default "IfNotPresent" $rclone.image.pullPolicy }}
+          imagePullPolicy: {{ $rclone.image.pullPolicy }}
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -139,7 +139,7 @@ spec:
               mountPath: {{ $cachePath }}
         - name: nfs-mounter
           image: {{ include "isola.operator.rootfssnapshotMounterImage" . }}
-          imagePullPolicy: {{ default "IfNotPresent" $mounter.image.pullPolicy }}
+          imagePullPolicy: {{ $mounter.image.pullPolicy }}
           command: ["/bin/sh", "-c"]
           args:
             - |

@@ -8,6 +8,5 @@ metadata:
   name: {{ include "isola.operator.fullname" . }}
   labels:
     {{- include "isola.operator.labels" . | nindent 4 }}
-    app.kubernetes.io/component: operator
 rules:
   {{- toYaml $generated.rules | nindent 2 }}
