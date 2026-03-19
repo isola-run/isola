@@ -193,6 +193,9 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	maps.Copy(labels, buildNetworkLabels(sandbox.Spec.Network))
 
+	annotations := make(map[string]string, len(sandbox.Spec.PodTemplate.Annotations))
+	maps.Copy(annotations, sandbox.Spec.PodTemplate.Annotations)
+
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podutil.GetSandboxPodName(sandbox.Name),
@@ -201,7 +204,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			// There's a security gate in runsc/config/flags.go
 			// where only flags deemed safe for container authors
 			// to set because they don't weaken the sandbox.
-			Annotations: sandbox.Spec.PodTemplate.Annotations,
+			Annotations: annotations,
 		},
 		Spec: sandbox.Spec.PodTemplate.Spec,
 	}
