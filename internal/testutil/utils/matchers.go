@@ -16,6 +16,7 @@ package utils
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/onsi/gomega/format"
 	"github.com/onsi/gomega/types"
@@ -248,5 +249,5 @@ func (m *eventMatcher) NegatedFailureMessage(actual interface{}) string {
 }
 
 func containsSubstring(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s[1:], substr) || s[:len(substr)] == substr)
+	return strings.Contains(s, substr)
 }

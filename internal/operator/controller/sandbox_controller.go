@@ -526,7 +526,7 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	networkCondition := r.determineNetworkCondition(sandbox)
 	conditions = append(conditions, networkCondition)
 
-	// todo benl: currently, only shutdown snapsbot condition is reflected
+	// todo benl: currently, only shutdown snapshot condition is reflected
 	shutdownSnapshot, err := r.getShutdownRootfssnapshot(ctx, sandbox)
 	if err != nil {
 		return err

@@ -165,10 +165,12 @@ func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput
 
 	if err := os.Chmod(targetPath, 0666); err != nil { //nolint:gosec
 		h.logger.Error("failed to set file permissions", "error", err, "path", targetPath)
+		return nil, huma.Error500InternalServerError("failed to set file permissions")
 	}
 
 	if err := os.Chown(targetPath, uid, gid); err != nil {
 		h.logger.Error("failed to set file ownership", "error", err, "path", targetPath, "uid", uid, "gid", gid)
+		return nil, huma.Error500InternalServerError("failed to set file ownership")
 	}
 
 	return &FilesystemWriteOutput{

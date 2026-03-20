@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections.abc import AsyncIterator, Generator, Iterator
 from typing import Any, Protocol
@@ -59,7 +60,7 @@ class StreamReader:
     def __init__(self, api: _SyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
-        self._last_event_id = 0
+        self._last_event_id: int | None = None
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
             read=None,  # wait forever / until server error for data
@@ -82,7 +83,7 @@ class StreamReader:
 
         while True:
             try:
-                headers = {"Last-Event-ID": str(self._last_event_id)} if self._last_event_id > 0 else None
+                headers = {"Last-Event-ID": str(self._last_event_id)} if self._last_event_id is not None else None
                 with self._api.open_stream(
                     self._path,
                     headers=headers,
@@ -93,7 +94,8 @@ class StreamReader:
 
                     for sse in EventSource(response).iter_sse():
                         if sse.id:
-                            self._last_event_id = int(sse.id)
+                            with contextlib.suppress(ValueError):
+                                self._last_event_id = int(sse.id)
                         if sse.data:
                             reconnects = 0
                             yield sse.data
@@ -117,7 +119,7 @@ class AsyncStreamReader:
     def __init__(self, api: _AsyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
-        self._last_event_id = 0
+        self._last_event_id: int | None = None
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
             read=None,  # wait forever / until server error for data
@@ -135,7 +137,7 @@ class AsyncStreamReader:
 
         while True:
             try:
-                headers = {"Last-Event-ID": str(self._last_event_id)} if self._last_event_id > 0 else None
+                headers = {"Last-Event-ID": str(self._last_event_id)} if self._last_event_id is not None else None
                 async with self._api.open_stream(
                     self._path,
                     headers=headers,
@@ -146,7 +148,8 @@ class AsyncStreamReader:
 
                     async for sse in EventSource(response).aiter_sse():
                         if sse.id:
-                            self._last_event_id = int(sse.id)
+                            with contextlib.suppress(ValueError):
+                                self._last_event_id = int(sse.id)
                         if sse.data:
                             reconnects = 0
                             yield sse.data
