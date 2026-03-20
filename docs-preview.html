@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Isola — Secure Sandbox Environments on Kubernetes</title>
+<style>
+  /* ── Reset & Base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --vp-c-brand-1: #6d5dfc;
+    --vp-c-brand-2: #8b7dff;
+    --vp-c-brand-3: #a99fff;
+    --vp-c-brand-soft: rgba(109, 93, 252, 0.14);
+    --vp-c-bg: #1b1b1f;
+    --vp-c-bg-alt: #161618;
+    --vp-c-bg-elv: #202127;
+    --vp-c-bg-soft: #202127;
+    --vp-c-text-1: rgba(255, 255, 245, 0.86);
+    --vp-c-text-2: rgba(235, 235, 245, 0.6);
+    --vp-c-text-3: rgba(235, 235, 245, 0.38);
+    --vp-c-border: rgba(82, 82, 89, 0.68);
+    --vp-c-divider: rgba(82, 82, 89, 0.32);
+    --vp-c-gutter: #000;
+    --vp-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    --vp-nav-height: 64px;
+  }
+
+  [data-theme="light"] {
+    --vp-c-bg: #ffffff;
+    --vp-c-bg-alt: #f6f6f7;
+    --vp-c-bg-elv: #ffffff;
+    --vp-c-bg-soft: #f6f6f7;
+    --vp-c-text-1: rgba(60, 60, 67, 1);
+    --vp-c-text-2: rgba(60, 60, 67, 0.78);
+    --vp-c-text-3: rgba(60, 60, 67, 0.56);
+    --vp-c-border: rgba(60, 60, 67, 0.12);
+    --vp-c-divider: rgba(60, 60, 67, 0.12);
+    --vp-c-gutter: #e2e2e3;
+    --vp-c-brand-soft: rgba(109, 93, 252, 0.08);
+  }
+
+  html { font-family: var(--vp-font-family); }
+  body { background: var(--vp-c-bg); color: var(--vp-c-text-1); -webkit-font-smoothing: antialiased; }
+
+  /* ── Nav ── */
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: var(--vp-nav-height);
+    background: var(--vp-c-bg);
+    border-bottom: 1px solid var(--vp-c-border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px;
+    backdrop-filter: blur(12px);
+  }
+  .nav-brand {
+    font-weight: 700; font-size: 18px; color: var(--vp-c-text-1);
+    display: flex; align-items: center; gap: 8px; text-decoration: none;
+  }
+  .nav-brand svg { width: 28px; height: 28px; }
+  .nav-links { display: flex; align-items: center; gap: 24px; }
+  .nav-links a {
+    color: var(--vp-c-text-2); text-decoration: none; font-size: 14px; font-weight: 500;
+    transition: color 0.25s;
+  }
+  .nav-links a:hover { color: var(--vp-c-brand-1); }
+  .nav-right { display: flex; align-items: center; gap: 16px; }
+  .search-box {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--vp-c-bg-alt); border: 1px solid var(--vp-c-border);
+    border-radius: 8px; padding: 6px 14px; font-size: 13px;
+    color: var(--vp-c-text-3); cursor: pointer; min-width: 170px;
+  }
+  .search-box kbd {
+    background: var(--vp-c-bg-soft); border: 1px solid var(--vp-c-border);
+    border-radius: 4px; padding: 1px 5px; font-size: 11px; margin-left: auto;
+    font-family: inherit;
+  }
+  .theme-toggle {
+    background: none; border: none; cursor: pointer; color: var(--vp-c-text-2);
+    padding: 4px; border-radius: 6px; display: flex; align-items: center;
+  }
+  .theme-toggle:hover { color: var(--vp-c-text-1); }
+  .github-link { color: var(--vp-c-text-2); transition: color 0.25s; }
+  .github-link:hover { color: var(--vp-c-text-1); }
+
+  /* ── Hero ── */
+  .hero-section {
+    padding: calc(var(--vp-nav-height) + 76px) 32px 80px;
+    text-align: center;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--vp-c-brand-soft);
+    border: 1px solid rgba(109, 93, 252, 0.25);
+    border-radius: 20px; padding: 4px 16px;
+    font-size: 13px; font-weight: 500; color: var(--vp-c-brand-2);
+    margin-bottom: 28px;
+  }
+  .hero-name {
+    font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    background: linear-gradient(135deg, var(--vp-c-brand-1), var(--vp-c-brand-3));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; margin-bottom: 12px;
+  }
+  .hero-title {
+    font-size: clamp(36px, 6vw, 56px); font-weight: 800;
+    line-height: 1.1; letter-spacing: -0.02em;
+    margin-bottom: 20px;
+  }
+  .hero-title .gradient {
+    background: linear-gradient(135deg, var(--vp-c-brand-1) 0%, #a78bfa 50%, #c084fc 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .hero-tagline {
+    font-size: 20px; line-height: 1.6;
+    color: var(--vp-c-text-2);
+    max-width: 640px; margin: 0 auto 36px;
+  }
+  .hero-actions {
+    display: flex; justify-content: center; flex-wrap: wrap; gap: 12px;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 12px 24px; border-radius: 8px; font-size: 15px; font-weight: 600;
+    text-decoration: none; transition: all 0.25s; border: 1px solid transparent;
+  }
+  .btn-brand {
+    background: var(--vp-c-brand-1); color: #fff;
+    box-shadow: 0 2px 12px rgba(109, 93, 252, 0.3);
+  }
+  .btn-brand:hover { background: var(--vp-c-brand-2); box-shadow: 0 4px 20px rgba(109, 93, 252, 0.4); }
+  .btn-alt {
+    background: var(--vp-c-bg-soft); color: var(--vp-c-text-1);
+    border-color: var(--vp-c-border);
+  }
+  .btn-alt:hover { border-color: var(--vp-c-text-3); }
+
+  /* ── Features ── */
+  .features-section {
+    padding: 48px 32px 80px;
+    max-width: 1200px; margin: 0 auto;
+  }
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+  }
+  .feature-card {
+    background: var(--vp-c-bg-soft);
+    border: 1px solid var(--vp-c-border);
+    border-radius: 12px;
+    padding: 28px;
+    transition: border-color 0.25s, box-shadow 0.25s;
+  }
+  .feature-card:hover {
+    border-color: var(--vp-c-brand-1);
+    box-shadow: 0 2px 16px rgba(109, 93, 252, 0.08);
+  }
+  .feature-icon {
+    width: 48px; height: 48px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; margin-bottom: 16px;
+    background: var(--vp-c-brand-soft);
+  }
+  .feature-title {
+    font-size: 16px; font-weight: 700; margin-bottom: 8px; color: var(--vp-c-text-1);
+  }
+  .feature-detail {
+    font-size: 14px; line-height: 1.7; color: var(--vp-c-text-2);
+  }
+  .feature-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: 12px; font-size: 13px; font-weight: 600;
+    color: var(--vp-c-brand-1); text-decoration: none;
+  }
+  .feature-link:hover { color: var(--vp-c-brand-2); }
+
+  /* ── Code Section ── */
+  .code-section {
+    padding: 20px 32px 80px;
+    max-width: 960px; margin: 0 auto;
+  }
+  .code-section h2 {
+    font-size: 28px; font-weight: 700; text-align: center; margin-bottom: 8px;
+  }
+  .code-section .subtitle {
+    text-align: center; color: var(--vp-c-text-2); font-size: 15px; margin-bottom: 32px;
+  }
+  .code-tabs {
+    display: flex; border-bottom: 1px solid var(--vp-c-border); margin-bottom: 0;
+  }
+  .code-tab {
+    padding: 10px 20px; font-size: 13px; font-weight: 600;
+    color: var(--vp-c-text-2); cursor: pointer; border: none; background: none;
+    border-bottom: 2px solid transparent; transition: all 0.2s;
+  }
+  .code-tab.active { color: var(--vp-c-brand-1); border-bottom-color: var(--vp-c-brand-1); }
+  .code-tab:hover { color: var(--vp-c-text-1); }
+  .code-block {
+    background: var(--vp-c-bg-alt);
+    border: 1px solid var(--vp-c-border);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 24px;
+    overflow-x: auto;
+    position: relative;
+  }
+  .code-block pre {
+    margin: 0; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 13.5px; line-height: 1.7;
+  }
+  .code-block .copy-btn {
+    position: absolute; top: 12px; right: 12px;
+    background: var(--vp-c-bg-soft); border: 1px solid var(--vp-c-border);
+    border-radius: 6px; padding: 4px 8px; font-size: 11px;
+    color: var(--vp-c-text-3); cursor: pointer;
+  }
+  .code-block .copy-btn:hover { color: var(--vp-c-text-1); border-color: var(--vp-c-text-3); }
+  .code-panel { display: none; }
+  .code-panel.active { display: block; }
+
+  /* Syntax colors */
+  .kw { color: #c678dd; }
+  .str { color: #98c379; }
+  .fn { color: #61afef; }
+  .cm { color: rgba(235, 235, 245, 0.38); font-style: italic; }
+  .num { color: #d19a66; }
+  .op { color: #56b6c2; }
+  [data-theme="light"] .kw { color: #8250df; }
+  [data-theme="light"] .str { color: #0a3069; }
+  [data-theme="light"] .fn { color: #6639ba; }
+  [data-theme="light"] .cm { color: rgba(60, 60, 67, 0.46); font-style: italic; }
+  [data-theme="light"] .num { color: #953800; }
+  [data-theme="light"] .op { color: #0550ae; }
+
+  /* ── Architecture ── */
+  .arch-section {
+    padding: 20px 32px 80px; max-width: 900px; margin: 0 auto;
+  }
+  .arch-section h2 { font-size: 28px; font-weight: 700; text-align: center; margin-bottom: 8px; }
+  .arch-section .subtitle { text-align: center; color: var(--vp-c-text-2); font-size: 15px; margin-bottom: 32px; }
+  .arch-diagram {
+    background: var(--vp-c-bg-alt); border: 1px solid var(--vp-c-border);
+    border-radius: 12px; padding: 40px 32px; text-align: center;
+  }
+  .arch-diagram svg { max-width: 100%; height: auto; }
+
+  /* ── CTA ── */
+  .cta-section {
+    padding: 80px 32px;
+    text-align: center;
+    border-top: 1px solid var(--vp-c-divider);
+  }
+  .cta-section h2 { font-size: 32px; font-weight: 700; margin-bottom: 12px; }
+  .cta-section p { color: var(--vp-c-text-2); font-size: 16px; margin-bottom: 28px; }
+
+  /* ── Footer ── */
+  .footer {
+    border-top: 1px solid var(--vp-c-divider);
+    padding: 24px 32px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--vp-c-text-3);
+  }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .search-box { display: none; }
+    .features-grid { grid-template-columns: 1fr; }
+    .hero-section { padding-top: calc(var(--vp-nav-height) + 40px); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav class="nav">
+  <a class="nav-brand" href="#">
+    <svg viewBox="0 0 32 32" fill="none"><rect x="4" y="4" width="24" height="24" rx="6" stroke="currentColor" stroke-width="2.5"/><rect x="9" y="12" width="14" height="8" rx="2" fill="var(--vp-c-brand-1)" opacity="0.7"/><circle cx="16" cy="9" r="2" fill="var(--vp-c-brand-2)"/></svg>
+    Isola
+  </a>
+  <div class="nav-links">
+    <a href="#">Guide</a>
+    <a href="#">API Reference</a>
+    <a href="#">Python SDK</a>
+    <a href="#">Examples</a>
+  </div>
+  <div class="nav-right">
+    <div class="search-box">
+      <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2"/><path d="M13.5 13.5L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Search
+      <kbd>Ctrl K</kbd>
+    </div>
+    <button class="theme-toggle" onclick="toggleTheme()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    </button>
+    <a class="github-link" href="#">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0012 2z"/></svg>
+    </a>
+  </div>
+</nav>
+
+<!-- ── HERO ── -->
+<section class="hero-section">
+  <div class="hero-badge">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--vp-c-brand-2)" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    Open Source &middot; Apache 2.0
+  </div>
+  <div class="hero-name">ISOLA</div>
+  <h1 class="hero-title">Secure sandbox environments<br>on <span class="gradient">Kubernetes</span></h1>
+  <p class="hero-tagline">Spawn, manage, and snapshot isolated containers with a simple API.<br>Built for AI agents, CI pipelines, and developer tools.</p>
+  <div class="hero-actions">
+    <a class="btn btn-brand" href="#">Get Started <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    <a class="btn btn-alt" href="#">API Reference</a>
+    <a class="btn btn-alt" href="#">Python SDK</a>
+  </div>
+</section>
+
+<!-- ── FEATURES ── -->
+<section class="features-section">
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">&#x1f512;</div>
+      <div class="feature-title">Network Isolation by Default</div>
+      <div class="feature-detail">Every sandbox starts fully isolated with deny-all egress and sink DNS. Opt-in to internet, specific CIDRs, or custom nameservers &mdash; enforced via NetworkPolicy.</div>
+      <a class="feature-link" href="#">Learn more <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x26A1;</div>
+      <div class="feature-title">Sub-Second Command Execution</div>
+      <div class="feature-detail">Run commands inside sandboxes via chroot &mdash; no SSH, no exec overhead. Stream stdout/stderr over SSE with byte-offset resume and auto-reconnect.</div>
+      <a class="feature-link" href="#">Learn more <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1f4f8;</div>
+      <div class="feature-title">Rootfs Snapshots</div>
+      <div class="feature-detail">Capture a sandbox&rsquo;s filesystem as a tarball and upload to S3, GCS, or Azure Blob Storage. TTL-based auto-cleanup keeps your storage costs low.</div>
+      <a class="feature-link" href="#">Learn more <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1f40d;</div>
+      <div class="feature-title">Python SDK</div>
+      <div class="feature-detail">Sync and async clients with built-in retry, SSE streaming, and automatic reconnect. <code style="background:var(--vp-c-brand-soft);padding:2px 6px;border-radius:4px;font-size:12px;">sandbox.commands.run("ls")</code> &mdash; that&rsquo;s it.</div>
+      <a class="feature-link" href="#">View SDK docs <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x2638;</div>
+      <div class="feature-title">Kubernetes-Native</div>
+      <div class="feature-detail">Sandbox and RootfsSnapshot are first-class CRDs. The operator handles pod lifecycle, network policy, finalizer cleanup, and deadline enforcement. Deploy via Helm.</div>
+      <a class="feature-link" href="#">Architecture <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1f50c;</div>
+      <div class="feature-title">REST API</div>
+      <div class="feature-detail">Thin gateway proxying to Kubernetes and sidecar. OpenAPI 3.1 spec included. No vendor lock-in &mdash; call it from any language, any platform.</div>
+      <a class="feature-link" href="#">API Reference <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    </div>
+  </div>
+</section>
+
+<!-- ── QUICK START ── -->
+<section class="code-section">
+  <h2>Quick Start</h2>
+  <p class="subtitle">Create your first sandbox in under a minute</p>
+
+  <div class="code-tabs">
+    <button class="code-tab active" onclick="showTab('python')">Python</button>
+    <button class="code-tab" onclick="showTab('curl')">curl</button>
+    <button class="code-tab" onclick="showTab('helm')">Helm</button>
+  </div>
+
+  <div class="code-block">
+    <button class="copy-btn">Copy</button>
+
+    <div class="code-panel active" id="tab-python">
+<pre><span class="kw">from</span> isola <span class="kw">import</span> Isola
+
+client = Isola(<span class="fn">base_url</span>=<span class="str">"http://localhost:8080"</span>)
+
+<span class="cm"># Create a sandbox</span>
+sandbox = client.sandboxes.<span class="fn">create</span>(
+    <span class="fn">pod_template</span>={
+        <span class="str">"containers"</span>: [{<span class="str">"name"</span>: <span class="str">"main"</span>, <span class="str">"image"</span>: <span class="str">"python:3.12-slim"</span>}]
+    }
+)
+
+<span class="cm"># Run a command and get the result</span>
+result = sandbox.commands.<span class="fn">run</span>(<span class="str">"python"</span>, <span class="str">"-c"</span>, <span class="str">"print('Hello from the sandbox!')"</span>)
+<span class="fn">print</span>(result.stdout)  <span class="cm"># Hello from the sandbox!</span>
+
+<span class="cm"># Stream output in real-time</span>
+cmd = sandbox.commands.<span class="fn">spawn</span>(<span class="str">"pip"</span>, <span class="str">"install"</span>, <span class="str">"numpy"</span>)
+<span class="kw">for</span> chunk <span class="kw">in</span> cmd.stdout:
+    <span class="fn">print</span>(chunk, <span class="fn">end</span>=<span class="str">""</span>)
+cmd.<span class="fn">wait</span>()</pre>
+    </div>
+
+    <div class="code-panel" id="tab-curl">
+<pre><span class="cm"># Create a sandbox</span>
+curl -X POST http://localhost:8080/sandboxes \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{
+    "podTemplate": {
+      "containers": [{"name": "main", "image": "python:3.12-slim"}]
+    }
+  }'</span>
+
+<span class="cm"># Run a command (returns 202 with commandId)</span>
+curl -X POST http://localhost:8080/sandboxes/<span class="op">{id}</span>/commands \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{"args": ["python", "-c", "print(\"Hello!\")"]}'</span>
+
+<span class="cm"># Stream stdout (Server-Sent Events)</span>
+curl -N http://localhost:8080/sandboxes/<span class="op">{id}</span>/commands/<span class="op">{cmdId}</span>/stdout</pre>
+    </div>
+
+    <div class="code-panel" id="tab-helm">
+<pre><span class="cm"># Install the operator</span>
+helm install isola oci://ghcr.io/isola-ai/charts/isola \
+  --namespace isola-system \
+  --create-namespace
+
+<span class="cm"># Create a sandbox via CRD</span>
+kubectl apply -f - <span class="op">&lt;&lt;EOF</span>
+<span class="kw">apiVersion:</span> sandbox.isola.run/v1alpha1
+<span class="kw">kind:</span> Sandbox
+<span class="kw">metadata:</span>
+  <span class="fn">name:</span> my-sandbox
+  <span class="fn">namespace:</span> isola-sandboxes
+<span class="kw">spec:</span>
+  <span class="fn">activeDeadlineSeconds:</span> <span class="num">3600</span>
+  <span class="kw">podTemplate:</span>
+    <span class="kw">containers:</span>
+      - <span class="fn">name:</span> main
+        <span class="fn">image:</span> python:3.12-slim
+<span class="op">EOF</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ── ARCHITECTURE ── -->
+<section class="arch-section">
+  <h2>How It Works</h2>
+  <p class="subtitle">Four components, one Helm install</p>
+  <div class="arch-diagram">
+    <svg viewBox="0 0 800 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Your App -->
+      <rect x="20" y="110" width="140" height="70" rx="10" stroke="var(--vp-c-text-3)" stroke-width="1.5" fill="var(--vp-c-bg-soft)"/>
+      <text x="90" y="140" text-anchor="middle" fill="var(--vp-c-text-1)" font-size="13" font-weight="600" font-family="Inter, sans-serif">Your App</text>
+      <text x="90" y="160" text-anchor="middle" fill="var(--vp-c-text-3)" font-size="11" font-family="Inter, sans-serif">SDK / curl</text>
+
+      <!-- Arrow 1 -->
+      <path d="M160 145 L220 145" stroke="var(--vp-c-brand-1)" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+      <!-- API Gateway -->
+      <rect x="220" y="110" width="150" height="70" rx="10" stroke="var(--vp-c-brand-1)" stroke-width="2" fill="var(--vp-c-brand-soft)"/>
+      <text x="295" y="140" text-anchor="middle" fill="var(--vp-c-text-1)" font-size="13" font-weight="600" font-family="Inter, sans-serif">API Gateway</text>
+      <text x="295" y="160" text-anchor="middle" fill="var(--vp-c-text-3)" font-size="11" font-family="Inter, sans-serif">:8080</text>
+
+      <!-- Arrow 2 -->
+      <path d="M370 145 L440 145" stroke="var(--vp-c-brand-1)" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+      <!-- K8s box -->
+      <rect x="440" y="30" width="340" height="260" rx="12" stroke="var(--vp-c-text-3)" stroke-width="1.5" fill="none" stroke-dasharray="6 4"/>
+      <text x="610" y="55" text-anchor="middle" fill="var(--vp-c-text-3)" font-size="12" font-family="Inter, sans-serif">isola-sandboxes namespace</text>
+
+      <!-- Sandbox Pod -->
+      <rect x="470" y="80" width="130" height="90" rx="8" stroke="var(--vp-c-brand-2)" stroke-width="1.5" fill="var(--vp-c-brand-soft)"/>
+      <text x="535" y="105" text-anchor="middle" fill="var(--vp-c-text-1)" font-size="12" font-weight="600" font-family="Inter, sans-serif">Sandbox Pod</text>
+      <text x="535" y="125" text-anchor="middle" fill="var(--vp-c-text-2)" font-size="11" font-family="Inter, sans-serif">user container</text>
+      <text x="535" y="155" text-anchor="middle" fill="var(--vp-c-text-3)" font-size="10" font-family="Inter, sans-serif">network isolated</text>
+
+      <!-- Sidecar -->
+      <rect x="630" y="80" width="130" height="90" rx="8" stroke="var(--vp-c-brand-2)" stroke-width="1.5" fill="var(--vp-c-brand-soft)"/>
+      <text x="695" y="105" text-anchor="middle" fill="var(--vp-c-text-1)" font-size="12" font-weight="600" font-family="Inter, sans-serif">Sidecar</text>
+      <text x="695" y="125" text-anchor="middle" fill="var(--vp-c-text-2)" font-size="11" font-family="Inter, sans-serif">commands</text>
+      <text x="695" y="142" text-anchor="middle" fill="var(--vp-c-text-2)" font-size="11" font-family="Inter, sans-serif">filesystem</text>
+      <text x="695" y="159" text-anchor="middle" fill="var(--vp-c-text-2)" font-size="11" font-family="Inter, sans-serif">streaming</text>
+
+      <!-- Operator -->
+      <rect x="470" y="200" width="290" height="60" rx="8" stroke="var(--vp-c-text-3)" stroke-width="1.5" fill="var(--vp-c-bg-soft)"/>
+      <text x="615" y="225" text-anchor="middle" fill="var(--vp-c-text-1)" font-size="13" font-weight="600" font-family="Inter, sans-serif">Operator</text>
+      <text x="615" y="245" text-anchor="middle" fill="var(--vp-c-text-3)" font-size="10" font-family="Inter, sans-serif">lifecycle &bull; network policy &bull; deadlines &bull; snapshots</text>
+
+      <!-- Operator arrow -->
+      <path d="M615 200 L615 175 L600 175" stroke="var(--vp-c-text-3)" stroke-width="1.5" marker-end="url(#arrowhead2)"/>
+
+      <!-- Defs -->
+      <defs>
+        <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="var(--vp-c-brand-1)"/>
+        </marker>
+        <marker id="arrowhead2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="var(--vp-c-text-3)"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+</section>
+
+<!-- ── CTA ── -->
+<section class="cta-section">
+  <h2>Ready to get started?</h2>
+  <p>Deploy Isola to your cluster in under 5 minutes.</p>
+  <div class="hero-actions">
+    <a class="btn btn-brand" href="#">Read the Guide <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+    <a class="btn btn-alt" href="#">View on GitHub</a>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer class="footer">
+  Released under the Apache 2.0 License. &copy; 2026 Isola Contributors.
+</footer>
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.code-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function toggleTheme() {
+  const html = document.documentElement;
+  html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
+}
+</script>
+</body>
+</html>
