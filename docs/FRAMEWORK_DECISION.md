@@ -2,38 +2,40 @@
 
 ## 1. Recommendation
 
-**MkDocs with Material for MkDocs theme.** Single tool covers both the landing page and full documentation site, with zero JavaScript build toolchain required.
+**MkDocs with Material for MkDocs theme.** Single tool covers both the landing page and full documentation site with the strongest OpenAPI integration story of any Markdown-first SSG.
 
 ## 2. Why this wins (project-specific)
 
-- **Python-native toolchain matches the SDK stack.** The project already uses uv, ruff, mypy, and pytest. MkDocs installs as a Python package — no Node.js/npm introduced. One less runtime in CI.
-- **OpenAPI integration is plug-and-play.** The project already auto-generates `api/openapi/api-gateway.yaml` (1,200 lines). The `mkdocs-render-swagger` or `mkdocs-redoc` plugin renders it inline — no manual API reference maintenance.
-- **Dual-audience navigation is native.** Material's tabs + sections cleanly separate "SDK Users" from "Operators" from "Contributors" without custom layouts.
+- **OpenAPI integration is plug-and-play.** The project already auto-generates `api/openapi/api-gateway.yaml` (1,200 lines). The `mkdocs-render-swagger` or `mkdocs-redoc` plugin renders it inline with one Markdown directive — no manual API reference maintenance. This is the decisive differentiator: VitePress and Docusaurus have no equivalent plugin; you'd embed Swagger UI manually.
+- **Dual-audience navigation is native.** Material's tabs + sections cleanly separate "SDK Users" from "Operators" from "Contributors" without custom layouts or manual sidebar configuration.
 - **Markdown-only authoring.** The existing `sdks/python/README.md` and `CLAUDE.md` content can be moved into the docs site with zero rewriting. No MDX, no JSX, no React components to maintain.
+- **Documentation-specific extensions are built in.** Admonitions, tabbed code blocks (show Go and Python side-by-side), copy buttons, code annotations — all included without plugin assembly.
 - **Landing page without a separate site.** Material supports a custom `home.html` override with hero sections, feature grids, and CTAs — sufficient for an infrastructure project. No need for a separate marketing site at this stage.
 - **Search works out of the box.** Built-in lunr.js search indexes all content at build time. No external service needed.
+
+> **Note on Node.js:** Adding Node.js to CI is trivial (`actions/setup-node`), and tools like VitePress have negligible operational burden. The choice of MkDocs is not driven by avoiding Node.js — it's driven by OpenAPI plugin maturity and documentation-specific feature density. If the OpenAPI spec were maintained manually or didn't exist, VitePress would be equally strong.
 
 ## 3. Alternatives considered
 
 | Option | Why not chosen |
 |--------|---------------|
-| **Docusaurus** | Introduces Node.js/React into a Go+Python project. The MDX/JSX flexibility is unnecessary — Isola's docs are technical reference + guides, not interactive demos. Versioning support is stronger, but Isola is pre-1.0 (v0.1.0) and doesn't need multi-version docs yet. |
-| **Sphinx + Furo** | Better for auto-generating Python API docs from docstrings, but the SDK's public surface is small (8 classes). Manual Markdown reference pages are more readable and maintainable at this scale. Sphinx's RST-first ecosystem adds friction for contributors writing guides. |
-| **Hugo** | Fastest build times, but documentation-specific features (tabs, admonitions, copy buttons, search) require theme hunting and plugin assembly. Hugo's Go templates are powerful but arcane for doc contributors. |
-| **Plain GitHub Pages + hand-rolled HTML** | Lowest maintenance if docs stayed tiny, but the project has 10+ REST endpoints, 2 CRDs, a Python SDK, Helm values, and network isolation rules — this will outgrow a single-page approach quickly. |
+| **VitePress** | Closest competitor. Better landing page defaults, faster builds, clean aesthetics. However, no mature OpenAPI rendering plugin — you'd manually embed Swagger UI or maintain a custom Vue component. For a project that auto-generates a 1,200-line OpenAPI spec, this gap matters. If OpenAPI inline rendering weren't a requirement, VitePress would be a strong pick. |
+| **Docusaurus** | MDX/React flexibility is unnecessary — Isola's docs are technical reference + guides, not interactive demos. Heavier framework for what it provides. Versioning support is stronger, but Isola is pre-1.0 (v0.1.0) and doesn't need multi-version docs yet. |
+| **Sphinx + Furo** | Better for auto-generating Python API docs from docstrings, but the SDK's public surface is small (8 classes). Manual Markdown reference pages are more readable and maintainable at this scale. RST-first ecosystem adds friction for contributors writing guides. |
+| **Hugo** | Documentation-specific features (tabs, admonitions, copy buttons, search) require theme hunting and plugin assembly. Hugo's Go templates are powerful but arcane for doc contributors. |
 
 ## 4. Key tradeoffs
 
 **Optimizes for:**
-- Zero-friction authoring (Markdown, no build toolchain beyond Python)
+- Inline OpenAPI rendering from the already-generated spec (the killer feature)
+- Documentation-specific Markdown extensions (admonitions, tabs, code annotations) without assembly
 - Immediate productivity (content structure > framework configuration)
-- Long-term maintenance by a small team (no React/JS upgrades to track)
-- Clean OpenAPI rendering from the already-generated spec
 
-**Sacrifices vs closest alternative (Docusaurus):**
-- Less flexible custom pages (no React components for interactive demos)
-- Versioning requires `mike` plugin (workable but less polished than Docusaurus)
-- Landing page is "good enough" not "pixel-perfect" — if Isola later needs a marketing-grade homepage, it would be a separate build
+**Sacrifices vs closest alternative (VitePress):**
+- Landing page is "good enough" not "polished" — Material's `home.html` override is functional but less elegant than VitePress's built-in hero/features layout
+- Slower builds (Python vs Vite) — negligible at expected doc size, but VitePress is objectively faster
+- Single-maintainer ecosystem risk (see Hidden risks) vs Vue team backing
+- Versioning requires `mike` plugin rather than being built-in
 
 ## 5. When this choice would be wrong
 
