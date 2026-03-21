@@ -470,39 +470,30 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	return nil
 }
 
-func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
-	log := logf.FromContext(ctx)
-	if sandbox.Spec.ActiveDeadlineSeconds == nil {
-		return nil
-	}
-
-	startTime := podutil.PodStartTime(sandboxPod)
-	if startTime == nil {
-		return nil
-	}
-
-	timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.ActiveDeadlineSeconds) * time.Second)
-	log.Info("calculated sandbox timeout from pod start time", "startTime", startTime.Time, "timeoutAt", timeoutAt)
-	return &metav1.Time{Time: timeoutAt}
-}
-
 func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time, err error) {
 	log := logf.FromContext(ctx)
 	if sandbox.Spec.ActiveDeadlineSeconds == nil {
 		return nil, nil
 	}
 
-	calculated := r.calculateTimeout(ctx, sandbox, sandboxPod)
 	// Set once: anchor timeout to pod start time. Pod start time is immutable,
 	// so this naturally prevents crashlooping pods from pushing the timeout forward.
-	if calculated != nil && sandbox.Status.TimeoutAt == nil {
-		sandbox.Status.TimeoutAt = calculated
+	if sandbox.Status.TimeoutAt == nil {
+		startTime := podutil.PodStartTime(sandboxPod)
+		if startTime == nil {
+			// pod not started yet, we'll calculate the timeout once acknowledged by the kubelet (will trigger a reconcile with StartTime set)
+			return nil, nil
+		}
 
+		timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.ActiveDeadlineSeconds) * time.Second)
+		log.Info("calculated sandbox timeout from pod start time", "startTime", startTime.Time, "timeoutAt", timeoutAt)
+
+		sandbox.Status.TimeoutAt = &metav1.Time{Time: timeoutAt}
 		if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
 			log.Error(err, "Failed to patch sandbox TimeoutAt")
-			return calculated, err
+			return nil, err
 		}
-		log.Info("persisted timeoutAt", "timeoutAt", calculated)
+		log.Info("persisted timeoutAt", "timeoutAt", timeoutAt)
 	}
 
 	return sandbox.Status.TimeoutAt, nil
