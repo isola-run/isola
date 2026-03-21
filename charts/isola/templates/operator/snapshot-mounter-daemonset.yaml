@@ -1,5 +1,6 @@
 {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" }}
 {{- $snapshotMounter := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter }}
+{{- $storage := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage }}
 {{- $hostMountPath := $snapshotMounter.hostMountPath }}
 {{- $cachePath := "/var/cache/isola-snapshots" }}
 {{- $rclone := $snapshotMounter.rclone }}
@@ -70,32 +71,7 @@ spec:
             - |
               mkdir -p "{{ $cachePath }}/nfs-handles"
 
-              # Parse gocloud.dev bucket URL into rclone env vars.
-              # Using env vars avoids connection string parsing issues with URLs
-              # containing :// (rclone uses : as a delimiter in connection strings).
-              SCHEME=$(echo "$ISOLA_BUCKET_URL" | sed 's|://.*||')
-              BUCKET=$(echo "$ISOLA_BUCKET_URL" | sed 's|^[a-z0-9]*://||; s|?.*||')
-              PARAMS=$(echo "$ISOLA_BUCKET_URL" | grep -o '?.*' | sed 's|^?||' || true)
-
-              case "$SCHEME" in
-                s3)
-                  export RCLONE_S3_PROVIDER="Other"
-                  for param in $(echo "$PARAMS" | tr '&' ' '); do
-                    key=$(echo "$param" | cut -d= -f1)
-                    val=$(echo "$param" | cut -d= -f2-)
-                    case "$key" in
-                      region) export RCLONE_S3_REGION="$val" ;;
-                      endpoint) export RCLONE_S3_ENDPOINT="$val" ;;
-                      use_path_style) [ "$val" = "true" ] && export RCLONE_S3_FORCE_PATH_STYLE="true" ;;
-                    esac
-                  done
-                  REMOTE=":s3:${BUCKET}/rootfssnapshots/"
-                  ;;
-                gs)  REMOTE=":gcs:${BUCKET}/rootfssnapshots/" ;;
-                azblob) REMOTE=":azureblob:${BUCKET}/rootfssnapshots/" ;;
-                *) echo "Unsupported bucket scheme: $SCHEME" >&2; exit 1 ;;
-              esac
-
+              REMOTE="{{ include "isola.operator.rcloneRemote" $ }}"
               echo "Starting NFS server for $REMOTE on 127.0.0.1:${NFS_PORT}"
 
               # nfs with hard mount (unlike FUSE) would block reads if the daemonset pod restarts/is down, allowing resilient deployments and surviving hiccups.
@@ -113,15 +89,44 @@ spec:
               --log-level INFO
 
           env:
-            - name: ISOLA_BUCKET_URL
-              value: {{ include "isola.operator.storageBucketUrl" . | quote }}
             - name: NFS_PORT
               value: {{ $nfsPort | quote }}
-          {{- $credentialSecretName := include "isola.operator.rootfssnapshotCredentialSecretName" . }}
-          {{- if $credentialSecretName }}
+            {{- if eq $storage.type "s3" }}
+            # env_auth enables AWS SDK default credential chain (IRSA/workload identity).
+            # Without it, rclone falls back to anonymous access when credentials are empty.
+            - name: RCLONE_S3_ENV_AUTH
+              value: "true"
+            - name: RCLONE_S3_PROVIDER
+              value: "Other"
+            {{- if $storage.s3.region }}
+            - name: RCLONE_S3_REGION
+              value: {{ $storage.s3.region | quote }}
+            {{- end }}
+            {{- if $storage.s3.endpoint }}
+            - name: RCLONE_S3_ENDPOINT
+              value: {{ $storage.s3.endpoint | quote }}
+            {{- end }}
+            {{- if $storage.s3.forcePathStyle }}
+            - name: RCLONE_S3_FORCE_PATH_STYLE
+              value: "true"
+            {{- end }}
+            {{- else if eq $storage.type "gcs" }}
+            # env_auth enables google.DefaultClient() (GKE Workload Identity).
+            - name: RCLONE_GCS_ENV_AUTH
+              value: "true"
+            {{- else if eq $storage.type "azure" }}
+            # env_auth enables azidentity.NewDefaultAzureCredential() (Managed Identity).
+            # Account is required even with workload identity.
+            - name: RCLONE_AZUREBLOB_ENV_AUTH
+              value: "true"
+            - name: RCLONE_AZUREBLOB_ACCOUNT
+              value: {{ $storage.azure.storageAccount | quote }}
+            {{- end }}
+          {{- $mounterCredentialSecretName := include "isola.operator.mounterCredentialSecretName" . }}
+          {{- if $mounterCredentialSecretName }}
           envFrom:
             - secretRef:
-                name: {{ $credentialSecretName }}
+                name: {{ $mounterCredentialSecretName }}
           {{- end }}
           securityContext:
             privileged: false

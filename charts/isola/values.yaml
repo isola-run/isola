@@ -102,27 +102,46 @@ operator:
           binaryPath: /usr/local/bin/runsc
           rootDir: /run/containerd/runsc/k8s.io
 
-        # RootfsSnapshot storage configuration (bucket for tarball uploads)
+        # RootfsSnapshot storage configuration
+        # Selects the cloud storage provider and bucket for snapshot uploads.
+        #
+        # Three credential modes (per provider):
+        #   1. Workload identity (recommended): Leave inline credentials and existingSecret empty.
+        #      Configure serviceAccount annotations for IRSA/GKE WI/Azure WI.
+        #   2. Existing secret: Set uploader.existingSecret and/or snapshotMounter.existingSecret
+        #   3. Chart-managed: Provide inline credentials in the provider block (S3 and Azure)
         storage:
-          # Bucket URL (required for snapshotting to work)
-          # Examples:
-          #   s3://bucket-name?region=us-east-1 (AWS S3)
-          #   s3://bucket-name?endpoint=http://localstack:4566&use_path_style=true (LocalStack/MinIO)
-          #   gs://bucket-name (Google Cloud Storage)
-          #   azblob://container-name (Azure Blob Storage)
-          bucketUrl: ""
+          # Provider type selector: "s3", "gcs", "azure"
+          # Must be set when rootfssnapshot is enabled.
+          type: ""
 
-          # Credentials - three modes:
-          #   1. Pod/Workload Identity: Leave all empty (recommended)
-          #   2. Existing Secret: Set existingSecret
-          #   3. Chart-managed: Provide accessKeyId/secretAccessKey (dev only)
-          credentials:
-            existingSecret: ""
+          s3:
+            bucket: ""
+            region: ""
+            # Custom S3 endpoint. Only needed for S3-compatible stores (MinIO, LocalStack, etc.).
+            # AWS S3 resolves endpoints automatically from region.
+            endpoint: ""
+            # Force path-style S3 URLs (bucket in path, not subdomain).
+            # Required for MinIO, LocalStack, and most S3-compatible stores.
+            forcePathStyle: false
+            # Chart-managed S3 credentials (creates secrets in both namespaces).
             accessKeyId: ""
             secretAccessKey: ""
-            region: ""
 
-        # Uploader job configuration
+          gcs:
+            bucket: ""
+            # GCS uses JSON service account key files that don't fit as inline YAML values.
+            # Use existingSecret or workload identity (GKE Workload Identity).
+
+          azure:
+            container: ""
+            # Storage account name (required for Azure, even with workload identity).
+            storageAccount: ""
+            # Storage account access key (from Azure Portal > Storage account > Access keys).
+            # Leave empty to use workload identity or existingSecret.
+            accountKey: ""
+
+        # Uploader job configuration (runs in sandbox namespace, needs write access)
         uploader:
           image:
             registry: ghcr.io/isola-ai
@@ -130,12 +149,13 @@ operator:
             tag: ""  # Defaults to Chart.appVersion
             digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
             pullPolicy: IfNotPresent
-
-        # ServiceAccount for rootfs snapshot jobs (needs cloud storage permissions)
-        serviceAccount:
-          create: true
-          name: ""
-          annotations: {}  # For IRSA/Workload Identity
+          # Pre-existing secret in the sandbox namespace.
+          # Takes precedence over chart-managed credentials.
+          existingSecret: ""
+          serviceAccount:
+            create: true
+            name: ""
+            annotations: {}  # For IRSA/Workload Identity
 
         # Isola snapshot mounter DaemonSet configuration.
         # When rootfssnapshot is enabled, a DaemonSet is deployed on each node
@@ -158,6 +178,10 @@ operator:
           # Port for the rclone NFS server on the host loopback (127.0.0.1).
           # Uses hostNetwork, so this port must not conflict with other services.
           nfsPort: 12049
+
+          # Pre-existing secret in the release namespace.
+          # Takes precedence over chart-managed credentials.
+          existingSecret: ""
 
           # ServiceAccount for the snapshot-mounter DaemonSet.
           # Separate from the snapshot job SA because they run in different namespaces

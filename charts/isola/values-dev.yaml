@@ -34,11 +34,14 @@ operator:
             tag: "dev"
 
         storage:
-          bucketUrl: "s3://isola-snapshots?endpoint=http://localstack.localstack.svc.cluster.local:4566&use_path_style=true&region=us-east-1"
-          credentials:
+          type: s3
+          s3:
+            bucket: isola-snapshots
+            region: us-east-1
+            endpoint: "http://localstack.localstack.svc.cluster.local:4566"
+            forcePathStyle: true
             accessKeyId: "test"
             secretAccessKey: "test"
-            region: "us-east-1"
 
         snapshotMounter:
           hostMountPath: /mnt/isola-snapshots
