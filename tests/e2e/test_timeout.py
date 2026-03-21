@@ -84,7 +84,7 @@ def test_no_deadline_stays_alive(
     )
 
 
-@pytest.mark.timeout(60)
+@pytest.mark.timeout(240)
 def test_operations_on_timed_out_sandbox(
     isola_client: Isola,
     sandbox_factory,

@@ -19,9 +19,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -148,46 +146,8 @@ var _ = Describe("Sandbox Controller", func() {
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Recreate pod with NodeName - K8s doesn't allow updating NodeName on existing pods
-			pod := getPod(ctx, podName)
-			Expect(pod).NotTo(BeNil())
-			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
-
-			newPod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      podName,
-					Namespace: testNamespace,
-					Labels:    pod.Labels,
-				},
-				Spec: corev1.PodSpec{
-					RuntimeClassName: &runtimeClassName,
-					NodeName:         "test-node",
-					Containers: []corev1.Container{
-						{
-							Name:    "sandbox",
-							Image:   "busybox:latest",
-							Command: []string{"sleep", "infinity"},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
-
-			startTime := metav1.NewTime(fakeClock.Now())
-			newPod.Status.StartTime = &startTime
-			newPod.Status.Phase = corev1.PodRunning
-			newPod.Status.Conditions = []corev1.PodCondition{
-				{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.NewTime(fakeClock.Now())},
-			}
-			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{
-				{
-					Name:        "sandbox",
-					ContainerID: "containerd://abc123def456",
-					Ready:       true,
-					State:       corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
-				},
-			}
-			Expect(k8sClient.Status().Update(ctx, newPod)).To(Succeed())
+			pod := bindPodToNode(ctx, podName)
+			makePodReady(ctx, pod, "containerd://abc123def456", fakeClock)
 
 			fakeClock.Advance(2 * time.Second)
 
@@ -271,28 +231,8 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Recreate pod with NodeName (can't update NodeName on existing pods)
-			pod := getPod(ctx, podName)
-			labels := pod.Labels
-			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
-
-			newPod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace, Labels: labels},
-				Spec: corev1.PodSpec{
-					RuntimeClassName: &runtimeClassName,
-					NodeName:         "test-node",
-					Containers:       []corev1.Container{{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}}},
-				},
-			}
-			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
-			startTime := metav1.NewTime(fakeClock.Now())
-			newPod.Status.StartTime = &startTime
-			newPod.Status.Phase = corev1.PodRunning
-			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.NewTime(fakeClock.Now())}}
-			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{
-				{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
-			}
-			Expect(k8sClient.Status().Update(ctx, newPod)).To(Succeed())
+			pod := bindPodToNode(ctx, podName)
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
 
 			fakeClock.Advance(2 * time.Second)
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
@@ -340,27 +280,10 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deletePod(ctx, podName)
 			defer deleteShutdownSnapshot(ctx, sandboxName)
 
-			// Setup: reconcile to create pod, then replace with pod that has NodeName
+			// Setup: reconcile to create pod, then bind it to a node (simulating the scheduler)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
-			pod := getPod(ctx, podName)
-			labels := pod.Labels
-			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
-
-			newPod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace, Labels: labels},
-				Spec: corev1.PodSpec{
-					RuntimeClassName: &runtimeClassName,
-					NodeName:         "test-node",
-					Containers:       []corev1.Container{{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}}},
-				},
-			}
-			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
-			startTime := metav1.NewTime(fakeClock.Now())
-			newPod.Status.StartTime = &startTime
-			newPod.Status.Phase = corev1.PodRunning
-			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.NewTime(fakeClock.Now())}}
-			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
-			Expect(k8sClient.Status().Update(ctx, newPod)).To(Succeed())
+			pod := bindPodToNode(ctx, podName)
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
 
 			fakeClock.Advance(2 * time.Second)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -404,28 +327,8 @@ var _ = Describe("Sandbox Controller", func() {
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Recreate pod with NodeName (required for snapshotting)
-			pod := getPod(ctx, podName)
-			labels := pod.Labels
-			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
-
-			newPod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace, Labels: labels},
-				Spec: corev1.PodSpec{
-					RuntimeClassName: &runtimeClassName,
-					NodeName:         "test-node",
-					Containers:       []corev1.Container{{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}}},
-				},
-			}
-			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
-			startTime := metav1.NewTime(fakeClock.Now())
-			newPod.Status.StartTime = &startTime
-			newPod.Status.Phase = corev1.PodRunning
-			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.NewTime(fakeClock.Now())}}
-			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{
-				{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
-			}
-			Expect(k8sClient.Status().Update(ctx, newPod)).To(Succeed())
+			pod := bindPodToNode(ctx, podName)
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
 
 			fakeClock.Advance(2 * time.Second)
 
@@ -490,29 +393,8 @@ var _ = Describe("Sandbox Controller", func() {
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Replace pod with NodeName set (can't update NodeName)
-			pod := getPod(ctx, podName)
-			Expect(pod).NotTo(BeNil())
-			labels := pod.Labels
-			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
-
-			newPod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace, Labels: labels},
-				Spec: corev1.PodSpec{
-					RuntimeClassName: &runtimeClassName,
-					NodeName:         "test-node",
-					Containers:       []corev1.Container{{Name: "sandbox", Image: "busybox:latest", Command: []string{"sleep", "infinity"}}},
-				},
-			}
-			Expect(k8sClient.Create(ctx, newPod)).To(Succeed())
-			startTime := metav1.NewTime(fakeClock.Now())
-			newPod.Status.StartTime = &startTime
-			newPod.Status.Phase = corev1.PodRunning
-			newPod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.NewTime(fakeClock.Now())}}
-			newPod.Status.ContainerStatuses = []corev1.ContainerStatus{
-				{Name: "sandbox", ContainerID: "containerd://abc123", Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
-			}
-			Expect(k8sClient.Status().Update(ctx, newPod)).To(Succeed())
+			pod := bindPodToNode(ctx, podName)
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
 
 			fakeClock.Advance(2 * time.Second)
 

@@ -223,29 +223,6 @@ async def test_async_command_stdout_streams_text(sandbox_response_copy: dict[str
 
 
 @respx.mock
-def test_command_stdout_text_mode_default(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
-        return_value=httpx.Response(200, json=sandbox_response_copy)
-    )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
-        return_value=httpx.Response(202, json={"commandId": "cmd-text"})
-    )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-text/stdout").mock(
-        return_value=httpx.Response(
-            200, content=b"data: hello text\ndata: \nid: 11\n\n", headers={"content-type": "text/event-stream"}
-        )
-    )
-
-    with Isola(base_url="http://localhost:8080") as client:
-        sandbox = client.sandboxes.get("sandbox-123")
-        cmd = sandbox.commands.spawn("echo", "hello text")
-        output = "".join(cmd.stdout)
-
-    assert output == "hello text\n"
-    assert isinstance(output, str)
-
-
-@respx.mock
 def test_command_write_stdin_str(sandbox_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)

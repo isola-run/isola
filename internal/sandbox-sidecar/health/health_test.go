@@ -23,15 +23,19 @@ import (
 )
 
 var _ = Describe("Health", func() {
-	It("returns 200 with status ok", func() {
-		resp := testAPI.Get("/health")
+	DescribeTable("returns 200 with status ok",
+		func(path string) {
+			resp := testAPI.Get(path)
 
-		Expect(resp.Code).To(Equal(http.StatusOK))
-		Expect(resp.Header().Get("Content-Type")).To(ContainSubstring("application/json"))
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(resp.Header().Get("Content-Type")).To(ContainSubstring("application/json"))
 
-		var body map[string]string
-		err := json.NewDecoder(resp.Body).Decode(&body)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(body).To(HaveKeyWithValue("status", "ok"))
-	})
+			var body map[string]string
+			err := json.NewDecoder(resp.Body).Decode(&body)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(body).To(HaveKeyWithValue("status", "ok"))
+		},
+		Entry("via /health", "/health"),
+		Entry("via /healthz", "/healthz"),
+	)
 })

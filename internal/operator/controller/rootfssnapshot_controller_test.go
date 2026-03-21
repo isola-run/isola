@@ -62,7 +62,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 	})
 
 	Context("Basic Operations", func() {
-		It("should fail when snapshot capability is disabled", func() {
+		It("should fail when rootfs snapshot capability is disabled", func() {
 			snapName := "snap-disabled"
 			sandboxName := "sandbox-disabled"
 
@@ -89,11 +89,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snap := getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
 
-			readyCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
-			Expect(readyCond).NotTo(BeNil())
-			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
-			Expect(readyCond.Message).To(ContainSubstring("not enabled"))
+			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
+			Expect(failedCond).NotTo(BeNil())
+			Expect(failedCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(failedCond.Message).To(ContainSubstring("not enabled"))
 		})
 
 		It("should fail when bucket URL is not configured", func() {

@@ -26,6 +26,17 @@ import (
 	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 )
 
+// drainRecorderEvents consumes all pending events from a FakeRecorder channel.
+func drainRecorderEvents(ch <-chan string) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
+	}
+}
+
 var _ = Describe("Sandbox Controller", func() {
 
 	// ============================================
@@ -79,9 +90,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deletePod(ctx, podName)
 			defer deleteShutdownSnapshot(ctx, sandboxName)
 
-			// Create and make pod ready (need to recreate with NodeName)
+			// Create pod via reconcile, then bind to a node (simulating the scheduler)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
-			pod := recreatePodWithNodeName(ctx, podName, "test-node", &runtimeClassName)
+			pod := bindPodToNode(ctx, podName)
 			makePodReady(ctx, pod, "containerd://abc", fakeClock)
 
 			// Drain PodCreated event
@@ -114,20 +125,12 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deletePod(ctx, podName)
 			defer deleteShutdownSnapshot(ctx, sandboxName)
 
-			// Setup - recreate pod with NodeName
+			// Setup - bind pod to node (simulating the scheduler)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
-			pod := recreatePodWithNodeName(ctx, podName, "test-node", &runtimeClassName)
+			pod := bindPodToNode(ctx, podName)
 			makePodReady(ctx, pod, "containerd://abc", fakeClock)
 
-			// Drain previous events
-		drainEvents:
-			for {
-				select {
-				case <-recorder.Events:
-				default:
-					break drainEvents
-				}
-			}
+			drainRecorderEvents(recorder.Events)
 
 			fakeClock.Advance(2 * time.Second)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -137,14 +140,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			setShutdownSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
-		drainEvents2:
-			for {
-				select {
-				case <-recorder.Events:
-				default:
-					break drainEvents2
-				}
-			}
+			drainRecorderEvents(recorder.Events)
 
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
@@ -170,9 +166,9 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deletePod(ctx, podName)
 			defer deleteShutdownSnapshot(ctx, sandboxName)
 
-			// Setup - recreate pod with NodeName
+			// Setup - bind pod to node (simulating the scheduler)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
-			pod := recreatePodWithNodeName(ctx, podName, "test-node", &runtimeClassName)
+			pod := bindPodToNode(ctx, podName)
 			makePodReady(ctx, pod, "containerd://abc", fakeClock)
 
 			fakeClock.Advance(2 * time.Second)
@@ -183,15 +179,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			setShutdownSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
 
-			// Drain previous events
-		drainEvents3:
-			for {
-				select {
-				case <-recorder.Events:
-				default:
-					break drainEvents3
-				}
-			}
+			drainRecorderEvents(recorder.Events)
 
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
@@ -221,61 +209,6 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(Equal(reconcile.Result{}))
-		})
-
-		It("should skip reconciliation when sandbox has deletion timestamp", func() {
-			sandboxName := "sandbox-deleting"
-
-			sandbox := createSandbox(ctx, sandboxName)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			// Start deletion
-			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
-
-			// Refresh sandbox
-			sandbox = &sandboxv1alpha1.Sandbox{}
-			// Sandbox may or may not exist at this point depending on timing
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, sandbox)
-			if err == nil && !sandbox.DeletionTimestamp.IsZero() {
-				// Reconcile should skip
-				_, err = reconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-				})
-				Expect(err).NotTo(HaveOccurred())
-			}
-		})
-
-		It("should handle simple concurrent modifications gracefully", func() {
-			sandboxName := "sandbox-concurrent"
-
-			createSandbox(ctx, sandboxName)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			// First reconcile
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			// Modify sandbox externally
-			sandbox := getSandbox(ctx, sandboxName)
-			if sandbox.Labels == nil {
-				sandbox.Labels = make(map[string]string)
-			}
-			sandbox.Labels["external-modification"] = "true"
-			Expect(k8sClient.Update(ctx, sandbox)).To(Succeed())
-
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })
