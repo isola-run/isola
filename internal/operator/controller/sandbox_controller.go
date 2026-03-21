@@ -1141,7 +1141,6 @@ func (r *SandboxReconciler) injectRootfsRestore(sources []sandboxv1alpha1.Rootfs
 	for _, src := range sources {
 		name := src.ContainerName
 		if name == "" {
-			// CRD validation ensures this only happens with a single source.
 			if len(pod.Spec.Containers) != 1 {
 				return reconcile.TerminalError(fmt.Errorf(
 					"containerName must be specified when sandbox has %d containers", len(pod.Spec.Containers)))
