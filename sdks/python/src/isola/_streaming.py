@@ -59,7 +59,7 @@ class StreamReader:
     def __init__(self, api: _SyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
-        self._last_event_id = 0
+        self._last_event_id: int | None = None
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
             read=None,  # wait forever / until server error for data
@@ -82,7 +82,7 @@ class StreamReader:
 
         while True:
             try:
-                headers = {"Last-Event-ID": str(self._last_event_id)} if self._last_event_id > 0 else None
+                headers = {"Last-Event-ID": str(self._last_event_id)} if self._last_event_id is not None else None
                 with self._api.open_stream(
                     self._path,
                     headers=headers,
@@ -117,7 +117,7 @@ class AsyncStreamReader:
     def __init__(self, api: _AsyncStreamAPI, path: str) -> None:
         self._api = api
         self._path = path
-        self._last_event_id = 0
+        self._last_event_id: int | None = None
         self._httpx_timeout = httpx.Timeout(
             connect=STREAM_CONNECT_TIMEOUT,
             read=None,  # wait forever / until server error for data
@@ -135,7 +135,7 @@ class AsyncStreamReader:
 
         while True:
             try:
-                headers = {"Last-Event-ID": str(self._last_event_id)} if self._last_event_id > 0 else None
+                headers = {"Last-Event-ID": str(self._last_event_id)} if self._last_event_id is not None else None
                 async with self._api.open_stream(
                     self._path,
                     headers=headers,
