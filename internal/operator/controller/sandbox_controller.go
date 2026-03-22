@@ -210,6 +210,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	}
 
 	sandboxPod.Spec.RestartPolicy = corev1.RestartPolicyNever
+	sandboxPod.Spec.AutomountServiceAccountToken = ptr.To(false)
 
 	// Inject imagePullSecrets for private registries (configured via Helm global.imagePullSecrets)
 	if len(r.ImagePullSecrets) > 0 {

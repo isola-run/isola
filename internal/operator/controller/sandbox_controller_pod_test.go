@@ -244,6 +244,24 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.RestartPolicy).To(Equal(corev1.RestartPolicyNever))
 		})
 
+		It("should disable service account token automount", func() {
+			sandboxName := "sandbox-no-sa-token"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.AutomountServiceAccountToken).NotTo(BeNil())
+			Expect(*pod.Spec.AutomountServiceAccountToken).To(BeFalse())
+		})
+
 		It("should configure sidecar with minimal required capabilities", func() {
 			// CAP_SYS_PTRACE is the minimal capability required for the sidecar to access
 			// /proc/<pid>/root, /proc/<pid>/cwd, and /proc/<pid>/environ of other containers
