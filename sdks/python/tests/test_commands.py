@@ -29,20 +29,20 @@ from isola import (
 
 @respx.mock
 def test_spawn_and_command_lifecycle(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    run_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    run_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "00000000-0000-0000-0000-000000000001"})
     )
     status_route = respx.get(
-        "http://localhost:8080/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001/status"
+        "http://localhost:8080/v1/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001/status"
     ).mock(return_value=httpx.Response(200, json={"exitCode": None}))
     stdin_route = respx.post(
-        "http://localhost:8080/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001/stdin"
+        "http://localhost:8080/v1/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001/stdin"
     ).mock(return_value=httpx.Response(204))
     kill_route = respx.delete(
-        "http://localhost:8080/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001"
+        "http://localhost:8080/v1/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001"
     ).mock(return_value=httpx.Response(204))
 
     with Isola(base_url="http://localhost:8080") as client:
@@ -80,13 +80,13 @@ def test_spawn_and_command_lifecycle(sandbox_response_copy: dict[str, object]) -
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_spawn_and_exit_code(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "00000000-0000-0000-0000-000000000002"})
     )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000002/status").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000002/status").mock(
         return_value=httpx.Response(200, json={"exitCode": 0})
     )
 
@@ -102,16 +102,16 @@ async def test_async_spawn_and_exit_code(sandbox_response_copy: dict[str, object
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_spawn_stdin_and_kill(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-async-1"})
     )
-    stdin_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-async-1/stdin").mock(
+    stdin_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-async-1/stdin").mock(
         return_value=httpx.Response(204)
     )
-    kill_route = respx.delete("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-async-1").mock(
+    kill_route = respx.delete("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-async-1").mock(
         return_value=httpx.Response(204)
     )
 
@@ -127,19 +127,19 @@ async def test_async_spawn_stdin_and_kill(sandbox_response_copy: dict[str, objec
 
 @respx.mock
 def test_run_returns_command_result(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-1"})
     )
     respx.get(url__regex=r".*/commands/cmd-1/status.*").mock(return_value=httpx.Response(200, json={"exitCode": 0}))
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-1/stdout").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-1/stdout").mock(
         return_value=httpx.Response(
             200, content=b"data: hello world\ndata: \nid: 12\n\n", headers={"content-type": "text/event-stream"}
         )
     )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-1/stderr").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-1/stderr").mock(
         return_value=httpx.Response(200, content=b"", headers={"content-type": "text/event-stream"})
     )
 
@@ -155,13 +155,13 @@ def test_run_returns_command_result(sandbox_response_copy: dict[str, object]) ->
 
 @respx.mock
 def test_command_stdout_streams_text(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-1"})
     )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-1/stdout").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-1/stdout").mock(
         return_value=httpx.Response(
             200, content=b"data: hello world\ndata: \nid: 12\n\n", headers={"content-type": "text/event-stream"}
         )
@@ -177,13 +177,13 @@ def test_command_stdout_streams_text(sandbox_response_copy: dict[str, object]) -
 
 @respx.mock
 def test_command_stderr_streams_text(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-2"})
     )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-2/stderr").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-2/stderr").mock(
         return_value=httpx.Response(
             200, content=b"data: error output\ndata: \nid: 13\n\n", headers={"content-type": "text/event-stream"}
         )
@@ -200,13 +200,13 @@ def test_command_stderr_streams_text(sandbox_response_copy: dict[str, object]) -
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_command_stdout_streams_text(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-4"})
     )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-4/stdout").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-4/stdout").mock(
         return_value=httpx.Response(
             200, content=b"data: async output\ndata: \nid: 13\n\n", headers={"content-type": "text/event-stream"}
         )
@@ -224,13 +224,13 @@ async def test_async_command_stdout_streams_text(sandbox_response_copy: dict[str
 
 @respx.mock
 def test_command_write_stdin_str(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-stdin-text"})
     )
-    stdin_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-stdin-text/stdin").mock(
+    stdin_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-stdin-text/stdin").mock(
         return_value=httpx.Response(204)
     )
 
@@ -245,13 +245,13 @@ def test_command_write_stdin_str(sandbox_response_copy: dict[str, object]) -> No
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_command_write_stdin_str(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-async-stdin-text"})
     )
-    stdin_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-async-stdin-text/stdin").mock(
+    stdin_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-async-stdin-text/stdin").mock(
         return_value=httpx.Response(204)
     )
 
@@ -265,10 +265,10 @@ async def test_async_command_write_stdin_str(sandbox_response_copy: dict[str, ob
 
 @respx.mock
 def test_spawn_minimal_payload(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    run_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    run_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-5"})
     )
 
@@ -283,7 +283,7 @@ def test_spawn_minimal_payload(sandbox_response_copy: dict[str, object]) -> None
 
 @respx.mock
 def test_spawn_requires_at_least_one_arg(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
 
@@ -295,13 +295,13 @@ def test_spawn_requires_at_least_one_arg(sandbox_response_copy: dict[str, object
 
 @respx.mock
 def test_command_exit_code_method(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-ec"})
     )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-ec/status").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-ec/status").mock(
         return_value=httpx.Response(200, json={"exitCode": 42})
     )
 
@@ -316,19 +316,19 @@ def test_command_exit_code_method(sandbox_response_copy: dict[str, object]) -> N
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_run_returns_command_result(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-ar"})
     )
     respx.get(url__regex=r".*/commands/cmd-ar/status.*").mock(return_value=httpx.Response(200, json={"exitCode": 0}))
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-ar/stdout").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-ar/stdout").mock(
         return_value=httpx.Response(
             200, content=b"data: async result\ndata: \nid: 13\n\n", headers={"content-type": "text/event-stream"}
         )
     )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-ar/stderr").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-ar/stderr").mock(
         return_value=httpx.Response(200, content=b"", headers={"content-type": "text/event-stream"})
     )
 
@@ -344,13 +344,13 @@ async def test_async_run_returns_command_result(sandbox_response_copy: dict[str,
 
 @respx.mock
 def test_close_stdin_sends_post(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-close"})
     )
-    close_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-close/stdin/close").mock(
+    close_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-close/stdin/close").mock(
         return_value=httpx.Response(204)
     )
 
@@ -364,25 +364,25 @@ def test_close_stdin_sends_post(sandbox_response_copy: dict[str, object]) -> Non
 
 @respx.mock
 def test_run_with_input(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-input"})
     )
-    stdin_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/stdin").mock(
+    stdin_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-input/stdin").mock(
         return_value=httpx.Response(204)
     )
-    close_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/stdin/close").mock(
+    close_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-input/stdin/close").mock(
         return_value=httpx.Response(204)
     )
     respx.get(url__regex=r".*/commands/cmd-input/status.*").mock(return_value=httpx.Response(200, json={"exitCode": 0}))
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/stdout").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-input/stdout").mock(
         return_value=httpx.Response(
             200, content=b"data: hello\ndata: \nid: 6\n\n", headers={"content-type": "text/event-stream"}
         )
     )
-    respx.get("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-input/stderr").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-input/stderr").mock(
         return_value=httpx.Response(200, content=b"", headers={"content-type": "text/event-stream"})
     )
 
@@ -399,13 +399,13 @@ def test_run_with_input(sandbox_response_copy: dict[str, object]) -> None:
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_close_stdin_sends_post(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-aclose"})
     )
-    close_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/commands/cmd-aclose/stdin/close").mock(
+    close_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-aclose/stdin/close").mock(
         return_value=httpx.Response(204)
     )
 
@@ -427,10 +427,10 @@ def test_command_result_repr() -> None:
 
 @respx.mock
 def test_wait_sends_long_poll_request(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-lp"})
     )
     status_route = respx.get(url__regex=r".*/commands/cmd-lp/status.*").mock(
@@ -449,10 +449,10 @@ def test_wait_sends_long_poll_request(sandbox_response_copy: dict[str, object]) 
 
 @respx.mock
 def test_wait_retries_on_null_exit_code(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-retry"})
     )
     status_route = respx.get(url__regex=r".*/commands/cmd-retry/status.*").mock(
@@ -474,10 +474,10 @@ def test_wait_retries_on_null_exit_code(sandbox_response_copy: dict[str, object]
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_wait_sends_long_poll_request(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/commands").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "cmd-alp"})
     )
     status_route = respx.get(url__regex=r".*/commands/cmd-alp/status.*").mock(

@@ -27,13 +27,13 @@ from isola import AsyncIsola, Isola
 
 @respx.mock
 def test_filesystem_write_and_read(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+    write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(201, json={"absolutePath": "/workspace/file.txt", "bytesWritten": 7})
     )
-    read_route = respx.get("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+    read_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(200, content=b"content")
     )
 
@@ -56,10 +56,10 @@ def test_filesystem_write_and_read(sandbox_response_copy: dict[str, object]) -> 
 
 @respx.mock
 def test_filesystem_write_from_file_like(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+    write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(201, json={"absolutePath": "/workspace/script.py", "bytesWritten": 6})
     )
 
@@ -74,13 +74,13 @@ def test_filesystem_write_from_file_like(sandbox_response_copy: dict[str, object
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_filesystem_write_and_read(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+    write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(201, json={"absolutePath": "/tmp/data.bin", "bytesWritten": 4})
     )
-    read_route = respx.get("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+    read_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(200, content=b"data")
     )
 
@@ -101,13 +101,13 @@ async def test_async_filesystem_write_and_read(sandbox_response_copy: dict[str, 
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_filesystem_with_container(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+    write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(201, json={"absolutePath": "/app/cfg.yaml", "bytesWritten": 3})
     )
-    read_route = respx.get("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+    read_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(200, content=b"abc")
     )
 
@@ -122,10 +122,10 @@ async def test_async_filesystem_with_container(sandbox_response_copy: dict[str, 
 
 @respx.mock
 def test_filesystem_write_str(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+    write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(201, json={"absolutePath": "/workspace/hello.py", "bytesWritten": 14})
     )
 
@@ -139,10 +139,10 @@ def test_filesystem_write_str(sandbox_response_copy: dict[str, object]) -> None:
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_filesystem_write_str(sandbox_response_copy: dict[str, object]) -> None:
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+    write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(201, json={"absolutePath": "/workspace/hello.py", "bytesWritten": 14})
     )
 
@@ -175,10 +175,10 @@ class _ChunkedReadValidator(io.BufferedIOBase):
 @respx.mock
 def test_filesystem_write_streams_without_full_buffering(sandbox_response_copy: dict[str, object]) -> None:
     """Verify the SDK passes BinaryIO through to httpx without pre-reading it."""
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(201, json={"absolutePath": "/big.bin", "bytesWritten": 200_000})
     )
 
@@ -195,10 +195,10 @@ def test_filesystem_upload_real_file(sandbox_response_copy: dict[str, object], t
     local_file = tmp_path / "script.py"
     local_file.write_bytes(b"print('hello')\n")
 
-    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    write_route = respx.post("http://localhost:8080/sandboxes/sandbox-123/filesystem").mock(
+    write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(201, json={"absolutePath": "/workspace/script.py", "bytesWritten": 15})
     )
 

@@ -170,12 +170,14 @@ func main() {
 	api := humachi.New(r, humaConfig)
 
 	health.Register(api, health.New(logger, mgr.GetClient()))
-	sandbox.Register(api, sandbox.New(logger, cfg.sandboxNamespace, mgr.GetClient()))
+
+	v1 := huma.NewGroup(api, "/v1")
+	sandbox.Register(v1, sandbox.New(logger, cfg.sandboxNamespace, mgr.GetClient()))
 
 	sandboxClient := initSandboxClient()
 
-	filesystem.Register(api, filesystem.New(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient))
-	command.Register(api, command.New(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient))
+	filesystem.Register(v1, filesystem.New(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient))
+	command.Register(v1, command.New(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient))
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.httpPort),

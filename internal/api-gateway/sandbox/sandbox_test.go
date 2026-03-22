@@ -32,7 +32,7 @@ import (
 var _ = Describe("Sandbox Endpoints", func() {
 	Describe("POST /sandboxes", func() {
 		It("creates a sandbox with minimal request", func() {
-			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var body SandboxResponse
@@ -73,7 +73,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 				}
 			}`
 
-			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(201))
 
 			// Capture raw bytes before decoding (resp.Body is a *bytes.Buffer)
@@ -106,9 +106,9 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			// Also verify via GET read-back (covers sandboxToResponse on the GET path)
 			Eventually(func() int {
-				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
+				return testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.ID)).Code
 			}).Should(Equal(200))
-			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
+			getResp := testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.ID))
 			var getRaw map[string]json.RawMessage
 			Expect(json.Unmarshal(getResp.Body.Bytes(), &getRaw)).To(Succeed())
 			var getPodTpl map[string]json.RawMessage
@@ -120,7 +120,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 		It("round-trips command through create and get", func() {
 			reqBody := `{"podTemplate":{"container":{"image":"python:3.12","command":["python","-c","print('hello')"]}}}`
-			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(201))
 
 			var body SandboxResponse
@@ -129,16 +129,16 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			// Verify via GET read-back
 			Eventually(func() int {
-				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
+				return testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.ID)).Code
 			}).Should(Equal(200))
-			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
+			getResp := testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.ID))
 			var got SandboxResponse
 			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
 			Expect(got.PodTemplate.Container.Command).To(Equal([]string{"python", "-c", "print('hello')"}))
 		})
 
 		It("omits command from response when not specified", func() {
-			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var body SandboxResponse
@@ -147,45 +147,45 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			// Verify via GET read-back
 			Eventually(func() int {
-				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID)).Code
+				return testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.ID)).Code
 			}).Should(Equal(200))
-			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", body.ID))
+			getResp := testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.ID))
 			var got SandboxResponse
 			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
 			Expect(got.PodTemplate.Container.Command).To(BeNil())
 		})
 
 		It("rejects missing podTemplate with 422", func() {
-			resp := testAPI.Post("/sandboxes", strings.NewReader(`{}`))
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(`{}`))
 			Expect(resp.Code).To(Equal(422))
 		})
 
 		It("rejects invalid resource quantity with 400", func() {
 			reqBody := `{"podTemplate":{"container":{"image":"x","resources":{"limits":{"cpu":"banana"}}}}}`
-			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(400))
 		})
 
 		It("rejects empty image with 422", func() {
 			reqBody := `{"podTemplate":{"container":{"image":""}}}`
-			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})
 
 		It("rejects more than 3 nameservers with 422", func() {
 			reqBody := `{"podTemplate":{"container":{"image":"alpine"}},"network":{"nameservers":["1.1.1.1","8.8.8.8","9.9.9.9","208.67.222.222"]}}`
-			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})
 
 		It("rejects activeDeadlineSeconds of 0", func() {
 			reqBody := `{"podTemplate":{"container":{"image":"x"}},"activeDeadlineSeconds":0}`
-			resp := testAPI.Post("/sandboxes", strings.NewReader(reqBody))
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})
 
 		It("accepts omitted activeDeadlineSeconds as no timeout", func() {
-			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var body SandboxResponse
@@ -201,7 +201,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 		})
 
 		It("omits network from response when not specified", func() {
-			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"alpine:latest"}}}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var body SandboxResponse
@@ -219,7 +219,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 	Describe("GET /sandboxes/{id}", func() {
 		It("returns sandbox details", func() {
 			// Create a sandbox first
-			resp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"redis:7"}}}`))
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"redis:7"}}}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var created SandboxResponse
@@ -227,10 +227,10 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			// GET it back
 			Eventually(func() int {
-				return testAPI.Get(fmt.Sprintf("/sandboxes/%s", created.ID)).Code
+				return testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", created.ID)).Code
 			}).Should(Equal(200))
 
-			getResp := testAPI.Get(fmt.Sprintf("/sandboxes/%s", created.ID))
+			getResp := testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", created.ID))
 			var got SandboxResponse
 			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
 			Expect(got.ID).To(Equal(created.ID))
@@ -238,7 +238,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 		})
 
 		It("returns 404 for nonexistent sandbox", func() {
-			resp := testAPI.Get("/sandboxes/nonexistent")
+			resp := testAPI.Get("/v1/sandboxes/nonexistent")
 			Expect(resp.Code).To(Equal(404))
 		})
 	})
@@ -246,7 +246,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 	Describe("GET /sandboxes", func() {
 		It("returns sandbox summaries", func() {
 			// Create a sandbox
-			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"nginx:latest"}}}`))
+			createResp := testAPI.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"nginx:latest"}}}`))
 			Expect(createResp.Code).To(Equal(201))
 
 			var created SandboxResponse
@@ -254,7 +254,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			// List should include it (eventually, due to cache)
 			Eventually(func() bool {
-				listResp := testAPI.Get("/sandboxes")
+				listResp := testAPI.Get("/v1/sandboxes")
 				if listResp.Code != 200 {
 					return false
 				}
@@ -274,18 +274,18 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 	Describe("DELETE /sandboxes/{id}", func() {
 		It("deletes a sandbox and returns 204", func() {
-			createResp := testAPI.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"busybox:latest"}}}`))
+			createResp := testAPI.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"busybox:latest"}}}`))
 			Expect(createResp.Code).To(Equal(201))
 
 			var created SandboxResponse
 			Expect(json.NewDecoder(createResp.Body).Decode(&created)).To(Succeed())
 
-			delResp := testAPI.Delete(fmt.Sprintf("/sandboxes/%s", created.ID))
+			delResp := testAPI.Delete(fmt.Sprintf("/v1/sandboxes/%s", created.ID))
 			Expect(delResp.Code).To(Equal(204))
 		})
 
 		It("returns 204 for nonexistent sandbox (idempotent)", func() {
-			resp := testAPI.Delete("/sandboxes/nonexistent")
+			resp := testAPI.Delete("/v1/sandboxes/nonexistent")
 			Expect(resp.Code).To(Equal(204))
 		})
 	})

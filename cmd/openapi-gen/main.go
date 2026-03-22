@@ -83,9 +83,11 @@ func setupAPIGateway() huma.API {
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected
 	health.Register(api, health.New(nil, nil))
-	sandbox.Register(api, sandbox.New(nil, "", nil))
-	filesystem.Register(api, filesystem.New(nil, "", nil, nil))
-	command.Register(api, command.New(nil, "", nil, nil))
+
+	v1 := huma.NewGroup(api, "/v1")
+	sandbox.Register(v1, sandbox.New(nil, "", nil))
+	filesystem.Register(v1, filesystem.New(nil, "", nil, nil))
+	command.Register(v1, command.New(nil, "", nil, nil))
 
 	return api
 }
@@ -98,8 +100,10 @@ func setupSandboxSidecar() huma.API {
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected
 	sidecarHealth.Register(api, sidecarHealth.New())
-	sidecarFs.Register(api, sidecarFs.New(nil, nil, nil))
-	sidecarCmd.Register(api, sidecarCmd.New(nil, nil, nil, nil))
+
+	v1 := huma.NewGroup(api, "/v1")
+	sidecarFs.Register(v1, sidecarFs.New(nil, nil, nil))
+	sidecarCmd.Register(v1, sidecarCmd.New(nil, nil, nil, nil))
 
 	return api
 }
