@@ -82,6 +82,11 @@ class ContainerInfo(IsolaModel):
     resources: ResourcesSpec | None = None
 
 
+class RootfsSnapshotSource(IsolaModel):
+    snapshot_name: str
+    container_name: str | None = None
+
+
 class PodTemplate(IsolaModel):
     container: ContainerSpec
 
@@ -96,6 +101,7 @@ class CreateSandboxPayload(IsolaModel):
     # todo benl: maybe rename activeDeadlineSeconds to something like max_lifetime in CRD and here
     timeout: int | None = Field(None, alias="activeDeadlineSeconds")
     network: NetworkSpec | None = None
+    rootfs_snapshot_sources: list[RootfsSnapshotSource] | None = None
 
 
 class SandboxSummary(IsolaModel):
@@ -115,6 +121,7 @@ class SandboxData(IsolaModel):
     creation_timestamp: datetime
     timeout: int | None = Field(None, alias="activeDeadlineSeconds")
     network: NetworkSpec | None = None
+    rootfs_snapshot_sources: list[RootfsSnapshotSource] | None = None
 
 
 class CreateCommandPayload(IsolaModel):

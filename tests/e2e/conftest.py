@@ -22,8 +22,26 @@ import warnings
 import pytest
 import pytest_asyncio
 
+import json
+import subprocess
+
 from isola import AsyncIsola, AsyncSandbox, Isola, NotFoundError, Sandbox, SandboxStatus
 
+
+def pytest_addoption(parser):
+    parser.addoption("--slow", action="store_true", default=False, help="include @pytest.mark.slow tests")
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--slow"):
+        return
+    skip_slow = pytest.mark.skip(reason="need --slow option to run")
+    for item in items:
+        if item.get_closest_marker("slow"):
+            item.add_marker(skip_slow)
+
+
+SANDBOXES_NAMESPACE = "isola-sandboxes"
 ISOLA_BASE_URL = os.environ.get("ISOLA_BASE_URL", "http://localhost:8080")
 ISOLA_METRICS_URL = os.environ.get("ISOLA_METRICS_URL", "http://localhost:8082")
 
@@ -38,7 +56,12 @@ def wait_for_running(client: Isola, sandbox_id: str, timeout: float = POLL_TIMEO
     deadline = time.monotonic() + timeout
     last_status = None
     while time.monotonic() < deadline:
-        sb = client.sandboxes.get(sandbox_id)
+        try:
+            sb = client.sandboxes.get(sandbox_id)
+        except NotFoundError:
+            # Sandbox may not be visible in the api-gateway's K8s cache yet.
+            time.sleep(POLL_INTERVAL)
+            continue
         last_status = sb.status
         if sb.status == SandboxStatus.RUNNING:
             return sb
@@ -57,12 +80,64 @@ def wait_for_status(
     deadline = time.monotonic() + timeout
     last_status = None
     while time.monotonic() < deadline:
-        sb = client.sandboxes.get(sandbox_id)
+        try:
+            sb = client.sandboxes.get(sandbox_id)
+        except NotFoundError:
+            time.sleep(POLL_INTERVAL)
+            continue
         last_status = sb.status
         if sb.status == target:
             return sb
         time.sleep(POLL_INTERVAL)
     pytest.fail(f"Sandbox {sandbox_id} did not reach {target.value} within {timeout}s (last: {last_status})")
+
+
+# --- Snapshot helpers ---
+
+
+def create_rootfs_snapshot(
+    sandbox_id: str, snapshot_name: str, ttl_seconds: int = 300
+) -> None:
+    snapshot_cr = {
+        "apiVersion": "sandbox.isola.run/v1alpha1",
+        "kind": "RootfsSnapshot",
+        "metadata": {
+            "name": snapshot_name,
+            "namespace": SANDBOXES_NAMESPACE,
+        },
+        "spec": {
+            "sandboxName": sandbox_id,
+            "snapshotName": snapshot_name,
+            "ttlSecondsAfterFinished": ttl_seconds,
+        },
+    }
+    subprocess.run(
+        ["kubectl", "apply", "-f", "-"],
+        input=json.dumps(snapshot_cr),
+        capture_output=True, check=True, text=True,
+    )
+
+
+def wait_for_snapshot_complete(snapshot_name: str, timeout: float = 120) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            [
+                "kubectl", "get", "rootfssnapshot", snapshot_name,
+                "-n", SANDBOXES_NAMESPACE, "-o", "json",
+            ],
+            capture_output=True, text=True, check=True,
+        )
+        status = json.loads(result.stdout).get("status", {})
+        conditions = status.get("conditions", [])
+        complete = next((c for c in conditions if c["type"] == "Complete"), None)
+        if complete and complete["status"] == "True":
+            return
+        failed = next((c for c in conditions if c["type"] == "Failed"), None)
+        if failed and failed["status"] == "True":
+            pytest.fail(f"Snapshot {snapshot_name} failed: {failed.get('message', 'unknown')}")
+        time.sleep(2)
+    pytest.fail(f"Snapshot {snapshot_name} did not complete within {timeout}s")
 
 
 # --- Async helpers ---
@@ -74,7 +149,11 @@ async def wait_for_running_async(
     deadline = time.monotonic() + timeout
     last_status = None
     while time.monotonic() < deadline:
-        sb = await client.sandboxes.get(sandbox_id)
+        try:
+            sb = await client.sandboxes.get(sandbox_id)
+        except NotFoundError:
+            await asyncio.sleep(POLL_INTERVAL)
+            continue
         last_status = sb.status
         if sb.status == SandboxStatus.RUNNING:
             return sb

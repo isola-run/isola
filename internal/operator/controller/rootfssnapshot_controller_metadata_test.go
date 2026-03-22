@@ -56,7 +56,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 	})
 
 	Context("Snapshot Key Format", func() {
-		It("should use flat key path with snapshot name", func() {
+		It("should use namespace-prefixed key path", func() {
 			sandboxName := "sandbox-keypath"
 			podName := sandboxName + "-pod"
 			runtimeClassName := "gvisor-keypath"
@@ -86,7 +86,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			// Create job pod with termination message and complete the job
 			createSnapshotJobPodWithTerminationMessage(ctx, jobName, &snapshotpkg.UploadResult{
-				SnapshotKey:  "rootfssnapshots/" + sandboxName + ".tar",
+				SnapshotKey:  "rootfssnapshots/" + testNamespace + "/" + sandboxName + ".tar",
 				BytesWritten: 1024,
 			})
 			setSnapshotJobComplete(ctx, jobName)
@@ -99,7 +99,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			snap := getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
-			Expect(snap.Status.SnapshotKey).To(Equal("rootfssnapshots/" + sandboxName + ".tar"))
+			Expect(snap.Status.SnapshotKey).To(Equal("rootfssnapshots/" + testNamespace + "/" + sandboxName + ".tar"))
 		})
 
 		It("should pass custom snapshotName to the uploader job", func() {
@@ -142,16 +142,20 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			job := getSnapshotJob(ctx, jobName)
 			Expect(job).NotTo(BeNil())
 
-			// Verify the SNAPSHOT_NAME env var uses the custom snapshot name
+			// Verify the SNAPSHOT_NAME and SNAPSHOT_NAMESPACE env vars
 			uploaderContainer := job.Spec.Template.Spec.Containers[0]
 			Expect(uploaderContainer.Name).To(Equal("uploader"))
-			var snapshotNameEnv string
+			var snapshotNameEnv, snapshotNamespaceEnv string
 			for _, env := range uploaderContainer.Env {
 				if env.Name == "SNAPSHOT_NAME" {
 					snapshotNameEnv = env.Value
 				}
+				if env.Name == "SNAPSHOT_NAMESPACE" {
+					snapshotNamespaceEnv = env.Value
+				}
 			}
 			Expect(snapshotNameEnv).To(Equal(customSnapshotName))
+			Expect(snapshotNamespaceEnv).To(Equal(testNamespace))
 		})
 	})
 

@@ -28,6 +28,7 @@ from ._models import (
     PodTemplate,
     ResourceList,
     ResourcesSpec,
+    RootfsSnapshotSource,
     SandboxData,
     SandboxStatus,
     SandboxSummary,
@@ -36,6 +37,12 @@ from ._models import (
 
 def _sandbox_path(sandbox_id: str) -> str:
     return f"/sandboxes/{quote(sandbox_id, safe='')}"
+
+
+def _build_rootfs_snapshot_sources(rootfs_snapshot_source: str | None) -> list[RootfsSnapshotSource] | None:
+    if rootfs_snapshot_source is None:
+        return None
+    return [RootfsSnapshotSource(snapshot_name=rootfs_snapshot_source)]
 
 
 def _build_resources(cpu: str | None, memory: str | None, ephemeral_storage: str | None) -> ResourcesSpec | None:
@@ -61,6 +68,7 @@ class Sandboxes:
         ephemeral_storage: str | None = None,
         timeout: int | None = None,
         network: NetworkSpec | None = None,
+        rootfs_snapshot_source: str | None = None,
     ) -> Sandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -74,6 +82,7 @@ class Sandboxes:
             ),
             timeout=timeout,
             network=network,
+            rootfs_snapshot_sources=_build_rootfs_snapshot_sources(rootfs_snapshot_source),
         )
 
         data = self._api.request_model(
@@ -108,6 +117,7 @@ class AsyncSandboxes:
         ephemeral_storage: str | None = None,
         timeout: int | None = None,
         network: NetworkSpec | None = None,
+        rootfs_snapshot_source: str | None = None,
     ) -> AsyncSandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -121,6 +131,7 @@ class AsyncSandboxes:
             ),
             timeout=timeout,
             network=network,
+            rootfs_snapshot_sources=_build_rootfs_snapshot_sources(rootfs_snapshot_source),
         )
 
         data = await self._api.request_model(
@@ -167,6 +178,10 @@ class Sandbox:
     def timeout(self) -> int | None:
         return self._data.timeout
 
+    @property
+    def rootfs_snapshot_sources(self) -> list[RootfsSnapshotSource] | None:
+        return self._data.rootfs_snapshot_sources
+
     def __enter__(self) -> Sandbox:
         return self
 
@@ -203,6 +218,10 @@ class AsyncSandbox:
     @property
     def timeout(self) -> int | None:
         return self._data.timeout
+
+    @property
+    def rootfs_snapshot_sources(self) -> list[RootfsSnapshotSource] | None:
+        return self._data.rootfs_snapshot_sources
 
     async def __aenter__(self) -> AsyncSandbox:
         return self

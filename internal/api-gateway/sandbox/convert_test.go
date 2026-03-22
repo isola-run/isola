@@ -60,6 +60,65 @@ var _ = Describe("Conversion functions", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Command).To(BeNil())
 		})
+
+		It("passes rootfsSnapshotSources through to the CRD", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Container: ContainerSpec{
+						Image: "python:3.12",
+					},
+				},
+				RootfsSnapshotSources: []RootfsSnapshotSource{
+					{
+						SnapshotName:  "my-snapshot",
+						ContainerName: "my-container",
+					},
+				},
+			}
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.RootfsSnapshotSources).To(HaveLen(1))
+			Expect(sb.Spec.RootfsSnapshotSources[0].SnapshotName).To(Equal("my-snapshot"))
+			Expect(sb.Spec.RootfsSnapshotSources[0].ContainerName).To(Equal("my-container"))
+		})
+	})
+
+	Describe("restRootfsSnapshotSourcesToCRD", func() {
+		It("returns nil for nil input", func() {
+			Expect(restRootfsSnapshotSourcesToCRD(nil)).To(BeNil())
+		})
+
+		It("converts RootfsSnapshotSource list to CRD type", func() {
+			input := []RootfsSnapshotSource{
+				{
+					SnapshotName:  "my-snapshot",
+					ContainerName: "my-container",
+				},
+			}
+			result := restRootfsSnapshotSourcesToCRD(input)
+			Expect(result).To(HaveLen(1))
+			Expect(result[0].SnapshotName).To(Equal("my-snapshot"))
+			Expect(result[0].ContainerName).To(Equal("my-container"))
+		})
+	})
+
+	Describe("crdRootfsSnapshotSourcesToREST", func() {
+		It("returns nil for nil input", func() {
+			Expect(crdRootfsSnapshotSourcesToREST(nil)).To(BeNil())
+		})
+
+		It("converts CRD RootfsSnapshotSource list to REST type", func() {
+			input := []sandboxv1alpha1.RootfsSnapshotSource{
+				{
+					SnapshotName:  "my-snapshot",
+					ContainerName: "my-container",
+				},
+			}
+			result := crdRootfsSnapshotSourcesToREST(input)
+			Expect(result).To(HaveLen(1))
+			Expect(result[0].SnapshotName).To(Equal("my-snapshot"))
+			Expect(result[0].ContainerName).To(Equal("my-container"))
+		})
 	})
 
 	Describe("sandboxToResponse", func() {
@@ -100,6 +159,30 @@ var _ = Describe("Conversion functions", func() {
 			}
 			resp := sandboxToResponse(sb)
 			Expect(resp.PodTemplate.Container.Command).To(BeNil())
+		})
+
+		It("includes rootfsSnapshotSources in response", func() {
+			sb := &sandboxv1alpha1.Sandbox{
+				Spec: sandboxv1alpha1.SandboxSpec{
+					PodTemplate: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{Name: "sandbox", Image: "alpine:latest"},
+							},
+						},
+					},
+					RootfsSnapshotSources: []sandboxv1alpha1.RootfsSnapshotSource{
+						{
+							SnapshotName:  "my-snapshot",
+							ContainerName: "my-container",
+						},
+					},
+				},
+			}
+			resp := sandboxToResponse(sb)
+			Expect(resp.RootfsSnapshotSources).To(HaveLen(1))
+			Expect(resp.RootfsSnapshotSources[0].SnapshotName).To(Equal("my-snapshot"))
+			Expect(resp.RootfsSnapshotSources[0].ContainerName).To(Equal("my-container"))
 		})
 	})
 

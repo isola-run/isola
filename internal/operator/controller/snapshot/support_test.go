@@ -131,3 +131,70 @@ func TestCheckRootfsSnapshotSupport(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckRuntimeClassSupport(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = nodev1.AddToScheme(scheme)
+
+	runscRuntimeClass := &nodev1.RuntimeClass{
+		ObjectMeta: metav1.ObjectMeta{Name: "runsc"},
+		Handler:    "runsc",
+	}
+	gvisorRuntimeClass := &nodev1.RuntimeClass{
+		ObjectMeta: metav1.ObjectMeta{Name: "gvisor"},
+		Handler:    "gvisor",
+	}
+	runcRuntimeClass := &nodev1.RuntimeClass{
+		ObjectMeta: metav1.ObjectMeta{Name: "runc"},
+		Handler:    "runc",
+	}
+
+	tests := []struct {
+		name             string
+		runtimeClassName string
+		runtimeClasses   []runtime.Object
+		wantSupported    bool
+		wantErr          bool
+	}{
+		{
+			name:             "runtime class not found",
+			runtimeClassName: "nonexistent",
+			wantSupported:    false,
+		},
+		{
+			name:             "runsc runtime - supported",
+			runtimeClassName: "runsc",
+			runtimeClasses:   []runtime.Object{runscRuntimeClass},
+			wantSupported:    true,
+		},
+		{
+			name:             "gvisor runtime - supported",
+			runtimeClassName: "gvisor",
+			runtimeClasses:   []runtime.Object{gvisorRuntimeClass},
+			wantSupported:    true,
+		},
+		{
+			name:             "runc runtime - unsupported",
+			runtimeClassName: "runc",
+			runtimeClasses:   []runtime.Object{runcRuntimeClass},
+			wantSupported:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			c := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(tt.runtimeClasses...).Build()
+
+			supported, err := CheckRuntimeClassSupport(context.Background(), c, tt.runtimeClassName)
+
+			if tt.wantErr {
+				g.Expect(err).To(HaveOccurred())
+			} else {
+				g.Expect(err).ToNot(HaveOccurred())
+			}
+			g.Expect(supported).To(Equal(tt.wantSupported))
+		})
+	}
+}

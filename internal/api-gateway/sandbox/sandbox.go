@@ -45,13 +45,15 @@ type ContainerSpec struct {
 }
 
 type PodTemplate struct {
+	// todo benl: list of containers?
 	Container ContainerSpec `json:"container" required:"true" doc:"Primary sandbox container"`
 }
 
 type CreateSandboxRequest struct {
-	PodTemplate           PodTemplate  `json:"podTemplate" required:"true" doc:"Pod template"`
-	ActiveDeadlineSeconds *int64       `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
-	Network               *NetworkSpec `json:"network,omitempty" doc:"Network isolation config"`
+	PodTemplate           PodTemplate            `json:"podTemplate" required:"true" doc:"Pod template"`
+	ActiveDeadlineSeconds *int64                 `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
+	Network               *NetworkSpec           `json:"network,omitempty" doc:"Network isolation config"`
+	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" maxItems:"16" doc:"Rootfs snapshots to restore into containers at creation time. Files on separately-mounted filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included."`
 }
 
 type ResourcesSpec struct {
@@ -70,6 +72,11 @@ type NetworkSpec struct {
 	AllowClusterDNS     *bool    `json:"allowClusterDNS,omitempty" doc:"Allow cluster DNS queries"`
 	AllowedEgressCIDRs  []string `json:"allowedEgressCIDRs,omitempty" doc:"Allowed egress CIDRs"`
 	Nameservers         []string `json:"nameservers,omitempty" maxItems:"3" doc:"Custom DNS servers (max 3)"`
+}
+
+type RootfsSnapshotSource struct {
+	SnapshotName  string `json:"snapshotName" required:"true" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Name of the rootfs snapshot to restore from."`
+	ContainerName string `json:"containerName,omitempty" minLength:"1" maxLength:"63" doc:"Container to restore. If empty and there is only one container, that container will be used. Required if there are multiple containers."`
 }
 
 type GetSandboxInput struct {
@@ -106,12 +113,13 @@ type ListSandboxesOutput struct {
 }
 
 type SandboxResponse struct {
-	ID                    string          `json:"id" doc:"Sandbox identifier"`
-	PodTemplate           PodTemplateInfo `json:"podTemplate" doc:"Pod template"`
-	ActiveDeadlineSeconds *int64          `json:"activeDeadlineSeconds,omitempty" doc:"Max lifetime in seconds"`
-	Network               *NetworkSpec    `json:"network,omitempty" doc:"Network isolation config"`
-	Status                string          `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
-	CreationTimestamp     string          `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
+	ID                    string                 `json:"id" doc:"Sandbox identifier"`
+	PodTemplate           PodTemplateInfo        `json:"podTemplate" doc:"Pod template"`
+	ActiveDeadlineSeconds *int64                 `json:"activeDeadlineSeconds,omitempty" doc:"Max lifetime in seconds"`
+	Network               *NetworkSpec           `json:"network,omitempty" doc:"Network isolation config"`
+	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" doc:"Rootfs snapshot restore configuration."`
+	Status                string                 `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
+	CreationTimestamp     string                 `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
 
 type SandboxSummary struct {
@@ -254,6 +262,7 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/sandboxes",
 		Summary:     "List sandboxes",
+		Description: "Eventually consistent: a sandbox returned by POST may not appear immediately in the list. Clients should retry or poll if a recently-created sandbox is missing.",
 		Tags:        []string{"sandboxes"},
 	}, h.ListSandboxes)
 
@@ -262,6 +271,7 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/sandboxes/{id}",
 		Summary:     "Get sandbox details",
+		Description: "Eventually consistent: a sandbox returned by POST may briefly return 404 on GET. Clients should retry if polling a recently-created sandbox.",
 		Tags:        []string{"sandboxes"},
 		Errors:      []int{http.StatusNotFound},
 	}, h.GetSandbox)

@@ -134,6 +134,14 @@ components:
         podTemplate:
           $ref: "#/components/schemas/PodTemplate"
           description: Pod template
+        rootfsSnapshotSources:
+          description: Rootfs snapshots to restore into containers at creation time. Files on separately-mounted filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included.
+          items:
+            $ref: "#/components/schemas/RootfsSnapshotSource"
+          maxItems: 16
+          type:
+            - array
+            - "null"
       required:
         - podTemplate
       type: object
@@ -331,6 +339,23 @@ components:
           $ref: "#/components/schemas/ResourceList"
           description: Resource requests
       type: object
+    RootfsSnapshotSource:
+      additionalProperties: false
+      properties:
+        containerName:
+          description: Container to restore. If empty and there is only one container, that container will be used. Required if there are multiple containers.
+          maxLength: 63
+          minLength: 1
+          type: string
+        snapshotName:
+          description: Name of the rootfs snapshot to restore from.
+          maxLength: 63
+          minLength: 1
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          type: string
+      required:
+        - snapshotName
+      type: object
     SandboxResponse:
       additionalProperties: false
       properties:
@@ -357,6 +382,13 @@ components:
         podTemplate:
           $ref: "#/components/schemas/PodTemplateInfo"
           description: Pod template
+        rootfsSnapshotSources:
+          description: Rootfs snapshot restore configuration.
+          items:
+            $ref: "#/components/schemas/RootfsSnapshotSource"
+          type:
+            - array
+            - "null"
         status:
           description: Sandbox status
           enum:
@@ -490,6 +522,7 @@ paths:
         - health
   /sandboxes:
     get:
+      description: "Eventually consistent: a sandbox returned by POST may not appear immediately in the list. Clients should retry or poll if a recently-created sandbox is missing."
       operationId: listSandboxes
       responses:
         "200":
@@ -573,6 +606,7 @@ paths:
       tags:
         - sandboxes
     get:
+      description: "Eventually consistent: a sandbox returned by POST may briefly return 404 on GET. Clients should retry if polling a recently-created sandbox."
       operationId: getSandbox
       parameters:
         - description: Sandbox identifier

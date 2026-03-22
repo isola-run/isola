@@ -21,7 +21,7 @@ import httpx
 import pytest
 import respx
 
-from isola import AsyncIsola, Isola, NetworkSpec, SandboxStatus
+from isola import AsyncIsola, Isola, NetworkSpec, RootfsSnapshotSource, SandboxStatus
 
 
 @respx.mock
@@ -175,3 +175,57 @@ async def test_async_create_properties_and_delete(sandbox_response_copy: dict[st
         await sandbox.delete()
 
     assert delete_route.called
+
+
+@respx.mock
+def test_create_sandbox_with_rootfs_snapshot_source(sandbox_response_copy: dict[str, object]) -> None:
+    sandbox_response_copy["rootfsSnapshotSources"] = [{"snapshotName": "my-snapshot"}]
+    create_route = respx.post("http://localhost:8080/sandboxes").mock(
+        return_value=httpx.Response(201, json=sandbox_response_copy)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.create(image="python:3.12", rootfs_snapshot_source="my-snapshot")
+
+    payload = json.loads(create_route.calls[0].request.content)
+    assert payload["rootfsSnapshotSources"] == [{"snapshotName": "my-snapshot"}]
+    assert sandbox.rootfs_snapshot_sources is not None
+    assert len(sandbox.rootfs_snapshot_sources) == 1
+    assert sandbox.rootfs_snapshot_sources[0].snapshot_name == "my-snapshot"
+
+
+@respx.mock
+def test_create_sandbox_without_rootfs_snapshot_source_omits_key(
+    sandbox_response_copy: dict[str, object],
+) -> None:
+    create_route = respx.post("http://localhost:8080/sandboxes").mock(
+        return_value=httpx.Response(201, json=sandbox_response_copy)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        client.sandboxes.create(image="python:3.12")
+
+    payload = json.loads(create_route.calls[0].request.content)
+    assert "rootfsSnapshotSources" not in payload
+
+
+@respx.mock
+def test_rootfs_snapshot_sources_response_deserialization(
+    sandbox_response_copy: dict[str, object],
+) -> None:
+    sandbox_response_copy["rootfsSnapshotSources"] = [
+        {"snapshotName": "snap-1"},
+        {"snapshotName": "snap-2", "containerName": "worker"},
+    ]
+    respx.get("http://localhost:8080/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+
+    sources = sandbox.rootfs_snapshot_sources
+    assert sources is not None
+    assert len(sources) == 2
+    assert sources[0] == RootfsSnapshotSource(snapshot_name="snap-1")
+    assert sources[1] == RootfsSnapshotSource(snapshot_name="snap-2", container_name="worker")

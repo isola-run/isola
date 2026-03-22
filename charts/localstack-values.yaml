@@ -1,5 +1,9 @@
 # Shared LocalStack configuration for dev and CI
 # Used by: Tiltfile, .github/workflows/e2e.yml
+image:
+  repository: localstack/localstack
+  tag: "4.14.0"
+
 service:
   type: ClusterIP
 

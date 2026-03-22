@@ -98,9 +98,32 @@ type NetworkSpec struct {
 	Nameservers []string `json:"nameservers,omitempty"`
 }
 
+// RootfsSnapshotSource specifies a rootfs snapshot to restore into a container at creation time.
+type RootfsSnapshotSource struct {
+	// SnapshotName is the name of the rootfs snapshot to restore from.
+	// This matches the snapshotName field from the RootfsSnapshot CR that created it.
+	// Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	SnapshotName string `json:"snapshotName"`
+
+	// ContainerName is the name of the container to apply the rootfs restore to.
+	// If omitted and the sandbox has exactly one user container, that container is used.
+	// Required when the sandbox has multiple user containers.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	ContainerName string `json:"containerName,omitempty"`
+}
+
 // SandboxSpec defines the desired state of Sandbox
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.network) || has(self.network)",message="network cannot be removed once set"
 // +kubebuilder:validation:XValidation:rule="!has(self.network) || !has(oldSelf.network) || self.network == oldSelf.network",message="network is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.rootfsSnapshotSources) || has(self.rootfsSnapshotSources)",message="rootfsSnapshotSources cannot be removed once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.rootfsSnapshotSources) || !has(oldSelf.rootfsSnapshotSources) || self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources",message="rootfsSnapshotSources is immutable once set"
 type SandboxSpec struct {
 	// PodTemplate describes the pod that will be created to run the sandbox.
 	// The Sandbox controller will override specific security settings (runtimeClassName, etc.)
@@ -124,6 +147,19 @@ type SandboxSpec struct {
 	// Network configuration is immutable after sandbox creation.
 	// +optional
 	Network *NetworkSpec `json:"network,omitempty"`
+
+	// RootfsSnapshotSources specifies rootfs snapshots to restore into containers at creation time.
+	// Requires gVisor runtime and the snapshot-mounter NFS mount to be running on the node.
+	// Only the overlay rootfs upper layer is captured/restored. Files on separately-mounted
+	// filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are excluded.
+	// Write data to paths on the root filesystem (e.g. /root, /home) to ensure it
+	// survives snapshot and restore.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(s, s.containerName != '')",message="containerName is required when multiple rootfsSnapshotSources are specified"
+	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName != j.containerName))",message="each rootfsSnapshotSource must target a different container"
+	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty"`
 }
 
 // SandboxStatus defines the observed state of Sandbox.

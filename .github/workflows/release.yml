@@ -8,6 +8,7 @@
 #   - ghcr.io/isola-ai/sandbox-sidecar:<tag>
 #   - ghcr.io/isola-ai/isola-uploader:<tag>
 #   - ghcr.io/isola-ai/api-gateway:<tag>
+#   - ghcr.io/isola-ai/snapshot-mounter:<tag>
 
 name: Release
 
@@ -40,6 +41,9 @@ jobs:
             dockerfile: cmd/uploader/Dockerfile
           - name: api-gateway
             dockerfile: cmd/api-gateway/Dockerfile
+          - name: snapshot-mounter
+            dockerfile: cmd/snapshot-mounter/Dockerfile
+            context: cmd/snapshot-mounter
 
     steps:
       - name: Checkout
@@ -68,7 +72,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
-          context: .
+          context: ${{ matrix.image.context || '.' }}
           file: ${{ matrix.image.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}

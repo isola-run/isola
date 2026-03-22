@@ -22,9 +22,11 @@ make test-sdk-python    # Run Python SDK tests
 make test-sdk-python-verbose  # Run with verbose output
 
 # Testing (E2E) — requires running cluster: tilt up
-make test-e2e           # Run E2E tests
+make test-e2e           # Run E2E tests in parallel (20 workers, skips @slow)
+make test-e2e-slow      # Include slow tests (50s+ idle gaps, late tar)
 make test-e2e-verbose   # Verbose output
 make test-e2e FOCUS="pattern"  # Run specific tests matching pattern
+make test-e2e E2E_WORKERS=8  # Override parallel worker count (default: 20)
 
 # Build
 make build              # Build all binaries to bin/
@@ -118,12 +120,14 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 - `activeDeadlineSeconds` - Max lifetime; operator calculates `status.timeoutAt` from pod start time
 - `shutdownPolicy` - ShutdownPolicy struct with `strategy` (`Delete` default, or `SnapshotRootfs`) and optional `activeDeadlineSeconds` for the snapshot job
 - `network` - NetworkSpec for isolation rules (immutable after creation)
+- `rootfsSnapshotSources` - List of `RootfsSnapshotSource` entries to restore at creation time (immutable after creation). Each source has `snapshotName` (required, references a prior snapshot) and `containerName` (optional if only one user container). Requires gVisor runtime and the snapshot-mounter NFS mount on the node (`--rootfssnapshot-host-mount-path` operator flag). Only the overlay rootfs upper layer is restored.
 
-**RootfsSnapshot** - Triggers a snapshot of a sandbox's filesystem. Creates an uploader Job that tarballs the container rootfs and uploads to cloud storage. Key spec fields:
-- `sandboxName` (required) - The sandbox to snapshot
-- `snapshotName` (optional) - Name used for the storage key (`rootfssnapshots/<snapshotName>.tar`); defaults to sandbox name
-- `container` (optional) - Which container to snapshot; defaults to first
-- Supports TTL-based auto-deletion via `ttlSecondsAfterFinished`
+**RootfsSnapshot** - Triggers a snapshot of a sandbox's overlay rootfs upper layer. Creates a Job with an init container that runs `runsc tar rootfs-upper` and a main container (uploader) that uploads the resulting tarball to cloud storage. Key spec fields:
+- `sandboxName` (required) - The sandbox to snapshot (must be in the same namespace)
+- `snapshotName` (required) - Name used for the storage key (`rootfssnapshots/<namespace>/<snapshotName>.tar`); validated as an RFC 1123 DNS label
+- `containerName` (optional) - Which container to snapshot; defaults to the first container in the sandbox pod
+- `activeDeadlineSeconds` (optional, default 300) - Max duration for the snapshot job
+- `ttlSecondsAfterFinished` (optional, default 300) - Auto-deletion delay after completion; 0 means immediate
 
 ## REST API (api-gateway)
 
@@ -171,11 +175,21 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 
 **Snapshot workflow:**
 1. Create RootfsSnapshot CR referencing a sandbox
-2. Operator creates a Job with uploader container
-3. Uploader tarballs the sandbox container's rootfs via `/proc/<pid>/root`
-4. Uploads to cloud storage (S3/GCS/Azure via gocloud.dev)
-5. Writes result to termination log, operator reads and updates status
-6. TTL controller deletes snapshot after `ttlSecondsAfterFinished`
+2. Operator creates a Job on the same node as the sandbox pod
+3. Init container (snapshotter) runs `runsc tar rootfs-upper` to tar the overlay upper layer
+4. Main container (uploader) uploads the tarball to cloud storage (S3/GCS/Azure via gocloud.dev)
+5. Uploader writes result to termination log; operator reads it and updates RootfsSnapshot status
+6. TTL controller deletes the RootfsSnapshot after `ttlSecondsAfterFinished`
+
+**Rootfs restore workflow:**
+1. Create a Sandbox with `rootfsSnapshotSources` referencing prior snapshot names
+2. Operator validates gVisor runtime and snapshot-mounter host path configuration
+3. Operator injects `dev.gvisor.tar.rootfs.upper.<container>` annotations on the pod, pointing to the NFS-mounted tar on the host (`<hostMountPath>/<namespace>/<snapshotName>.tar`)
+4. Operator injects per-container `restartPolicyRules` on restored containers to retry exit code 128 (gVisor OCI runtime start failure when tar is missing). Retries follow kubelet exponential backoff (10s, 20s, 40s, ... capped at 5min). `activeDeadlineSeconds` bounds total retry time (anchored to pod start time); without it, retries are unbounded. User-facing sandbox status during retry: `creating`
+5. gVisor reads the tar annotations at container start and pre-populates the overlay upper layer
+6. The snapshot-mounter DaemonSet runs on each node, NFS-mounting snapshot tars from cloud storage so they are available at the configured host path
+
+**Rootfs restore retry (K8s version prerequisite):** `rootfsSnapshotSources` uses per-container `restartPolicyRules` to retry exit code 128 when the snapshot tar is not yet available on NFS. This requires the `ContainerRestartRules` feature gate: alpha in K8s 1.34 (must be explicitly enabled), beta/on-by-default in K8s 1.35+, not yet GA. Without the feature gate, `restartPolicyRules` fields are silently ignored and the container falls back to pod-level `RestartPolicy: Never` (pod fails permanently on missing tar, no retry).
 
 **Command execution:**
 - Commands run via `SysProcAttr.Chroot` to `/proc/<pid>/root`, entering the sandbox container's filesystem view without changing namespaces. The sidecar uses `/bin/sh -c 'exec "$@"'` for PATH lookup inside the container, and `exec` replaces the shell so SIGKILL reaches the user's process directly. Requires `CAP_SYS_PTRACE` (for gVisor's `/proc/<pid>/root` access check) and `CAP_SYS_CHROOT` (default capability set).

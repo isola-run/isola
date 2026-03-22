@@ -38,6 +38,11 @@ spec:
         description: |-
           RootfsSnapshot represents a request to snapshot a sandbox's root filesystem.
           The controller creates a Job that uses gvisor's runsc to tar the overlay2 upper layer.
+
+          Only changes to the overlay rootfs upper layer are captured. Files on separately-mounted
+          filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included.
+          To persist data across snapshots, write to directories on the root filesystem
+          (e.g. /root, /home).
         properties:
           apiVersion:
             description: |-
@@ -67,10 +72,13 @@ spec:
                 format: int64
                 minimum: 1
                 type: integer
-              container:
+              containerName:
                 description: |-
-                  Container is the name of the container to snapshot.
+                  ContainerName is the name of the container to snapshot.
                   If empty, defaults to the first container in the sandbox pod.
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                 type: string
               sandboxName:
                 description: |-
@@ -80,8 +88,12 @@ spec:
                 type: string
               snapshotName:
                 description: |-
-                  SnapshotName is the name used for the snapshot object key in storage.
-                  If empty, defaults to the sandbox name.
+                  SnapshotName is the name used for the snapshot storage key.
+                  This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
+                  The SnapshotName validation is crucial as paths may be constructed from it.
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                 type: string
               ttlSecondsAfterFinished:
                 default: 300
@@ -97,6 +109,7 @@ spec:
                 type: integer
             required:
             - sandboxName
+            - snapshotName
             type: object
           status:
             description: status defines the observed state
@@ -172,8 +185,8 @@ spec:
                 description: ContainerID is the container ID that was snapshotted
                 type: string
               snapshotKey:
-                description: SnapshotKey is the object key within the bucket (e.g.,
-                  "rootfssnapshots/<name>.tar")
+                description: SnapshotKey is the object key within the bucket (e.g.
+                  "rootfssnapshots/<namespace>/<name>.tar")
                 type: string
               startTime:
                 description: StartTime is when the snapshot job was created

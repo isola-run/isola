@@ -72,6 +72,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				Recorder:        recorder,
 				Clock:           fakeClock,
 				BucketURL:       "s3://test-bucket?region=us-east-1",
+				UploaderImage:   "isola-uploader:test",
 				Enabled:         false,
 				GvisorRunscPath: "/usr/local/bin/runsc",
 				GvisorRunscRoot: "/run/containerd/runsc/k8s.io",

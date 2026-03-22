@@ -15,14 +15,13 @@ global:
   imagePullSecrets: []
 
 
-# Namespace where sandbox pods are created
-sandboxNamespace: isola-sandboxes
-
-# Whether to create the sandbox namespace (set to false if it already exists).
-# The sandbox namespace is different from the namespace this helm charts installs
-# the isola system components to (operator, api-gateway), and is used to orchestrate
-# the sandboxes and related resource in.
-createSandboxNamespace: true
+# Namespace where sandbox pods are created. The api-gateway would create sandboxes in this namespace.
+# Note: sandboxes manually created outside this namespace won't enjoy full functionality like the isola network policies.
+sandboxNamespace:
+  name: isola-sandboxes
+  # Set to true to have the chart create it (note: if true, helm uninstall will cascade-delete
+  # the namespace and everything inside it).
+  create: false
 
 
 operator:
@@ -67,6 +66,7 @@ operator:
       repository: sandbox-sidecar
       tag: ""  # Defaults to Chart.appVersion
       digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+      pullPolicy: IfNotPresent
 
   # Sandbox runtime configuration
   # Selects which runtime to use for sandbox pods and configures runtime-specific features.
@@ -102,39 +102,128 @@ operator:
           binaryPath: /usr/local/bin/runsc
           rootDir: /run/containerd/runsc/k8s.io
 
-        # RootfsSnapshot storage configuration (bucket for tarball uploads)
+        # RootfsSnapshot storage configuration
+        # Selects the cloud storage provider and bucket for snapshot uploads.
+        #
+        # Three credential modes (per provider):
+        #   1. Workload identity (recommended): Leave inline credentials and existingSecret empty.
+        #      Configure serviceAccount annotations for IRSA/GKE WI/Azure WI.
+        #   2. Existing secret: Set uploader.existingSecret and/or snapshotMounter.existingSecret
+        #   3. Chart-managed: Provide inline credentials in the provider block (S3 and Azure)
         storage:
-          # Bucket URL (required for snapshotting to work)
-          # Examples:
-          #   s3://bucket-name?region=us-east-1 (AWS S3)
-          #   s3://bucket-name?endpoint=http://localstack:4566&use_path_style=true (LocalStack/MinIO)
-          #   gs://bucket-name (Google Cloud Storage)
-          #   azblob://container-name (Azure Blob Storage)
-          bucketUrl: ""
+          # Provider type selector: "s3", "gcs", "azure"
+          # Must be set when rootfssnapshot is enabled.
+          type: ""
 
-          # Credentials - three modes:
-          #   1. Pod/Workload Identity: Leave all empty (recommended)
-          #   2. Existing Secret: Set existingSecret
-          #   3. Chart-managed: Provide accessKeyId/secretAccessKey (dev only)
-          credentials:
-            existingSecret: ""
+          s3:
+            bucket: ""
+            region: ""
+            # Custom S3 endpoint. Only needed for S3-compatible stores (MinIO, LocalStack, etc.).
+            # AWS S3 resolves endpoints automatically from region.
+            endpoint: ""
+            # Force path-style S3 URLs (bucket in path, not subdomain).
+            # Required for MinIO, LocalStack, and most S3-compatible stores.
+            forcePathStyle: false
+            # Chart-managed S3 credentials (creates secrets in both namespaces).
             accessKeyId: ""
             secretAccessKey: ""
-            region: ""
 
-        # Uploader job configuration
+          gcs:
+            bucket: ""
+            # GCS uses JSON service account key files that don't fit as inline YAML values.
+            # Use existingSecret or workload identity (GKE Workload Identity).
+
+          azure:
+            container: ""
+            # Storage account name (required for Azure, even with workload identity).
+            storageAccount: ""
+            # Storage account access key (from Azure Portal > Storage account > Access keys).
+            # Leave empty to use workload identity or existingSecret.
+            accountKey: ""
+
+        # Uploader job configuration (runs in sandbox namespace, needs write access)
         uploader:
           image:
             registry: ghcr.io/isola-ai
             repository: isola-uploader
             tag: ""  # Defaults to Chart.appVersion
             digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+            pullPolicy: IfNotPresent
+          # Pre-existing secret in the sandbox namespace.
+          # Takes precedence over chart-managed credentials.
+          existingSecret: ""
+          serviceAccount:
+            create: true
+            name: ""
+            annotations: {}  # For IRSA/Workload Identity
 
-        # ServiceAccount for rootfs snapshot jobs (needs cloud storage permissions)
-        serviceAccount:
-          create: true
-          name: "isola-rootfssnapshot-job"
-          annotations: {}  # For IRSA/Workload Identity
+        # Isola snapshot mounter DaemonSet configuration.
+        # When rootfssnapshot is enabled, a DaemonSet is deployed on each node
+        # running rclone as an NFSv3 server with a kernel NFS mount, making
+        # snapshot tars available for gVisor rootfs restore.
+        #
+        # Host prerequisites:
+        #   - NFS client kernel support (CONFIG_NFS_FS). Built-in on all major
+        #     managed K8s node images (EKS, GKE, AKS) and required by NFS CSI
+        #     drivers (EFS, Filestore, Azure Files).
+        #
+        # Cleanup on uninstall:
+        #   The NFS mount is intentionally NOT unmounted on pod termination for restarts resiliency.
+        #   After `helm uninstall`, it is possible to it clean it up on each node:
+        #     umount /mnt/isola-snapshots; rm -rf /var/cache/isola-snapshots
+        snapshotMounter:
+          # Host path where snapshots are NFS-mounted (readable by runsc on the node)
+          hostMountPath: /mnt/isola-snapshots
+
+          # Port for the rclone NFS server on the host loopback (127.0.0.1).
+          # Uses hostNetwork, so this port must not conflict with other services.
+          nfsPort: 12049
+
+          # Pre-existing secret in the release namespace.
+          # Takes precedence over chart-managed credentials.
+          existingSecret: ""
+
+          # ServiceAccount for the snapshot-mounter DaemonSet.
+          # Separate from the snapshot job SA because they run in different namespaces
+          # (release namespace vs sandbox namespace).
+          # For IRSA/Workload Identity, this SA needs read-only access to the bucket.
+          serviceAccount:
+            create: true
+            name: ""
+            annotations: {}  # For IRSA/Workload Identity
+
+          # rclone NFS server configuration
+          rclone:
+            image:
+              registry: docker.io
+              repository: rclone/rclone
+              tag: "1.73.2"
+              digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+              pullPolicy: IfNotPresent
+
+            # How long to cache directory listings (--dir-cache-time).
+            # Lower values detect new snapshots faster but increase cloud API calls.
+            dirCacheTime: "1m"
+
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+
+          # Privileged mounter container (creates NFS mount with Bidirectional
+          # propagation). Purpose-built image with nfs-utils for mount.nfs.
+          mounter:
+            image:
+              registry: ghcr.io/isola-ai
+              repository: snapshot-mounter
+              tag: ""  # Defaults to Chart.appVersion
+              digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+              pullPolicy: IfNotPresent
+            resources: {}
+
+          podAnnotations: {}
+          nodeSelector: {}
+          tolerations: []
 
     # Cluster default runtime configuration
     # Uses cluster default RuntimeClass (no special configuration needed)
@@ -172,18 +261,18 @@ apiGateway:
       cpu: 10m
       memory: 64Mi
 
-  service:
-    type: ClusterIP
-    nodePort: null
+  serviceAccount:
+    create: true
+    name: ""
     annotations: {}
 
   logging:
     level: info
     devMode: false
 
-  serviceAccount:
-    create: true
-    name: ""
+  service:
+    type: ClusterIP
+    nodePort: null
     annotations: {}
 
   nodeSelector: {}

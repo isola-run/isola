@@ -6,7 +6,7 @@ COMPONENTS DEPLOYED:
   - API Gateway: REST API for sandbox orchestration
 {{- end }}
 
-SANDBOX NAMESPACE: {{ .Values.sandboxNamespace }}
+SANDBOX NAMESPACE: {{ .Values.sandboxNamespace.name }}
 
 {{- if .Values.apiGateway.enabled }}
 
@@ -33,10 +33,12 @@ VERIFY INSTALLATION:
 {{- $bucketUrl := include "isola.operator.storageBucketUrl" . }}
 {{- if not $bucketUrl }}
 
-NOTE: RootfsSnapshot storage is not configured. To enable rootfs snapshots, upgrade with:
+NOTE: RootfsSnapshot storage is not configured. To enable rootfs snapshots, upgrade with (for example):
   --set operator.sandboxRuntime.type=gvisor
   --set operator.sandboxRuntime.gvisor.rootfssnapshot.enabled=true
-  --set operator.sandboxRuntime.gvisor.rootfssnapshot.storage.bucketUrl="s3://your-bucket?region=us-east-1"
+  --set operator.sandboxRuntime.gvisor.rootfssnapshot.storage.type=s3
+  --set operator.sandboxRuntime.gvisor.rootfssnapshot.storage.s3.bucket=your-bucket
+  --set operator.sandboxRuntime.gvisor.rootfssnapshot.storage.s3.region=us-east-1
 {{- end }}
 
 DOCUMENTATION: https://github.com/isola-ai/isola

@@ -168,7 +168,7 @@ def test_commands_on_deleted_sandbox(
 def test_invalid_command_nonzero_exit(session_sandbox: Sandbox) -> None:
     """Running a binary that does not exist inside the sandbox should produce a non-zero exit code.
 
-    The sidecar accepts the command (202), but nsenter fails to exec the binary,
+    The sidecar accepts the command (202), but fails to exec the binary,
     resulting in a non-zero exit code.
     """
     result = session_sandbox.commands.run("/usr/bin/nonexistent_binary_xyz")

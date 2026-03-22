@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"path/filepath"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -32,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 	"github.com/isola-ai/isola/internal/constants"
@@ -67,6 +69,10 @@ const (
 	CondReasonRootfsSnapshotTimeout        = "RootfsSnapshotTimeout"
 	CondReasonInvalidRuntime               = "InvalidRuntime"
 
+	// Restore-related reasons
+	CondReasonRootfsRestoreConfigError = "RootfsRestoreConfigurationError"
+	CondReasonNoRootfsSnapshot         = "NoRootfsSnapshot"
+
 	// NetworkPolicy-related reasons
 	CondReasonNetworkPolicyApplied = "NetworkPolicyApplied"
 	CondReasonNetworkPolicyFailed  = "NetworkPolicyFailed"
@@ -78,13 +84,14 @@ const SandboxFinalizer = "sandbox.isola.run/cleanup"
 
 type SandboxReconciler struct {
 	client.Client
-	Scheme              *runtime.Scheme
-	Recorder            events.EventRecorder
-	SandboxSidecarImage string
-	RuntimeClassName    string                        // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
-	PriorityClassName   string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
-	ImagePullSecrets    []corev1.LocalObjectReference // ImagePullSecrets for pulling sandbox-sidecar images from private registries.
-	Clock               Clock                         // Clock interface for time operations, allows mocking in tests
+	Scheme                      *runtime.Scheme
+	Recorder                    events.EventRecorder
+	SandboxSidecarImage         string
+	RuntimeClassName            string                        // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
+	PriorityClassName           string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
+	ImagePullSecrets            []corev1.LocalObjectReference // ImagePullSecrets for pulling sandbox-sidecar images from private registries.
+	Clock                       Clock                         // Clock interface for time operations, allows mocking in tests
+	RootfsSnapshotHostMountPath string                        // Host path where rootfs snapshot tars are NFS-mounted (e.g., /mnt/isola-snapshots)
 }
 
 const (
@@ -186,6 +193,9 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	maps.Copy(labels, buildNetworkLabels(sandbox.Spec.Network))
 
+	annotations := make(map[string]string, len(sandbox.Spec.PodTemplate.Annotations))
+	maps.Copy(annotations, sandbox.Spec.PodTemplate.Annotations)
+
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podutil.GetSandboxPodName(sandbox.Name),
@@ -194,7 +204,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			// There's a security gate in runsc/config/flags.go
 			// where only flags deemed safe for container authors
 			// to set because they don't weaken the sandbox.
-			Annotations: sandbox.Spec.PodTemplate.Annotations,
+			Annotations: annotations,
 		},
 		Spec: sandbox.Spec.PodTemplate.Spec,
 	}
@@ -219,6 +229,33 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			sandboxPod.Annotations = map[string]string{}
 		}
 		sandboxPod.Annotations["dev.gvisor.flag.overlay2"] = "root:self"
+	}
+
+	if len(sandbox.Spec.RootfsSnapshotSources) > 0 {
+		if err := r.validateRootfsRestoreConfig(ctx); err != nil {
+			_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+				{
+					Type:               SandboxReadyCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonRootfsRestoreConfigError,
+					Message:            err.Error(),
+					ObservedGeneration: sandbox.Generation,
+				},
+			})
+			return err
+		}
+		if err := r.injectRootfsRestore(sandbox.Spec.RootfsSnapshotSources, sandboxPod, sandbox.Namespace); err != nil {
+			_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+				{
+					Type:               SandboxReadyCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonRootfsRestoreConfigError,
+					Message:            err.Error(),
+					ObservedGeneration: sandbox.Generation,
+				},
+			})
+			return err
+		}
 	}
 
 	// Enable shared PID namespace so the sidecar can locate the main container and access its filesystem via /proc/<pid>/root
@@ -433,50 +470,33 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	return nil
 }
 
-func (r *SandboxReconciler) calculateTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time) {
-	log := logf.FromContext(ctx)
-	// todo benl: update sandbox condition(s) here?
-	if sandbox.Spec.ActiveDeadlineSeconds == nil {
-		return nil
-	}
-
-	var startTime time.Time
-	if sandboxPod != nil && sandboxPod.Status.StartTime != nil {
-		// sandboxPod.Status.StartTime set once when the pod is first scheduled onto a node (survives pod restarts)
-		// it is probably closer to user intent, so if exists we use that time
-		log.Info("deduced start time from pod", "startTime", sandboxPod.Status.StartTime.Time)
-		startTime = sandboxPod.Status.StartTime.Time
-	} else {
-		log.Info("deduced start time from sandbox", "startTime", sandbox.CreationTimestamp.Time)
-		startTime = sandbox.CreationTimestamp.Time
-	}
-
-	timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.ActiveDeadlineSeconds) * time.Second)
-
-	log.Info("calculated sandbox timeout", "timeoutAt", timeoutAt)
-	return &metav1.Time{Time: timeoutAt}
-}
-
 func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time, err error) {
 	log := logf.FromContext(ctx)
-	optionalTimeoutAt = r.calculateTimeout(ctx, sandbox, sandboxPod)
-	if optionalTimeoutAt == nil {
-		// no timeout is configured
+	if sandbox.Spec.ActiveDeadlineSeconds == nil {
 		return nil, nil
 	}
 
-	// once the sandboxPod is created, timeout might change compared to the one calculated based on sandbox creation time
-	if sandbox.Status.TimeoutAt == nil || sandbox.Status.TimeoutAt.Time.Before(optionalTimeoutAt.Time) {
-		sandbox.Status.TimeoutAt = optionalTimeoutAt
+	// Set once: anchor timeout to pod start time. Pod start time is immutable,
+	// so this naturally prevents crashlooping pods from pushing the timeout forward.
+	if sandbox.Status.TimeoutAt == nil {
+		startTime := podutil.PodStartTime(sandboxPod)
+		if startTime == nil {
+			// pod not started yet, we'll calculate the timeout once acknowledged by the kubelet (will trigger a reconcile with StartTime set)
+			return nil, nil
+		}
 
+		timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.ActiveDeadlineSeconds) * time.Second)
+		log.Info("calculated sandbox timeout from pod start time", "startTime", startTime.Time, "timeoutAt", timeoutAt)
+
+		sandbox.Status.TimeoutAt = &metav1.Time{Time: timeoutAt}
 		if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
 			log.Error(err, "Failed to patch sandbox TimeoutAt")
-			return optionalTimeoutAt, err
+			return nil, err
 		}
-		log.Info("persisted timeoutAt", "timeoutAt", optionalTimeoutAt)
+		log.Info("persisted timeoutAt", "timeoutAt", timeoutAt)
 	}
 
-	return optionalTimeoutAt, nil
+	return sandbox.Status.TimeoutAt, nil
 }
 
 func (r *SandboxReconciler) reconcileSandboxStatus(
@@ -553,7 +573,7 @@ func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1a
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             "NoRootfsSnapshot",
+			Reason:             CondReasonNoRootfsSnapshot,
 			Message:            "No shutdown rootfs snapshot exists",
 			ObservedGeneration: sandbox.Generation,
 		}
@@ -1081,6 +1101,91 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 	}
 
 	return ctrl.Result{RequeueAfter: time.Second}, false, nil
+}
+
+// validateRootfsRestoreConfig checks that the reconciler is configured for rootfs restore
+// (runtime class + host mount path). Called once before processing individual sources.
+func (r *SandboxReconciler) validateRootfsRestoreConfig(ctx context.Context) error {
+	if r.RootfsSnapshotHostMountPath == "" {
+		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires rootfs snapshot restore to be configured (--rootfssnapshot-host-mount-path)"))
+	}
+
+	if r.RuntimeClassName == "" {
+		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires gVisor runtime (no RuntimeClassName configured)"))
+	}
+	supported, err := snapshot.CheckRuntimeClassSupport(ctx, r.Client, r.RuntimeClassName)
+	if err != nil {
+		// K8s API error — may be transient, allow retry
+		return fmt.Errorf("failed to validate runtime for rootfs restore: %w", err)
+	}
+	if !supported {
+		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires a gVisor runtime (RuntimeClass %q handler is not runsc/gvisor)", r.RuntimeClassName))
+	}
+
+	return nil
+}
+
+func (r *SandboxReconciler) injectRootfsRestore(sources []sandboxv1alpha1.RootfsSnapshotSource, pod *corev1.Pod, namespace string) error {
+	containers := make(map[string]struct{}, len(pod.Spec.Containers))
+	for _, c := range pod.Spec.Containers {
+		containers[c.Name] = struct{}{}
+	}
+
+	// Defense in depth: namespace comes from CR metadata (not user input),
+	// but verify it's a safe path component since it's used to construct a host file path.
+	if !filepath.IsLocal(namespace) {
+		return reconcile.TerminalError(fmt.Errorf(
+			"invalid namespace %q: must be a safe local path component", namespace))
+	}
+
+	for _, src := range sources {
+		name := src.ContainerName
+		if name == "" {
+			if len(pod.Spec.Containers) != 1 {
+				return reconcile.TerminalError(fmt.Errorf(
+					"containerName must be specified when sandbox has %d containers", len(pod.Spec.Containers)))
+			}
+			name = pod.Spec.Containers[0].Name
+		}
+
+		if _, ok := containers[name]; !ok {
+			return reconcile.TerminalError(fmt.Errorf(
+				"container %q not found in sandbox pod", name))
+		}
+
+		// Defense in depth: CRD validation enforces the DNS label pattern, but verify here
+		// as well since SnapshotName is used to construct a host file path.
+		if !filepath.IsLocal(src.SnapshotName) {
+			return reconcile.TerminalError(fmt.Errorf(
+				"invalid snapshot name %q: must be a safe local path component", src.SnapshotName))
+		}
+
+		key := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", name)
+		if _, dup := pod.Annotations[key]; dup {
+			return reconcile.TerminalError(fmt.Errorf(
+				"duplicate restore target: container %q", name))
+		}
+		pod.Annotations[key] = fmt.Sprintf("%s/%s/%s.tar", r.RootfsSnapshotHostMountPath, namespace, src.SnapshotName)
+
+		// Add per-container restart rules so kubelet retries exit code 128
+		// (OCI runtime start failure, e.g. missing gVisor rootfs tar).
+		// Requires the ContainerRestartRules feature gate (K8s 1.34+, enabled by default in 1.35+).
+		rp := corev1.ContainerRestartPolicyNever
+		for i := range pod.Spec.Containers {
+			if pod.Spec.Containers[i].Name == name {
+				pod.Spec.Containers[i].RestartPolicy = &rp
+				pod.Spec.Containers[i].RestartPolicyRules = []corev1.ContainerRestartRule{{
+					Action: corev1.ContainerRestartRuleActionRestart,
+					ExitCodes: &corev1.ContainerRestartRuleOnExitCodes{
+						Operator: corev1.ContainerRestartRuleOnExitCodesOpIn,
+						Values:   []int32{128},
+					},
+				}}
+				break
+			}
+		}
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

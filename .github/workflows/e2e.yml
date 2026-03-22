@@ -13,6 +13,7 @@ env:
   SANDBOX_SIDECAR_IMAGE: sandbox-sidecar
   UPLOADER_IMAGE: isola-uploader
   API_IMAGE: api-gateway
+  SNAPSHOT_MOUNTER_IMAGE: snapshot-mounter
 
 jobs:
   e2e:
@@ -68,6 +69,16 @@ jobs:
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
 
+      - name: Build snapshot-mounter image
+        uses: docker/build-push-action@v6
+        with:
+          context: cmd/snapshot-mounter
+          file: cmd/snapshot-mounter/Dockerfile
+          load: true
+          tags: ${{ env.SNAPSHOT_MOUNTER_IMAGE }}:ci
+          cache-from: type=gha,scope=snapshot-mounter
+          cache-to: type=gha,mode=max,scope=snapshot-mounter
+
       - name: Create Kind cluster
         uses: helm/kind-action@v1
         with:
@@ -79,7 +90,7 @@ jobs:
         run: |
           set -e
           NODE="${KIND_CLUSTER_NAME}-control-plane"
-          GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/20260126/x86_64"
+          GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/20260302/x86_64"
 
           echo "Installing gVisor binaries..."
           docker exec "$NODE" sh -c "
@@ -91,10 +102,18 @@ jobs:
           "
 
           echo "Configuring containerd for gVisor..."
+          docker exec "$NODE" sh -c 'cat > /etc/containerd/runsc.toml << "TOML"
+          [runsc_config]
+            allow-rootfs-tar-annotation = "true"
+          TOML'
+
           GVISOR_CONFIG='
           [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
             runtime_type = "io.containerd.runsc.v1"
             pod_annotations = ["dev.gvisor.*"]
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
+            TypeUrl = "io.containerd.runsc.v1.options"
+            ConfigPath = "/etc/containerd/runsc.toml"
           '
           docker exec "$NODE" sh -c "echo '$GVISOR_CONFIG' >> /etc/containerd/config.toml"
 
@@ -120,6 +139,7 @@ jobs:
           kind load docker-image ${{ env.SANDBOX_SIDECAR_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.UPLOADER_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.API_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.SNAPSHOT_MOUNTER_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -133,6 +153,9 @@ jobs:
             --create-namespace \
             -f charts/localstack-values.yaml \
             --wait --timeout 3m
+
+      - name: Create sandbox namespace
+        run: kubectl create namespace isola-sandboxes
 
       - name: Deploy isola
         run: |
@@ -150,6 +173,9 @@ jobs:
             --set apiGateway.image.repository=${{ env.API_IMAGE }} \
             --set apiGateway.image.tag=ci \
             --set apiGateway.image.pullPolicy=Never \
+            --set operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.mounter.image.repository=${{ env.SNAPSHOT_MOUNTER_IMAGE }} \
+            --set operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.mounter.image.tag=ci \
+            --set operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.mounter.image.pullPolicy=Never \
             --wait --timeout 3m
 
       - name: Wait for services to be ready
@@ -159,6 +185,9 @@ jobs:
 
           echo "Waiting for isola-api-gateway..."
           kubectl rollout status deployment/isola-api-gateway -n isola-system --timeout=120s
+
+          echo "Waiting for isola-snapshot-mounter..."
+          kubectl rollout status daemonset/isola-snapshot-mounter -n isola-system --timeout=120s
 
           echo "Checking pod status..."
           kubectl get pods -n isola-system
@@ -174,7 +203,7 @@ jobs:
       - name: Run E2E tests
         working-directory: tests/e2e
         run: |
-          uv run pytest -v --tb=short --junitxml=test-results.xml
+          uv run --frozen pytest -n 4 --dist load --slow -v --tb=short --junitxml=test-results.xml
 
       - name: Upload test results
         if: always()
@@ -206,6 +235,9 @@ jobs:
 
           echo "=== api-gateway logs ===" > ./debug-logs/api.log
           kubectl logs -l app.kubernetes.io/name=isola-api-gateway -n isola-system --tail=500 >> ./debug-logs/api.log 2>&1 || true
+
+          echo "=== snapshot-mounter logs ===" > ./debug-logs/snapshot-mounter.log
+          kubectl logs -l app.kubernetes.io/component=snapshot-mounter -n isola-system --all-containers --tail=500 >> ./debug-logs/snapshot-mounter.log 2>&1 || true
 
           echo "=== Sandboxes ===" > ./debug-logs/sandboxes.txt
           kubectl get sandboxes -A -o wide >> ./debug-logs/sandboxes.txt 2>&1 || true

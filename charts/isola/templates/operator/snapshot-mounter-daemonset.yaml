@@ -1,0 +1,205 @@
+{{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" }}
+{{- $snapshotMounter := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter }}
+{{- $storage := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage }}
+{{- $hostMountPath := $snapshotMounter.hostMountPath }}
+{{- $cachePath := "/var/cache/isola-snapshots" }}
+{{- $rclone := $snapshotMounter.rclone }}
+{{- $mounter := $snapshotMounter.mounter }}
+{{- $nfsPort := $snapshotMounter.nfsPort | default 12049 }}
+{{/*
+  The pod has two containers with distinct privilege levels:
+    rclone-nfs:  Unprivileged, non-root. Runs the NFSv3 server.
+    nfs-mounter: Privileged. Creates the kernel NFS mount.
+  This keeps the privileged surface minimal: only the mount(2) syscall
+  path runs privileged, not the rclone binary.
+
+  The DaemonSet requires privileged: true and Bidirectional mount propagation.
+  If your cluster enforces Pod Security Admission on this namespace, label it:
+    kubectl label namespace <release-ns> pod-security.kubernetes.io/enforce=privileged
+*/}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "isola.snapshotMounter.fullname" . }}
+  labels:
+    {{- include "isola.snapshotMounter.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "isola.snapshotMounter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "isola.snapshotMounter.selectorLabels" . | nindent 8 }}
+      {{- with $snapshotMounter.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "isola.operator.snapshotMounterServiceAccountName" . }}
+      priorityClassName: system-node-critical
+      terminationGracePeriodSeconds: 60
+      # hostNetwork is required so the NFS server runs on the host's loopback.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- include "isola.imagePullSecrets" . | nindent 6 }}
+      {{- with $snapshotMounter.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $snapshotMounter.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      # set the cache directory ownership to the rclone user (1009).
+        - name: init-cache-perms
+          image: {{ include "isola.operator.rootfssnapshotMounterImage" . }}
+          imagePullPolicy: {{ $mounter.image.pullPolicy }}
+          command: ["chown", "-R", "1009:1009", "{{ $cachePath }}"]
+          resources:
+            {{- toYaml $mounter.resources | nindent 12 }}
+          volumeMounts:
+            - name: cache
+              mountPath: {{ $cachePath }}
+      containers:
+        - name: rclone-nfs
+          image: {{ include "isola.operator.rootfssnapshotRcloneImage" . }}
+          imagePullPolicy: {{ $rclone.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              mkdir -p "{{ $cachePath }}/nfs-handles"
+
+              REMOTE="{{ include "isola.operator.rcloneRemote" $ }}"
+              echo "Starting NFS server for $REMOTE on 127.0.0.1:${NFS_PORT}"
+
+              # nfs with hard mount (unlike FUSE) would block reads if the daemonset pod restarts/is down, allowing resilient deployments and surviving hiccups.
+              # --nfs-cache-type disk survives restarts of the daemonset, allowing serving the file after it's back up.
+              # --vfs-cache-mode off for simplicitly until demand raises for caching cloud files content on disk.
+              # --use-server-modtime since all we need to know is the server's modified time to detect changes.
+              exec rclone serve nfs "$REMOTE" \
+              --addr "127.0.0.1:${NFS_PORT}" \
+              --nfs-cache-type disk \
+              --nfs-cache-dir "{{ $cachePath }}/nfs-handles" \
+              --read-only \
+              --vfs-cache-mode off \
+              --use-server-modtime \
+              --dir-cache-time {{ $rclone.dirCacheTime | default "1m" | quote }} \
+              --log-level INFO
+
+          env:
+            - name: NFS_PORT
+              value: {{ $nfsPort | quote }}
+            {{- if eq $storage.type "s3" }}
+            # env_auth enables AWS SDK default credential chain (IRSA/workload identity).
+            # Without it, rclone falls back to anonymous access when credentials are empty.
+            - name: RCLONE_S3_ENV_AUTH
+              value: "true"
+            - name: RCLONE_S3_PROVIDER
+              value: "Other"
+            {{- if $storage.s3.region }}
+            - name: RCLONE_S3_REGION
+              value: {{ $storage.s3.region | quote }}
+            {{- end }}
+            {{- if $storage.s3.endpoint }}
+            - name: RCLONE_S3_ENDPOINT
+              value: {{ $storage.s3.endpoint | quote }}
+            {{- end }}
+            {{- if $storage.s3.forcePathStyle }}
+            - name: RCLONE_S3_FORCE_PATH_STYLE
+              value: "true"
+            {{- end }}
+            {{- else if eq $storage.type "gcs" }}
+            # env_auth enables google.DefaultClient() (GKE Workload Identity).
+            - name: RCLONE_GCS_ENV_AUTH
+              value: "true"
+            {{- else if eq $storage.type "azure" }}
+            # env_auth enables azidentity.NewDefaultAzureCredential() (Managed Identity).
+            # Account is required even with workload identity.
+            - name: RCLONE_AZUREBLOB_ENV_AUTH
+              value: "true"
+            - name: RCLONE_AZUREBLOB_ACCOUNT
+              value: {{ $storage.azure.storageAccount | quote }}
+            {{- end }}
+          {{- $mounterCredentialSecretName := include "isola.operator.mounterCredentialSecretName" . }}
+          {{- if $mounterCredentialSecretName }}
+          envFrom:
+            - secretRef:
+                name: {{ $mounterCredentialSecretName }}
+          {{- end }}
+          securityContext:
+            privileged: false
+            runAsNonRoot: true
+            runAsUser: 1009
+            runAsGroup: 1009
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml $rclone.resources | nindent 12 }}
+          volumeMounts:
+            - name: cache
+              mountPath: {{ $cachePath }}
+        - name: nfs-mounter
+          image: {{ include "isola.operator.rootfssnapshotMounterImage" . }}
+          imagePullPolicy: {{ $mounter.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              MOUNT_PATH="{{ $hostMountPath }}"
+              NFS_PORT="{{ $nfsPort }}"
+
+              # Check /proc/mounts (not filesystem I/O) to avoid blocking on
+              # a hard NFS mount whose server hasn't started yet.
+              if grep -q " ${MOUNT_PATH} nfs" /proc/mounts; then
+                echo "NFS mount already exists at $MOUNT_PATH (reconnecting to server)"
+              else
+                mkdir -p "$MOUNT_PATH"
+                echo "Waiting for NFS server to be ready..."
+                ATTEMPTS=0
+                while true; do
+                  # lookupcache=positive: never cache negative lookups (ENOENT),
+                  #   so newly uploaded tars are visible immediately after
+                  #   rclone's dir-cache-time expires.
+                  # actimeo=0: disable kernel attribute caching so file
+                  #   overwrites (same key, new content) are detected
+                  #   immediately via mtime change.
+                  mount -t nfs \
+                    -o hard,ro,vers=3,nolock,port=${NFS_PORT},mountport=${NFS_PORT},tcp,lookupcache=positive,actimeo=0 \
+                    127.0.0.1:/ "$MOUNT_PATH" 2>/dev/null && break
+                  ATTEMPTS=$((ATTEMPTS + 1))
+                  if [ $ATTEMPTS -ge 60 ]; then
+                    echo "Failed to mount NFS after 30s" >&2
+                    exit 1
+                  fi
+                  sleep 0.5
+                done
+                echo "NFS mounted at $MOUNT_PATH"
+              fi
+
+              # Stay alive. The NFS mount lives in this container's mount
+              # namespace (propagated to host via Bidirectional). If this
+              # container exits, kubelet restarts it; the startup check
+              # finds the existing mount and skips re-mounting.
+              exec sleep infinity
+          # Privileged is required by Kubernetes for Bidirectional mount propagation.
+          securityContext:
+            privileged: true
+          resources:
+            {{- toYaml $mounter.resources | nindent 12 }}
+          volumeMounts:
+            - name: host-mount-parent
+              mountPath: {{ dir $hostMountPath }}
+              mountPropagation: Bidirectional
+      volumes:
+        - name: host-mount-parent
+          hostPath:
+            path: {{ dir $hostMountPath }}
+            type: DirectoryOrCreate
+        - name: cache
+          hostPath:
+            path: {{ $cachePath }}
+            type: DirectoryOrCreate
+{{- end }}

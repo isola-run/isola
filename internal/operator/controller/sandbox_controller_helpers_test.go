@@ -205,7 +205,7 @@ func bindPodToNode(ctx context.Context, podName string) *corev1.Pod {
 func makePodReady(ctx context.Context, pod *corev1.Pod, containerID string, clock Clock) {
 	pod.Status.Phase = corev1.PodRunning
 	pod.Status.StartTime = &metav1.Time{Time: clock.Now()}
-	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.Time{Time: clock.Now()}}}
 	pod.Status.ContainerStatuses = []corev1.ContainerStatus{
 		{Name: "sandbox", ContainerID: containerID, Ready: true, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
 	}

@@ -37,13 +37,17 @@ func CheckRootfsSnapshotSupport(ctx context.Context, c client.Client, pod *corev
 		return false, nil
 	}
 
+	return CheckRuntimeClassSupport(ctx, c, *runtimeClassName)
+}
+
+// CheckRuntimeClassSupport checks if a RuntimeClass name resolves to a gVisor handler.
+func CheckRuntimeClassSupport(ctx context.Context, c client.Client, runtimeClassName string) (bool, error) {
 	runtimeClass := &nodev1.RuntimeClass{}
-	if err := c.Get(ctx, types.NamespacedName{Name: *runtimeClassName}, runtimeClass); err != nil {
+	if err := c.Get(ctx, types.NamespacedName{Name: runtimeClassName}, runtimeClass); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
 		}
 		return false, err
 	}
-
 	return runtimeClass.Handler == "runsc" || runtimeClass.Handler == "gvisor", nil
 }

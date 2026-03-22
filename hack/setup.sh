@@ -27,7 +27,7 @@ GOVULNCHECK_VERSION="v1.1.4"
 SETUP_ENVTEST_VERSION="release-0.23"
 CONTROLLER_GEN_VERSION="v0.20.0"
 LEFTHOOK_VERSION="v2.0.15"
-GVISOR_VERSION="20260126"
+GVISOR_VERSION="20260302"
 
 GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/${GVISOR_VERSION}"
 
@@ -87,6 +87,11 @@ install_gvisor_in_node() {
     "
 
     if ! docker exec "$node" grep -q 'plugins.*containerd.*runtimes.*runsc' /etc/containerd/config.toml 2>/dev/null; then
+        docker exec "$node" sh -c 'cat > /etc/containerd/runsc.toml << "TOML"
+[runsc_config]
+  allow-rootfs-tar-annotation = "true"
+TOML'
+
         docker exec "$node" sh -c 'cat >> /etc/containerd/config.toml << "TOML"
 
 # gVisor (runsc) runtime configuration
@@ -96,10 +101,12 @@ install_gvisor_in_node() {
   # Required for dev.gvisor.flag.* annotations (e.g., overlay2) to work.
   # By default containerd filters out all annotations; this allowlist enables gVisor-specific ones.
   pod_annotations = ["dev.gvisor.*"]
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
+  TypeUrl = "io.containerd.runsc.v1.options"
+  ConfigPath = "/etc/containerd/runsc.toml"
 TOML'
     fi
 
-    # Restart containerd to pick up the new runtime
     docker exec "$node" systemctl restart containerd
 
     if docker exec "$node" runsc --version &>/dev/null; then
@@ -226,6 +233,6 @@ echo ""
 echo "Next steps:"
 echo "  1. Start development:  tilt up"
 echo "  2. Run Go tests:       make test"
-echo "  3. Run E2E tests:      cd tests/e2e && uv run pytest"
+echo "  3. Run E2E tests:      make test-e2e"
 echo "  4. Teardown:           kind delete cluster --name ${KIND_CLUSTER_NAME}"
 echo ""

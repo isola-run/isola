@@ -66,7 +66,14 @@ docker_build(
     match_in_env_vars=True,
 )
 
+docker_build(
+    'snapshot-mounter',
+    context='cmd/snapshot-mounter',
+    dockerfile='cmd/snapshot-mounter/Dockerfile',
+)
+
 namespace_create('isola-system')
+namespace_create('isola-sandboxes')
 
 k8s_yaml(helm(
     'charts/isola',
@@ -77,6 +84,7 @@ k8s_yaml(helm(
 
 k8s_resource('isola-operator', port_forwards=[port_forward(8082, 8080, name='operator-metrics')], resource_deps=['localstack'], labels=['isola'])
 k8s_resource('isola-api-gateway', port_forwards=[port_forward(8080, 8080, name='api-gateway')], resource_deps=['isola-operator'], labels=['isola'])
+k8s_resource('isola-snapshot-mounter', resource_deps=['localstack'], labels=['isola'])
 
 # ==============================================================================
 # E2E Tests (manual trigger)
@@ -84,18 +92,11 @@ k8s_resource('isola-api-gateway', port_forwards=[port_forward(8080, 8080, name='
 
 local_resource(
     'e2e-tests',
-    cmd='cd tests/e2e && uv run pytest -m smoke',
+    cmd='cd tests/e2e && uv run --frozen pytest -q',
     deps=['tests/e2e/'],
     auto_init=False,
     trigger_mode=TRIGGER_MODE_MANUAL,
-    labels=['tests'],
-)
-
-local_resource(
-    'e2e-tests-all',
-    cmd='cd tests/e2e && uv run pytest',
-    deps=['tests/e2e/'],
-    auto_init=False,
-    trigger_mode=TRIGGER_MODE_MANUAL,
+    resource_deps=['isola-api-gateway', 'isola-snapshot-mounter'],
+    allow_parallel=True,
     labels=['tests'],
 )

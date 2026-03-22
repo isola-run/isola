@@ -209,5 +209,3 @@ def test_filesystem_upload_real_file(sandbox_response_copy: dict[str, object], t
 
     assert result.bytes_written == 15
     assert write_route.calls[0].request.content == b"print('hello')\n"
-
-

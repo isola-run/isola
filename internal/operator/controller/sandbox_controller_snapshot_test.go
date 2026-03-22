@@ -180,7 +180,15 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Simulate pod being gone
+			// Make pod ready so TimeoutAt gets persisted
+			pod := getPod(ctx, sandboxName+"-pod")
+			Expect(pod).NotTo(BeNil())
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Simulate pod being gone after timeout was set
 			deletePod(ctx, sandboxName+"-pod")
 			fakeClock.Advance(2 * time.Second)
 

@@ -9,6 +9,6 @@ roleRef:
   kind: Role
   name: {{ include "isola.operator.fullname" . }}-leader-election
 subjects:
-- kind: ServiceAccount
-  name: {{ include "isola.operator.serviceAccountName" . }}
-  namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: {{ include "isola.operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

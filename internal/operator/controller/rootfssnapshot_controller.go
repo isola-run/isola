@@ -169,8 +169,8 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	var containerName string
-	if snap.Spec.Container != "" {
-		containerName = snap.Spec.Container
+	if snap.Spec.ContainerName != "" {
+		containerName = snap.Spec.ContainerName
 		targetContainerInPod := slices.ContainsFunc(sandboxPod.Spec.Containers, func(c corev1.Container) bool {
 			return c.Name == containerName
 		})
@@ -187,14 +187,8 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "No containers found in sandbox pod")
 	}
 
-	// Key path (rootfssnapshots/<snapshotName>.tar) is namespace-unaware - identical snapshot
-	// names in different namespaces map to the same bucket key.
-	snapshotName := snap.Spec.SnapshotName
-	if snapshotName == "" {
-		snapshotName = snap.Spec.SandboxName
-	}
-
-	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName, snapshotName)
+	// Key path: rootfssnapshots/<namespace>/<snapshotName>.tar
+	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName, snap.Spec.SnapshotName)
 }
 
 func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
@@ -351,6 +345,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 		{Name: "ISOLA_BUCKET_URL", Value: r.BucketURL},
 		{Name: "SNAPSHOT_FILE", Value: localSnapshotPath},
 		{Name: "SNAPSHOT_NAME", Value: snapshotName},
+		{Name: "SNAPSHOT_NAMESPACE", Value: snap.Namespace},
 	}
 
 	var uploaderEnvFrom []corev1.EnvFromSource

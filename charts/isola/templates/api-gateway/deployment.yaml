@@ -25,15 +25,19 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
       containers:
         - name: api-gateway
           image: {{ include "isola.apiGateway.image" . }}
           imagePullPolicy: {{ .Values.apiGateway.image.pullPolicy }}
           args:
-            - -log-level={{ .Values.apiGateway.logging.level }}
+            - "--log-level={{ .Values.apiGateway.logging.level }}"
             {{- if .Values.apiGateway.logging.devMode }}
-            - --dev
+            - --dev-mode
             {{- end }}
+          env:
+            - name: ISOLA_SANDBOX_NAMESPACE
+              value: {{ include "isola.sandboxNamespace" . | quote }}
           ports:
             - name: http
               containerPort: 8080
@@ -58,9 +62,6 @@ spec:
                 - ALL
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
-          env:
-            - name: ISOLA_SANDBOX_NAMESPACE
-              value: {{ include "isola.sandboxNamespace" . | quote }}
       {{- with .Values.apiGateway.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
