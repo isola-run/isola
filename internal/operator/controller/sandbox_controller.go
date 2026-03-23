@@ -811,7 +811,10 @@ func (r *SandboxReconciler) finalizeSandbox(
 		return ctrl.Result{}, false, err
 	}
 
-	snapshotDeadline := r.calculateRootfssnapshotDeadline(sandbox)
+	snapshotDeadline, err := r.ensureShutdownDeadline(ctx, sandbox, baseSandbox)
+	if err != nil {
+		return ctrl.Result{}, false, err
+	}
 
 	result, cleanupDone, err := r.executeShutdownPolicy(
 		ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline,
@@ -886,8 +889,30 @@ func (r *SandboxReconciler) getActiveDeadlineSeconds(sandbox *sandboxv1alpha1.Sa
 	return defaultActiveDeadlineSeconds
 }
 
-func (r *SandboxReconciler) calculateRootfssnapshotDeadline(sandbox *sandboxv1alpha1.Sandbox) time.Time {
-	return r.clock().Now().Add(time.Duration(r.getActiveDeadlineSeconds(sandbox)) * time.Second)
+// ensureShutdownDeadline persists ShutdownDeadlineAt on the first call (anchored to
+// DeletionTimestamp) and returns the persisted value on subsequent reconciles.
+func (r *SandboxReconciler) ensureShutdownDeadline(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (time.Time, error) {
+	log := logf.FromContext(ctx)
+
+	if sandbox.Status.ShutdownDeadlineAt != nil {
+		return sandbox.Status.ShutdownDeadlineAt.Time, nil
+	}
+
+	// Anchor to DeletionTimestamp (when finalization started)
+	anchor := r.clock().Now()
+	if sandbox.DeletionTimestamp != nil {
+		anchor = sandbox.DeletionTimestamp.Time
+	}
+
+	deadline := anchor.Add(time.Duration(r.getActiveDeadlineSeconds(sandbox)) * time.Second)
+	sandbox.Status.ShutdownDeadlineAt = &metav1.Time{Time: deadline}
+	if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
+		log.Error(err, "Failed to patch sandbox ShutdownDeadlineAt")
+		return time.Time{}, err
+	}
+	log.Info("persisted shutdownDeadlineAt", "shutdownDeadlineAt", deadline)
+
+	return deadline, nil
 }
 
 func (r *SandboxReconciler) handleRootfsSnapshot(

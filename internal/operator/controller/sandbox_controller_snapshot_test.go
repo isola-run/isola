@@ -427,5 +427,68 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.UID).To(Equal(originalUID), "RootfsSnapshot should not be recreated on third reconcile")
 		})
+
+		It("should timeout snapshot even after multiple reconciles (deadline must not slide)", func() {
+			sandboxName := "sandbox-snapshot-deadline-nosilde"
+			runtimeClassName := "gvisor-deadline-noslide"
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			snapshotDeadline := int64(10)
+			timeout := int64(1) // sandbox times out quickly to enter finalization
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+					Strategy:              sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+					ActiveDeadlineSeconds: &snapshotDeadline,
+				}
+				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+			defer deleteShutdownSnapshot(ctx, sandboxName)
+
+			// Reconcile to create pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := bindPodToNode(ctx, podName)
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
+
+			// Reconcile to persist TimeoutAt
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Advance past sandbox timeout to enter finalization
+			fakeClock.Advance(2 * time.Second)
+
+			// First reconcile in finalization: creates the RootfsSnapshot
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
+			Expect(rootfsSnapshot).NotTo(BeNil(), "RootfsSnapshot should be created")
+
+			// Simulate multiple reconciles over time, each 3s apart.
+			// Total elapsed: 4 reconciles * 3s = 12s, which exceeds the 10s snapshot deadline.
+			// With the bug, each reconcile resets the deadline to now+10s, so timeout never fires.
+			for i := 0; i < 4; i++ {
+				fakeClock.Advance(3 * time.Second)
+				_, err = reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+				})
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			// The snapshot was never completed, and 12s > 10s deadline.
+			// The sandbox should be deleted due to snapshot timeout.
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
+			Expect(err).To(Satisfy(errors.IsNotFound), "Sandbox should be deleted after snapshot deadline exceeded")
+		})
 	})
 })
