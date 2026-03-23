@@ -35,6 +35,12 @@ RETRY_DELAY = 1.0
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
+def _rewind_body(content: bytes | BinaryIO | None) -> None:
+    """Seek BinaryIO content back to start so retries re-send the full body."""
+    if content is not None and not isinstance(content, bytes) and hasattr(content, "seek"):
+        content.seek(0)
+
+
 class _SyncAPI:
     def __init__(self, base_url: str) -> None:
         self.base_url = _normalize_base_url(base_url)
@@ -69,6 +75,7 @@ class _SyncAPI:
                 )
             except httpx.RequestError as exc:
                 if attempt < MAX_RETRIES:
+                    _rewind_body(content)
                     time.sleep(RETRY_DELAY)
                     continue
                 raise connection_error_from_request(exc, method=method, path=path) from exc
@@ -79,6 +86,7 @@ class _SyncAPI:
                 body = response.read()
                 api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
                 if is_transient(api_err) and attempt < MAX_RETRIES:
+                    _rewind_body(content)
                     time.sleep(RETRY_DELAY)
                     continue
                 raise api_err
@@ -183,6 +191,7 @@ class _AsyncAPI:
                 )
             except httpx.RequestError as exc:
                 if attempt < MAX_RETRIES:
+                    _rewind_body(content)
                     await asyncio.sleep(RETRY_DELAY)
                     continue
                 raise connection_error_from_request(exc, method=method, path=path) from exc
@@ -193,6 +202,7 @@ class _AsyncAPI:
                 body = await response.aread()
                 api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
                 if is_transient(api_err) and attempt < MAX_RETRIES:
+                    _rewind_body(content)
                     await asyncio.sleep(RETRY_DELAY)
                     continue
                 raise api_err

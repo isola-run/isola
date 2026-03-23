@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import io
 from unittest.mock import patch
 
 import httpx
@@ -345,3 +346,80 @@ async def test_async_exhausts_retries_raises(monkeypatch: pytest.MonkeyPatch) ->
         with pytest.raises(BadGatewayError):
             await client.sandboxes.list()
     assert route.call_count == 1 + MAX_RETRIES
+
+
+# --- BinaryIO rewind on retry tests ---
+
+
+@respx.mock
+def test_binary_io_body_rewound_on_transient_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """BinaryIO content should be seeked back to 0 before each retry so the full body is re-sent."""
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    file_data = b"hello world"
+    body = io.BytesIO(file_data)
+
+    captured_bodies: list[bytes] = []
+
+    def capture_content(request: httpx.Request) -> httpx.Response:
+        captured_bodies.append(request.content)
+        if len(captured_bodies) < 2:
+            return httpx.Response(502, json={"detail": "bad gateway"})
+        return httpx.Response(200, json={"bytesWritten": len(file_data), "path": "/test"})
+
+    respx.post("http://localhost:8080/sandboxes/s1/filesystem").mock(side_effect=capture_content)
+
+    octet = {"Content-Type": "application/octet-stream"}
+    with Isola(base_url="http://localhost:8080") as client:
+        client._api.request(
+            "POST", "/sandboxes/s1/filesystem", content=body, headers=octet,
+        )
+
+    assert len(captured_bodies) == 2
+    assert captured_bodies[0] == file_data
+    assert captured_bodies[1] == file_data
+
+
+@respx.mock
+def test_binary_io_body_rewound_on_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """BinaryIO content should be seeked back to 0 after a connection error."""
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    file_data = b"retry me"
+    body = io.BytesIO(file_data)
+
+    call_count = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise httpx.ConnectError("connection refused")
+        return httpx.Response(200, json={"bytesWritten": len(file_data), "path": "/test"})
+
+    respx.post("http://localhost:8080/sandboxes/s1/filesystem").mock(side_effect=handler)
+
+    octet = {"Content-Type": "application/octet-stream"}
+    with Isola(base_url="http://localhost:8080") as client:
+        resp = client._api.request(
+            "POST", "/sandboxes/s1/filesystem", content=body, headers=octet,
+        )
+
+    assert resp.status_code == 200
+
+
+def test_rewind_body_noop_for_bytes() -> None:
+    """_rewind_body should be a no-op for bytes and None."""
+    from isola._client import _rewind_body
+
+    _rewind_body(None)
+    _rewind_body(b"hello")
+
+
+def test_rewind_body_seeks_binary_io() -> None:
+    """_rewind_body should seek a BinaryIO to position 0."""
+    from isola._client import _rewind_body
+
+    buf = io.BytesIO(b"test data")
+    buf.read()
+    assert buf.tell() == 9
+    _rewind_body(buf)
+    assert buf.tell() == 0
