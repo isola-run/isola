@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import random
 import time
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from typing import Any, BinaryIO, TypeVar
@@ -30,9 +31,16 @@ from ._exceptions import APIConnectionError, APIError, connection_error_from_req
 DEFAULT_TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=30.0, pool=5.0)
 
 MAX_RETRIES = 5
-RETRY_DELAY = 1.0
+INITIAL_RETRY_DELAY = 0.5
+MAX_RETRY_DELAY = 8.0
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+
+
+def _retry_delay(attempt: int) -> float:
+    """Exponential backoff with jitter: base * 2^attempt * (0.5 + random 0..0.5)."""
+    delay: float = min(INITIAL_RETRY_DELAY * (2**attempt), MAX_RETRY_DELAY)
+    return delay * (0.5 + random.random() * 0.5)  # noqa: S311
 
 
 class _SyncAPI:
@@ -69,7 +77,7 @@ class _SyncAPI:
                 )
             except httpx.RequestError as exc:
                 if attempt < MAX_RETRIES:
-                    time.sleep(RETRY_DELAY)
+                    time.sleep(_retry_delay(attempt))
                     continue
                 raise connection_error_from_request(exc, method=method, path=path) from exc
             except Exception as exc:
@@ -79,7 +87,7 @@ class _SyncAPI:
                 body = response.read()
                 api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
                 if is_transient(api_err) and attempt < MAX_RETRIES:
-                    time.sleep(RETRY_DELAY)
+                    time.sleep(_retry_delay(attempt))
                     continue
                 raise api_err
             return response
@@ -183,7 +191,7 @@ class _AsyncAPI:
                 )
             except httpx.RequestError as exc:
                 if attempt < MAX_RETRIES:
-                    await asyncio.sleep(RETRY_DELAY)
+                    await asyncio.sleep(_retry_delay(attempt))
                     continue
                 raise connection_error_from_request(exc, method=method, path=path) from exc
             except Exception as exc:
@@ -193,7 +201,7 @@ class _AsyncAPI:
                 body = await response.aread()
                 api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
                 if is_transient(api_err) and attempt < MAX_RETRIES:
-                    await asyncio.sleep(RETRY_DELAY)
+                    await asyncio.sleep(_retry_delay(attempt))
                     continue
                 raise api_err
             return response

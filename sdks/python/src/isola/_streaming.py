@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 from collections.abc import AsyncIterator, Generator, Iterator
 from typing import Any, Protocol
@@ -28,7 +29,14 @@ STREAM_CONNECT_TIMEOUT = 5.0
 STREAM_WRITE_TIMEOUT = 15.0
 STREAM_POOL_TIMEOUT = 5.0
 MAX_RECONNECTS = 5
-RETRY_DELAY = 1.0
+INITIAL_RETRY_DELAY = 0.5
+MAX_RETRY_DELAY = 8.0
+
+
+def _reconnect_delay(attempt: int) -> float:
+    """Exponential backoff with jitter for stream reconnects."""
+    delay: float = min(INITIAL_RETRY_DELAY * (2**attempt), MAX_RETRY_DELAY)
+    return delay * (0.5 + random.random() * 0.5)  # noqa: S311
 
 
 class _SyncStreamAPI(Protocol):
@@ -108,7 +116,7 @@ class StreamReader:
                     if isinstance(exc, httpx.RequestError):
                         raise connection_error_from_request(exc) from exc
                     raise
-                time.sleep(RETRY_DELAY)
+                time.sleep(_reconnect_delay(reconnects - 1))
 
 
 class AsyncStreamReader:
@@ -161,7 +169,7 @@ class AsyncStreamReader:
                     if isinstance(exc, httpx.RequestError):
                         raise connection_error_from_request(exc) from exc
                     raise
-                await asyncio.sleep(RETRY_DELAY)
+                await asyncio.sleep(_reconnect_delay(reconnects - 1))
 
     async def read(self) -> str:
         return "".join([chunk async for chunk in self])

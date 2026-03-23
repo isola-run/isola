@@ -47,6 +47,7 @@ import (
 
 	"github.com/isola-ai/isola/internal/logging"
 	"github.com/isola-ai/isola/internal/snapshot"
+	"github.com/isola-ai/isola/internal/validate"
 	"gocloud.dev/blob"
 
 	// Import blob drivers - they register themselves via init()
@@ -92,6 +93,10 @@ func run(logger *slog.Logger) error {
 	if bucketURL == "" {
 		logger.Error("missing required environment variable", "var", EnvBucketURL)
 		return errMissingEnv(EnvBucketURL)
+	}
+	if err := validate.BucketURL(bucketURL); err != nil {
+		logger.Error("invalid bucket URL", "var", EnvBucketURL, "error", err)
+		return err
 	}
 	if snapshotFile == "" {
 		logger.Error("missing required environment variable", "var", EnvSnapshotFile)

@@ -36,6 +36,7 @@ import (
 	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
 	"github.com/isola-ai/isola/internal/logging"
 	"github.com/isola-ai/isola/internal/operator/controller"
+	"github.com/isola-ai/isola/internal/validate"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -106,8 +107,16 @@ func main() {
 		rootfssnapshotUploaderImage = os.Getenv("ISOLA_UPLOADER_IMAGE")
 	}
 
+	if err := validate.LogLevel(logLevel); err != nil {
+		setupLog.Error(err, "invalid --log-level")
+		os.Exit(1)
+	}
 	if sandboxSidecarImage == "" {
 		setupLog.Error(nil, "--sidecar-image or ISOLA_SANDBOX_SIDECAR_IMAGE env var is required")
+		os.Exit(1)
+	}
+	if err := validate.ContainerImage(sandboxSidecarImage); err != nil {
+		setupLog.Error(err, "invalid --sidecar-image")
 		os.Exit(1)
 	}
 	if rootfssnapshotEnabled {
@@ -115,8 +124,16 @@ func main() {
 			setupLog.Error(nil, "--rootfssnapshot-uploader-image or ISOLA_UPLOADER_IMAGE env var is required when --rootfssnapshot-enabled is set")
 			os.Exit(1)
 		}
+		if err := validate.ContainerImage(rootfssnapshotUploaderImage); err != nil {
+			setupLog.Error(err, "invalid --rootfssnapshot-uploader-image")
+			os.Exit(1)
+		}
 		if rootfssnapshotBucketURL == "" {
 			setupLog.Error(nil, "--rootfssnapshot-bucket-url is required when --rootfssnapshot-enabled is set")
+			os.Exit(1)
+		}
+		if err := validate.BucketURL(rootfssnapshotBucketURL); err != nil {
+			setupLog.Error(err, "invalid --rootfssnapshot-bucket-url")
 			os.Exit(1)
 		}
 	}

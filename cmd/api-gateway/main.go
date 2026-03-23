@@ -47,6 +47,7 @@ import (
 	"github.com/isola-ai/isola/internal/api-gateway/sandbox"
 	"github.com/isola-ai/isola/internal/env"
 	"github.com/isola-ai/isola/internal/logging"
+	"github.com/isola-ai/isola/internal/validate"
 )
 
 const (
@@ -138,6 +139,15 @@ func main() {
 	flag.BoolVar(&cfg.devMode, "dev-mode", env.GetOrDefault("ISOLA_DEV_MODE", "") != "", "Enable development mode (text logging)")
 	flag.StringVar(&cfg.sandboxNamespace, "sandbox-namespace", os.Getenv("ISOLA_SANDBOX_NAMESPACE"), "Namespace where sandboxes are created (required)")
 	flag.Parse()
+
+	if err := validate.LogLevel(cfg.logLevel); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid --log-level: %v\n", err)
+		os.Exit(1)
+	}
+	if err := validate.Port(cfg.httpPort); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid --http-port: %v\n", err)
+		os.Exit(1)
+	}
 
 	logger := logging.New(logging.Config{
 		Level:   cfg.logLevel,
