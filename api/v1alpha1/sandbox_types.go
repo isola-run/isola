@@ -19,24 +19,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// No phases. The pattern of using phase is deprecated. Newer API types should use conditions instead.
-
-type SandboxConditionType string
-
-const (
-	// The aggregate condition.
-	SandboxReady SandboxConditionType = "Ready"
-	// Sandbox pod is up and running.
-	SandboxPodReady SandboxConditionType = "PodReady"
-	// Network is configured
-	SandboxNetworkConfigured SandboxConditionType = "NetworkConfigured"
-	// set when sandbox is past its timeout
-	// todo benl: necessary? helpful?
-	SandboxTimedOut SandboxConditionType = "TimedOut"
-	// Filesystem snapshotting is in progress
-	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
-)
-
 // SandboxShutdownStrategy defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotRootfs
 type SandboxShutdownStrategy string
@@ -171,14 +153,19 @@ type SandboxStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
+	// PodIP is the IP address of the sandbox pod.
+	// +optional
+	PodIP string `json:"podIP,omitempty"`
+
 	// TimeoutAt is the absolute time at which the sandbox should be considered timed out.
 	// It is set by the controller (derived from sandbox timeout).
 	// +optional
 	TimeoutAt *metav1.Time `json:"timeoutAt,omitempty"`
 
-	// PodIP is the IP address of the sandbox pod.
+	// ShutdownDeadlineAt is the absolute time by which the shutdown policy must complete.
+	// Set once by the controller when finalization begins (anchored to DeletionTimestamp).
 	// +optional
-	PodIP string `json:"podIP,omitempty"`
+	ShutdownDeadlineAt *metav1.Time `json:"shutdownDeadlineAt,omitempty"`
 }
 
 // +kubebuilder:object:root=true

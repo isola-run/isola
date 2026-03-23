@@ -48,7 +48,7 @@ def test_client_disconnect_during_long_poll(session_sandbox: Sandbox) -> None:
         with httpx.Client() as raw_client:
             with pytest.raises(httpx.ReadTimeout):
                 raw_client.get(
-                    f"{ISOLA_BASE_URL}/sandboxes/{session_sandbox.id}"
+                    f"{ISOLA_BASE_URL}/v1/sandboxes/{session_sandbox.id}"
                     f"/commands/{cmd.id}/status",
                     params={"waitSeconds": 25},
                     timeout=httpx.Timeout(5.0, read=2.0),
@@ -75,7 +75,7 @@ def test_command_usable_after_multiple_disconnects(session_sandbox: Sandbox) -> 
             for _ in range(3):
                 with pytest.raises(httpx.ReadTimeout):
                     raw_client.get(
-                        f"{ISOLA_BASE_URL}/sandboxes/{session_sandbox.id}"
+                        f"{ISOLA_BASE_URL}/v1/sandboxes/{session_sandbox.id}"
                         f"/commands/{cmd.id}/status",
                         params={"waitSeconds": 25},
                         timeout=httpx.Timeout(5.0, read=1.0),

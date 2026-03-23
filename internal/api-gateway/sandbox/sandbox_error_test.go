@@ -40,12 +40,13 @@ func newErrorTestAPI(funcs interceptor.Funcs) humatest.TestAPI {
 	baseClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
 	wrappedClient := interceptor.NewClient(baseClient, funcs)
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
+	v1 := huma.NewGroup(api, "/v1")
 	h := New(
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		testNamespace,
 		wrappedClient,
 	)
-	Register(api, h)
+	Register(v1, h)
 	return api
 }
 
@@ -58,7 +59,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(409))
 		})
 
@@ -73,7 +74,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(422))
 		})
 
@@ -84,7 +85,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(403))
 		})
 
@@ -95,7 +96,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(429))
 			Expect(resp.Header().Get("Retry-After")).To(Equal("30"))
 		})
@@ -110,7 +111,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(500))
 			Expect(resp.Header().Get("Retry-After")).To(Equal("10"))
 		})
@@ -122,7 +123,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(503))
 		})
 
@@ -138,7 +139,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(403))
 		})
 
@@ -149,7 +150,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
 			Expect(resp.Code).To(Equal(500))
 		})
 	})
@@ -162,7 +163,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Get("/sandboxes/some-id")
+			resp := api.Get("/v1/sandboxes/some-id")
 			Expect(resp.Code).To(Equal(429))
 			Expect(resp.Header().Get("Retry-After")).To(Equal("60"))
 		})
@@ -177,7 +178,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Get("/sandboxes/some-id")
+			resp := api.Get("/v1/sandboxes/some-id")
 			Expect(resp.Code).To(Equal(403))
 			Expect(resp.Header().Get("Retry-After")).To(BeEmpty())
 		})
@@ -189,7 +190,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Get("/sandboxes/some-id")
+			resp := api.Get("/v1/sandboxes/some-id")
 			Expect(resp.Code).To(Equal(403))
 		})
 
@@ -200,7 +201,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Get("/sandboxes/some-id")
+			resp := api.Get("/v1/sandboxes/some-id")
 			Expect(resp.Code).To(Equal(500))
 		})
 	})
@@ -213,7 +214,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Get("/sandboxes")
+			resp := api.Get("/v1/sandboxes")
 			Expect(resp.Code).To(Equal(403))
 		})
 
@@ -224,7 +225,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Get("/sandboxes")
+			resp := api.Get("/v1/sandboxes")
 			Expect(resp.Code).To(Equal(500))
 		})
 
@@ -232,7 +233,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 		It("returns empty array (not null) when no sandboxes exist", func() {
 			api := newErrorTestAPI(interceptor.Funcs{})
 
-			resp := api.Get("/sandboxes")
+			resp := api.Get("/v1/sandboxes")
 			Expect(resp.Code).To(Equal(200))
 
 			var list ListSandboxesResponse
@@ -250,7 +251,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Delete("/sandboxes/some-id")
+			resp := api.Delete("/v1/sandboxes/some-id")
 			Expect(resp.Code).To(Equal(403))
 		})
 
@@ -261,7 +262,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Delete("/sandboxes/some-id")
+			resp := api.Delete("/v1/sandboxes/some-id")
 			Expect(resp.Code).To(Equal(500))
 		})
 
@@ -272,7 +273,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Delete("/sandboxes/some-id")
+			resp := api.Delete("/v1/sandboxes/some-id")
 			Expect(resp.Code).To(Equal(204))
 		})
 	})

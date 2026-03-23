@@ -90,6 +90,24 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.InitContainers[0].Image).To(Equal("sandbox-sidecar:test"))
 		})
 
+		It("should set sidecar ImagePullPolicy from reconciler config", func() {
+			sandboxName := "sandbox-sidecar-pullpolicy"
+
+			reconciler.SandboxSidecarImagePullPolicy = corev1.PullAlways
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod.Spec.InitContainers[0].ImagePullPolicy).To(Equal(corev1.PullAlways))
+		})
+
 		It("should set owner reference for garbage collection", func() {
 			sandboxName := "sandbox-owner-ref"
 
@@ -242,6 +260,24 @@ var _ = Describe("Sandbox Controller", func() {
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
 			Expect(pod.Spec.RestartPolicy).To(Equal(corev1.RestartPolicyNever))
+		})
+
+		It("should disable service account token automount", func() {
+			sandboxName := "sandbox-no-sa-token"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.AutomountServiceAccountToken).NotTo(BeNil())
+			Expect(*pod.Spec.AutomountServiceAccountToken).To(BeFalse())
 		})
 
 		It("should configure sidecar with minimal required capabilities", func() {

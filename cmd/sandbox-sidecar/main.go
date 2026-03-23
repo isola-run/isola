@@ -86,8 +86,10 @@ func main() {
 	pidResolver := sandboxsidecar.NewPIDResolver(procFS)
 
 	health.Register(api, health.New())
-	filesystem.Register(api, filesystem.New(logger, procFS, pidResolver))
-	command.Register(api, command.New(logger, procFS, pidResolver, &command.ChrootCommandBuilder{}))
+
+	v1 := huma.NewGroup(api, "/v1")
+	filesystem.Register(v1, filesystem.New(logger, procFS, pidResolver))
+	command.Register(v1, command.New(logger, procFS, pidResolver, &command.ChrootCommandBuilder{}))
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", constants.SidecarPort),

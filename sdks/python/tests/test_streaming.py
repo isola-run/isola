@@ -72,7 +72,7 @@ class _FakeSyncCM:
 class _FakeSyncAPI:
     def __init__(self, sequence: list[_FakeSyncCM]) -> None:
         self._sequence = sequence
-        self.calls: list[int] = []
+        self.calls: list[int | None] = []
 
     def open_stream(
         self,
@@ -83,7 +83,7 @@ class _FakeSyncAPI:
         timeout: object = None,
     ) -> _FakeSyncCM:
         del path, params, timeout
-        offset = int(headers["Last-Event-ID"]) if headers and "Last-Event-ID" in headers else 0
+        offset = int(headers["Last-Event-ID"]) if headers and "Last-Event-ID" in headers else None
         self.calls.append(offset)
         return self._sequence.pop(0)
 
@@ -123,7 +123,7 @@ class _FakeAsyncCM:
 class _FakeAsyncAPI:
     def __init__(self, sequence: list[_FakeAsyncCM]) -> None:
         self._sequence = sequence
-        self.calls: list[int] = []
+        self.calls: list[int | None] = []
 
     def open_stream(
         self,
@@ -134,7 +134,7 @@ class _FakeAsyncAPI:
         timeout: object = None,
     ) -> _FakeAsyncCM:
         del path, params, timeout
-        offset = int(headers["Last-Event-ID"]) if headers and "Last-Event-ID" in headers else 0
+        offset = int(headers["Last-Event-ID"]) if headers and "Last-Event-ID" in headers else None
         self.calls.append(offset)
         return self._sequence.pop(0)
 
@@ -220,7 +220,7 @@ def test_sync_stream_reconnects_and_resumes(monkeypatch: pytest.MonkeyPatch) -> 
     )
 
     assert StreamReader(api, "/path").read() == "abcd"
-    assert api.calls == [0, 2]
+    assert api.calls == [None, 2]
 
 
 @pytest.mark.parametrize(
@@ -244,7 +244,22 @@ def test_sync_stream_reconnects_on_network_error(monkeypatch: pytest.MonkeyPatch
     )
 
     assert StreamReader(api, "/path").read() == "abcd"
-    assert api.calls == [0, 2]
+    assert api.calls == [None, 2]
+
+
+def test_sync_stream_reconnects_with_zero_event_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """id: 0 is a valid SSE event ID and must be sent as Last-Event-ID on reconnect."""
+    monkeypatch.setattr("isola._streaming.time.sleep", lambda _: None)
+
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("ab", 0)], raise_after=httpx.ConnectError("drop"))),
+            _FakeSyncCM(_FakeSyncResponse([_sse_event("cd", 4)])),
+        ]
+    )
+
+    assert StreamReader(api, "/path").read() == "abcd"
+    assert api.calls == [None, 0]
 
 
 def test_sync_stream_reconnects_on_enter_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -258,7 +273,7 @@ def test_sync_stream_reconnects_on_enter_error(monkeypatch: pytest.MonkeyPatch) 
     )
 
     assert StreamReader(api, "/path").read() == "hello"
-    assert api.calls == [0, 0]
+    assert api.calls == [None, None]
 
 
 def test_sync_stream_max_reconnects_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -295,7 +310,7 @@ def test_sync_stream_retries_transient_http_error(monkeypatch: pytest.MonkeyPatc
     )
 
     assert StreamReader(api, "/path").read() == "abcd"
-    assert api.calls == [0, 2, 2]
+    assert api.calls == [None, 2, 2]
 
 
 @pytest.mark.parametrize("status", [502, 503, 504], ids=["502", "503", "504"])
@@ -360,7 +375,27 @@ async def test_async_stream_reconnects_and_resumes(monkeypatch: pytest.MonkeyPat
     )
 
     assert await AsyncStreamReader(api, "/path").read() == "abc"
-    assert api.calls == [0, 1]
+    assert api.calls == [None, 1]
+
+
+@pytest.mark.asyncio
+async def test_async_stream_reconnects_with_zero_event_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """id: 0 is a valid SSE event ID and must be sent as Last-Event-ID on reconnect."""
+
+    async def _no_sleep(_: float) -> None:
+        pass
+
+    monkeypatch.setattr("isola._streaming.asyncio.sleep", _no_sleep)
+
+    api = _FakeAsyncAPI(
+        [
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("a", 0)], raise_after=httpx.ConnectError("drop"))),
+            _FakeAsyncCM(_FakeAsyncResponse([_sse_event("b", 1)])),
+        ]
+    )
+
+    assert await AsyncStreamReader(api, "/path").read() == "ab"
+    assert api.calls == [None, 0]
 
 
 @pytest.mark.asyncio
@@ -408,4 +443,4 @@ async def test_async_stream_retries_transient_http_error(monkeypatch: pytest.Mon
     )
 
     assert await AsyncStreamReader(api, "/path").read() == "abcd"
-    assert api.calls == [0, 2, 2]
+    assert api.calls == [None, 2, 2]

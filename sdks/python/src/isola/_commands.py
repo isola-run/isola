@@ -25,7 +25,7 @@ _LONG_POLL_WAIT_SECONDS = 20  # long poll interval - must stay <= api-gateway's 
 
 
 def _command_base_path(sandbox_id: str) -> str:
-    return f"/sandboxes/{quote(sandbox_id, safe='')}/commands"
+    return f"/v1/sandboxes/{quote(sandbox_id, safe='')}/commands"
 
 
 def _command_path(sandbox_id: str, command_id: str) -> str:

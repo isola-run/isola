@@ -45,7 +45,7 @@ var _ = Describe("Filesystem", func() {
 			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
 			Expect(os.WriteFile(hostPath, content, 0600)).To(Succeed())
 
-			resp := doGet("/filesystem?path=/tmp/readable.txt")
+			resp := doGet("/v1/filesystem?path=/tmp/readable.txt")
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Bytes()).To(Equal(content))
@@ -56,7 +56,7 @@ var _ = Describe("Filesystem", func() {
 			hostPath := filepath.Join(testRootDir, testCwd, "myreadfile.txt")
 			Expect(os.WriteFile(hostPath, content, 0600)).To(Succeed())
 
-			resp := doGet("/filesystem?path=myreadfile.txt")
+			resp := doGet("/v1/filesystem?path=myreadfile.txt")
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Bytes()).To(Equal(content))
@@ -68,20 +68,20 @@ var _ = Describe("Filesystem", func() {
 			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
 			Expect(os.WriteFile(hostPath, content, 0600)).To(Succeed())
 
-			resp := doGet("/filesystem?path=/tmp/binary.dat")
+			resp := doGet("/v1/filesystem?path=/tmp/binary.dat")
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Bytes()).To(Equal(content))
 		})
 
 		It("returns 404 for nonexistent file", func() {
-			resp := doGet("/filesystem?path=/tmp/nonexistent.txt")
+			resp := doGet("/v1/filesystem?path=/tmp/nonexistent.txt")
 
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 
 		It("returns 400 for directory path", func() {
-			resp := doGet("/filesystem?path=/workspace")
+			resp := doGet("/v1/filesystem?path=/workspace")
 
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
 		})
@@ -91,7 +91,7 @@ var _ = Describe("Filesystem", func() {
 			Expect(os.MkdirAll(filepath.Dir(fifoPath), 0750)).To(Succeed())
 			Expect(syscall.Mkfifo(fifoPath, 0600)).To(Succeed())
 
-			resp := doGet("/filesystem?path=/tmp/test.fifo")
+			resp := doGet("/v1/filesystem?path=/tmp/test.fifo")
 
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
 		})
@@ -104,7 +104,7 @@ var _ = Describe("Filesystem", func() {
 			Expect(os.WriteFile(targetPath, content, 0600)).To(Succeed())
 			Expect(os.Symlink(targetPath, linkPath)).To(Succeed())
 
-			resp := doGet("/filesystem?path=/tmp/symlink.txt")
+			resp := doGet("/v1/filesystem?path=/tmp/symlink.txt")
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Bytes()).To(Equal(content))
@@ -115,25 +115,25 @@ var _ = Describe("Filesystem", func() {
 			Expect(os.MkdirAll(filepath.Dir(linkPath), 0750)).To(Succeed())
 			Expect(os.Symlink("/nonexistent/target", linkPath)).To(Succeed())
 
-			resp := doGet("/filesystem?path=/tmp/dangling.txt")
+			resp := doGet("/v1/filesystem?path=/tmp/dangling.txt")
 
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 
 		It("returns 422 when path is missing", func() {
-			resp := doGet("/filesystem")
+			resp := doGet("/v1/filesystem")
 
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 
 		It("returns 422 when path is empty", func() {
-			resp := doGet("/filesystem?path=")
+			resp := doGet("/v1/filesystem?path=")
 
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 
 		It("returns 500 for null bytes in path", func() {
-			resp := doGet("/filesystem?path=/tmp/evil%00file.txt")
+			resp := doGet("/v1/filesystem?path=/tmp/evil%00file.txt")
 
 			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
 		})
@@ -144,7 +144,7 @@ var _ = Describe("Filesystem", func() {
 			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
 			Expect(os.WriteFile(hostPath, content, 0600)).To(Succeed())
 
-			resp := doGet("/filesystem?path=/tmp/container-read.txt&container=main")
+			resp := doGet("/v1/filesystem?path=/tmp/container-read.txt&container=main")
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Bytes()).To(Equal(content))
@@ -156,7 +156,7 @@ var _ = Describe("Filesystem", func() {
 			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
 			Expect(os.WriteFile(hostPath, content, 0600)).To(Succeed())
 
-			resp := doGet("/filesystem?path=/tmp/../tmp/./normalized-read.txt")
+			resp := doGet("/v1/filesystem?path=/tmp/../tmp/./normalized-read.txt")
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Bytes()).To(Equal(content))
@@ -167,7 +167,7 @@ var _ = Describe("Filesystem", func() {
 			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
 			Expect(os.WriteFile(hostPath, []byte{}, 0600)).To(Succeed())
 
-			resp := doGet("/filesystem?path=/tmp/empty-read.txt")
+			resp := doGet("/v1/filesystem?path=/tmp/empty-read.txt")
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Len()).To(Equal(0))
@@ -179,7 +179,7 @@ var _ = Describe("Filesystem", func() {
 			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
 			Expect(os.WriteFile(hostPath, content, 0600)).To(Succeed())
 
-			resp := doGet("/filesystem?path=/tmp/headers.txt")
+			resp := doGet("/v1/filesystem?path=/tmp/headers.txt")
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Header().Get("Content-Type")).To(Equal("application/octet-stream"))
@@ -189,7 +189,7 @@ var _ = Describe("Filesystem", func() {
 	Describe("POST /filesystem", func() {
 		It("writes file with absolute path", func() {
 			content := []byte("hello world")
-			resp := doPost("/filesystem?path=/tmp/test.txt", content)
+			resp := doPost("/v1/filesystem?path=/tmp/test.txt", content)
 
 			Expect(resp.Code).To(Equal(http.StatusCreated))
 
@@ -208,7 +208,7 @@ var _ = Describe("Filesystem", func() {
 
 		It("writes file with relative path", func() {
 			content := []byte("relative file content")
-			resp := doPost("/filesystem?path=myfile.txt", content)
+			resp := doPost("/v1/filesystem?path=myfile.txt", content)
 
 			Expect(resp.Code).To(Equal(http.StatusCreated))
 
@@ -227,7 +227,7 @@ var _ = Describe("Filesystem", func() {
 
 		It("creates parent directories", func() {
 			content := []byte("nested file")
-			resp := doPost("/filesystem?path=/deep/nested/dir/file.txt", content)
+			resp := doPost("/v1/filesystem?path=/deep/nested/dir/file.txt", content)
 
 			Expect(resp.Code).To(Equal(http.StatusCreated))
 
@@ -244,20 +244,20 @@ var _ = Describe("Filesystem", func() {
 		})
 
 		It("returns 422 when path is missing", func() {
-			resp := doPost("/filesystem", []byte("some content"))
+			resp := doPost("/v1/filesystem", []byte("some content"))
 
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 
 		It("returns 422 when path is empty", func() {
-			resp := doPost("/filesystem?path=", []byte("some content"))
+			resp := doPost("/v1/filesystem?path=", []byte("some content"))
 
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 
 		It("succeeds when container is specified", func() {
 			content := []byte("container test")
-			resp := doPost("/filesystem?path=/tmp/container-test.txt&container=main", content)
+			resp := doPost("/v1/filesystem?path=/tmp/container-test.txt&container=main", content)
 
 			Expect(resp.Code).To(Equal(http.StatusCreated))
 
@@ -268,7 +268,7 @@ var _ = Describe("Filesystem", func() {
 		})
 
 		It("writes empty file", func() {
-			resp := doPost("/filesystem?path=/tmp/empty.txt", []byte{})
+			resp := doPost("/v1/filesystem?path=/tmp/empty.txt", []byte{})
 
 			Expect(resp.Code).To(Equal(http.StatusCreated))
 
@@ -286,7 +286,7 @@ var _ = Describe("Filesystem", func() {
 
 		It("normalizes path with dot segments", func() {
 			content := []byte("normalized")
-			resp := doPost("/filesystem?path=/tmp/../tmp/./normalized.txt", content)
+			resp := doPost("/v1/filesystem?path=/tmp/../tmp/./normalized.txt", content)
 
 			Expect(resp.Code).To(Equal(http.StatusCreated))
 
@@ -298,7 +298,7 @@ var _ = Describe("Filesystem", func() {
 
 		It("succeeds with empty container name", func() {
 			content := []byte("no container specified")
-			resp := doPost("/filesystem?path=/tmp/no-container.txt", content)
+			resp := doPost("/v1/filesystem?path=/tmp/no-container.txt", content)
 
 			Expect(resp.Code).To(Equal(http.StatusCreated))
 
@@ -310,7 +310,7 @@ var _ = Describe("Filesystem", func() {
 
 		It("returns 500 for null bytes in path", func() {
 			content := []byte("malicious content")
-			resp := doPost("/filesystem?path=/tmp/evil%00file.txt", content)
+			resp := doPost("/v1/filesystem?path=/tmp/evil%00file.txt", content)
 
 			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
 		})
@@ -406,8 +406,9 @@ var _ = Describe("Filesystem deadline wiring", func() {
 		logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
 		var api humatest.TestAPI
 		fsHandler, api = humatest.New(GinkgoT(), huma.DefaultConfig("Deadline Test API", "0.1.0"))
+		v1 := huma.NewGroup(api, "/v1")
 		h := New(logger, mockProcFS, sandboxsidecar.NewPIDResolver(mockProcFS))
-		Register(api, h)
+		Register(v1, h)
 	})
 
 	It("sets read and write deadlines during file upload", func() {
@@ -416,7 +417,7 @@ var _ = Describe("Filesystem deadline wiring", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		mock := &deadlineCapture{ResponseRecorder: *httptest.NewRecorder()}
-		req := httptest.NewRequest("POST", "/filesystem?path=/tmp/deadline-upload.txt", bytes.NewReader(body))
+		req := httptest.NewRequest("POST", "/v1/filesystem?path=/tmp/deadline-upload.txt", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/octet-stream")
 
 		fsHandler.ServeHTTP(mock, req)
@@ -441,7 +442,7 @@ var _ = Describe("Filesystem deadline wiring", func() {
 		Expect(os.WriteFile(hostPath, content, 0600)).To(Succeed())
 
 		mock := &deadlineCapture{ResponseRecorder: *httptest.NewRecorder()}
-		req := httptest.NewRequest("GET", "/filesystem?path=/tmp/deadline-download.txt", nil)
+		req := httptest.NewRequest("GET", "/v1/filesystem?path=/tmp/deadline-download.txt", nil)
 
 		fsHandler.ServeHTTP(mock, req)
 
@@ -463,12 +464,13 @@ var _ = Describe("Filesystem error cases", func() {
 			}
 
 			_, errorAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Error Test API", "0.1.0"))
+			v1 := huma.NewGroup(errorAPI, "/v1")
 			handler := New(logger, mockProcFS, sandboxsidecar.NewPIDResolver(mockProcFS))
-			Register(errorAPI, handler)
+			Register(v1, handler)
 		})
 
 		It("returns 400 when container not found", func() {
-			resp := errorAPI.Post("/filesystem?path=/tmp/test.txt", "application/octet-stream", bytes.NewReader([]byte("content")))
+			resp := errorAPI.Post("/v1/filesystem?path=/tmp/test.txt", "application/octet-stream", bytes.NewReader([]byte("content")))
 
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
 		})

@@ -95,6 +95,25 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(job.Spec.Template.Spec.Containers[0].Name).To(Equal("uploader"))
 			Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal("isola-uploader:test"))
 
+			// Verify uploader ImagePullPolicy propagates from reconciler config
+			reconciler.UploaderImagePullPolicy = corev1.PullAlways
+			defer func() { reconciler.UploaderImagePullPolicy = "" }()
+
+			snapName2 := "snap-pullpolicy"
+			createRootfsSnapshotCR(ctx, snapName2, sandboxName)
+			defer deleteRootfsSnapshotCR(ctx, snapName2)
+
+			jobName2 := snapName2 + "-job"
+			defer deleteSnapshotJob(ctx, jobName2)
+
+			_, err2 := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName2, Namespace: testNamespace},
+			})
+			Expect(err2).NotTo(HaveOccurred())
+
+			job2 := getSnapshotJob(ctx, jobName2)
+			Expect(job2.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullAlways))
+
 			// Verify emptyDir volume for snapshot data
 			var snapshotDataVolume *corev1.Volume
 			for i := range job.Spec.Template.Spec.Volumes {

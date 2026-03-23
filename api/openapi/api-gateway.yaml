@@ -520,7 +520,7 @@ paths:
       summary: Readiness check (alias)
       tags:
         - health
-  /sandboxes:
+  /v1/sandboxes:
     get:
       description: "Eventually consistent: a sandbox returned by POST may not appear immediately in the list. Clients should retry or poll if a recently-created sandbox is missing."
       operationId: listSandboxes
@@ -582,7 +582,7 @@ paths:
       summary: Create a sandbox
       tags:
         - sandboxes
-  /sandboxes/{id}:
+  /v1/sandboxes/{id}:
     delete:
       operationId: deleteSandbox
       parameters:
@@ -644,7 +644,7 @@ paths:
       summary: Get sandbox details
       tags:
         - sandboxes
-  /sandboxes/{id}/commands:
+  /v1/sandboxes/{id}/commands:
     post:
       description: Starts a new command in the sandbox container and returns a command ID for tracking. Commands always run as root (UID 0, GID 0).
       operationId: createSandboxCommand
@@ -716,7 +716,7 @@ paths:
       tags:
         - sandboxes
         - commands
-  /sandboxes/{id}/commands/{cmdId}:
+  /v1/sandboxes/{id}/commands/{cmdId}:
     delete:
       description: Kills the command process. Idempotent for already-exited commands.
       operationId: deleteSandboxCommand
@@ -773,7 +773,7 @@ paths:
       tags:
         - sandboxes
         - commands
-  /sandboxes/{id}/commands/{cmdId}/status:
+  /v1/sandboxes/{id}/commands/{cmdId}/status:
     get:
       description: Returns the exit code of the command, or null if still running. Supports long-polling via ?waitSeconds=N to block until the command exits or the wait expires.
       operationId: getSandboxCommandStatus
@@ -844,7 +844,7 @@ paths:
       tags:
         - sandboxes
         - commands
-  /sandboxes/{id}/commands/{cmdId}/stderr:
+  /v1/sandboxes/{id}/commands/{cmdId}/stderr:
     get:
       description: Streams the command's stderr as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.
       operationId: getSandboxCommandStderr
@@ -911,7 +911,7 @@ paths:
       tags:
         - sandboxes
         - commands
-  /sandboxes/{id}/commands/{cmdId}/stdin:
+  /v1/sandboxes/{id}/commands/{cmdId}/stdin:
     post:
       description: Writes raw bytes to the command's stdin
       operationId: postSandboxCommandStdin
@@ -976,7 +976,7 @@ paths:
       tags:
         - sandboxes
         - commands
-  /sandboxes/{id}/commands/{cmdId}/stdin/close:
+  /v1/sandboxes/{id}/commands/{cmdId}/stdin/close:
     post:
       description: Closes the command's stdin pipe
       operationId: closeSandboxCommandStdin
@@ -1033,7 +1033,7 @@ paths:
       tags:
         - sandboxes
         - commands
-  /sandboxes/{id}/commands/{cmdId}/stdout:
+  /v1/sandboxes/{id}/commands/{cmdId}/stdout:
     get:
       description: Streams the command's stdout as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.
       operationId: getSandboxCommandStdout
@@ -1100,7 +1100,7 @@ paths:
       tags:
         - sandboxes
         - commands
-  /sandboxes/{id}/filesystem:
+  /v1/sandboxes/{id}/filesystem:
     get:
       description: Streams a file download from the specified path in the sandbox container
       operationId: readSandboxFilesystem

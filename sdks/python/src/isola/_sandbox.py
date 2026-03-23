@@ -36,7 +36,7 @@ from ._models import (
 
 
 def _sandbox_path(sandbox_id: str) -> str:
-    return f"/sandboxes/{quote(sandbox_id, safe='')}"
+    return f"/v1/sandboxes/{quote(sandbox_id, safe='')}"
 
 
 def _build_rootfs_snapshot_sources(rootfs_snapshot_source: str | None) -> list[RootfsSnapshotSource] | None:
@@ -87,14 +87,14 @@ class Sandboxes:
 
         data = self._api.request_model(
             "POST",
-            "/sandboxes",
+            "/v1/sandboxes",
             SandboxData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
         return Sandbox(self._api, data)
 
     def list(self) -> list[SandboxSummary]:
-        response = self._api.request_model("GET", "/sandboxes", ListSandboxesResponse)
+        response = self._api.request_model("GET", "/v1/sandboxes", ListSandboxesResponse)
         return response.sandboxes or []
 
     def get(self, sandbox_id: str) -> Sandbox:
@@ -136,14 +136,14 @@ class AsyncSandboxes:
 
         data = await self._api.request_model(
             "POST",
-            "/sandboxes",
+            "/v1/sandboxes",
             SandboxData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
         return AsyncSandbox(self._api, data)
 
     async def list(self) -> list[SandboxSummary]:
-        response = await self._api.request_model("GET", "/sandboxes", ListSandboxesResponse)
+        response = await self._api.request_model("GET", "/v1/sandboxes", ListSandboxesResponse)
         return response.sandboxes or []
 
     async def get(self, sandbox_id: str) -> AsyncSandbox:

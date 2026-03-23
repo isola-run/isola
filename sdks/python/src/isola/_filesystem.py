@@ -22,7 +22,7 @@ from ._models import FileWriteResult
 
 
 def _filesystem_path(sandbox_id: str) -> str:
-    return f"/sandboxes/{quote(sandbox_id, safe='')}/filesystem"
+    return f"/v1/sandboxes/{quote(sandbox_id, safe='')}/filesystem"
 
 
 class Filesystem:

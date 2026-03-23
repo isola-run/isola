@@ -131,22 +131,22 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 ## REST API (api-gateway)
 
-The api-gateway is a thin passthrough to K8s — it validates input structure but does not apply domain defaults (that's the operator's job). Uses Huma framework on chi router.
+The api-gateway is a thin passthrough to K8s -- it validates input structure but does not apply domain defaults (that's the operator's job). Uses Huma framework on chi router. All API endpoints are under `/v1/` (via `huma.NewGroup`); health endpoints remain at root.
 
 **Endpoints:**
-- `POST /sandboxes` — create
-- `GET /sandboxes` — list (not paginated)
-- `GET /sandboxes/{id}` — get details
-- `DELETE /sandboxes/{id}` — delete (idempotent)
-- `POST /sandboxes/{id}/filesystem` — file upload (proxied to sidecar)
-- `GET /sandboxes/{id}/filesystem` — file download (proxied to sidecar)
-- `POST /sandboxes/{id}/commands` — start command (proxied to sidecar, 202 Accepted). Request body uses `args` (not `cmd`): `args[0]` is executable, `args[1:]` are arguments. Optional `timeout` (seconds), `env`, `cwd`.
-- `GET /sandboxes/{id}/commands/{cmdId}/status` — exit code (null if running). Supports long-polling via `?waitSeconds=N` (max 25 at gateway, max 30 at sidecar).
-- `GET /sandboxes/{id}/commands/{cmdId}/stdout` — SSE stream of stdout (`text/event-stream`). Resume via `Last-Event-ID` header (byte offset).
-- `GET /sandboxes/{id}/commands/{cmdId}/stderr` — SSE stream of stderr (`text/event-stream`). Resume via `Last-Event-ID` header (byte offset).
-- `POST /sandboxes/{id}/commands/{cmdId}/stdin` — write to stdin
-- `POST /sandboxes/{id}/commands/{cmdId}/stdin/close` — close stdin pipe
-- `DELETE /sandboxes/{id}/commands/{cmdId}` — kill command (idempotent)
+- `POST /v1/sandboxes` -- create
+- `GET /v1/sandboxes` -- list (not paginated)
+- `GET /v1/sandboxes/{id}` -- get details
+- `DELETE /v1/sandboxes/{id}` -- delete (idempotent)
+- `POST /v1/sandboxes/{id}/filesystem` -- file upload (proxied to sidecar)
+- `GET /v1/sandboxes/{id}/filesystem` -- file download (proxied to sidecar)
+- `POST /v1/sandboxes/{id}/commands` -- start command (proxied to sidecar, 202 Accepted). Request body uses `args` (not `cmd`): `args[0]` is executable, `args[1:]` are arguments. Optional `timeout` (seconds), `env`, `cwd`.
+- `GET /v1/sandboxes/{id}/commands/{cmdId}/status` -- exit code (null if running). Supports long-polling via `?waitSeconds=N` (max 25 at gateway, max 30 at sidecar).
+- `GET /v1/sandboxes/{id}/commands/{cmdId}/stdout` -- SSE stream of stdout (`text/event-stream`). Resume via `Last-Event-ID` header (byte offset).
+- `GET /v1/sandboxes/{id}/commands/{cmdId}/stderr` -- SSE stream of stderr (`text/event-stream`). Resume via `Last-Event-ID` header (byte offset).
+- `POST /v1/sandboxes/{id}/commands/{cmdId}/stdin` -- write to stdin
+- `POST /v1/sandboxes/{id}/commands/{cmdId}/stdin/close` -- close stdin pipe
+- `DELETE /v1/sandboxes/{id}/commands/{cmdId}` -- kill command (idempotent)
 
 **REST ↔ CRD conversion (`sandbox/convert.go`):**
 REST types are separate from CRD types with explicit conversion in `sandbox/convert.go`. Key behaviors:

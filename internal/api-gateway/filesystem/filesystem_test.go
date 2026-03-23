@@ -117,6 +117,7 @@ func (d *brokenBodyDoer) Do(*http.Request) (*http.Response, error) {
 
 func newFilesystemTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humatest.TestAPI {
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
+	v1 := huma.NewGroup(api, "/v1")
 	h := New(
 		slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
 		testNamespace,
@@ -124,7 +125,7 @@ func newFilesystemTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humat
 		httpClient,
 	)
 	h.sidecarPort = sidecarPort
-	Register(api, h)
+	Register(v1, h)
 	return api
 }
 
@@ -148,7 +149,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			api := newFilesystemTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/workspace/hello.bin&container=main", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/workspace/hello.bin&container=main", sbName))
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Bytes()).To(Equal(fileContent))
@@ -170,7 +171,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			api := newFilesystemTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Header().Get("Content-Type")).To(Equal("application/octet-stream"))
@@ -189,7 +190,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			api := newFilesystemTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(hasContainer).To(BeFalse())
@@ -198,7 +199,7 @@ var _ = Describe("Filesystem Proxy", func() {
 		It("returns 404 for nonexistent sandbox", func() {
 			api := newFilesystemTestAPI(&http.Client{}, 0)
 
-			resp := api.Get("/sandboxes/nonexistent/filesystem?path=/tmp/test.txt")
+			resp := api.Get("/v1/sandboxes/nonexistent/filesystem?path=/tmp/test.txt")
 
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
@@ -207,7 +208,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			api := newFilesystemTestAPI(&http.Client{}, 0)
 			sbName := createSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
 
 			Expect(resp.Code).To(Equal(http.StatusConflict))
 		})
@@ -220,7 +221,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			api := newFilesystemTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
 
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
@@ -239,7 +240,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			api := newFilesystemTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/missing.txt", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/missing.txt", sbName))
 
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
@@ -254,7 +255,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			api := newFilesystemTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
 
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
@@ -288,7 +289,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/filesystem?path=/workspace/hello.txt&container=main", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/workspace/hello.txt&container=main", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("file content here"),
 			)
@@ -331,7 +332,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -344,7 +345,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			api := newFilesystemTestAPI(&http.Client{}, 0)
 
 			resp := api.Post(
-				"/sandboxes/nonexistent/filesystem?path=/tmp/test.txt",
+				"/v1/sandboxes/nonexistent/filesystem?path=/tmp/test.txt",
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -356,7 +357,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			sbName := createSandboxCR() // no PodIP or Ready condition
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -373,7 +374,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -395,7 +396,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -415,7 +416,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -427,7 +428,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -445,7 +446,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)

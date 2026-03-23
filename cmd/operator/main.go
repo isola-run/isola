@@ -67,6 +67,8 @@ func main() {
 	var gvisorRunscPath string
 	var gvisorRunscRoot string
 	var rootfssnapshotHostMountPath string
+	var sandboxSidecarImagePullPolicy string
+	var rootfssnapshotUploaderImagePullPolicy string
 	var logLevel string
 	var devMode bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to. Set to 0 to disable.")
@@ -86,6 +88,8 @@ func main() {
 	flag.StringVar(&gvisorRunscPath, "gvisor-runsc-path", "", "Path to the runsc binary on cluster nodes (for gVisor snapshot support)")
 	flag.StringVar(&gvisorRunscRoot, "gvisor-runsc-root", "", "Root directory where runsc stores runtime state (for gVisor snapshot support)")
 	flag.StringVar(&rootfssnapshotHostMountPath, "rootfssnapshot-host-mount-path", "", "Host path where snapshot-mounter NFS-mounts snapshot tars (readable by runsc on the node)")
+	flag.StringVar(&sandboxSidecarImagePullPolicy, "sidecar-image-pull-policy", "", "ImagePullPolicy for the sandbox-sidecar container (Always, IfNotPresent, Never)")
+	flag.StringVar(&rootfssnapshotUploaderImagePullPolicy, "rootfssnapshot-uploader-image-pull-policy", "", "ImagePullPolicy for the rootfs snapshot uploader container (Always, IfNotPresent, Never)")
 	flag.StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode (text logging)")
 	flag.Parse()
@@ -159,14 +163,15 @@ func main() {
 
 	// SandboxReconciler manages Sandbox resources.
 	if err := (&controller.SandboxReconciler{
-		Client:                      mgr.GetClient(),
-		Scheme:                      mgr.GetScheme(),
-		SandboxSidecarImage:         sandboxSidecarImage,
-		RuntimeClassName:            runtimeClassName,
-		PriorityClassName:           priorityClassName,
-		ImagePullSecrets:            imagePullSecrets,
-		Clock:                       controller.RealClock{},
-		RootfsSnapshotHostMountPath: rootfssnapshotHostMountPath,
+		Client:                        mgr.GetClient(),
+		Scheme:                        mgr.GetScheme(),
+		SandboxSidecarImage:           sandboxSidecarImage,
+		SandboxSidecarImagePullPolicy: corev1.PullPolicy(sandboxSidecarImagePullPolicy),
+		RuntimeClassName:              runtimeClassName,
+		PriorityClassName:             priorityClassName,
+		ImagePullSecrets:              imagePullSecrets,
+		Clock:                         controller.RealClock{},
+		RootfsSnapshotHostMountPath:   rootfssnapshotHostMountPath,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
 		os.Exit(1)
@@ -175,17 +180,18 @@ func main() {
 	// RootfsSnapshotReconciler manages RootfsSnapshot resources.
 	// It creates Jobs to snapshot container rootfs and upload to bucket storage.
 	if err := (&controller.RootfsSnapshotReconciler{
-		Client:                 mgr.GetClient(),
-		Scheme:                 mgr.GetScheme(),
-		Clock:                  controller.RealClock{},
-		BucketURL:              rootfssnapshotBucketURL,
-		CredentialSecretName:   rootfssnapshotCredentialSecret,
-		UploaderImage:          rootfssnapshotUploaderImage,
-		SnapshotServiceAccount: rootfssnapshotServiceAccount,
-		ImagePullSecrets:       imagePullSecrets,
-		Enabled:                rootfssnapshotEnabled,
-		GvisorRunscPath:        gvisorRunscPath,
-		GvisorRunscRoot:        gvisorRunscRoot,
+		Client:                  mgr.GetClient(),
+		Scheme:                  mgr.GetScheme(),
+		Clock:                   controller.RealClock{},
+		BucketURL:               rootfssnapshotBucketURL,
+		CredentialSecretName:    rootfssnapshotCredentialSecret,
+		UploaderImage:           rootfssnapshotUploaderImage,
+		UploaderImagePullPolicy: corev1.PullPolicy(rootfssnapshotUploaderImagePullPolicy),
+		SnapshotServiceAccount:  rootfssnapshotServiceAccount,
+		ImagePullSecrets:        imagePullSecrets,
+		Enabled:                 rootfssnapshotEnabled,
+		GvisorRunscPath:         gvisorRunscPath,
+		GvisorRunscRoot:         gvisorRunscRoot,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RootfsSnapshot")
 		os.Exit(1)

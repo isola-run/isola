@@ -116,6 +116,7 @@ func (d *brokenBodyDoer) Do(*http.Request) (*http.Response, error) {
 
 func newCommandTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humatest.TestAPI {
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
+	v1 := huma.NewGroup(api, "/v1")
 	h := New(
 		slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
 		testNamespace,
@@ -123,7 +124,7 @@ func newCommandTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humatest
 		httpClient,
 	)
 	h.sidecarPort = sidecarPort
-	Register(api, h)
+	Register(v1, h)
 	return api
 }
 
@@ -151,7 +152,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
 				strings.NewReader(`{"args":["echo","hello"]}`),
 			)
@@ -183,7 +184,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands?container=main", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands?container=main", sbName),
 				"Content-Type: application/json",
 				strings.NewReader(`{"args":["echo"]}`),
 			)
@@ -193,7 +194,7 @@ var _ = Describe("Command Proxy", func() {
 
 		It("returns 404 for nonexistent sandbox", func() {
 			api := newCommandTestAPI(&http.Client{}, 0)
-			resp := api.Post("/sandboxes/nonexistent/commands", "Content-Type: application/json",
+			resp := api.Post("/v1/sandboxes/nonexistent/commands", "Content-Type: application/json",
 				strings.NewReader(`{"args":["echo"]}`))
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
@@ -202,7 +203,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, 0)
 			sbName := createSandboxCR()
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
 				strings.NewReader(`{"args":["echo"]}`),
 			)
@@ -218,7 +219,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
 				strings.NewReader(`{"args":["echo"]}`),
 			)
@@ -239,7 +240,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 
 			var status CommandStatusResponse
@@ -259,7 +260,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/00000000-0000-0000-0000-000000000000/status", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/commands/00000000-0000-0000-0000-000000000000/status", sbName))
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 
@@ -276,7 +277,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status?waitSeconds=25", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status?waitSeconds=25", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(capturedTimeout).To(Equal("25"))
 		})
@@ -295,7 +296,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(capturedTimeout).To(BeEmpty())
 		})
@@ -317,7 +318,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Bytes()).To(Equal(content))
 			Expect(resp.Header().Get("Content-Type")).To(Equal("text/event-stream"))
@@ -338,6 +339,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			handler, testAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
+			v1 := huma.NewGroup(testAPI, "/v1")
 			h := New(
 				slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
 				testNamespace,
@@ -345,9 +347,9 @@ var _ = Describe("Command Proxy", func() {
 				&http.Client{},
 			)
 			h.sidecarPort = port
-			Register(testAPI, h)
+			Register(v1, h)
 
-			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout", sbName), nil)
+			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout", sbName), nil)
 			req.Header.Set("Last-Event-ID", "42")
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
@@ -375,7 +377,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("input data"),
 			)
@@ -401,12 +403,12 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close", sbName),
 				"",
 			)
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 			Expect(capturedMethod).To(Equal(http.MethodPost))
-			Expect(capturedPath).To(Equal("/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close"))
+			Expect(capturedPath).To(Equal("/v1/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close"))
 		})
 
 		It("forwards sidecar 409 conflict", func() {
@@ -424,7 +426,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close", sbName),
 				"",
 			)
 			Expect(resp.Code).To(Equal(http.StatusConflict))
@@ -439,7 +441,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin/close", sbName),
 				"",
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
@@ -459,7 +461,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", sbName))
+			resp := api.Delete(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", sbName))
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 			Expect(capturedMethod).To(Equal(http.MethodDelete))
 		})
@@ -472,7 +474,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", sbName))
+			resp := api.Delete(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", sbName))
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 
@@ -486,7 +488,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", sbName))
+			resp := api.Delete(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", sbName))
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 
@@ -502,7 +504,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Delete(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", sbName))
+			resp := api.Delete(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", sbName))
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 	})
@@ -522,7 +524,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stderr", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stderr", sbName))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(resp.Body.Bytes()).To(Equal(content))
 		})
@@ -541,6 +543,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			handler, testAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
+			v1 := huma.NewGroup(testAPI, "/v1")
 			h := New(
 				slog.New(slog.NewTextHandler(GinkgoWriter, nil)),
 				testNamespace,
@@ -548,9 +551,9 @@ var _ = Describe("Command Proxy", func() {
 				&http.Client{},
 			)
 			h.sidecarPort = port
-			Register(testAPI, h)
+			Register(v1, h)
 
-			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stderr", sbName), nil)
+			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stderr", sbName), nil)
 			req.Header.Set("Last-Event-ID", "10")
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
@@ -573,7 +576,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 
@@ -590,7 +593,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
 				strings.NewReader(`{"args":["echo"]}`),
 			)
@@ -612,7 +615,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
 				strings.NewReader(`{"args":["echo"]}`),
 			)
@@ -630,7 +633,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
 				strings.NewReader(`{"args":["echo"]}`),
 			)
@@ -642,7 +645,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands", sbName),
 				"Content-Type: application/json",
 				strings.NewReader(`{"args":["echo"]}`),
 			)
@@ -657,7 +660,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status", sbName))
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 
@@ -670,7 +673,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -685,7 +688,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout", sbName))
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 
@@ -704,7 +707,7 @@ var _ = Describe("Command Proxy", func() {
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
-				fmt.Sprintf("/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin", sbName),
+				fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdin", sbName),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -725,7 +728,7 @@ var _ = Describe("Command Proxy", func() {
 			api := newCommandTestAPI(&http.Client{}, port)
 			sbName := createRunningSandboxCR()
 
-			resp := api.Get(fmt.Sprintf("/sandboxes/%s/commands/00000000-0000-0000-0000-000000000000/stdout", sbName))
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/commands/00000000-0000-0000-0000-000000000000/stdout", sbName))
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 	})

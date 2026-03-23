@@ -68,6 +68,10 @@ spec:
             - "--rootfssnapshot-host-mount-path={{ $hostMountPath }}"
             {{- end }}
             {{- end }}
+            - "--sidecar-image-pull-policy={{ .Values.operator.sandboxSidecar.image.pullPolicy }}"
+            {{- if eq .Values.operator.sandboxRuntime.type "gvisor" }}
+            - "--rootfssnapshot-uploader-image-pull-policy={{ .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.pullPolicy }}"
+            {{- end }}
             {{- $imagePullSecretNames := include "isola.imagePullSecretNames" . }}
             {{- if $imagePullSecretNames }}
             - "--image-pull-secrets={{ $imagePullSecretNames }}"

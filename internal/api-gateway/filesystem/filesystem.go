@@ -89,7 +89,7 @@ func (h *Handlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInp
 	if input.Container != "" {
 		params.Set("container", input.Container)
 	}
-	sidecarURL := fmt.Sprintf("http://%s:%d/filesystem?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
+	sidecarURL := fmt.Sprintf("http://%s:%d/v1/filesystem?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
 
 	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
 
@@ -137,7 +137,7 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 	if input.Container != "" {
 		params.Set("container", input.Container)
 	}
-	sidecarURL := fmt.Sprintf("http://%s:%d/filesystem?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
+	sidecarURL := fmt.Sprintf("http://%s:%d/v1/filesystem?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarURL, nil)
 	if err != nil {

@@ -100,8 +100,9 @@ var _ = BeforeSuite(func() {
 
 	_, testAPI = humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
 
+	v1 := huma.NewGroup(testAPI, "/v1")
 	h := New(logger, testNamespace, k8sClient)
-	Register(testAPI, h)
+	Register(v1, h)
 })
 
 var _ = AfterSuite(func() {
