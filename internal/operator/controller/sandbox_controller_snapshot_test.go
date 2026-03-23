@@ -43,7 +43,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-no-runtimeclass"
 
 			recorder := events.NewFakeRecorder(10)
-			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
+			reconciler = newTestReconciler(fakeClock, withRecorder(recorder))
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
@@ -83,7 +83,7 @@ var _ = Describe("Sandbox Controller", func() {
 			runtimeClassName := "unsupported-runtime"
 
 			recorder := events.NewFakeRecorder(10)
-			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
+			reconciler = newTestReconciler(fakeClock, withRecorder(recorder))
 
 			createRuntimeClass(ctx, runtimeClassName, "runc") // runc is not supported for snapshotting
 			defer deleteRuntimeClass(ctx, runtimeClassName)
@@ -207,7 +207,7 @@ var _ = Describe("Sandbox Controller", func() {
 			runtimeClassName := "gvisor-success"
 
 			recorder := events.NewFakeRecorder(10)
-			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
+			reconciler = newTestReconciler(fakeClock, withRecorder(recorder))
 
 			createRuntimeClass(ctx, runtimeClassName, "runsc")
 			defer deleteRuntimeClass(ctx, runtimeClassName)

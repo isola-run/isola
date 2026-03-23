@@ -52,7 +52,7 @@ var _ = Describe("Sandbox Controller", func() {
 		BeforeEach(func() {
 			fakeClock = NewFakeClock(time.Now())
 			recorder = events.NewFakeRecorder(100)
-			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
+			reconciler = newTestReconciler(fakeClock, withRecorder(recorder))
 		})
 
 		It("should record PodCreated event when pod is created", func() {

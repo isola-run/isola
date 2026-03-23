@@ -53,6 +53,33 @@ def _build_resources(cpu: str | None, memory: str | None, ephemeral_storage: str
     return ResourcesSpec(limits=resource_list, requests=resource_list)
 
 
+def _build_create_payload(
+    image: str,
+    command: list[str] | None,
+    env: dict[str, str] | None,
+    cpu: str | None,
+    memory: str | None,
+    ephemeral_storage: str | None,
+    timeout: int | None,
+    network: NetworkSpec | None,
+    rootfs_snapshot_source: str | None,
+) -> dict[str, object]:
+    payload = CreateSandboxPayload(
+        pod_template=PodTemplate(
+            container=ContainerSpec(
+                image=image,
+                command=command,
+                env=env,
+                resources=_build_resources(cpu, memory, ephemeral_storage),
+            )
+        ),
+        timeout=timeout,
+        network=network,
+        rootfs_snapshot_sources=_build_rootfs_snapshot_sources(rootfs_snapshot_source),
+    )
+    return payload.model_dump(by_alias=True, exclude_none=True)
+
+
 class Sandboxes:
     def __init__(self, api: _SyncAPI) -> None:
         self._api = api
@@ -70,26 +97,12 @@ class Sandboxes:
         network: NetworkSpec | None = None,
         rootfs_snapshot_source: str | None = None,
     ) -> Sandbox:
-        resources = _build_resources(cpu, memory, ephemeral_storage)
-        payload = CreateSandboxPayload(
-            pod_template=PodTemplate(
-                container=ContainerSpec(
-                    image=image,
-                    command=command,
-                    env=env,
-                    resources=resources,
-                )
-            ),
-            timeout=timeout,
-            network=network,
-            rootfs_snapshot_sources=_build_rootfs_snapshot_sources(rootfs_snapshot_source),
-        )
-
         data = self._api.request_model(
-            "POST",
-            "/sandboxes",
-            SandboxData,
-            json_body=payload.model_dump(by_alias=True, exclude_none=True),
+            "POST", "/sandboxes", SandboxData,
+            json_body=_build_create_payload(
+                image, command, env, cpu, memory, ephemeral_storage,
+                timeout, network, rootfs_snapshot_source,
+            ),
         )
         return Sandbox(self._api, data)
 
@@ -119,26 +132,12 @@ class AsyncSandboxes:
         network: NetworkSpec | None = None,
         rootfs_snapshot_source: str | None = None,
     ) -> AsyncSandbox:
-        resources = _build_resources(cpu, memory, ephemeral_storage)
-        payload = CreateSandboxPayload(
-            pod_template=PodTemplate(
-                container=ContainerSpec(
-                    image=image,
-                    command=command,
-                    env=env,
-                    resources=resources,
-                )
-            ),
-            timeout=timeout,
-            network=network,
-            rootfs_snapshot_sources=_build_rootfs_snapshot_sources(rootfs_snapshot_source),
-        )
-
         data = await self._api.request_model(
-            "POST",
-            "/sandboxes",
-            SandboxData,
-            json_body=payload.model_dump(by_alias=True, exclude_none=True),
+            "POST", "/sandboxes", SandboxData,
+            json_body=_build_create_payload(
+                image, command, env, cpu, memory, ephemeral_storage,
+                timeout, network, rootfs_snapshot_source,
+            ),
         )
         return AsyncSandbox(self._api, data)
 
@@ -151,12 +150,8 @@ class AsyncSandboxes:
         return AsyncSandbox(self._api, data)
 
 
-class Sandbox:
-    def __init__(self, api: _SyncAPI, data: SandboxData) -> None:
-        self._api = api
-        self._data = data
-        self.commands = Commands(api, data.id)
-        self.filesystem = Filesystem(api, data.id)
+class _SandboxBase:
+    _data: SandboxData
 
     @property
     def id(self) -> str:
@@ -181,6 +176,14 @@ class Sandbox:
     @property
     def rootfs_snapshot_sources(self) -> list[RootfsSnapshotSource] | None:
         return self._data.rootfs_snapshot_sources
+
+
+class Sandbox(_SandboxBase):
+    def __init__(self, api: _SyncAPI, data: SandboxData) -> None:
+        self._api = api
+        self._data = data
+        self.commands = Commands(api, data.id)
+        self.filesystem = Filesystem(api, data.id)
 
     def __enter__(self) -> Sandbox:
         return self
@@ -192,36 +195,12 @@ class Sandbox:
         self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
 
 
-class AsyncSandbox:
+class AsyncSandbox(_SandboxBase):
     def __init__(self, api: _AsyncAPI, data: SandboxData) -> None:
         self._api = api
         self._data = data
         self.commands = AsyncCommands(api, data.id)
         self.filesystem = AsyncFilesystem(api, data.id)
-
-    @property
-    def id(self) -> str:
-        return self._data.id
-
-    @property
-    def status(self) -> SandboxStatus:
-        return self._data.status
-
-    @property
-    def creation_timestamp(self) -> datetime:
-        return self._data.creation_timestamp
-
-    @property
-    def network(self) -> NetworkSpec | None:
-        return self._data.network
-
-    @property
-    def timeout(self) -> int | None:
-        return self._data.timeout
-
-    @property
-    def rootfs_snapshot_sources(self) -> list[RootfsSnapshotSource] | None:
-        return self._data.rootfs_snapshot_sources
 
     async def __aenter__(self) -> AsyncSandbox:
         return self

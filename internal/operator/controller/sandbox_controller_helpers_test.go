@@ -87,34 +87,27 @@ func getPod(ctx context.Context, name string) *corev1.Pod {
 	return pod
 }
 
-func deleteSandbox(ctx context.Context, name string) {
-	sandbox := &sandboxv1alpha1.Sandbox{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, sandbox)
+// deleteResource fetches a resource by name and deletes it. No-op if already gone.
+// Cluster-scoped resources (e.g. RuntimeClass) should pass "" for namespace.
+func deleteResource(ctx context.Context, name, namespace string, obj client.Object) {
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, obj)
 	if errors.IsNotFound(err) {
-		return // Already deleted
+		return
 	}
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, sandbox))).NotTo(HaveOccurred())
+	ExpectWithOffset(2, err).NotTo(HaveOccurred())
+	ExpectWithOffset(2, client.IgnoreNotFound(k8sClient.Delete(ctx, obj))).NotTo(HaveOccurred())
+}
+
+func deleteSandbox(ctx context.Context, name string) {
+	deleteResource(ctx, name, testNamespace, &sandboxv1alpha1.Sandbox{})
 }
 
 func deleteRuntimeClass(ctx context.Context, name string) {
-	rc := &nodev1.RuntimeClass{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name}, rc)
-	if errors.IsNotFound(err) {
-		return // Already deleted
-	}
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, rc))).NotTo(HaveOccurred())
+	deleteResource(ctx, name, "", &nodev1.RuntimeClass{})
 }
 
 func deletePod(ctx context.Context, name string) {
-	pod := &corev1.Pod{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pod)
-	if errors.IsNotFound(err) {
-		return // Already deleted
-	}
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, pod))).NotTo(HaveOccurred())
+	deleteResource(ctx, name, testNamespace, &corev1.Pod{})
 }
 
 func getRootfsSnapshot(ctx context.Context, name string) *sandboxv1alpha1.RootfsSnapshot {
@@ -131,11 +124,7 @@ func getShutdownSnapshot(ctx context.Context, sandboxName string) *sandboxv1alph
 }
 
 func deleteShutdownSnapshot(ctx context.Context, sandboxName string) {
-	snap := getShutdownSnapshot(ctx, sandboxName)
-	if snap == nil {
-		return // Already deleted
-	}
-	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, snap))).NotTo(HaveOccurred())
+	deleteResource(ctx, sandboxName+"-shutdown", testNamespace, &sandboxv1alpha1.RootfsSnapshot{})
 }
 
 func setRootfsSnapshotReady(ctx context.Context, name string, ready bool, reason, message string) {
@@ -143,23 +132,17 @@ func setRootfsSnapshotReady(ctx context.Context, name string, ready bool, reason
 	if snap == nil {
 		return
 	}
+	condType := string(sandboxv1alpha1.RootfsSnapshotFailed)
 	if ready {
-		meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
-			Status:             metav1.ConditionTrue,
-			Reason:             reason,
-			Message:            message,
-			ObservedGeneration: snap.Generation,
-		})
-	} else {
-		meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotFailed),
-			Status:             metav1.ConditionTrue,
-			Reason:             reason,
-			Message:            message,
-			ObservedGeneration: snap.Generation,
-		})
+		condType = string(sandboxv1alpha1.RootfsSnapshotComplete)
 	}
+	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
+		Type:               condType,
+		Status:             metav1.ConditionTrue,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: snap.Generation,
+	})
 	now := metav1.Now()
 	snap.Status.CompletionTime = &now
 	ExpectWithOffset(1, k8sClient.Status().Update(ctx, snap)).To(Succeed())
@@ -230,11 +213,5 @@ func getNetworkPolicy(ctx context.Context, name string) *networkingv1.NetworkPol
 }
 
 func deleteNetworkPolicy(ctx context.Context, name string) {
-	np := &networkingv1.NetworkPolicy{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, np)
-	if errors.IsNotFound(err) {
-		return // Already deleted
-	}
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, np))).NotTo(HaveOccurred())
+	deleteResource(ctx, name, testNamespace, &networkingv1.NetworkPolicy{})
 }

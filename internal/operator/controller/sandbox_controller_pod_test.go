@@ -141,7 +141,7 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			// Use reconciler with RuntimeClassName configured
-			reconcilerWithRuntime := newTestReconcilerWithRuntimeClass(fakeClock, runtimeClassName)
+			reconcilerWithRuntime := newTestReconciler(fakeClock, withRuntimeClass(runtimeClassName))
 
 			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)

@@ -152,44 +152,29 @@ var _ = AfterSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 })
 
+type reconcilerOption func(*SandboxReconciler)
+
+func withRecorder(rec events.EventRecorder) reconcilerOption {
+	return func(r *SandboxReconciler) { r.Recorder = rec }
+}
+
+func withRuntimeClass(name string) reconcilerOption {
+	return func(r *SandboxReconciler) { r.RuntimeClassName = name }
+}
+
 // newTestReconciler creates a SandboxReconciler configured for testing.
 // Uses direct k8sClient for immediate consistency in tests.
 // ControllerNamespace is not set, so it defaults to sandbox's namespace (single-namespace deployment).
-func newTestReconciler(clock Clock) *SandboxReconciler {
-	rec := events.NewFakeRecorder(100)
-	return &SandboxReconciler{
+func newTestReconciler(clock Clock, opts ...reconcilerOption) *SandboxReconciler {
+	r := &SandboxReconciler{
 		Client:              k8sClient,
 		Scheme:              scheme.Scheme,
-		Recorder:            rec,
-		SandboxSidecarImage: "sandbox-sidecar:test",
-		Clock:               clock,
-		// ControllerNamespace not set - defaults to sandbox namespace
-		// ControllerLabels not set - defaults to {"app.kubernetes.io/name": "isola-controller"}
-	}
-}
-
-// newTestReconcilerWithRecorder creates a SandboxReconciler with a specific recorder for event testing.
-// Uses direct k8sClient for immediate consistency in tests.
-func newTestReconcilerWithRecorder(clock Clock, recorder events.EventRecorder) *SandboxReconciler {
-	return &SandboxReconciler{
-		Client:              k8sClient,
-		Scheme:              scheme.Scheme,
-		Recorder:            recorder,
+		Recorder:            events.NewFakeRecorder(100),
 		SandboxSidecarImage: "sandbox-sidecar:test",
 		Clock:               clock,
 	}
-}
-
-// newTestReconcilerWithRuntimeClass creates a SandboxReconciler with RuntimeClassName set.
-// Used for testing gvisor-specific features like overlay2 annotation.
-func newTestReconcilerWithRuntimeClass(clock Clock, runtimeClassName string) *SandboxReconciler {
-	rec := events.NewFakeRecorder(100)
-	return &SandboxReconciler{
-		Client:              k8sClient,
-		Scheme:              scheme.Scheme,
-		Recorder:            rec,
-		SandboxSidecarImage: "sandbox-sidecar:test",
-		Clock:               clock,
-		RuntimeClassName:    runtimeClassName,
+	for _, opt := range opts {
+		opt(r)
 	}
+	return r
 }

@@ -45,72 +45,48 @@ func createRuntimeClassForSnapshot(ctx context.Context, name, handler string) {
 }
 
 func deleteRuntimeClassForSnapshot(ctx context.Context, name string) {
-	rc := &nodev1.RuntimeClass{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name}, rc)
-	if errors.IsNotFound(err) {
-		return // Already deleted
+	deleteResource(ctx, name, "", &nodev1.RuntimeClass{})
+}
+
+func createSnapshotPodWithStatus(ctx context.Context, name, runtimeClassName string, containers []corev1.Container, phase corev1.PodPhase, readyStatus corev1.ConditionStatus, containerStatuses []corev1.ContainerStatus) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
+		Spec: corev1.PodSpec{
+			RuntimeClassName: &runtimeClassName,
+			Containers:       containers,
+		},
 	}
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, rc))).NotTo(HaveOccurred())
+	ExpectWithOffset(2, k8sClient.Create(ctx, pod)).To(Succeed())
+
+	// Bind the pod to a node via the binding subresource (mirroring the real scheduler)
+	binding := &corev1.Binding{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
+		Target:     corev1.ObjectReference{Name: "test-node"},
+	}
+	ExpectWithOffset(2, k8sClient.SubResource("binding").Create(ctx, pod, binding)).To(Succeed())
+
+	// Re-fetch after binding to get updated spec
+	ExpectWithOffset(2, k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pod)).To(Succeed())
+	pod.Status.Phase = phase
+	cond := corev1.PodCondition{Type: corev1.PodReady, Status: readyStatus}
+	if readyStatus == corev1.ConditionFalse {
+		cond.Reason = "ContainersNotReady"
+	}
+	pod.Status.Conditions = []corev1.PodCondition{cond}
+	pod.Status.ContainerStatuses = containerStatuses
+	ExpectWithOffset(2, k8sClient.Status().Update(ctx, pod)).To(Succeed())
 }
 
 func createSnapshotPod(ctx context.Context, name, runtimeClassName string, containers []corev1.Container, containerStatuses []corev1.ContainerStatus) {
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
-		Spec: corev1.PodSpec{
-			RuntimeClassName: &runtimeClassName,
-			Containers:       containers,
-		},
-	}
-	ExpectWithOffset(1, k8sClient.Create(ctx, pod)).To(Succeed())
-
-	// Bind the pod to a node via the binding subresource (mirroring the real scheduler)
-	binding := &corev1.Binding{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
-		Target:     corev1.ObjectReference{Name: "test-node"},
-	}
-	ExpectWithOffset(1, k8sClient.SubResource("binding").Create(ctx, pod, binding)).To(Succeed())
-
-	// Re-fetch after binding to get updated spec
-	ExpectWithOffset(1, k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pod)).To(Succeed())
-	pod.Status.Phase = corev1.PodRunning
-	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
-	pod.Status.ContainerStatuses = containerStatuses
-	ExpectWithOffset(1, k8sClient.Status().Update(ctx, pod)).To(Succeed())
+	createSnapshotPodWithStatus(ctx, name, runtimeClassName, containers, corev1.PodRunning, corev1.ConditionTrue, containerStatuses)
 }
 
 func createSnapshotPodNotReady(ctx context.Context, name, runtimeClassName string, containers []corev1.Container) {
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
-		Spec: corev1.PodSpec{
-			RuntimeClassName: &runtimeClassName,
-			Containers:       containers,
-		},
-	}
-	ExpectWithOffset(1, k8sClient.Create(ctx, pod)).To(Succeed())
-
-	// Bind the pod to a node via the binding subresource (mirroring the real scheduler)
-	binding := &corev1.Binding{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
-		Target:     corev1.ObjectReference{Name: "test-node"},
-	}
-	ExpectWithOffset(1, k8sClient.SubResource("binding").Create(ctx, pod, binding)).To(Succeed())
-
-	// Re-fetch after binding to get updated spec
-	ExpectWithOffset(1, k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pod)).To(Succeed())
-	pod.Status.Phase = corev1.PodPending
-	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionFalse, Reason: "ContainersNotReady"}}
-	ExpectWithOffset(1, k8sClient.Status().Update(ctx, pod)).To(Succeed())
+	createSnapshotPodWithStatus(ctx, name, runtimeClassName, containers, corev1.PodPending, corev1.ConditionFalse, nil)
 }
 
 func deleteSnapshotPod(ctx context.Context, name string) {
-	pod := &corev1.Pod{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pod)
-	if errors.IsNotFound(err) {
-		return // Already deleted
-	}
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, pod))).NotTo(HaveOccurred())
+	deleteResource(ctx, name, testNamespace, &corev1.Pod{})
 }
 
 func createRootfsSnapshotCR(ctx context.Context, name, sandboxName string) {
@@ -133,13 +109,7 @@ func createRootfsSnapshotCRWithContainer(ctx context.Context, name, sandboxName,
 }
 
 func deleteRootfsSnapshotCR(ctx context.Context, name string) {
-	snap := &sandboxv1alpha1.RootfsSnapshot{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, snap)
-	if errors.IsNotFound(err) {
-		return // Already deleted
-	}
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, snap))).NotTo(HaveOccurred())
+	deleteResource(ctx, name, testNamespace, &sandboxv1alpha1.RootfsSnapshot{})
 }
 
 func getRootfsSnapshotCR(ctx context.Context, name string) *sandboxv1alpha1.RootfsSnapshot {
@@ -245,11 +215,5 @@ func createSnapshotJobPodWithTerminationMessage(ctx context.Context, jobName str
 }
 
 func deleteSnapshotJobPod(ctx context.Context, jobName string) {
-	pod := &corev1.Pod{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: jobName + "-pod", Namespace: testNamespace}, pod)
-	if errors.IsNotFound(err) {
-		return // Already deleted
-	}
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	ExpectWithOffset(1, client.IgnoreNotFound(k8sClient.Delete(ctx, pod))).NotTo(HaveOccurred())
+	deleteResource(ctx, jobName+"-pod", testNamespace, &corev1.Pod{})
 }

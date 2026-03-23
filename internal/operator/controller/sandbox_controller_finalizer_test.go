@@ -115,7 +115,7 @@ var _ = Describe("Sandbox Controller", func() {
 			runtimeClassName := "gvisor-delete"
 
 			recorder := events.NewFakeRecorder(10)
-			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
+			reconciler = newTestReconciler(fakeClock, withRecorder(recorder))
 
 			createRuntimeClass(ctx, runtimeClassName, "runsc")
 			defer deleteRuntimeClass(ctx, runtimeClassName)

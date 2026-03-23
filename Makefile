@@ -117,25 +117,27 @@ test-sidecar: ## Run sandbox-sidecar tests (supports FOCUS=pattern)
 
 ##@ Python SDK
 
+UV_SDK = cd sdks/python && uv run --frozen --extra dev
+
 .PHONY: sdk-python-sync
 sdk-python-sync: ## Sync Python SDK dependencies from lockfile
 	cd sdks/python && uv sync --frozen --extra dev
 
 .PHONY: sdk-python-fmt
 sdk-python-fmt: ## Format Python SDK
-	cd sdks/python && uv run --frozen --extra dev ruff format .
+	$(UV_SDK) ruff format .
 
 .PHONY: sdk-python-lint
 sdk-python-lint: ## Lint Python SDK
-	cd sdks/python && uv run --frozen --extra dev ruff check .
+	$(UV_SDK) ruff check .
 
 .PHONY: sdk-python-lint-fix
 sdk-python-lint-fix: ## Lint Python SDK with auto-fix
-	cd sdks/python && uv run --frozen --extra dev ruff check --fix .
+	$(UV_SDK) ruff check --fix .
 
 .PHONY: sdk-python-typecheck
 sdk-python-typecheck: ## Type-check Python SDK
-	cd sdks/python && uv run --frozen --extra dev mypy src
+	$(UV_SDK) mypy src
 
 .PHONY: sdk-python-check-all
 sdk-python-check-all: ## Run all Python SDK checks (no tests)
@@ -149,11 +151,11 @@ sdk-python-fix-all: ## Fix all auto-fixable Python SDK issues
 
 .PHONY: test-sdk-python
 test-sdk-python: ## Run Python SDK tests
-	cd sdks/python && uv run --frozen --extra dev pytest -q
+	$(UV_SDK) pytest -q
 
 .PHONY: test-sdk-python-verbose
 test-sdk-python-verbose: ## Run Python SDK tests with verbose output
-	cd sdks/python && uv run --frozen --extra dev pytest -v
+	$(UV_SDK) pytest -v
 
 ##@ E2E Testing
 

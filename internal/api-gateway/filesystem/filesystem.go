@@ -78,38 +78,54 @@ func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client, 
 	}
 }
 
+func (h *Handlers) filesystemURL(podIP, path, container string) string {
+	params := url.Values{}
+	params.Set("path", path)
+	if container != "" {
+		params.Set("container", container)
+	}
+	return fmt.Sprintf("http://%s:%d/filesystem?%s", podIP, h.sidecarPort, params.Encode())
+}
+
+func (h *Handlers) doSidecarRoundTrip(ctx context.Context, sandboxID, method, sidecarURL string, body io.Reader, headers map[string]string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, sidecarURL, body)
+	if err != nil {
+		h.logger.Error("failed to build sidecar request", "error", err)
+		return nil, huma.Error500InternalServerError("failed to build sidecar request")
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		h.logger.Error("sidecar request failed", "error", err, "id", sandboxID)
+		return nil, huma.Error502BadGateway("failed to reach sidecar")
+	}
+
+	if resp.StatusCode >= 400 {
+		defer func() { _ = resp.Body.Close() }()
+		return nil, apigateway.HandleSidecarError(resp, sandboxID, h.logger)
+	}
+
+	return resp, nil
+}
+
 func (h *Handlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
 	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
 	if err != nil {
 		return nil, err
 	}
 
-	params := url.Values{}
-	params.Set("path", input.Path)
-	if input.Container != "" {
-		params.Set("container", input.Container)
-	}
-	sidecarURL := fmt.Sprintf("http://%s:%d/filesystem?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
-
 	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, stream)
+	resp, err := h.doSidecarRoundTrip(ctx, input.ID, http.MethodPost,
+		h.filesystemURL(sb.Status.PodIP, input.Path, input.Container),
+		stream, map[string]string{"Content-Type": "application/octet-stream"})
 	if err != nil {
-		h.logger.Error("failed to build sidecar request", "error", err)
-		return nil, huma.Error500InternalServerError("failed to build sidecar request")
-	}
-	req.Header.Set("Content-Type", "application/octet-stream")
-
-	resp, err := h.httpClient.Do(req)
-	if err != nil {
-		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
-		return nil, huma.Error502BadGateway("failed to reach sidecar")
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode >= 400 {
-		return nil, apigateway.HandleSidecarError(resp, input.ID, h.logger)
-	}
 
 	_ = sidecarapi.FilesystemWriteResponse(FilesystemWriteResponse{}) // assert field compatibility
 	var sidecarResp sidecarapi.FilesystemWriteResponse
@@ -132,14 +148,8 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 		return nil, err
 	}
 
-	params := url.Values{}
-	params.Set("path", input.Path)
-	if input.Container != "" {
-		params.Set("container", input.Container)
-	}
-	sidecarURL := fmt.Sprintf("http://%s:%d/filesystem?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		h.filesystemURL(sb.Status.PodIP, input.Path, input.Container), nil)
 	if err != nil {
 		h.logger.Error("failed to build sidecar request", "error", err)
 		return nil, huma.Error500InternalServerError("failed to build sidecar request")
