@@ -29,7 +29,7 @@ func LogLevel(level string) error {
 	case "debug", "info", "warn", "warning", "error":
 		return nil
 	default:
-		return fmt.Errorf("invalid log level %q (must be one of: debug, info, warn, error)", level)
+		return fmt.Errorf("invalid log level %q (must be one of: debug, info, warn, warning, error)", level)
 	}
 }
 
@@ -46,6 +46,9 @@ func Port(port int) error {
 // obviously broken values. It does not validate that the image exists in a
 // registry.
 func ContainerImage(image string) error {
+	if image == "" {
+		return fmt.Errorf("container image must not be empty")
+	}
 	if strings.TrimSpace(image) != image {
 		return fmt.Errorf("container image %q must not have leading or trailing whitespace", image)
 	}
@@ -75,7 +78,7 @@ func BucketURL(bucketURL string) error {
 		return fmt.Errorf("bucket URL %q must include a scheme (e.g., s3://bucket, gs://bucket, azblob://container)", bucketURL)
 	}
 	if !allowedBucketSchemes[u.Scheme] {
-		return fmt.Errorf("bucket URL %q has unsupported scheme %q (supported: s3, gs, azblob)", bucketURL, u.Scheme)
+		return fmt.Errorf("bucket URL %q has unsupported scheme %q (supported: s3, gs, azblob, file, mem)", bucketURL, u.Scheme)
 	}
 	if u.Host == "" && u.Opaque == "" {
 		return fmt.Errorf("bucket URL %q must include a bucket/container name after the scheme", bucketURL)

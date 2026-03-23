@@ -31,6 +31,7 @@ import (
 	"github.com/isola-ai/isola/internal/constants"
 	"github.com/isola-ai/isola/internal/env"
 	"github.com/isola-ai/isola/internal/logging"
+	"github.com/isola-ai/isola/internal/validate"
 	sandboxsidecar "github.com/isola-ai/isola/internal/sandbox-sidecar"
 	"github.com/isola-ai/isola/internal/sandbox-sidecar/command"
 	"github.com/isola-ai/isola/internal/sandbox-sidecar/filesystem"
@@ -57,6 +58,11 @@ func main() {
 	flag.StringVar(&cfg.logLevel, "log-level", env.GetOrDefault("ISOLA_LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
 	flag.BoolVar(&cfg.devMode, "dev-mode", env.GetOrDefault("ISOLA_DEV_MODE", "") != "", "Enable development mode (text logging)")
 	flag.Parse()
+
+	if err := validate.LogLevel(cfg.logLevel); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid --log-level: %v\n", err)
+		os.Exit(1)
+	}
 
 	logger := logging.New(logging.Config{
 		Level:   cfg.logLevel,

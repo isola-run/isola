@@ -91,6 +91,11 @@ func main() {
 	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode (text logging)")
 	flag.Parse()
 
+	if err := validate.LogLevel(logLevel); err != nil {
+		setupLog.Error(err, "invalid --log-level")
+		os.Exit(1)
+	}
+
 	logger := logging.New(logging.Config{
 		Level:   logLevel,
 		DevMode: devMode,
@@ -105,11 +110,6 @@ func main() {
 	}
 	if rootfssnapshotUploaderImage == "" {
 		rootfssnapshotUploaderImage = os.Getenv("ISOLA_UPLOADER_IMAGE")
-	}
-
-	if err := validate.LogLevel(logLevel); err != nil {
-		setupLog.Error(err, "invalid --log-level")
-		os.Exit(1)
 	}
 	if sandboxSidecarImage == "" {
 		setupLog.Error(nil, "--sidecar-image or ISOLA_SANDBOX_SIDECAR_IMAGE env var is required")

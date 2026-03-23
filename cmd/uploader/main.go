@@ -75,6 +75,11 @@ func main() {
 		DevMode: false, // Always JSON for job logs
 	})
 
+	if err := validate.LogLevel(getEnv(EnvLogLevel, "info")); err != nil {
+		logger.Error("invalid log level", "var", EnvLogLevel, "error", err)
+		os.Exit(1)
+	}
+
 	if err := run(logger); err != nil {
 		logger.Error("upload failed", "error", err)
 		os.Exit(1)

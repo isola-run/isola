@@ -40,7 +40,7 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 def _retry_delay(attempt: int) -> float:
     """Exponential backoff with jitter: base * 2^attempt * (0.5 + random 0..0.5)."""
     delay: float = min(INITIAL_RETRY_DELAY * (2**attempt), MAX_RETRY_DELAY)
-    return delay * (0.5 + random.random() * 0.5)  # noqa: S311
+    return delay * (0.75 + random.random() * 0.25)  # noqa: S311
 
 
 class _SyncAPI:

@@ -15,35 +15,36 @@
 package validate
 
 import (
+	"strings"
 	"testing"
 )
 
 func TestLogLevel(t *testing.T) {
-	valid := []string{"debug", "info", "warn", "warning", "error", "DEBUG", "Info", "WARN"}
-	for _, level := range valid {
-		if err := LogLevel(level); err != nil {
-			t.Errorf("LogLevel(%q) = %v, want nil", level, err)
-		}
+	for _, level := range []string{"debug", "info", "warn", "warning", "error", "DEBUG", "Info", "WARN"} {
+		t.Run("valid_"+level, func(t *testing.T) {
+			if err := LogLevel(level); err != nil {
+				t.Errorf("LogLevel(%q) = %v, want nil", level, err)
+			}
+		})
 	}
 
-	invalid := []string{"", "trace", "fatal", "verbose", "none"}
-	for _, level := range invalid {
-		if err := LogLevel(level); err == nil {
-			t.Errorf("LogLevel(%q) = nil, want error", level)
-		}
+	for _, level := range []string{"", "trace", "fatal", "verbose", "none"} {
+		t.Run("invalid_"+level, func(t *testing.T) {
+			if err := LogLevel(level); err == nil {
+				t.Errorf("LogLevel(%q) = nil, want error", level)
+			}
+		})
 	}
 }
 
 func TestPort(t *testing.T) {
-	valid := []int{1, 80, 443, 8080, 10032, 65535}
-	for _, port := range valid {
+	for _, port := range []int{1, 80, 443, 8080, 10032, 65535} {
 		if err := Port(port); err != nil {
 			t.Errorf("Port(%d) = %v, want nil", port, err)
 		}
 	}
 
-	invalid := []int{0, -1, -100, 65536, 100000}
-	for _, port := range invalid {
+	for _, port := range []int{0, -1, -100, 65536, 100000} {
 		if err := Port(port); err == nil {
 			t.Errorf("Port(%d) = nil, want error", port)
 		}
@@ -59,12 +60,15 @@ func TestContainerImage(t *testing.T) {
 		"nginx",
 	}
 	for _, image := range valid {
-		if err := ContainerImage(image); err != nil {
-			t.Errorf("ContainerImage(%q) = %v, want nil", image, err)
-		}
+		t.Run("valid_"+image, func(t *testing.T) {
+			if err := ContainerImage(image); err != nil {
+				t.Errorf("ContainerImage(%q) = %v, want nil", image, err)
+			}
+		})
 	}
 
 	invalid := []string{
+		"",
 		" leading-space:latest",
 		"trailing-space:latest ",
 		"has space:latest",
@@ -72,9 +76,11 @@ func TestContainerImage(t *testing.T) {
 		"has\nnewline:latest",
 	}
 	for _, image := range invalid {
-		if err := ContainerImage(image); err == nil {
-			t.Errorf("ContainerImage(%q) = nil, want error", image)
-		}
+		t.Run("invalid", func(t *testing.T) {
+			if err := ContainerImage(image); err == nil {
+				t.Errorf("ContainerImage(%q) = nil, want error", image)
+			}
+		})
 	}
 }
 
@@ -88,9 +94,11 @@ func TestBucketURL(t *testing.T) {
 		"file:///tmp/snapshots",
 	}
 	for _, u := range valid {
-		if err := BucketURL(u); err != nil {
-			t.Errorf("BucketURL(%q) = %v, want nil", u, err)
-		}
+		t.Run("valid_"+u, func(t *testing.T) {
+			if err := BucketURL(u); err != nil {
+				t.Errorf("BucketURL(%q) = %v, want nil", u, err)
+			}
+		})
 	}
 
 	invalid := []struct {
@@ -103,26 +111,15 @@ func TestBucketURL(t *testing.T) {
 		{"s3://", "must include a bucket"},
 	}
 	for _, tc := range invalid {
-		err := BucketURL(tc.url)
-		if err == nil {
-			t.Errorf("BucketURL(%q) = nil, want error containing %q", tc.url, tc.wantMsg)
-			continue
-		}
-		if !contains(err.Error(), tc.wantMsg) {
-			t.Errorf("BucketURL(%q) = %v, want error containing %q", tc.url, err, tc.wantMsg)
-		}
+		t.Run("invalid_"+tc.url, func(t *testing.T) {
+			err := BucketURL(tc.url)
+			if err == nil {
+				t.Errorf("BucketURL(%q) = nil, want error containing %q", tc.url, tc.wantMsg)
+				return
+			}
+			if !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Errorf("BucketURL(%q) = %v, want error containing %q", tc.url, err, tc.wantMsg)
+			}
+		})
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

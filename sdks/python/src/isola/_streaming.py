@@ -36,7 +36,7 @@ MAX_RETRY_DELAY = 8.0
 def _reconnect_delay(attempt: int) -> float:
     """Exponential backoff with jitter for stream reconnects."""
     delay: float = min(INITIAL_RETRY_DELAY * (2**attempt), MAX_RETRY_DELAY)
-    return delay * (0.5 + random.random() * 0.5)  # noqa: S311
+    return delay * (0.75 + random.random() * 0.25)  # noqa: S311
 
 
 class _SyncStreamAPI(Protocol):
