@@ -225,3 +225,6 @@ go.work
 go.work.sum
 /api-gateway
 /operator
+/sandbox-sidecar
+/snapshot-mounter
+/uploader
