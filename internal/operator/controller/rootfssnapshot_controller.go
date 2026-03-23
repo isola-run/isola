@@ -62,6 +62,8 @@ type RootfsSnapshotReconciler struct {
 	CredentialSecretName string
 	// UploaderImage is the container image for the uploader sidecar
 	UploaderImage string
+	// UploaderImagePullPolicy is the pull policy for the uploader container
+	UploaderImagePullPolicy corev1.PullPolicy
 	// SnapshotServiceAccount is the ServiceAccount for rootfs snapshot jobs
 	SnapshotServiceAccount string
 	// ImagePullSecrets for pulling uploader images from private registries
@@ -427,10 +429,11 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 					// Main container uploads the snapshot to the bucket
 					Containers: []corev1.Container{
 						{
-							Name:    "uploader",
-							Image:   r.UploaderImage,
-							Env:     uploaderEnv,
-							EnvFrom: uploaderEnvFrom,
+							Name:            "uploader",
+							Image:           r.UploaderImage,
+							ImagePullPolicy: r.UploaderImagePullPolicy,
+							Env:             uploaderEnv,
+							EnvFrom:         uploaderEnvFrom,
 							SecurityContext: &corev1.SecurityContext{
 								RunAsUser:    ptr.To(int64(65534)), // nobody
 								RunAsGroup:   ptr.To(int64(65534)),

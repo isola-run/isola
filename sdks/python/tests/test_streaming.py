@@ -381,6 +381,7 @@ async def test_async_stream_reconnects_and_resumes(monkeypatch: pytest.MonkeyPat
 @pytest.mark.asyncio
 async def test_async_stream_reconnects_with_zero_event_id(monkeypatch: pytest.MonkeyPatch) -> None:
     """id: 0 is a valid SSE event ID and must be sent as Last-Event-ID on reconnect."""
+
     async def _no_sleep(_: float) -> None:
         pass
 

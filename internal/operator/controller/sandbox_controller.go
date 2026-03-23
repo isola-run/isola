@@ -84,14 +84,15 @@ const SandboxFinalizer = "sandbox.isola.run/cleanup"
 
 type SandboxReconciler struct {
 	client.Client
-	Scheme                      *runtime.Scheme
-	Recorder                    events.EventRecorder
-	SandboxSidecarImage         string
-	RuntimeClassName            string                        // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
-	PriorityClassName           string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
-	ImagePullSecrets            []corev1.LocalObjectReference // ImagePullSecrets for pulling sandbox-sidecar images from private registries.
-	Clock                       Clock                         // Clock interface for time operations, allows mocking in tests
-	RootfsSnapshotHostMountPath string                        // Host path where rootfs snapshot tars are NFS-mounted (e.g., /mnt/isola-snapshots)
+	Scheme                        *runtime.Scheme
+	Recorder                      events.EventRecorder
+	SandboxSidecarImage           string
+	SandboxSidecarImagePullPolicy corev1.PullPolicy
+	RuntimeClassName              string                        // RuntimeClassName to use for sandbox pods (e.g. "gvisor"). Empty means use cluster default.
+	PriorityClassName             string                        // PriorityClassName to use for sandbox pods. Empty means use cluster default.
+	ImagePullSecrets              []corev1.LocalObjectReference // ImagePullSecrets for pulling sandbox-sidecar images from private registries.
+	Clock                         Clock                         // Clock interface for time operations, allows mocking in tests
+	RootfsSnapshotHostMountPath   string                        // Host path where rootfs snapshot tars are NFS-mounted (e.g., /mnt/isola-snapshots)
 }
 
 const (
@@ -126,9 +127,10 @@ func buildNetworkLabels(network *sandboxv1alpha1.NetworkSpec) map[string]string 
 func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 	rp := corev1.ContainerRestartPolicyAlways
 	return corev1.Container{
-		Name:          sandboxSidecarContainerName,
-		Image:         r.SandboxSidecarImage,
-		RestartPolicy: &rp,
+		Name:            sandboxSidecarContainerName,
+		Image:           r.SandboxSidecarImage,
+		ImagePullPolicy: r.SandboxSidecarImagePullPolicy,
+		RestartPolicy:   &rp,
 		// CAP_SYS_PTRACE is required by gVisor's ContextCanTrace check (task_files.go)
 		// that guards /proc/<pid>/root, /proc/<pid>/cwd, and /proc/<pid>/environ.
 		// These are accessed to find the container's PID, resolve its working directory,

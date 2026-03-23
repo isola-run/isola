@@ -86,9 +86,9 @@ async def test_async_spawn_and_exit_code(sandbox_response_copy: dict[str, object
     respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"commandId": "00000000-0000-0000-0000-000000000002"})
     )
-    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000002/status").mock(
-        return_value=httpx.Response(200, json={"exitCode": 0})
-    )
+    respx.get(
+        "http://localhost:8080/v1/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000002/status"
+    ).mock(return_value=httpx.Response(200, json={"exitCode": 0}))
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
