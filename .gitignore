@@ -224,3 +224,4 @@ cover.out
 go.work
 go.work.sum
 /api-gateway
+/operator
