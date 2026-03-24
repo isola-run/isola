@@ -103,7 +103,11 @@ export class APIClient implements StreamAPI {
   ): Promise<T> {
     return this.withRetry(async (retryCount) => {
       const res = await this.rawFetch(method, path, options, retryCount);
-      return (await res.json()) as T;
+      try {
+        return (await res.json()) as T;
+      } catch (error) {
+        throw APIConnectionError.fromError(error, method, path);
+      }
     });
   }
 
@@ -114,7 +118,9 @@ export class APIClient implements StreamAPI {
     options?: RequestOptions,
   ): Promise<void> {
     await this.withRetry(async (retryCount) => {
-      await this.rawFetch(method, path, options, retryCount);
+      const res = await this.rawFetch(method, path, options, retryCount);
+      // Consume the body so the connection can be reused.
+      await res.body?.cancel();
     });
   }
 
@@ -126,7 +132,11 @@ export class APIClient implements StreamAPI {
   ): Promise<Uint8Array> {
     return this.withRetry(async (retryCount) => {
       const res = await this.rawFetch(method, path, options, retryCount);
-      return new Uint8Array(await res.arrayBuffer());
+      try {
+        return new Uint8Array(await res.arrayBuffer());
+      } catch (error) {
+        throw APIConnectionError.fromError(error, method, path);
+      }
     });
   }
 

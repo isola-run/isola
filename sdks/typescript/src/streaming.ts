@@ -92,7 +92,9 @@ async function* parseSSE(
       yield { data: dataLines.join("\n"), id: currentId };
     }
   } finally {
-    reader.releaseLock();
+    // cancel() both cancels the underlying stream and releases the lock,
+    // ensuring the connection is freed on error or early return.
+    await reader.cancel().catch(() => {});
   }
 }
 

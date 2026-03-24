@@ -108,11 +108,16 @@ export class Command {
 
   /** Long-poll until the command exits, then return its exit code. */
   async wait(): Promise<number> {
+    // Timeout must exceed the long-poll wait to avoid spurious timeouts.
+    const pollTimeoutMs = (LONG_POLL_WAIT_SECONDS + 15) * 1_000;
     for (;;) {
       const resp = await this.api.request<CommandStatusResponse>(
         "GET",
         `${this.basePath}/status`,
-        { params: { waitSeconds: String(LONG_POLL_WAIT_SECONDS) } },
+        {
+          params: { waitSeconds: String(LONG_POLL_WAIT_SECONDS) },
+          timeout: pollTimeoutMs,
+        },
       );
       if (resp.exitCode !== null) {
         return resp.exitCode;
@@ -217,12 +222,18 @@ export class Commands {
       await cmd.closeStdin();
     }
 
-    const [exitCode, stdout, stderr] = await Promise.all([
-      cmd.wait(),
-      cmd.stdout.read(),
-      cmd.stderr.read(),
-    ]);
+    try {
+      const [exitCode, stdout, stderr] = await Promise.all([
+        cmd.wait(),
+        cmd.stdout.read(),
+        cmd.stderr.read(),
+      ]);
 
-    return { commandId: cmd.id, stdout, stderr, exitCode };
+      return { commandId: cmd.id, stdout, stderr, exitCode };
+    } catch (error) {
+      // Kill the command to prevent dangling long-poll promises.
+      await cmd.kill().catch(() => {});
+      throw error;
+    }
   }
 }
