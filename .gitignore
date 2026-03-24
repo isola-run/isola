@@ -215,6 +215,9 @@ coverage.html
 # Worktrees
 .worktrees/
 
+# Node.js / TypeScript
+node_modules/
+
 # Go
 bin/
 *.exe

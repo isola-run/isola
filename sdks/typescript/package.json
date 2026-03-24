@@ -1,0 +1,34 @@
+{
+  "name": "isola",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for the Isola sandbox API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:verbose": "vitest run --reporter=verbose",
+    "lint": "tsc --noEmit",
+    "check-all": "tsc --noEmit && vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0",
+    "vitest": "^3.0.0"
+  },
+  "license": "MIT"
+}

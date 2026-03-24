@@ -155,6 +155,28 @@ test-sdk-python: ## Run Python SDK tests
 test-sdk-python-verbose: ## Run Python SDK tests with verbose output
 	cd sdks/python && uv run --frozen --extra dev pytest -v
 
+##@ TypeScript SDK
+
+.PHONY: sdk-typescript-install
+sdk-typescript-install: ## Install TypeScript SDK dependencies
+	cd sdks/typescript && npm ci
+
+.PHONY: sdk-typescript-typecheck
+sdk-typescript-typecheck: ## Type-check TypeScript SDK
+	cd sdks/typescript && npx tsc --noEmit
+
+.PHONY: sdk-typescript-check-all
+sdk-typescript-check-all: ## Run all TypeScript SDK checks (no tests)
+	$(MAKE) sdk-typescript-typecheck
+
+.PHONY: test-sdk-typescript
+test-sdk-typescript: ## Run TypeScript SDK tests
+	cd sdks/typescript && npx vitest run
+
+.PHONY: test-sdk-typescript-verbose
+test-sdk-typescript-verbose: ## Run TypeScript SDK tests with verbose output
+	cd sdks/typescript && npx vitest run --reporter=verbose
+
 ##@ E2E Testing
 
 E2E_WORKERS ?= 20
