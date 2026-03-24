@@ -1,9 +1,4 @@
-import {
-  type IsolaError,
-  APIError,
-  APIConnectionError,
-  isTransient,
-} from "./errors.js";
+import { isTransient } from "./errors.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -170,12 +165,8 @@ export class StreamReader implements AsyncIterable<string> {
         // Stream completed normally.
         return;
       } catch (error) {
-        const isIsolaErr =
-          error instanceof APIError ||
-          error instanceof APIConnectionError;
         if (
-          isIsolaErr &&
-          isTransient(error as IsolaError) &&
+          isTransient(error) &&
           reconnects < MAX_RECONNECTS
         ) {
           reconnects++;

@@ -122,7 +122,7 @@ export class APIConnectionError extends IsolaError {
 }
 
 /** Returns true for errors that are safe to retry (connection failures, 408/429/502/503/504). */
-export function isTransient(error: IsolaError): boolean {
+export function isTransient(error: unknown): boolean {
   if (error instanceof APIConnectionError) return true;
   if (error instanceof APIError) {
     return (
