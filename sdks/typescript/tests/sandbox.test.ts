@@ -118,7 +118,7 @@ describe("Sandboxes.get", () => {
     const sandbox = await client.sandboxes.get("sbx-test-123");
     expect(sandbox.id).toBe("sbx-test-123");
     expect(sandbox.status).toBe("running");
-    expect(sandbox.creationTimestamp).toBe("2025-01-01T00:00:00Z");
+    expect(sandbox.creationTimestamp).toEqual(new Date("2025-01-01T00:00:00Z"));
     expect(sandbox.timeout).toBe(3600);
     expect(sandbox.network).toEqual({
       allowInternetEgress: false,

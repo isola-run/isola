@@ -140,7 +140,7 @@ export class Sandboxes {
 export class Sandbox {
   readonly id: string;
   readonly status: SandboxStatus;
-  readonly creationTimestamp: string;
+  readonly creationTimestamp: Date;
   readonly network?: NetworkSpec;
   readonly timeout?: number;
   readonly rootfsSnapshotSources?: RootfsSnapshotSource[];
@@ -154,7 +154,7 @@ export class Sandbox {
   ) {
     this.id = data.id;
     this.status = data.status;
-    this.creationTimestamp = data.creationTimestamp;
+    this.creationTimestamp = new Date(data.creationTimestamp);
     this.network = data.network;
     this.timeout = data.activeDeadlineSeconds;
     this.rootfsSnapshotSources = data.rootfsSnapshotSources;

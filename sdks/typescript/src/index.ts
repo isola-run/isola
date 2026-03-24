@@ -19,8 +19,8 @@ export { StreamReader } from "./streaming.js";
 // ---------------------------------------------------------------------------
 // Models / types
 // ---------------------------------------------------------------------------
+export { SandboxStatus } from "./models.js";
 export type {
-  SandboxStatus,
   NetworkSpec,
   RootfsSnapshotSource,
   ResourceList,

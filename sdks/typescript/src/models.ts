@@ -2,13 +2,16 @@
 // Enums
 // ---------------------------------------------------------------------------
 
-export type SandboxStatus =
-  | "creating"
-  | "running"
-  | "shuttingDown"
-  | "failed"
-  | "stopped"
-  | "unknown";
+export const SandboxStatus = {
+  Creating: "creating",
+  Running: "running",
+  ShuttingDown: "shuttingDown",
+  Failed: "failed",
+  Stopped: "stopped",
+  Unknown: "unknown",
+} as const;
+
+export type SandboxStatus = (typeof SandboxStatus)[keyof typeof SandboxStatus];
 
 // ---------------------------------------------------------------------------
 // Network & Resources
