@@ -12,6 +12,7 @@ import {
   jsonResponse,
   noContentResponse,
   errorResponse,
+  sseResponse,
 } from "./helpers.js";
 
 installMockFetch();
@@ -234,4 +235,83 @@ describe("APIClient.requestBytes", () => {
     expect(result).toBeInstanceOf(Uint8Array);
     expect(new TextDecoder().decode(result)).toBe("file contents");
   });
+});
+
+// ---------------------------------------------------------------------------
+// APIClient.openStream
+// ---------------------------------------------------------------------------
+
+describe("APIClient.openStream", () => {
+  const api = new APIClient({ baseURL: "http://localhost:8080" });
+
+  it("sends Accept header and disables timeout", async () => {
+    mockFetch.mockResolvedValueOnce(sseResponse("data: hello\n\n"));
+
+    await api.openStream("/v1/stream");
+
+    const [url, init] = mockFetch.mock.calls[0]!;
+    expect(url).toBe("http://localhost:8080/v1/stream");
+    expect(init?.method).toBe("GET");
+    expect(init?.headers).toEqual(
+      expect.objectContaining({ Accept: "text/event-stream" }),
+    );
+    expect(init?.signal).toBeUndefined();
+  });
+
+  it("merges custom headers with Accept", async () => {
+    mockFetch.mockResolvedValueOnce(sseResponse("data: hello\n\n"));
+
+    await api.openStream("/v1/stream", {
+      headers: { "Last-Event-ID": "42" },
+    });
+
+    const [, init] = mockFetch.mock.calls[0]!;
+    expect(init?.headers).toEqual(
+      expect.objectContaining({
+        Accept: "text/event-stream",
+        "Last-Event-ID": "42",
+      }),
+    );
+  });
+
+  it("does not retry on failure", async () => {
+    mockFetch.mockRejectedValueOnce(new TypeError("fetch failed"));
+
+    await expect(api.openStream("/v1/stream")).rejects.toThrow(
+      APIConnectionError,
+    );
+    expect(mockFetch).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// APIClient constructor validation
+// ---------------------------------------------------------------------------
+
+describe("APIClient constructor", () => {
+  it("throws when baseURL is empty string", () => {
+    expect(() => new APIClient({ baseURL: "" })).toThrow("baseURL");
+  });
+
+  it("throws when baseURL is only slashes", () => {
+    expect(() => new APIClient({ baseURL: "///" })).toThrow("baseURL");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Invalid response handling
+// ---------------------------------------------------------------------------
+
+describe("APIClient.request with invalid response", () => {
+  const api = new APIClient({ baseURL: "http://localhost:8080" });
+
+  it("wraps non-JSON 200 response as APIConnectionError", async () => {
+    mockFetch.mockResolvedValue(
+      new Response("<html>not json</html>", { status: 200 }),
+    );
+
+    await expect(api.request("GET", "/v1/test")).rejects.toThrow(
+      APIConnectionError,
+    );
+  }, 30_000);
 });

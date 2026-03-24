@@ -242,3 +242,89 @@ describe("StreamReader with \\r\\n line endings", () => {
     expect(content).toBe("hello");
   });
 });
+
+describe("StreamReader SSE edge cases", () => {
+  it("reconnects with event id 0 (falsy but valid)", async () => {
+    const api = createMockStreamAPI();
+
+    api.openStream.mockResolvedValueOnce(
+      new Response(
+        failingSSEStream(
+          "id: 0\ndata: first\n\n",
+          new APIConnectionError("dropped"),
+        ),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      ),
+    );
+    api.openStream.mockResolvedValueOnce(
+      sseResponse("id: 5\ndata: second\n\n"),
+    );
+
+    const reader = new StreamReader(api, "/stream");
+    const chunks: string[] = [];
+    for await (const chunk of reader) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toEqual(["first", "second"]);
+    const secondCall = api.openStream.mock.calls[1]!;
+    expect(secondCall[1]).toEqual({
+      headers: { "Last-Event-ID": "0" },
+    });
+  }, 10_000);
+
+  it("flushes trailing data not terminated by blank line", async () => {
+    const api = createMockStreamAPI();
+    api.openStream.mockResolvedValueOnce(
+      sseResponse("id: 0\ndata: unterminated"),
+    );
+
+    const reader = new StreamReader(api, "/stream");
+    const content = await reader.read();
+    expect(content).toBe("unterminated");
+  });
+
+  it("throws when response has no body", async () => {
+    const api = createMockStreamAPI();
+    api.openStream.mockResolvedValueOnce(
+      new Response(null, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+
+    const reader = new StreamReader(api, "/stream");
+    await expect(reader.read()).rejects.toThrow("not readable");
+  });
+
+  it("ignores unknown SSE fields", async () => {
+    const api = createMockStreamAPI();
+    api.openStream.mockResolvedValueOnce(
+      sseResponse("event: message\nretry: 5000\ndata: hello\nid: 1\n\n"),
+    );
+
+    const reader = new StreamReader(api, "/stream");
+    const content = await reader.read();
+    expect(content).toBe("hello");
+  });
+
+  it("strips only one leading space after colon per SSE spec", async () => {
+    const api = createMockStreamAPI();
+    api.openStream.mockResolvedValueOnce(
+      sseResponse("data:  two spaces\n\n"),
+    );
+
+    const reader = new StreamReader(api, "/stream");
+    const content = await reader.read();
+    expect(content).toBe(" two spaces");
+  });
+
+  it("handles data field with no colon", async () => {
+    const api = createMockStreamAPI();
+    api.openStream.mockResolvedValueOnce(sseResponse("data\n\n"));
+
+    const reader = new StreamReader(api, "/stream");
+    const content = await reader.read();
+    expect(content).toBe("");
+  });
+});

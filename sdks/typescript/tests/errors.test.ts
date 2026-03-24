@@ -88,6 +88,24 @@ describe("APIError.fromResponse", () => {
     expect(error).not.toBeInstanceOf(BadRequestError);
     expect(error.status).toBe(418);
   });
+
+  it("uses fallback message when body is empty", () => {
+    const error = APIError.fromResponse(
+      503,
+      "",
+      emptyHeaders,
+      "GET",
+      "/v1/test",
+    );
+    expect(error.message).toContain("request failed with status 503");
+  });
+
+  it("prefers detail over message when both present", () => {
+    const body = JSON.stringify({ detail: "detail-text", message: "msg-text" });
+    const error = APIError.fromResponse(400, body, emptyHeaders, "POST", "/v1/test");
+    expect(error.message).toContain("detail-text");
+    expect(error.message).not.toContain("msg-text");
+  });
 });
 
 describe("APIConnectionError.fromError", () => {

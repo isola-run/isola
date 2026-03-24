@@ -87,6 +87,18 @@ async function* parseSSE(
       }
     }
 
+    // Process any remaining data left in the buffer.
+    if (buffer) {
+      const line = buffer.endsWith("\r") ? buffer.slice(0, -1) : buffer;
+      const colonIdx = line.indexOf(":");
+      if (colonIdx !== 0) {
+        const field = colonIdx > 0 ? line.slice(0, colonIdx) : line;
+        const val = colonIdx > 0 ? line.slice(colonIdx + 1).replace(/^ /, "") : "";
+        if (field === "data") dataLines.push(val);
+        else if (field === "id") currentId = val;
+      }
+    }
+
     // Flush any trailing data that wasn't terminated by a blank line.
     if (dataLines.length > 0) {
       yield { data: dataLines.join("\n"), id: currentId };
