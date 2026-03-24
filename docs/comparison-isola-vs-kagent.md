@@ -20,9 +20,12 @@ In short: **Isola provides the compute environment; kagent provides the AI brain
 | **Primary user** | Platform teams, AI infra builders | DevOps/SRE teams, AI agent builders |
 | **CNCF status** | Not a CNCF project | CNCF Sandbox (accepted May 2025) |
 | **Origin** | isola-ai | Solo.io |
-| **Language** | Go (operator, gateway, sidecar) + Python SDK | Go (controller, ADK) + Python (engine) |
-| **K8s integration** | Operator + CRDs (Sandbox, RootfsSnapshot) | Operator + CRDs (Agent, ToolServer, ModelConfig) |
+| **Language** | Go (operator, gateway, sidecar) + Python SDK | Go (~48%, controller + Go ADK) + Python (~22%, engine/ADK) + TypeScript (~24%, UI) |
+| **K8s integration** | Operator + CRDs (Sandbox, RootfsSnapshot) | Operator + CRDs (Agent, ModelConfig, RemoteMCPServer, MCPServer) |
 | **LLM involvement** | None — LLM-agnostic compute | Core — agents are LLM-powered |
+| **Agent-agent protocol** | N/A | A2A (Agent-to-Agent, JSON-RPC 2.0 over SSE) |
+| **Tool protocol** | N/A | MCP (Model Context Protocol) |
+| **GitHub stars** | — | ~2,400+ |
 | **License** | — | Apache 2.0 |
 
 ---
@@ -58,25 +61,34 @@ The architecture is designed around **isolation and control**: every sandbox run
 ### kagent Architecture
 
 ```
-User (UI / CLI / A2A protocol)
+User (Next.js UI / CLI)
     │
-    ▼
-Controller (K8s operator)
+    ▼ A2A JSON-RPC over SSE
+Controller Manager (Go, port 8083)
     │
-    ├── Watches Agent, ToolServer, ModelConfig CRDs
-    ├── Provisions agent infrastructure
+    ├── Watches Agent, ModelConfig, RemoteMCPServer CRDs
+    ├── Reconciles → Deployment + Service + Secret + ServiceAccount per agent
+    ├── Proxies A2A messages to agent pods
     │
-    ▼
-Engine (ADK runtime)
+    ▼ A2A JSON-RPC
+Agent Pod (one per agent)
     │
-    ├── Executes agent logic (LLM calls + tool invocations)
-    ├── MCP tool servers (K8s, Helm, Istio, Prometheus, etc.)
-    └── A2A protocol for multi-agent communication
+    ├── ADK Runtime (Python or Go)
+    │   ├── LLM interaction loop (prompt → LLM → tool call → result)
+    │   ├── Reads config from mounted Secret (config.json)
+    │   └── A2A server for subagent invocation
+    │
+    └──► MCP Tool Servers
+         ├── K8s, Istio, Helm, Argo
+         ├── Prometheus, Grafana, Cilium
+         └── Custom MCP servers
 ```
 
-**Key components:** 4 components — Controller, Engine (ADK), UI, CLI.
+**Key components:** Controller Manager (Go), Agent Runtime/Engine (Python ADK or Go ADK), Web UI (Next.js), CLI (Go).
 
-The architecture is designed around **agent orchestration**: CRDs define agents declaratively (system prompt + tools + LLM config), the engine runs them, and agents interact with infrastructure via MCP tool servers.
+**Data flow:** UI sends A2A JSON-RPC → Controller looks up agent pod Service (`http://{agent-name}.{namespace}:8080`) → Agent pod's ADK executor builds LLM request (system prompt + history + tools) → LLM responds with text or tool calls → MCP tool invocation if needed → Results stream back as SSE events → UI renders.
+
+**Each agent gets its own pod**, Service, ServiceAccount, and config Secret. The controller acts as a proxy between clients and agent pods. State is persisted in SQLite or PostgreSQL (performance cache for UI queries; CRDs remain source of truth).
 
 ---
 
@@ -100,13 +112,16 @@ The architecture is designed around **agent orchestration**: CRDs define agents 
 | Capability | Details |
 |---|---|
 | **Declarative agents** | Define AI agents as K8s CRDs (system prompt, tools, LLM config, sub-agents) |
-| **Multi-LLM support** | OpenAI, Anthropic, Azure OpenAI, Google Vertex AI, Ollama, custom gateways |
+| **Multi-LLM support** | OpenAI, Anthropic, Azure OpenAI, Google Vertex AI/Gemini, Ollama, AWS Bedrock, custom gateways |
 | **Built-in tool catalog** | MCP servers for K8s, Istio, Helm, Argo, Prometheus, Grafana, Cilium |
 | **Multi-agent orchestration** | A2A (Agent-to-Agent) protocol for agent teams, planning agents, task delegation |
 | **Human-in-the-loop** | Tool approval workflows, nested HITL through agent chains |
 | **Observability** | OpenTelemetry tracing for agent and tool execution |
 | **Web UI** | Built-in management interface for agents and tools |
 | **Agent mesh vision** | kagent + agentgateway + Istio for enterprise agent networking |
+| **Prompt templates** | Composable system prompts with `{{include "source/key"}}` from ConfigMaps and variable interpolation |
+| **Cross-namespace sharing** | RemoteMCPServer supports `AllowedNamespaces` selectors for controlled tool sharing |
+| **BYO agents** | Support for custom container images alongside declarative agents |
 
 ---
 
@@ -121,15 +136,16 @@ The architecture is designed around **agent orchestration**: CRDs define agents 
 
 Isola's CRDs are **infrastructure-focused**: they define what runs, how it's isolated, and how state is preserved.
 
-### kagent CRDs
+### kagent CRDs (`kagent.dev/v1alpha2`)
 
 | CRD | Purpose |
 |---|---|
-| **Agent** | An AI agent — system prompt, tools, sub-agents, LLM configuration |
-| **ToolServer** | An MCP server providing tools to agents |
-| **ModelConfig** | LLM provider configuration (API keys, endpoints, model selection) |
+| **Agent** | An AI agent — two modes: *Declarative* (system prompt, model config ref, tool refs, deployment spec, memory config, prompt templates) or *BYO* (custom container image). CEL-validated. |
+| **ModelConfig** | LLM provider configuration — provider-specific sub-configs (Anthropic, OpenAI, Azure OpenAI, Ollama, Gemini, Bedrock). API keys via K8s Secrets. |
+| **RemoteMCPServer** | External MCP tool server declaration. Controller connects, discovers tools, stores in DB. Supports namespace-scoped access control via `AllowedNamespaces`. |
+| **MCPServer** | Managed MCP servers via the KMCP operator (separate sub-project). |
 
-kagent's CRDs are **agent-focused**: they define what an agent knows, what it can do, and which LLM powers it.
+kagent's CRDs are **agent-focused**: they define what an agent knows, what it can do, and which LLM powers it. Three controllers (Agent, RemoteMCPServer, MCPServer) share a single reconciler with database-level concurrency control.
 
 ---
 
@@ -153,7 +169,7 @@ kagent's CRDs are **agent-focused**: they define what an agent knows, what it ca
 ### 4. State & Persistence
 
 - **Isola**: Sandbox state is ephemeral (in-memory command state, lost on sidecar restart). Rootfs snapshots provide checkpoint/restore for the filesystem layer via cloud storage.
-- **kagent**: Agent state is persisted in a database (GORM). Session history, conversation context, and tool results are stored for continuity and observability.
+- **kagent**: Agent state is persisted in a database (SQLite or PostgreSQL via GORM). Session history, conversation context, and tool results are stored for continuity and observability. CRDs remain the source of truth; the database is a performance cache.
 
 ### 5. SDK & API Surface
 
@@ -182,18 +198,19 @@ This is the "AI brain + secure hands" pattern: kagent provides reasoning and pla
 |---|---|---|
 | **Primary language** | Go | Go + Python |
 | **K8s framework** | controller-runtime | controller-runtime |
-| **API framework** | Huma + chi (Go) | HTTP API (Go) |
-| **Agent runtime** | N/A | ADK (Agent Development Kit) |
-| **LLM integration** | None | Multi-provider (OpenAI, Anthropic, etc.) |
-| **Tool protocol** | N/A | MCP (Model Context Protocol) |
-| **Agent protocol** | N/A | A2A (Agent-to-Agent) |
-| **Client SDK** | Python (httpx, pydantic) | Go client, Python engine |
-| **Streaming** | SSE (text/event-stream) | A2A task events |
+| **API framework** | Huma + chi (Go) | HTTP server (Go, port 8083) |
+| **Agent runtime** | N/A | Google ADK (Python or Go) |
+| **LLM integration** | None | Multi-provider (OpenAI, Anthropic, Gemini, Bedrock, Ollama, etc.) |
+| **Tool protocol** | N/A | MCP (Model Context Protocol) — Streamable HTTP and SSE transports |
+| **Agent protocol** | N/A | A2A (Agent-to-Agent) — JSON-RPC 2.0 over SSE |
+| **Client SDK** | Python (httpx, pydantic) | Go client SDK, Python engine |
+| **Streaming** | SSE (text/event-stream) for command output | A2A task events over SSE |
 | **Observability** | Prometheus metrics | OpenTelemetry tracing |
-| **Storage** | gocloud.dev (S3/GCS/Azure) for snapshots | GORM database for sessions |
+| **Storage** | gocloud.dev (S3/GCS/Azure) for snapshots | SQLite or PostgreSQL (GORM) for sessions |
 | **Container runtime** | gVisor (optional) or default | Cluster default |
+| **Deployment per workload** | 1 sidecar per sandbox pod | 1 pod + Service + Secret per agent |
 | **Testing** | Ginkgo/Gomega + envtest + pytest | Go tests + e2e |
-| **UI** | None (API/SDK only) | Built-in web UI |
+| **UI** | None (API/SDK only) | Next.js web UI |
 
 ---
 
