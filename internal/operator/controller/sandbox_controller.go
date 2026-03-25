@@ -69,7 +69,6 @@ const (
 	CondReasonRootfsSnapshotTimeout        = "RootfsSnapshotTimeout"
 	CondReasonInvalidRuntime               = "InvalidRuntime"
 
-	// Startup timeout
 	CondReasonStartupTimeoutExceeded = "StartupTimeoutExceeded"
 
 	// Restore-related reasons
@@ -659,20 +658,6 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 	}
 
 	if !podutil.IsPodReady(sandboxPod) {
-		if sandboxPod != nil && sandbox.Spec.StartupTimeoutSeconds != nil {
-			deadline := sandboxPod.CreationTimestamp.Add(
-				time.Duration(*sandbox.Spec.StartupTimeoutSeconds) * time.Second)
-			if r.clock().Now().After(deadline) {
-				return metav1.Condition{
-					Type:               SandboxReadyCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonStartupTimeoutExceeded,
-					Message:            fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds),
-					ObservedGeneration: sandbox.Generation,
-				}
-			}
-		}
-
 		return metav1.Condition{
 			Type:               SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
@@ -784,8 +769,10 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Startup timeout: if the pod exists but is not ready, check if it exceeded the startup deadline
-	if sandboxPod != nil && !podutil.IsPodReady(sandboxPod) && sandbox.Spec.StartupTimeoutSeconds != nil {
-		startupDeadline := sandboxPod.CreationTimestamp.Add(
+	var startupDeadline time.Time
+	hasStartupDeadline := sandboxPod != nil && !podutil.IsPodReady(sandboxPod) && sandbox.Spec.StartupTimeoutSeconds != nil
+	if hasStartupDeadline {
+		startupDeadline = sandboxPod.CreationTimestamp.Add(
 			time.Duration(*sandbox.Spec.StartupTimeoutSeconds) * time.Second)
 		if r.clock().Now().After(startupDeadline) {
 			log.Info("Startup timeout exceeded", "deadline", startupDeadline)
@@ -813,10 +800,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	// Also requeue for startup deadline if the pod is not yet ready
-	if sandboxPod != nil && sandbox.Spec.StartupTimeoutSeconds != nil && !podutil.IsPodReady(sandboxPod) {
-		startupDeadline := sandboxPod.CreationTimestamp.Add(
-			time.Duration(*sandbox.Spec.StartupTimeoutSeconds) * time.Second)
+	if hasStartupDeadline {
 		timeUntilStartup := r.clock().Until(startupDeadline)
 		if timeUntilStartup <= 0 {
 			timeUntilStartup = time.Millisecond
