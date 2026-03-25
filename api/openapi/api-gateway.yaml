@@ -89,7 +89,7 @@ components:
             type: string
           description: Environment variable overrides
           type: object
-        timeout:
+        timeoutSeconds:
           description: Max execution time in seconds
           format: int64
           minimum: 1
@@ -123,11 +123,6 @@ components:
           format: uri
           readOnly: true
           type: string
-        activeDeadlineSeconds:
-          description: Max lifetime in seconds. Omit for no timeout
-          format: int64
-          minimum: 1
-          type: integer
         network:
           $ref: "#/components/schemas/NetworkSpec"
           description: Network isolation config
@@ -142,6 +137,16 @@ components:
           type:
             - array
             - "null"
+        startupTimeoutSeconds:
+          description: Max seconds for the sandbox to become Ready. Omit for no startup timeout
+          format: int64
+          minimum: 1
+          type: integer
+        timeoutSeconds:
+          description: Max lifetime in seconds. Omit for no timeout
+          format: int64
+          minimum: 1
+          type: integer
       required:
         - podTemplate
       type: object
@@ -366,10 +371,6 @@ components:
           format: uri
           readOnly: true
           type: string
-        activeDeadlineSeconds:
-          description: Max lifetime in seconds
-          format: int64
-          type: integer
         creationTimestamp:
           description: Creation UTC timestamp in RFC3339 format
           type: string
@@ -389,6 +390,10 @@ components:
           type:
             - array
             - "null"
+        startupTimeoutSeconds:
+          description: Max seconds for the sandbox to become Ready
+          format: int64
+          type: integer
         status:
           description: Sandbox status
           enum:
@@ -399,6 +404,10 @@ components:
             - stopped
             - unknown
           type: string
+        timeoutSeconds:
+          description: Max lifetime in seconds
+          format: int64
+          type: integer
       required:
         - id
         - podTemplate

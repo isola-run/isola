@@ -562,7 +562,7 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("Timeout", func() {
 		It("kills the process after timeout expires", func() {
-			code, result := postCommand(`{"args": ["sleep", "60"], "timeout": 1}`)
+			code, result := postCommand(`{"args": ["sleep", "60"], "timeoutSeconds": 1}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
@@ -576,7 +576,7 @@ var _ = Describe("Command Handlers", func() {
 		It("preserves partial output and reports kill exit code", func() {
 			code, result := postCommand(`{
 				"args": ["/bin/sh", "-c", "echo -n before-timeout; sleep 60"],
-				"timeout": 1
+				"timeoutSeconds": 1
 			}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 

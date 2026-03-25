@@ -43,8 +43,8 @@ import (
 )
 
 const (
-	defaultActiveDeadlineSecondsSnapshot int64 = 300
-	defaultTTLSecondsAfterFinished       int32 = 300
+	defaultTimeoutSecondsSnapshot  int64 = 300
+	defaultTTLSecondsAfterFinished int32 = 300
 )
 
 // defaultRootfssnapshotSizeLimit is used when the container has no ephemeral storage limit.
@@ -333,9 +333,9 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 	jobName := podutil.GetSnapshotJobName(snap.Name)
 	localSnapshotPath := "/snapshot/rootfs.tar"
 
-	activeDeadlineSeconds := defaultActiveDeadlineSecondsSnapshot
-	if snap.Spec.ActiveDeadlineSeconds != nil {
-		activeDeadlineSeconds = *snap.Spec.ActiveDeadlineSeconds
+	timeoutSeconds := defaultTimeoutSecondsSnapshot
+	if snap.Spec.TimeoutSeconds != nil {
+		timeoutSeconds = *snap.Spec.TimeoutSeconds
 	}
 
 	rootfssnapshotSizeLimit := r.getRootfssnapshotSizeLimit(sandboxPod, containerName)
@@ -379,7 +379,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit:          ptr.To(int32(0)),
-			ActiveDeadlineSeconds: &activeDeadlineSeconds,
+			ActiveDeadlineSeconds: &timeoutSeconds,
 			// No TTLSecondsAfterFinished - we delete the Job explicitly after
 			// reading results to avoid race conditions. Owner reference to
 			// RootfsSnapshot ensures cleanup if the snapshot is deleted.

@@ -14,11 +14,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from datetime import datetime
 from urllib.parse import quote
 
 from ._client import _AsyncAPI, _SyncAPI
 from ._commands import AsyncCommands, Commands
+from ._exceptions import IsolaError
 from ._filesystem import AsyncFilesystem, Filesystem
 from ._models import (
     ContainerSpec,
@@ -33,6 +36,10 @@ from ._models import (
     SandboxStatus,
     SandboxSummary,
 )
+
+_POLL_INTERVAL = 1.0
+
+_TERMINAL_STATUSES = frozenset({SandboxStatus.FAILED, SandboxStatus.STOPPED})
 
 
 def _sandbox_path(sandbox_id: str) -> str:
@@ -66,9 +73,11 @@ class Sandboxes:
         cpu: str | None = None,
         memory: str | None = None,
         ephemeral_storage: str | None = None,
-        timeout: int | None = None,
+        timeout_seconds: int | None = None,
+        startup_timeout_seconds: int | None = 60,
         network: NetworkSpec | None = None,
         rootfs_snapshot_source: str | None = None,
+        wait: bool = True,
     ) -> Sandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -80,7 +89,8 @@ class Sandboxes:
                     resources=resources,
                 )
             ),
-            timeout=timeout,
+            timeout_seconds=timeout_seconds,
+            startup_timeout_seconds=startup_timeout_seconds,
             network=network,
             rootfs_snapshot_sources=_build_rootfs_snapshot_sources(rootfs_snapshot_source),
         )
@@ -91,7 +101,10 @@ class Sandboxes:
             SandboxData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        return Sandbox(self._api, data)
+        sandbox = Sandbox(self._api, data)
+        if wait:
+            sandbox.wait()
+        return sandbox
 
     def list(self) -> list[SandboxSummary]:
         response = self._api.request_model("GET", "/v1/sandboxes", ListSandboxesResponse)
@@ -115,9 +128,11 @@ class AsyncSandboxes:
         cpu: str | None = None,
         memory: str | None = None,
         ephemeral_storage: str | None = None,
-        timeout: int | None = None,
+        timeout_seconds: int | None = None,
+        startup_timeout_seconds: int | None = 60,
         network: NetworkSpec | None = None,
         rootfs_snapshot_source: str | None = None,
+        wait: bool = True,
     ) -> AsyncSandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -129,7 +144,8 @@ class AsyncSandboxes:
                     resources=resources,
                 )
             ),
-            timeout=timeout,
+            timeout_seconds=timeout_seconds,
+            startup_timeout_seconds=startup_timeout_seconds,
             network=network,
             rootfs_snapshot_sources=_build_rootfs_snapshot_sources(rootfs_snapshot_source),
         )
@@ -140,7 +156,10 @@ class AsyncSandboxes:
             SandboxData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        return AsyncSandbox(self._api, data)
+        sandbox = AsyncSandbox(self._api, data)
+        if wait:
+            await sandbox.wait()
+        return sandbox
 
     async def list(self) -> list[SandboxSummary]:
         response = await self._api.request_model("GET", "/v1/sandboxes", ListSandboxesResponse)
@@ -175,8 +194,12 @@ class Sandbox:
         return self._data.network
 
     @property
-    def timeout(self) -> int | None:
-        return self._data.timeout
+    def timeout_seconds(self) -> int | None:
+        return self._data.timeout_seconds
+
+    @property
+    def startup_timeout_seconds(self) -> int | None:
+        return self._data.startup_timeout_seconds
 
     @property
     def rootfs_snapshot_sources(self) -> list[RootfsSnapshotSource] | None:
@@ -187,6 +210,15 @@ class Sandbox:
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         self.delete()
+
+    def wait(self) -> None:
+        while self._data.status != SandboxStatus.RUNNING:
+            if self._data.status in _TERMINAL_STATUSES:
+                raise IsolaError(
+                    f"sandbox {self._data.id} reached terminal state: {self._data.status.value}",
+                )
+            time.sleep(_POLL_INTERVAL)
+            self._data = self._api.request_model("GET", _sandbox_path(self._data.id), SandboxData)
 
     def delete(self) -> None:
         self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
@@ -216,8 +248,12 @@ class AsyncSandbox:
         return self._data.network
 
     @property
-    def timeout(self) -> int | None:
-        return self._data.timeout
+    def timeout_seconds(self) -> int | None:
+        return self._data.timeout_seconds
+
+    @property
+    def startup_timeout_seconds(self) -> int | None:
+        return self._data.startup_timeout_seconds
 
     @property
     def rootfs_snapshot_sources(self) -> list[RootfsSnapshotSource] | None:
@@ -228,6 +264,15 @@ class AsyncSandbox:
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         await self.delete()
+
+    async def wait(self) -> None:
+        while self._data.status != SandboxStatus.RUNNING:
+            if self._data.status in _TERMINAL_STATUSES:
+                raise IsolaError(
+                    f"sandbox {self._data.id} reached terminal state: {self._data.status.value}",
+                )
+            await asyncio.sleep(_POLL_INTERVAL)
+            self._data = await self._api.request_model("GET", _sandbox_path(self._data.id), SandboxData)
 
     async def delete(self) -> None:
         await self._api.request_no_content("DELETE", _sandbox_path(self._data.id))

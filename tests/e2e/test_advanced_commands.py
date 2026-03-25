@@ -100,7 +100,7 @@ def test_kill_exit_code(session_sandbox: Sandbox) -> None:
     Go's exec.CommandContext cancels via SIGKILL; the sidecar reports -1
     when ExitError has no clean exit status (e.g. signal death in gVisor).
     """
-    cmd = session_sandbox.commands.spawn("sleep", "300", timeout=15)
+    cmd = session_sandbox.commands.spawn("sleep", "300", timeout_seconds=15)
     assert cmd.exit_code() is None
 
     cmd.kill()
@@ -114,7 +114,7 @@ def test_stdout_readable_after_kill(session_sandbox: Sandbox) -> None:
     """Output written before kill is still readable after the command terminates."""
     cmd = session_sandbox.commands.spawn(
         "sh", "-c", "echo before_kill; sleep 300",
-        timeout=15,
+        timeout_seconds=15,
     )
 
     # Give the echo time to execute and flush through the SSE pipeline
@@ -158,7 +158,7 @@ async def test_concurrent_stdin_writes_are_non_interleaved(async_session_sandbox
     # pipe (it stays open for the command's lifetime), so cat would block forever.
     cmd = await async_session_sandbox.commands.spawn(
         "head", "-c", str(TOTAL),
-        timeout=15,
+        timeout_seconds=15,
     )
 
     errors: list[Exception] = []

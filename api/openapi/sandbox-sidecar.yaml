@@ -45,7 +45,7 @@ components:
             type: string
           description: Environment variable overrides
           type: object
-        timeout:
+        timeoutSeconds:
           description: Max execution time in seconds
           format: int64
           minimum: 1

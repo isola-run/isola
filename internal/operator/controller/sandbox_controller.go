@@ -69,6 +69,9 @@ const (
 	CondReasonRootfsSnapshotTimeout        = "RootfsSnapshotTimeout"
 	CondReasonInvalidRuntime               = "InvalidRuntime"
 
+	// Startup timeout
+	CondReasonStartupTimeoutExceeded = "StartupTimeoutExceeded"
+
 	// Restore-related reasons
 	CondReasonRootfsRestoreConfigError = "RootfsRestoreConfigurationError"
 	CondReasonNoRootfsSnapshot         = "NoRootfsSnapshot"
@@ -78,7 +81,7 @@ const (
 	CondReasonNetworkPolicyFailed  = "NetworkPolicyFailed"
 )
 
-const defaultActiveDeadlineSeconds int64 = 300
+const defaultTimeoutSeconds int64 = 300
 
 const SandboxFinalizer = "sandbox.isola.run/cleanup"
 
@@ -475,7 +478,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 
 func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) (optionalTimeoutAt *metav1.Time, err error) {
 	log := logf.FromContext(ctx)
-	if sandbox.Spec.ActiveDeadlineSeconds == nil {
+	if sandbox.Spec.TimeoutSeconds == nil {
 		return nil, nil
 	}
 
@@ -488,7 +491,7 @@ func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv
 			return nil, nil
 		}
 
-		timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.ActiveDeadlineSeconds) * time.Second)
+		timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.TimeoutSeconds) * time.Second)
 		log.Info("calculated sandbox timeout from pod start time", "startTime", startTime.Time, "timeoutAt", timeoutAt)
 
 		sandbox.Status.TimeoutAt = &metav1.Time{Time: timeoutAt}
@@ -656,6 +659,20 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 	}
 
 	if !podutil.IsPodReady(sandboxPod) {
+		if sandboxPod != nil && sandbox.Spec.StartupTimeoutSeconds != nil {
+			deadline := sandboxPod.CreationTimestamp.Add(
+				time.Duration(*sandbox.Spec.StartupTimeoutSeconds) * time.Second)
+			if r.clock().Now().After(deadline) {
+				return metav1.Condition{
+					Type:               SandboxReadyCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonStartupTimeoutExceeded,
+					Message:            fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds),
+					ObservedGeneration: sandbox.Generation,
+				}
+			}
+		}
+
 		return metav1.Condition{
 			Type:               SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
@@ -766,15 +783,47 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return res, nil
 	}
 
-	var timeUntilTimeout time.Duration
-	if optionalTimeoutAt != nil {
-		timeUntilTimeout = r.clock().Until(optionalTimeoutAt.Time)
-		if timeUntilTimeout <= 0 {
-			// in case of some very bad luck where the timeout shifted right after we checked for it
-			timeUntilTimeout = time.Millisecond
+	// Startup timeout: if the pod exists but is not ready, check if it exceeded the startup deadline
+	if sandboxPod != nil && !podutil.IsPodReady(sandboxPod) && sandbox.Spec.StartupTimeoutSeconds != nil {
+		startupDeadline := sandboxPod.CreationTimestamp.Add(
+			time.Duration(*sandbox.Spec.StartupTimeoutSeconds) * time.Second)
+		if r.clock().Now().After(startupDeadline) {
+			log.Info("Startup timeout exceeded", "deadline", startupDeadline)
+			if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{{
+				Type:               SandboxReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonStartupTimeoutExceeded,
+				Message:            fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds),
+				ObservedGeneration: sandbox.Generation,
+			}}); err != nil {
+				log.Error(err, "Failed to patch startup timeout condition")
+			}
+			if err := r.Delete(ctx, sandbox); err != nil {
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
+			return ctrl.Result{}, nil
 		}
-	} else { // no timeout
-		timeUntilTimeout = 0 // ctrl.Result{0} is effectively ctrl.Result{} (no scheduled requeue)
+	}
+
+	var requeueAfter time.Duration
+	if optionalTimeoutAt != nil {
+		requeueAfter = r.clock().Until(optionalTimeoutAt.Time)
+		if requeueAfter <= 0 {
+			requeueAfter = time.Millisecond
+		}
+	}
+
+	// Also requeue for startup deadline if the pod is not yet ready
+	if sandboxPod != nil && sandbox.Spec.StartupTimeoutSeconds != nil && !podutil.IsPodReady(sandboxPod) {
+		startupDeadline := sandboxPod.CreationTimestamp.Add(
+			time.Duration(*sandbox.Spec.StartupTimeoutSeconds) * time.Second)
+		timeUntilStartup := r.clock().Until(startupDeadline)
+		if timeUntilStartup <= 0 {
+			timeUntilStartup = time.Millisecond
+		}
+		if requeueAfter == 0 || timeUntilStartup < requeueAfter {
+			requeueAfter = timeUntilStartup
+		}
 	}
 
 	if sandboxPod == nil {
@@ -784,14 +833,14 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if err := r.reconcileSandboxStatus(ctx, sandbox, baseSandbox, nil); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: timeUntilTimeout}, nil
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
 
 	if err := r.reconcileSandboxStatus(ctx, sandbox, baseSandbox, sandboxPod); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{RequeueAfter: timeUntilTimeout}, nil
+	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
 // finalize the sandbox according to the shutdown policy and have it ready to be deleted.
@@ -877,18 +926,18 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 
 	switch sandbox.Spec.ShutdownPolicy.Strategy {
 	case sandboxv1alpha1.ShutdownStrategySnapshotRootfs:
-		return r.handleRootfsSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, r.getActiveDeadlineSeconds(sandbox))
+		return r.handleRootfsSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, r.getTimeoutSeconds(sandbox))
 	default:
 		log.Info("Unknown shutdown policy; proceeding with deletion", "strategy", sandbox.Spec.ShutdownPolicy.Strategy)
 		return ctrl.Result{}, true, nil
 	}
 }
 
-func (r *SandboxReconciler) getActiveDeadlineSeconds(sandbox *sandboxv1alpha1.Sandbox) int64 {
-	if sandbox != nil && sandbox.Spec.ShutdownPolicy != nil && sandbox.Spec.ShutdownPolicy.ActiveDeadlineSeconds != nil {
-		return *sandbox.Spec.ShutdownPolicy.ActiveDeadlineSeconds
+func (r *SandboxReconciler) getTimeoutSeconds(sandbox *sandboxv1alpha1.Sandbox) int64 {
+	if sandbox != nil && sandbox.Spec.ShutdownPolicy != nil && sandbox.Spec.ShutdownPolicy.TimeoutSeconds != nil {
+		return *sandbox.Spec.ShutdownPolicy.TimeoutSeconds
 	}
-	return defaultActiveDeadlineSeconds
+	return defaultTimeoutSeconds
 }
 
 // ensureShutdownDeadline persists ShutdownDeadlineAt on the first call (anchored to
@@ -906,14 +955,14 @@ func (r *SandboxReconciler) ensureShutdownDeadline(ctx context.Context, sandbox 
 		anchor = sandbox.DeletionTimestamp.Time
 	}
 
-	deadline := anchor.Add(time.Duration(r.getActiveDeadlineSeconds(sandbox)) * time.Second)
+	deadline := anchor.Add(time.Duration(r.getTimeoutSeconds(sandbox)) * time.Second)
 	sandbox.Status.ShutdownDeadlineAt = &metav1.Time{Time: deadline}
-	if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
-		log.Error(err, "Failed to patch sandbox ShutdownDeadlineAt")
-		return time.Time{}, err
-	}
-	log.Info("persisted shutdownDeadlineAt", "shutdownDeadlineAt", deadline)
 
+	if err := r.patchStatus(ctx, baseSandbox, sandbox, nil); err != nil {
+		return time.Time{}, fmt.Errorf("failed to persist shutdown deadline: %w", err)
+	}
+
+	log.Info("Shutdown deadline set", "deadline", deadline)
 	return deadline, nil
 }
 
@@ -923,7 +972,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	sandboxPod *corev1.Pod,
 	snapshotDeadline time.Time,
-	activeDeadlineSeconds int64,
+	timeoutSeconds int64,
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
@@ -1010,7 +1059,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	}
 
 	if snap == nil {
-		return r.createShutdownSnapshot(ctx, sandbox, baseSandbox, activeDeadlineSeconds)
+		return r.createShutdownSnapshot(ctx, sandbox, baseSandbox, timeoutSeconds)
 	}
 
 	snapshotName := snap.Name
@@ -1081,7 +1130,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
-	activeDeadlineSeconds int64,
+	timeoutSeconds int64,
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
@@ -1092,9 +1141,9 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 			Namespace: sandbox.Namespace,
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
-			SandboxName:           sandbox.Name,
-			SnapshotName:          sandbox.Name,
-			ActiveDeadlineSeconds: &activeDeadlineSeconds,
+			SandboxName:    sandbox.Name,
+			SnapshotName:   sandbox.Name,
+			TimeoutSeconds: &timeoutSeconds,
 		},
 	}
 

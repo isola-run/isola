@@ -29,7 +29,7 @@ def test_active_deadline_sandbox_stops(
     sandbox_factory,
 ) -> None:
     """A sandbox with timeout should stop or be deleted after the deadline passes."""
-    sb = sandbox_factory(image="alpine:3.21", timeout=10)
+    sb = sandbox_factory(image="alpine:3.21", timeout_seconds=10)
     wait_for_running(isola_client, sb.id)
 
     # Wait for the 10s deadline to fire + operator reconciliation.
@@ -56,8 +56,8 @@ def test_command_timeout(
     isola_client: Isola,
     session_sandbox: Sandbox,
 ) -> None:
-    """A command with timeout=3 should be killed after ~3 seconds with a non-zero exit code."""
-    cmd = session_sandbox.commands.spawn("sleep", "300", timeout=3)
+    """A command with timeout_seconds=3 should be killed after ~3 seconds with a non-zero exit code."""
+    cmd = session_sandbox.commands.spawn("sleep", "300", timeout_seconds=3)
 
     # The command should still be running immediately after creation.
     assert cmd.exit_code() is None
@@ -79,8 +79,8 @@ def test_no_deadline_stays_alive(
     assert sb.status == SandboxStatus.RUNNING, (
         f"Expected sandbox without deadline to stay running, but status is {sb.status.value}"
     )
-    assert sb.timeout is None, (
-        f"Expected no deadline on session sandbox, got {sb.timeout}"
+    assert sb.timeout_seconds is None, (
+        f"Expected no deadline on session sandbox, got {sb.timeout_seconds}"
     )
 
 
@@ -90,7 +90,7 @@ def test_operations_on_timed_out_sandbox(
     sandbox_factory,
 ) -> None:
     """After a sandbox times out and stops/disappears, running a command on it should fail."""
-    sb = sandbox_factory(image="alpine:3.21", timeout=10)
+    sb = sandbox_factory(image="alpine:3.21", timeout_seconds=10)
     running = wait_for_running(isola_client, sb.id)
 
     # Wait for the 10s deadline to fire + operator reconciliation.

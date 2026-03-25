@@ -51,7 +51,8 @@ type PodTemplate struct {
 
 type CreateSandboxRequest struct {
 	PodTemplate           PodTemplate            `json:"podTemplate" required:"true" doc:"Pod template"`
-	ActiveDeadlineSeconds *int64                 `json:"activeDeadlineSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
+	TimeoutSeconds        *int64                 `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
+	StartupTimeoutSeconds *int64                 `json:"startupTimeoutSeconds,omitempty" minimum:"1" doc:"Max seconds for the sandbox to become Ready. Omit for no startup timeout"`
 	Network               *NetworkSpec           `json:"network,omitempty" doc:"Network isolation config"`
 	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" maxItems:"16" doc:"Rootfs snapshots to restore into containers at creation time. Files on separately-mounted filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included."`
 }
@@ -115,7 +116,8 @@ type ListSandboxesOutput struct {
 type SandboxResponse struct {
 	ID                    string                 `json:"id" doc:"Sandbox identifier"`
 	PodTemplate           PodTemplateInfo        `json:"podTemplate" doc:"Pod template"`
-	ActiveDeadlineSeconds *int64                 `json:"activeDeadlineSeconds,omitempty" doc:"Max lifetime in seconds"`
+	TimeoutSeconds        *int64                 `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
+	StartupTimeoutSeconds *int64                 `json:"startupTimeoutSeconds,omitempty" doc:"Max seconds for the sandbox to become Ready"`
 	Network               *NetworkSpec           `json:"network,omitempty" doc:"Network isolation config"`
 	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" doc:"Rootfs snapshot restore configuration."`
 	Status                string                 `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`

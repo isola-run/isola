@@ -177,12 +177,12 @@ def test_invalid_command_nonzero_exit(session_sandbox: Sandbox) -> None:
 
 
 def test_zero_timeout_rejected(isola_client: Isola) -> None:
-    """Creating a sandbox with timeout=0 should be rejected -- the minimum is 1.
+    """Creating a sandbox with timeout_seconds=0 should be rejected -- the minimum is 1.
 
-    The api-gateway enforces activeDeadlineSeconds >= 1 via Huma field validation.
+    The api-gateway enforces timeoutSeconds >= 1 via Huma field validation.
     """
     with pytest.raises((ValidationError, BadRequestError)) as exc_info:
-        isola_client.sandboxes.create(image="alpine:3.21", timeout=0)
+        isola_client.sandboxes.create(image="alpine:3.21", timeout_seconds=0)
 
     assert exc_info.value.status_code in (400, 422)
 

@@ -19,6 +19,24 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// No phases. The pattern of using phase is deprecated. Newer API types should use conditions instead.
+
+type SandboxConditionType string
+
+const (
+	// The aggregate condition.
+	SandboxReady SandboxConditionType = "Ready"
+	// Sandbox pod is up and running.
+	SandboxPodReady SandboxConditionType = "PodReady"
+	// Network is configured
+	SandboxNetworkConfigured SandboxConditionType = "NetworkConfigured"
+	// set when sandbox is past its timeout
+	// todo benl: necessary? helpful?
+	SandboxTimedOut SandboxConditionType = "TimedOut"
+	// Filesystem snapshotting is in progress
+	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
+)
+
 // SandboxShutdownStrategy defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotRootfs
 type SandboxShutdownStrategy string
@@ -36,13 +54,13 @@ type ShutdownPolicy struct {
 	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
 	Strategy SandboxShutdownStrategy `json:"strategy,omitempty"`
 
-	// ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
+	// TimeoutSeconds specifies the duration in seconds relative to the startTime
 	// that the snapshot job may be active before the system tries to terminate it.
 	// Only used when Strategy is SnapshotRootfs.
 	// +optional
 	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=1
-	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
+	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
 }
 
 // NetworkSpec defines network isolation for a sandbox.
@@ -115,10 +133,18 @@ type SandboxSpec struct {
 	// +required
 	PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
 
-	// ActiveDeadlineSeconds defines how long the sandbox runs before being shut down
+	// TimeoutSeconds defines how long the sandbox runs before being shut down
 	// +kubebuilder:validation:Minimum=1
 	// +optional
-	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
+	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
+
+	// StartupTimeoutSeconds defines how long the sandbox has to become Ready
+	// after pod creation. If the pod hasn't reached Ready within this time,
+	// the sandbox is marked as failed. Defaults to 60 seconds.
+	// +optional
+	// +kubebuilder:default=60
+	// +kubebuilder:validation:Minimum=1
+	StartupTimeoutSeconds *int64 `json:"startupTimeoutSeconds,omitempty"`
 
 	// ShutdownPolicy defines what to do when the sandbox ends (defaults to Delete if unspecified)
 	// +optional
@@ -153,10 +179,6 @@ type SandboxStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// PodIP is the IP address of the sandbox pod.
-	// +optional
-	PodIP string `json:"podIP,omitempty"`
-
 	// TimeoutAt is the absolute time at which the sandbox should be considered timed out.
 	// It is set by the controller (derived from sandbox timeout).
 	// +optional
@@ -166,6 +188,10 @@ type SandboxStatus struct {
 	// Set once by the controller when finalization begins (anchored to DeletionTimestamp).
 	// +optional
 	ShutdownDeadlineAt *metav1.Time `json:"shutdownDeadlineAt,omitempty"`
+
+	// PodIP is the IP address of the sandbox pod.
+	// +optional
+	PodIP string `json:"podIP,omitempty"`
 }
 
 // +kubebuilder:object:root=true

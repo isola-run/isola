@@ -178,13 +178,13 @@ class Commands:
         *args: str,
         env: dict[str, str] | None = None,
         cwd: str | None = None,
-        timeout: int | None = None,
+        timeout_seconds: int | None = None,
         container: str | None = None,
     ) -> Command:
         if not args:
             raise ValueError("at least one argument (the command) is required")
         params = {"container": container} if container else None
-        payload = CreateCommandPayload(args=list(args), env=env, cwd=cwd, timeout=timeout)
+        payload = CreateCommandPayload(args=list(args), env=env, cwd=cwd, timeout_seconds=timeout_seconds)
         data = self._api.request_model(
             "POST",
             _command_base_path(self._sandbox_id),
@@ -200,10 +200,10 @@ class Commands:
         input: str | bytes | None = None,
         env: dict[str, str] | None = None,
         cwd: str | None = None,
-        timeout: int | None = None,
+        timeout_seconds: int | None = None,
         container: str | None = None,
     ) -> CommandResult:
-        cmd = self.spawn(*args, env=env, cwd=cwd, timeout=timeout, container=container)
+        cmd = self.spawn(*args, env=env, cwd=cwd, timeout_seconds=timeout_seconds, container=container)
         if input is not None:
             cmd.write_stdin(input)
             cmd.close_stdin()
@@ -223,13 +223,13 @@ class AsyncCommands:
         *args: str,
         env: dict[str, str] | None = None,
         cwd: str | None = None,
-        timeout: int | None = None,
+        timeout_seconds: int | None = None,
         container: str | None = None,
     ) -> AsyncCommand:
         if not args:
             raise ValueError("at least one argument (the command) is required")
         params = {"container": container} if container else None
-        payload = CreateCommandPayload(args=list(args), env=env, cwd=cwd, timeout=timeout)
+        payload = CreateCommandPayload(args=list(args), env=env, cwd=cwd, timeout_seconds=timeout_seconds)
         data = await self._api.request_model(
             "POST",
             _command_base_path(self._sandbox_id),
@@ -245,10 +245,10 @@ class AsyncCommands:
         input: str | bytes | None = None,
         env: dict[str, str] | None = None,
         cwd: str | None = None,
-        timeout: int | None = None,
+        timeout_seconds: int | None = None,
         container: str | None = None,
     ) -> CommandResult:
-        cmd = await self.spawn(*args, env=env, cwd=cwd, timeout=timeout, container=container)
+        cmd = await self.spawn(*args, env=env, cwd=cwd, timeout_seconds=timeout_seconds, container=container)
         if input is not None:
             await cmd.write_stdin(input)
             await cmd.close_stdin()

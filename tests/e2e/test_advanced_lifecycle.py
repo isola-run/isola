@@ -92,7 +92,7 @@ def test_short_lived_command_sandbox_stops(
 
     Tests the pod-terminated path (PodSucceeded phase -> stopped status).
     """
-    sb = sandbox_factory(image="alpine:3.21", command=["true"])
+    sb = sandbox_factory(image="alpine:3.21", command=["true"], wait=False)
 
     # Wait for the sandbox to reach a terminal state
     deadline = time.monotonic() + 120

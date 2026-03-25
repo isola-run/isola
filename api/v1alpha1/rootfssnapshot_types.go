@@ -60,12 +60,12 @@ type RootfsSnapshotSpec struct {
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	ContainerName string `json:"containerName,omitempty"`
 
-	// ActiveDeadlineSeconds specifies the duration in seconds for the snapshot job.
+	// TimeoutSeconds specifies the duration in seconds for the snapshot job.
 	// If the job does not complete within this time, it will be terminated.
 	// +optional
 	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=1
-	ActiveDeadlineSeconds *int64 `json:"activeDeadlineSeconds,omitempty"`
+	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
 
 	// TTLSecondsAfterFinished limits the lifetime of a RootfsSnapshot that has
 	// finished execution (succeeded or failed).

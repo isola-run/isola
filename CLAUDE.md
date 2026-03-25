@@ -101,7 +101,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **Object hierarchy:** `Isola` → `client.sandboxes.create()` returns a `Sandbox` → `sandbox.commands` (Commands), `sandbox.filesystem` (Filesystem). Each resource object holds a reference to the underlying API client and the sandbox ID.
 
-**Command execution (`_commands.py`):** Two modes — `spawn(*args)` returns a `Command` immediately (non-blocking), `run(*args)` waits and returns a `CommandResult` (with `stdout`, `stderr`, `exit_code`). `Command` provides `.stdout`/`.stderr` (`StreamReader`), `.wait()` (long-polls), `.exit_code()`, `.write_stdin()`, `.close_stdin()`, `.kill()`. Long-poll interval: 20s (must stay <= gateway max of 25s).
+**Command execution (`_commands.py`):** Two modes -- `spawn(*args)` returns a `Command` immediately (non-blocking), `run(*args)` waits and returns a `CommandResult` (with `stdout`, `stderr`, `exit_code`). Both accept `timeout_seconds` for per-command timeout. `Command` provides `.stdout`/`.stderr` (`StreamReader`), `.wait()` (long-polls), `.exit_code()`, `.write_stdin()`, `.close_stdin()`, `.kill()`. Long-poll interval: 20s (must stay <= gateway max of 25s).
 
 **Pydantic models (`_models.py`):** All models extend `IsolaModel` which uses `to_camel` alias generator for Python snake_case ↔ API camelCase. Models accept both forms (`validate_by_name=True, validate_by_alias=True`). `extra="ignore"` so the server can add fields without breaking the client. `NetworkSpec` has manual `Field(alias=...)` overrides for acronyms (`allowClusterDNS`, `allowedEgressCIDRs`) that `to_camel` can't handle.
 
@@ -117,8 +117,9 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 
 **Sandbox** - A running sandbox instance. Key spec fields:
 - `podTemplate` (required) - Inlined pod template with containers, volumes, etc.
-- `activeDeadlineSeconds` - Max lifetime; operator calculates `status.timeoutAt` from pod start time
-- `shutdownPolicy` - ShutdownPolicy struct with `strategy` (`Delete` default, or `SnapshotRootfs`) and optional `activeDeadlineSeconds` for the snapshot job
+- `timeoutSeconds` - Max lifetime; operator calculates `status.timeoutAt` from pod start time
+- `startupTimeoutSeconds` - Max time allowed for the sandbox to reach Running status (from pod creation). If exceeded, the operator sets the `Ready` condition to `False` with reason `StartupTimeoutExceeded` and the sandbox transitions to `failed` status. Useful for bounding rootfs restore retry time without limiting the running sandbox lifetime.
+- `shutdownPolicy` - ShutdownPolicy struct with `strategy` (`Delete` default, or `SnapshotRootfs`) and optional `timeoutSeconds` for the snapshot job
 - `network` - NetworkSpec for isolation rules (immutable after creation)
 - `rootfsSnapshotSources` - List of `RootfsSnapshotSource` entries to restore at creation time (immutable after creation). Each source has `snapshotName` (required, references a prior snapshot) and `containerName` (optional if only one user container). Requires gVisor runtime and the snapshot-mounter NFS mount on the node (`--rootfssnapshot-host-mount-path` operator flag). Only the overlay rootfs upper layer is restored.
 
@@ -126,7 +127,7 @@ CI runs `make check-openapi` to verify generated specs are in sync.
 - `sandboxName` (required) - The sandbox to snapshot (must be in the same namespace)
 - `snapshotName` (required) - Name used for the storage key (`rootfssnapshots/<namespace>/<snapshotName>.tar`); validated as an RFC 1123 DNS label
 - `containerName` (optional) - Which container to snapshot; defaults to the first container in the sandbox pod
-- `activeDeadlineSeconds` (optional, default 300) - Max duration for the snapshot job
+- `timeoutSeconds` (optional, default 300) - Max duration for the snapshot job
 - `ttlSecondsAfterFinished` (optional, default 300) - Auto-deletion delay after completion; 0 means immediate
 
 ## REST API (api-gateway)
@@ -140,7 +141,7 @@ The api-gateway is a thin passthrough to K8s -- it validates input structure but
 - `DELETE /v1/sandboxes/{id}` -- delete (idempotent)
 - `POST /v1/sandboxes/{id}/filesystem` -- file upload (proxied to sidecar)
 - `GET /v1/sandboxes/{id}/filesystem` -- file download (proxied to sidecar)
-- `POST /v1/sandboxes/{id}/commands` -- start command (proxied to sidecar, 202 Accepted). Request body uses `args` (not `cmd`): `args[0]` is executable, `args[1:]` are arguments. Optional `timeout` (seconds), `env`, `cwd`.
+- `POST /v1/sandboxes/{id}/commands` -- start command (proxied to sidecar, 202 Accepted). Request body uses `args` (not `cmd`): `args[0]` is executable, `args[1:]` are arguments. Optional `timeoutSeconds`, `env`, `cwd`.
 - `GET /v1/sandboxes/{id}/commands/{cmdId}/status` -- exit code (null if running). Supports long-polling via `?waitSeconds=N` (max 25 at gateway, max 30 at sidecar).
 - `GET /v1/sandboxes/{id}/commands/{cmdId}/stdout` -- SSE stream of stdout (`text/event-stream`). Resume via `Last-Event-ID` header (byte offset).
 - `GET /v1/sandboxes/{id}/commands/{cmdId}/stderr` -- SSE stream of stderr (`text/event-stream`). Resume via `Last-Event-ID` header (byte offset).
@@ -151,6 +152,7 @@ The api-gateway is a thin passthrough to K8s -- it validates input structure but
 **REST ↔ CRD conversion (`sandbox/convert.go`):**
 REST types are separate from CRD types with explicit conversion in `sandbox/convert.go`. Key behaviors:
 - User-facing status enum: `creating`, `running`, `shuttingDown`, `failed`, `stopped`, `unknown`
+- `StartupTimeoutExceeded` condition reason maps to `failed` status
 
 **Env vars are write-only:** Request types accept env vars but response types intentionally omit them to avoid leaking secrets. `ContainerSpec` (request) has `Env`; `ContainerInfo` (response) does not.
 
@@ -185,7 +187,7 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 1. Create a Sandbox with `rootfsSnapshotSources` referencing prior snapshot names
 2. Operator validates gVisor runtime and snapshot-mounter host path configuration
 3. Operator injects `dev.gvisor.tar.rootfs.upper.<container>` annotations on the pod, pointing to the NFS-mounted tar on the host (`<hostMountPath>/<namespace>/<snapshotName>.tar`)
-4. Operator injects per-container `restartPolicyRules` on restored containers to retry exit code 128 (gVisor OCI runtime start failure when tar is missing). Retries follow kubelet exponential backoff (10s, 20s, 40s, ... capped at 5min). `activeDeadlineSeconds` bounds total retry time (anchored to pod start time); without it, retries are unbounded. User-facing sandbox status during retry: `creating`
+4. Operator injects per-container `restartPolicyRules` on restored containers to retry exit code 128 (gVisor OCI runtime start failure when tar is missing). Retries follow kubelet exponential backoff (10s, 20s, 40s, ... capped at 5min). `startupTimeoutSeconds` bounds total retry time; without it, retries are unbounded. User-facing sandbox status during retry: `creating`
 5. gVisor reads the tar annotations at container start and pre-populates the overlay upper layer
 6. The snapshot-mounter DaemonSet runs on each node, NFS-mounting snapshot tars from cloud storage so they are available at the configured host path
 
@@ -194,7 +196,7 @@ REST types are separate from CRD types with explicit conversion in `sandbox/conv
 **Command execution:**
 - Commands run via `SysProcAttr.Chroot` to `/proc/<pid>/root`, entering the sandbox container's filesystem view without changing namespaces. The sidecar uses `/bin/sh -c 'exec "$@"'` for PATH lookup inside the container, and `exec` replaces the shell so SIGKILL reaches the user's process directly. Requires `CAP_SYS_PTRACE` (for gVisor's `/proc/<pid>/root` access check) and `CAP_SYS_CHROOT` (default capability set).
 - Non-blocking model: POST returns 202 immediately with a `commandId`; status is polled via long-polling (`?waitSeconds=N`).
-- Per-command `timeout` (seconds): enforced via `context.WithTimeout` → SIGKILL on expiration (exit code -1).
+- Per-command `timeoutSeconds`: enforced via `context.WithTimeout` -- SIGKILL on expiration (exit code -1).
 - Command stdout/stderr are stored on the container's ephemeral storage (counts against resource limits).
 - Command state is in-memory in the sidecar — all running/completed commands are lost on sidecar restart.
 - Stdout/stderr are streamed as SSE (`text/event-stream`). The sidecar produces SSE via `internal/sseutil/` (UTF-8 sanitization, `id:` fields for byte-offset resume, 15s keepalive comments). The gateway proxies SSE transparently. The Python SDK consumes SSE via `httpx-sse` and resumes with `Last-Event-ID` header. Non-UTF-8 bytes in output are replaced with U+FFFD; for binary content, redirect to a file and download via the filesystem API.
