@@ -21,22 +21,6 @@ import (
 
 // No phases. The pattern of using phase is deprecated. Newer API types should use conditions instead.
 
-type SandboxConditionType string
-
-const (
-	// The aggregate condition.
-	SandboxReady SandboxConditionType = "Ready"
-	// Sandbox pod is up and running.
-	SandboxPodReady SandboxConditionType = "PodReady"
-	// Network is configured
-	SandboxNetworkConfigured SandboxConditionType = "NetworkConfigured"
-	// set when sandbox is past its timeout
-	// todo benl: necessary? helpful?
-	SandboxTimedOut SandboxConditionType = "TimedOut"
-	// Filesystem snapshotting is in progress
-	SandboxSnapshottingFilesystem SandboxConditionType = "SnapshottingFilesystem"
-)
-
 // SandboxShutdownStrategy defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotRootfs
 type SandboxShutdownStrategy string
