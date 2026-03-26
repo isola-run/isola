@@ -19,8 +19,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// No phases. The pattern of using phase is deprecated. Newer API types should use conditions instead.
-
 // SandboxShutdownStrategy defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotRootfs
 type SandboxShutdownStrategy string
