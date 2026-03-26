@@ -3,7 +3,7 @@ module github.com/isola-ai/isola
 go 1.26.1
 
 require (
-	github.com/danielgtaylor/huma/v2 v2.37.2
+	github.com/danielgtaylor/huma/v2 v2.37.3
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/httplog/v2 v2.1.1
 	github.com/go-logr/logr v1.4.3
