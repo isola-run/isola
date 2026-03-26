@@ -61,7 +61,3 @@ func (f *FakeClock) Until(t time.Time) time.Duration {
 func (f *FakeClock) Advance(d time.Duration) {
 	f.CurrentTime = f.CurrentTime.Add(d)
 }
-
-func (f *FakeClock) Set(t time.Time) {
-	f.CurrentTime = t
-}

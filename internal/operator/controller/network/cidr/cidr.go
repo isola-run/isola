@@ -19,8 +19,8 @@ import (
 	"net/netip"
 )
 
-// BlockedV4 are IPv4 prefixes that sandboxes should never reach via CIDR-based rules.
-var BlockedV4 = []netip.Prefix{
+// blockedV4 are IPv4 prefixes that sandboxes should never reach via CIDR-based rules.
+var blockedV4 = []netip.Prefix{
 	netip.MustParsePrefix("10.0.0.0/8"),      // RFC 1918: 10.0.0.0 - 10.255.255.255 (Class A private)
 	netip.MustParsePrefix("100.64.0.0/10"),   // RFC 6598: 100.64.0.0 - 100.127.255.255 (Carrier-grade NAT / shared address space)
 	netip.MustParsePrefix("169.254.0.0/16"),  // RFC 3927: Link-local (includes cloud metadata 169.254.169.254)
@@ -32,8 +32,8 @@ var BlockedV4 = []netip.Prefix{
 	netip.MustParsePrefix("224.0.0.0/4"),     // Multicast
 }
 
-// BlockedV6 are IPv6 prefixes that sandboxes should never reach via CIDR-based rules.
-var BlockedV6 = []netip.Prefix{
+// blockedV6 are IPv6 prefixes that sandboxes should never reach via CIDR-based rules.
+var blockedV6 = []netip.Prefix{
 	netip.MustParsePrefix("fc00::/7"),           // RFC 4193: Unique Local Address (ULA) - IPv6 equivalent of RFC 1918
 	netip.MustParsePrefix("fe80::/10"),          // RFC 4291: Link-local - auto-configured addresses for local network
 	netip.MustParsePrefix("2600:2d00:0:4::/64"), // GKE-managed Service IPv6 range (dual-stack clusters)
@@ -50,14 +50,14 @@ var BlockedV6 = []netip.Prefix{
 //	  Else if A contains B      => add B to except list
 //	  Else                      => ignore (disjoint)
 //
-// Order guarantee: The returned slice follows the definition order of BlockedV4/BlockedV6,
+// Order guarantee: The returned slice follows the definition order of blockedV4/blockedV6,
 // ensuring deterministic output across invocations (no reconcile churn).
 func ComputeExcept(allowed netip.Prefix) ([]netip.Prefix, error) {
 	allowed = allowed.Masked() // Canonicalize
 
-	blocked := BlockedV4
+	blocked := blockedV4
 	if allowed.Addr().Is6() {
-		blocked = BlockedV6
+		blocked = blockedV6
 	}
 
 	var except []netip.Prefix
