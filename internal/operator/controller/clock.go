@@ -19,7 +19,6 @@ import "time"
 // Clock interface allows mocking time in tests for deterministic behavior
 type Clock interface {
 	Now() time.Time
-	Since(t time.Time) time.Duration
 	Until(t time.Time) time.Duration
 }
 
@@ -28,10 +27,6 @@ type RealClock struct{}
 
 func (RealClock) Now() time.Time {
 	return time.Now()
-}
-
-func (RealClock) Since(t time.Time) time.Duration {
-	return time.Since(t)
 }
 
 func (RealClock) Until(t time.Time) time.Duration {
@@ -48,10 +43,6 @@ func NewFakeClock(t time.Time) *FakeClock {
 
 func (f *FakeClock) Now() time.Time {
 	return f.CurrentTime
-}
-
-func (f *FakeClock) Since(t time.Time) time.Duration {
-	return f.CurrentTime.Sub(t)
 }
 
 func (f *FakeClock) Until(t time.Time) time.Duration {
