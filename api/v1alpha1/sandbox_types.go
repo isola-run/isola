@@ -122,7 +122,7 @@ type SandboxSpec struct {
 
 	// StartupTimeoutSeconds defines how long the sandbox has to become Ready
 	// after pod creation. If the pod hasn't reached Ready within this time,
-	// the sandbox is marked as failed. Defaults to 60 seconds.
+	// the sandbox is marked as failed.
 	// +optional
 	// +kubebuilder:default=60
 	// +kubebuilder:validation:Minimum=1
