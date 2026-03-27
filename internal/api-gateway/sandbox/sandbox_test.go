@@ -41,7 +41,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(body.ID).To(HaveLen(22))
 			Expect(body.ID).To(MatchRegexp(`^[a-z][a-z0-9]{21}$`))
 			Expect(body.PodTemplate.Container.Image).To(Equal("python:3.12"))
-			Expect(body.Status).To(Equal("unknown"))
+			Expect(body.Status).To(Equal(apigateway.StatusUnknown))
 			_, err := time.Parse(time.RFC3339, body.CreationTimestamp)
 			Expect(err).NotTo(HaveOccurred())
 
