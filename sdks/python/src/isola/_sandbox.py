@@ -74,8 +74,7 @@ def _wait_until_running(
     deadline = time.monotonic() + timeout if timeout is not None else None
     consecutive_poll_errors = 0
     while True:
-        if deadline is not None and time.monotonic() >= deadline:
-            assert timeout is not None
+        if timeout is not None and deadline is not None and time.monotonic() >= deadline:
             raise WaitTimeoutError(sandbox_id, timeout)
         try:
             data = api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
@@ -100,8 +99,7 @@ async def _async_wait_until_running(
     deadline = time.monotonic() + timeout if timeout is not None else None
     consecutive_poll_errors = 0
     while True:
-        if deadline is not None and time.monotonic() >= deadline:
-            assert timeout is not None
+        if timeout is not None and deadline is not None and time.monotonic() >= deadline:
             raise WaitTimeoutError(sandbox_id, timeout)
         try:
             data = await api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
