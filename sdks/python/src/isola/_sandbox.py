@@ -21,7 +21,7 @@ from urllib.parse import quote
 
 from ._client import _AsyncAPI, _SyncAPI
 from ._commands import AsyncCommands, Commands
-from ._exceptions import IsolaError
+from ._exceptions import IsolaError, NotFoundError
 from ._filesystem import AsyncFilesystem, Filesystem
 from ._models import (
     ContainerSpec,
@@ -38,6 +38,7 @@ from ._models import (
 )
 
 _POLL_INTERVAL = 1.0
+_MAX_CONSECUTIVE_POLL_ERRORS = 15
 
 _TERMINAL_STATUSES = frozenset({SandboxStatus.FAILED, SandboxStatus.STOPPED})
 
@@ -212,13 +213,20 @@ class Sandbox:
         self.delete()
 
     def wait(self) -> None:
+        consecutive_poll_errors = 0
         while self._data.status != SandboxStatus.RUNNING:
             if self._data.status in _TERMINAL_STATUSES:
                 raise IsolaError(
                     f"sandbox {self._data.id} reached terminal state: {self._data.status.value}",
                 )
             time.sleep(_POLL_INTERVAL)
-            self._data = self._api.request_model("GET", _sandbox_path(self._data.id), SandboxData)
+            try:
+                self._data = self._api.request_model("GET", _sandbox_path(self._data.id), SandboxData)
+                consecutive_poll_errors = 0
+            except NotFoundError:
+                consecutive_poll_errors += 1
+                if consecutive_poll_errors >= _MAX_CONSECUTIVE_POLL_ERRORS:
+                    raise
 
     def delete(self) -> None:
         self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
@@ -266,13 +274,22 @@ class AsyncSandbox:
         await self.delete()
 
     async def wait(self) -> None:
+        consecutive_poll_errors = 0
         while self._data.status != SandboxStatus.RUNNING:
             if self._data.status in _TERMINAL_STATUSES:
                 raise IsolaError(
                     f"sandbox {self._data.id} reached terminal state: {self._data.status.value}",
                 )
             await asyncio.sleep(_POLL_INTERVAL)
-            self._data = await self._api.request_model("GET", _sandbox_path(self._data.id), SandboxData)
+            try:
+                self._data = await self._api.request_model(
+                    "GET", _sandbox_path(self._data.id), SandboxData
+                )
+                consecutive_poll_errors = 0
+            except NotFoundError:
+                consecutive_poll_errors += 1
+                if consecutive_poll_errors >= _MAX_CONSECUTIVE_POLL_ERRORS:
+                    raise
 
     async def delete(self) -> None:
         await self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
