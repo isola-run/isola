@@ -138,7 +138,7 @@ components:
             - array
             - "null"
         startupTimeoutSeconds:
-          description: Max seconds for the sandbox to become Ready. Omit for no startup timeout
+          description: Max seconds for the sandbox to become Ready. Defaults to 60 if omitted.
           format: int64
           minimum: 1
           type: integer
@@ -351,6 +351,7 @@ components:
           description: Container to restore. If empty and there is only one container, that container will be used. Required if there are multiple containers.
           maxLength: 63
           minLength: 1
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
           type: string
         snapshotName:
           description: Name of the rootfs snapshot to restore from.
