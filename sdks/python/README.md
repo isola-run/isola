@@ -48,7 +48,7 @@ sandbox = client.sandboxes.create(
 )
 
 # Don't wait for ready — return immediately
-sandbox = client.sandboxes.create(image="alpine:3.21", wait_seconds=None)
+sandbox = client.sandboxes.create(image="alpine:3.21", wait_seconds=0)
 ```
 
 ## Commands

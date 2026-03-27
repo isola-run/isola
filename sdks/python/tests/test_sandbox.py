@@ -276,14 +276,14 @@ def test_create_waits_until_running(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @respx.mock
-def test_create_wait_none_returns_immediately() -> None:
+def test_create_wait_zero_returns_immediately() -> None:
     respx.post("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
     )
     get_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123")
 
     with Isola(base_url="http://localhost:8080") as client:
-        sandbox = client.sandboxes.create(image="python:3.12", wait_seconds=None)
+        sandbox = client.sandboxes.create(image="python:3.12", wait_seconds=0)
 
     assert sandbox.status == SandboxStatus.CREATING
     assert not get_route.called
@@ -364,14 +364,14 @@ async def test_async_create_waits_until_running(monkeypatch: pytest.MonkeyPatch)
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_async_create_wait_none_returns_immediately() -> None:
+async def test_async_create_wait_zero_returns_immediately() -> None:
     respx.post("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
     )
     get_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123")
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
-        sandbox = await client.sandboxes.create(image="python:3.12", wait_seconds=None)
+        sandbox = await client.sandboxes.create(image="python:3.12", wait_seconds=0)
 
     assert sandbox.status == SandboxStatus.CREATING
     assert not get_route.called
@@ -652,8 +652,8 @@ async def test_async_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) 
 
 
 @respx.mock
-def test_wait_seconds_zero_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> None:
-    """wait_seconds=0 waits indefinitely (no client-side deadline), relying on server-side timeout."""
+def test_wait_seconds_none_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> None:
+    """wait_seconds=None waits indefinitely (no client-side deadline), relying on server-side timeout."""
     monkeypatch.setattr("isola._sandbox.time.sleep", lambda _: None)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
@@ -668,7 +668,7 @@ def test_wait_seconds_zero_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> 
     )
 
     with Isola(base_url="http://localhost:8080") as client:
-        sandbox = client.sandboxes.create(image="python:3.12", wait_seconds=0)
+        sandbox = client.sandboxes.create(image="python:3.12", wait_seconds=None)
 
     assert sandbox.status == SandboxStatus.RUNNING
 

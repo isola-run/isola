@@ -61,21 +61,21 @@ def _build_resources(cpu: str | None, memory: str | None, ephemeral_storage: str
     return ResourcesSpec(limits=resource_list, requests=resource_list)
 
 
+def _check_terminal(sandbox_id: str, status: SandboxStatus) -> None:
+    if status in _TERMINAL_STATUSES:
+        raise IsolaError(f"sandbox {sandbox_id} reached terminal state: {status.value}")
+
+
 def _wait_until_running(
     sandbox_id: str,
-    data: SandboxData,
     api: _SyncAPI,
-    timeout: int,
+    timeout: int | None,
 ) -> SandboxData:
-    deadline = time.monotonic() + timeout if timeout > 0 else None
+    deadline = time.monotonic() + timeout if timeout is not None else None
     consecutive_poll_errors = 0
-    while data.status != SandboxStatus.RUNNING:
-        if data.status in _TERMINAL_STATUSES:
-            raise IsolaError(
-                f"sandbox {sandbox_id} reached terminal state: {data.status.value}",
-            )
+    while True:
         if deadline is not None and time.monotonic() >= deadline:
-            raise WaitTimeoutError(sandbox_id, timeout)
+            raise WaitTimeoutError(sandbox_id, timeout)  # type: ignore[arg-type]
         time.sleep(_POLL_INTERVAL)
         try:
             data = api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
@@ -84,24 +84,22 @@ def _wait_until_running(
             consecutive_poll_errors += 1
             if consecutive_poll_errors >= _MAX_CONSECUTIVE_POLL_ERRORS:
                 raise
-    return data
+            continue
+        if data.status == SandboxStatus.RUNNING:
+            return data
+        _check_terminal(sandbox_id, data.status)
 
 
 async def _async_wait_until_running(
     sandbox_id: str,
-    data: SandboxData,
     api: _AsyncAPI,
-    timeout: int,
+    timeout: int | None,
 ) -> SandboxData:
-    deadline = time.monotonic() + timeout if timeout > 0 else None
+    deadline = time.monotonic() + timeout if timeout is not None else None
     consecutive_poll_errors = 0
-    while data.status != SandboxStatus.RUNNING:
-        if data.status in _TERMINAL_STATUSES:
-            raise IsolaError(
-                f"sandbox {sandbox_id} reached terminal state: {data.status.value}",
-            )
+    while True:
         if deadline is not None and time.monotonic() >= deadline:
-            raise WaitTimeoutError(sandbox_id, timeout)
+            raise WaitTimeoutError(sandbox_id, timeout)  # type: ignore[arg-type]
         await asyncio.sleep(_POLL_INTERVAL)
         try:
             data = await api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
@@ -110,7 +108,10 @@ async def _async_wait_until_running(
             consecutive_poll_errors += 1
             if consecutive_poll_errors >= _MAX_CONSECUTIVE_POLL_ERRORS:
                 raise
-    return data
+            continue
+        if data.status == SandboxStatus.RUNNING:
+            return data
+        _check_terminal(sandbox_id, data.status)
 
 
 class Sandboxes:
@@ -154,8 +155,10 @@ class Sandboxes:
             SandboxData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        if wait_seconds is not None:
-            data = _wait_until_running(data.id, data, self._api, wait_seconds)
+        if wait_seconds != 0:
+            _check_terminal(data.id, data.status)
+            if data.status != SandboxStatus.RUNNING:
+                data = _wait_until_running(data.id, self._api, wait_seconds)
         return Sandbox(self._api, data)
 
     def list(self) -> list[SandboxSummary]:
@@ -208,8 +211,10 @@ class AsyncSandboxes:
             SandboxData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        if wait_seconds is not None:
-            data = await _async_wait_until_running(data.id, data, self._api, wait_seconds)
+        if wait_seconds != 0:
+            _check_terminal(data.id, data.status)
+            if data.status != SandboxStatus.RUNNING:
+                data = await _async_wait_until_running(data.id, self._api, wait_seconds)
         return AsyncSandbox(self._api, data)
 
     async def list(self) -> list[SandboxSummary]:
