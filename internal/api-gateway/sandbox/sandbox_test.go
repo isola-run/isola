@@ -40,7 +40,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(body.ID).To(HaveLen(22))
 			Expect(body.ID).To(MatchRegexp(`^[a-z][a-z0-9]{21}$`))
 			Expect(body.PodTemplate.Container.Image).To(Equal("python:3.12"))
-			Expect(body.Status).To(Equal("unknown"))
+			Expect(body.Status).To(Equal(apigateway.StatusUnknown))
 			_, err := time.Parse(time.RFC3339, body.CreationTimestamp)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -294,17 +294,17 @@ var _ = Describe("Sandbox Endpoints", func() {
 		It("maps Ready=True to running regardless of reason", func() {
 			Expect(apigateway.ConditionsToStatus([]metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionTrue, Reason: "PodRunning"},
-			})).To(Equal("running"))
+			})).To(Equal(apigateway.StatusRunning))
 			Expect(apigateway.ConditionsToStatus([]metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionTrue, Reason: "AnythingElse"},
-			})).To(Equal("running"))
+			})).To(Equal(apigateway.StatusRunning))
 		})
 
 		It("maps PodPending to creating", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodPending"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("creating"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal(apigateway.StatusCreating))
 		})
 
 		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
@@ -313,35 +313,35 @@ var _ = Describe("Sandbox Endpoints", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshottingInProgress"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("running"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal(apigateway.StatusRunning))
 		})
 
 		It("maps NetworkPolicyApplied to creating", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "NetworkPolicyApplied"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("creating"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal(apigateway.StatusCreating))
 		})
 
 		It("maps Deleting to shuttingDown", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "Deleting"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("shuttingDown"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal(apigateway.StatusShuttingDown))
 		})
 
 		It("maps PodFailed to failed", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodFailed"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("failed"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal(apigateway.StatusFailed))
 		})
 
 		It("maps PodSucceeded to stopped", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodSucceeded"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("stopped"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal(apigateway.StatusStopped))
 		})
 
 		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
@@ -350,11 +350,11 @@ var _ = Describe("Sandbox Endpoints", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshotComplete"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("stopped"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal(apigateway.StatusStopped))
 		})
 
 		It("maps no conditions to unknown", func() {
-			Expect(apigateway.ConditionsToStatus(nil)).To(Equal("unknown"))
+			Expect(apigateway.ConditionsToStatus(nil)).To(Equal(apigateway.StatusUnknown))
 		})
 	})
 })

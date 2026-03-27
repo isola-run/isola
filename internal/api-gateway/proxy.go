@@ -34,6 +34,16 @@ import (
 	"github.com/isola-ai/isola/internal/httputil"
 )
 
+// Sandbox status values returned by ConditionsToStatus.
+const (
+	StatusCreating     = "creating"
+	StatusRunning      = "running"
+	StatusShuttingDown = "shuttingDown"
+	StatusFailed       = "failed"
+	StatusStopped      = "stopped"
+	StatusUnknown      = "unknown"
+)
+
 // HTTPDoer abstracts HTTP request execution (satisfied by *http.Client), for faking it in tests.
 type HTTPDoer interface {
 	Do(req *http.Request) (*http.Response, error)
@@ -55,31 +65,30 @@ func (b *BodyStream) Resolve(ctx huma.Context) []error {
 func ConditionsToStatus(conditions []metav1.Condition) string {
 	ready := meta.FindStatusCondition(conditions, "Ready")
 	if ready == nil {
-		return "unknown"
+		return StatusUnknown
 	}
 
 	if ready.Status == metav1.ConditionTrue {
-		return "running"
+		return StatusRunning
 	}
 
 	// TODO: remove snapshot-related reasons from Sandbox CRD — they should be
 	// encapsulated in the RootfsSnapshot CRD only.
-	// TODO benl: make them as constants and share them with routes.go openapi enum generation
 	switch ready.Reason {
 	case "PodPending", "PodCreating", "Reconciling", "NetworkPolicyApplied":
-		return "creating"
+		return StatusCreating
 	case "PodRunning", "RootfsSnapshottingInProgress":
-		return "running"
+		return StatusRunning
 	case "Deleting":
-		return "shuttingDown"
+		return StatusShuttingDown
 	case "PodFailed", "PodCreationFailed", "InvalidRuntime",
 		"NetworkPolicyFailed", "RootfsSnapshotFailed", "RootfsSnapshotTimeout",
 		"RootfsRestoreConfigurationError", "StartupTimeoutExceeded":
-		return "failed"
+		return StatusFailed
 	case "PodSucceeded", "RootfsSnapshotComplete":
-		return "stopped"
+		return StatusStopped
 	default:
-		return "unknown"
+		return StatusUnknown
 	}
 }
 
@@ -110,8 +119,7 @@ func GetReadySandbox(ctx context.Context, k8sClient client.Client, namespace, id
 		return nil, K8sErrorToHuma(err, "failed to get sandbox")
 	}
 
-	// todo benl: stop using raw strings for sandbox status
-	if ConditionsToStatus(sb.Status.Conditions) != "running" {
+	if ConditionsToStatus(sb.Status.Conditions) != StatusRunning {
 		logger.Warn("sandbox is not ready", "id", id, "status", ConditionsToStatus(sb.Status.Conditions))
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}
