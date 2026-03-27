@@ -73,9 +73,9 @@ func createRunningSandboxCR() string {
 	sb.Status.PodIP = podIP
 	sb.Status.Conditions = []metav1.Condition{
 		{
-			Type:               "Ready",
+			Type:               sandboxv1alpha1.SandboxReadyCondition,
 			Status:             metav1.ConditionTrue,
-			Reason:             "PodRunning",
+			Reason:             sandboxv1alpha1.CondReasonPodRunning,
 			LastTransitionTime: metav1.Now(),
 		},
 	}
