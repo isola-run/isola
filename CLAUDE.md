@@ -74,18 +74,53 @@ make openapi
 
 CI runs `make check-openapi` to verify generated specs are in sync.
 
+## Project Structure
+
+```
+isola/
+├── cmd/                        # Binary entrypoints (6 binaries)
+│   ├── operator/               # K8s operator (Sandbox + RootfsSnapshot controllers)
+│   ├── api-gateway/            # REST API server (Huma + chi)
+│   ├── sandbox-sidecar/        # In-sandbox command execution and filesystem I/O
+│   ├── uploader/               # Snapshot tarball upload to cloud storage
+│   ├── snapshot-mounter/       # DaemonSet: NFS-mounts snapshot tars on nodes
+│   └── openapi-gen/            # Build-time tool: generates OpenAPI specs
+├── api/
+│   ├── v1alpha1/               # CRD type definitions (Sandbox, RootfsSnapshot)
+│   └── openapi/                # Generated OpenAPI specs (do not edit)
+├── internal/
+│   ├── operator/controller/    # Reconciliation logic, metrics, network, podutil, snapshot
+│   ├── api-gateway/            # Gateway handlers: sandbox/, command/, filesystem/, health/
+│   ├── sandbox-sidecar/        # Sidecar handlers: command/, filesystem/, health/, proc/
+│   ├── sidecar-api/            # Shared contract types (gateway ↔ sidecar)
+│   ├── snapshot/               # Shared snapshot types (operator ↔ uploader)
+│   ├── sseutil/                # SSE writer (UTF-8, keepalive, offset resume)
+│   ├── httputil/               # Deadline protection for streaming I/O
+│   ├── logging/                # Structured logging wrapper (logr)
+│   ├── env/                    # Environment variable parsing (cloud storage URLs)
+│   └── constants/              # Shared constants (namespaces, labels, field names)
+├── charts/isola/               # Helm chart (CRDs, RBAC, deployments)
+├── sdks/python/                # Python client SDK (httpx + pydantic)
+├── tests/e2e/                  # E2E tests (pytest, requires tilt up)
+├── hack/                       # Setup scripts, Kind config, boilerplate
+└── .github/workflows/          # CI/CD (9 workflows)
+```
+
 ## Architecture Notes
 
 **Backward compatibility:** not required at this stage. You may introduce breaking changes to CRDs, APIs, and internal interfaces if it simplifies the design, provided tests are updated accordingly.
 
 **Single Go module:** The project uses a single `go.mod` at the root (`github.com/isola-ai/isola`). All binaries import from this module.
 
-**Multi-service architecture:** Four binaries in `cmd/` — `operator`, `api-gateway`, `sandbox-sidecar`, `uploader`. Each has its own `internal/` packages under the matching path. The api-gateway uses domain sub-packages (`{health,sandbox,filesystem,command}/`) with shared utilities in `proxy.go`. The sandbox-sidecar uses domain sub-packages (`{health,filesystem,command}/`) with shared utilities in `sidecar.go`. Cross-service packages:
+**Multi-service architecture:** Six binaries in `cmd/` — `operator`, `api-gateway`, `sandbox-sidecar`, `uploader`, `snapshot-mounter`, and `openapi-gen` (build-time only). Each service has its own `internal/` packages under the matching path. The api-gateway uses domain sub-packages (`{health,sandbox,filesystem,command}/`) with shared utilities in `proxy.go`. The sandbox-sidecar uses domain sub-packages (`{health,filesystem,command}/`) with shared utilities in `sidecar.go`. Cross-service packages:
 - `internal/sidecar-api/` - Shared contract types between api-gateway and sandbox-sidecar
 - `internal/snapshot/` - Shared types used by both operator and uploader
 - `internal/sandbox-sidecar/proc/` - Procfs abstraction for container PID discovery and filesystem access via `/proc/<pid>/root`
 - `internal/httputil/` - Deadline/timeout protection for streaming I/O (per-operation write/read deadlines via `http.ResponseController`)
 - `internal/sseutil/` - SSE (Server-Sent Events) writer for streaming command stdout/stderr with UTF-8 encoding, keepalive, and offset-based resume via `id:` fields
+- `internal/logging/` - Structured logging wrapper around logr
+- `internal/env/` - Environment variable parsing, including cloud storage URL parsing (s3://, gs://, azblob://)
+- `internal/constants/` - Shared constants: namespace names, label keys, field names
 
 **Default namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
 
@@ -242,6 +277,45 @@ Tool versions are pinned and must be kept in sync:
 | uv | - | Manages `sdks/python/uv.lock` |
 | ruff | `sdks/python/pyproject.toml` | - |
 | mypy | `sdks/python/pyproject.toml` | - |
+
+## CI/CD (.github/workflows/)
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `test.yml` | push to main, PRs | Go unit tests (envtest) |
+| `e2e.yml` | push to main, PRs | Full E2E: builds images, Kind cluster, gVisor, Helm deploy, pytest (20 workers) |
+| `lint.yml` | push, PRs | `make check-all` (Go + Python linting) |
+| `codegen.yml` | push, PRs | Verifies CRD manifests and OpenAPI specs are in sync (`make check-manifests check-openapi`) |
+| `python-sdk.yml` | push, PRs | Python SDK tests (`make test-sdk-python`) |
+| `security.yml` | push, PRs | govulncheck for dependency vulnerabilities |
+| `release.yml` | tags/releases | Builds release artifacts, creates GitHub releases |
+| `claude.yml` | various | Claude-based automation |
+| `claude-code-review.yml` | PRs | Automated PR review via Claude |
+
+## Helm Chart (`charts/isola/`)
+
+```
+charts/isola/
+├── Chart.yaml, values.yaml, values-dev.yaml
+├── crds/                               # Auto-generated CRD manifests (do not edit)
+├── generated/role.yaml                 # Auto-generated RBAC (do not edit)
+└── templates/
+    ├── operator/
+    │   ├── deployment.yaml, serviceaccount.yaml
+    │   ├── clusterrole.yaml            # Uses .Files.Get for generated RBAC
+    │   ├── metrics-service.yaml, servicemonitor.yaml (optional)
+    │   ├── namespace-sandboxes.yaml    # Creates isola-sandboxes namespace
+    │   ├── sandbox-credentials.yaml    # Cloud storage secrets
+    │   ├── rootfssnapshot-serviceaccount.yaml
+    │   ├── snapshot-mounter-daemonset.yaml + serviceaccount + credentials
+    │   └── sandbox-*-networkpolicy.yaml  # Static network policies (4 files)
+    └── api-gateway/
+        ├── deployment.yaml, service.yaml (NodePort 30080 for dev)
+        ├── clusterrole.yaml, role-sandbox-pods.yaml
+        └── serviceaccount.yaml
+```
+
+`values-dev.yaml` overrides production defaults for local development (LocalStack S3 backend, reduced resource limits).
 
 ## Comment Policy
 
