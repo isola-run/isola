@@ -263,7 +263,7 @@ var _ = Describe("Conversion functions", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "SomethingNew"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("unknown"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal(apigateway.SandboxStatusUnknown))
 		})
 	})
 

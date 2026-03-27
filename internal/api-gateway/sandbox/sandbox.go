@@ -126,7 +126,7 @@ type SandboxResponse struct {
 
 type SandboxSummary struct {
 	ID                string `json:"id" doc:"Sandbox identifier"`
-	Status            string `json:"status" doc:"Sandbox status"`
+	Status            string `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
 	CreationTimestamp string `json:"creationTimestamp" doc:"Creation timestamp"`
 }
 

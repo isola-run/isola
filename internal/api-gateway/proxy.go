@@ -52,34 +52,44 @@ func (b *BodyStream) Resolve(ctx huma.Context) []error {
 	return nil
 }
 
+// Sandbox status constants used by the REST API.
+// Keep in sync with the enum tag on SandboxResponse.Status.
+const (
+	SandboxStatusCreating     = "creating"
+	SandboxStatusRunning      = "running"
+	SandboxStatusShuttingDown = "shuttingDown"
+	SandboxStatusFailed       = "failed"
+	SandboxStatusStopped      = "stopped"
+	SandboxStatusUnknown      = "unknown"
+)
+
 func ConditionsToStatus(conditions []metav1.Condition) string {
 	ready := meta.FindStatusCondition(conditions, "Ready")
 	if ready == nil {
-		return "unknown"
+		return SandboxStatusUnknown
 	}
 
 	if ready.Status == metav1.ConditionTrue {
-		return "running"
+		return SandboxStatusRunning
 	}
 
 	// TODO: remove snapshot-related reasons from Sandbox CRD — they should be
 	// encapsulated in the RootfsSnapshot CRD only.
-	// TODO benl: make them as constants and share them with routes.go openapi enum generation
 	switch ready.Reason {
 	case "PodPending", "PodCreating", "Reconciling", "NetworkPolicyApplied":
-		return "creating"
+		return SandboxStatusCreating
 	case "PodRunning", "RootfsSnapshottingInProgress":
-		return "running"
+		return SandboxStatusRunning
 	case "Deleting":
-		return "shuttingDown"
+		return SandboxStatusShuttingDown
 	case "PodFailed", "PodCreationFailed", "InvalidRuntime",
 		"NetworkPolicyFailed", "RootfsSnapshotFailed", "RootfsSnapshotTimeout",
 		"RootfsRestoreConfigurationError", "StartupTimeoutExceeded":
-		return "failed"
+		return SandboxStatusFailed
 	case "PodSucceeded", "RootfsSnapshotComplete":
-		return "stopped"
+		return SandboxStatusStopped
 	default:
-		return "unknown"
+		return SandboxStatusUnknown
 	}
 }
 
@@ -110,8 +120,7 @@ func GetReadySandbox(ctx context.Context, k8sClient client.Client, namespace, id
 		return nil, K8sErrorToHuma(err, "failed to get sandbox")
 	}
 
-	// todo benl: stop using raw strings for sandbox status
-	if ConditionsToStatus(sb.Status.Conditions) != "running" {
+	if ConditionsToStatus(sb.Status.Conditions) != SandboxStatusRunning {
 		logger.Warn("sandbox is not ready", "id", id, "status", ConditionsToStatus(sb.Status.Conditions))
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}
