@@ -55,6 +55,34 @@ import (
 	_ "gocloud.dev/blob/s3blob"    // S3 and S3-compatible (s3://)
 )
 
+// objectUploader abstracts writing an object to cloud storage, enabling test fakes.
+type objectUploader interface {
+	upload(ctx context.Context, key string, r io.Reader) (int64, error)
+}
+
+// blobUploader implements objectUploader using a gocloud.dev blob.Bucket.
+type blobUploader struct {
+	bucket *blob.Bucket
+}
+
+func (u *blobUploader) upload(ctx context.Context, key string, r io.Reader) (int64, error) {
+	w, err := u.bucket.NewWriter(ctx, key, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	written, err := io.Copy(w, r)
+	if err != nil {
+		_ = w.Close()
+		return 0, err
+	}
+
+	if err := w.Close(); err != nil {
+		return 0, err
+	}
+	return written, nil
+}
+
 const (
 	EnvBucketURL         = "ISOLA_BUCKET_URL"
 	EnvSnapshotName      = "SNAPSHOT_NAME"
@@ -114,43 +142,45 @@ func run(logger *slog.Logger) error {
 	}
 	defer func() { _ = bucket.Close() }()
 
-	snapshotKey := snapshotKeyPath(snapshotNamespace, snapshotName)
+	return uploadSnapshot(ctx, logger, &blobUploader{bucket: bucket}, uploadConfig{
+		snapshotFile:      snapshotFile,
+		snapshotName:      snapshotName,
+		snapshotNamespace: snapshotNamespace,
+		terminationLog:    terminationLogPath,
+	})
+}
+
+type uploadConfig struct {
+	snapshotFile      string
+	snapshotName      string
+	snapshotNamespace string
+	terminationLog    string
+}
+
+func uploadSnapshot(ctx context.Context, logger *slog.Logger, uploader objectUploader, cfg uploadConfig) error {
+	snapshotKey := snapshotKeyPath(cfg.snapshotNamespace, cfg.snapshotName)
 
 	logger.Info("uploading rootfs snapshot",
-		"file", snapshotFile,
-		"bucket", bucketURL,
+		"file", cfg.snapshotFile,
 		"key", snapshotKey,
 	)
 
-	f, err := os.Open(snapshotFile) //nolint:gosec // snapshotFile comes from trusted env var
+	f, err := os.Open(cfg.snapshotFile) //nolint:gosec // snapshotFile comes from trusted env var
 	if err != nil {
-		logger.Error("failed to open snapshot file", "file", snapshotFile, "error", err)
+		logger.Error("failed to open snapshot file", "file", cfg.snapshotFile, "error", err)
 		return err
 	}
 	defer func() { _ = f.Close() }()
 
 	stat, err := f.Stat()
 	if err != nil {
-		logger.Error("failed to stat snapshot file", "file", snapshotFile, "error", err)
+		logger.Error("failed to stat snapshot file", "file", cfg.snapshotFile, "error", err)
 		return err
 	}
 
-	w, err := bucket.NewWriter(ctx, snapshotKey, nil)
+	written, err := uploader.upload(ctx, snapshotKey, f)
 	if err != nil {
-		logger.Error("failed to create bucket writer", "key", snapshotKey, "error", err)
-		return err
-	}
-
-	written, err := io.Copy(w, f)
-	if err != nil {
-		_ = w.Close()
 		logger.Error("failed to upload", "error", err)
-		return err
-	}
-
-	// Close writer to finalize upload
-	if err := w.Close(); err != nil {
-		logger.Error("failed to finalize upload", "error", err)
 		return err
 	}
 
@@ -160,12 +190,11 @@ func run(logger *slog.Logger) error {
 		"key", snapshotKey,
 	)
 
-	// Write result to termination log for controller to read
 	result := snapshot.UploadResult{
 		SnapshotKey:  snapshotKey,
 		BytesWritten: written,
 	}
-	if err := writeTerminationLog(result); err != nil {
+	if err := writeTerminationLogTo(cfg.terminationLog, result); err != nil {
 		// Log but don't fail - the upload succeeded
 		logger.Warn("failed to write termination log", "error", err)
 	}
@@ -177,12 +206,12 @@ func snapshotKeyPath(namespace, snapshotName string) string {
 	return "rootfssnapshots/" + namespace + "/" + snapshotName + ".tar"
 }
 
-func writeTerminationLog(result snapshot.UploadResult) error {
+func writeTerminationLogTo(path string, result snapshot.UploadResult) error {
 	data, err := json.Marshal(result)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(terminationLogPath, data, 0600)
+	return os.WriteFile(path, data, 0600)
 }
 
 func errMissingEnv(name string) error {

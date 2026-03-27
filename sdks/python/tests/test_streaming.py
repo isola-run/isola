@@ -444,3 +444,118 @@ async def test_async_stream_retries_transient_http_error(monkeypatch: pytest.Mon
 
     assert await AsyncStreamReader(api, "/path").read() == "abcd"
     assert api.calls == [None, 2, 2]
+
+
+# ---------------------------------------------------------------------------
+# Sync: empty and edge-case streams
+# ---------------------------------------------------------------------------
+
+
+def test_sync_stream_empty_no_events() -> None:
+    """A stream with no SSE events produces no output."""
+    api = _FakeSyncAPI([_FakeSyncCM(_FakeSyncResponse([]))])
+
+    assert list(StreamReader(api, "/path")) == []
+
+
+def test_sync_stream_empty_read() -> None:
+    """read() on an empty stream returns empty string."""
+    api = _FakeSyncAPI([_FakeSyncCM(_FakeSyncResponse([]))])
+
+    assert StreamReader(api, "/path").read() == ""
+
+
+def test_sync_stream_zero_length_data_events() -> None:
+    """SSE events with empty data fields are not yielded (sse.data is falsy)."""
+    api = _FakeSyncAPI([_FakeSyncCM(_FakeSyncResponse(["data: \nid: 0\n\n", _sse_event("hello", 5)]))])
+
+    assert StreamReader(api, "/path").read() == "hello"
+
+
+def test_sync_stream_only_comments() -> None:
+    """A stream containing only SSE comments produces no output."""
+    api = _FakeSyncAPI(
+        [_FakeSyncCM(_FakeSyncResponse([": keepalive\n\n", ": another comment\n\n"]))]
+    )
+
+    assert list(StreamReader(api, "/path")) == []
+
+
+def test_sync_stream_only_comments_read() -> None:
+    """read() on a comment-only stream returns empty string."""
+    api = _FakeSyncAPI(
+        [_FakeSyncCM(_FakeSyncResponse([": keepalive\n\n"]))]
+    )
+
+    assert StreamReader(api, "/path").read() == ""
+
+
+def test_sync_stream_comments_between_data() -> None:
+    """Comments interspersed between data events are filtered out."""
+    api = _FakeSyncAPI(
+        [
+            _FakeSyncCM(
+                _FakeSyncResponse(
+                    [
+                        ": comment1\n\n",
+                        _sse_event("a", 1),
+                        ": comment2\n\n",
+                        ": comment3\n\n",
+                        _sse_event("b", 2),
+                        ": comment4\n\n",
+                    ]
+                )
+            )
+        ]
+    )
+
+    assert StreamReader(api, "/path").read() == "ab"
+
+
+# ---------------------------------------------------------------------------
+# Async: empty and edge-case streams
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_async_stream_empty_no_events() -> None:
+    """A stream with no SSE events produces no output."""
+    api = _FakeAsyncAPI([_FakeAsyncCM(_FakeAsyncResponse([]))])
+
+    assert [c async for c in AsyncStreamReader(api, "/path")] == []
+
+
+@pytest.mark.asyncio
+async def test_async_stream_empty_read() -> None:
+    """read() on an empty stream returns empty string."""
+    api = _FakeAsyncAPI([_FakeAsyncCM(_FakeAsyncResponse([]))])
+
+    assert await AsyncStreamReader(api, "/path").read() == ""
+
+
+@pytest.mark.asyncio
+async def test_async_stream_zero_length_data_events() -> None:
+    """SSE events with empty data fields are not yielded (sse.data is falsy)."""
+    api = _FakeAsyncAPI([_FakeAsyncCM(_FakeAsyncResponse(["data: \nid: 0\n\n", _sse_event("hello", 5)]))])
+
+    assert await AsyncStreamReader(api, "/path").read() == "hello"
+
+
+@pytest.mark.asyncio
+async def test_async_stream_only_comments() -> None:
+    """A stream containing only SSE comments produces no output."""
+    api = _FakeAsyncAPI(
+        [_FakeAsyncCM(_FakeAsyncResponse([": keepalive\n\n", ": another comment\n\n"]))]
+    )
+
+    assert [c async for c in AsyncStreamReader(api, "/path")] == []
+
+
+@pytest.mark.asyncio
+async def test_async_stream_only_comments_read() -> None:
+    """read() on a comment-only stream returns empty string."""
+    api = _FakeAsyncAPI(
+        [_FakeAsyncCM(_FakeAsyncResponse([": keepalive\n\n"]))]
+    )
+
+    assert await AsyncStreamReader(api, "/path").read() == ""

@@ -61,6 +61,62 @@ var _ = Describe("Conversion functions", func() {
 			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Command).To(BeNil())
 		})
 
+		It("returns error for invalid resource limits in full request flow", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Container: ContainerSpec{
+						Image: "python:3.12",
+						Resources: &ResourcesSpec{
+							Limits: &ResourceList{CPU: "500m", Memory: "not-valid"},
+						},
+					},
+				},
+			}
+			_, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("invalid resource limits"))
+			Expect(err.Error()).To(ContainSubstring("memory"))
+		})
+
+		It("returns error for invalid resource requests in full request flow", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Container: ContainerSpec{
+						Image: "python:3.12",
+						Resources: &ResourcesSpec{
+							Limits:   &ResourceList{CPU: "1"},
+							Requests: &ResourceList{EphemeralStorage: "garbage"},
+						},
+					},
+				},
+			}
+			_, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("invalid resource requests"))
+			Expect(err.Error()).To(ContainSubstring("ephemeralStorage"))
+		})
+
+		It("converts valid resources through the full request flow", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Container: ContainerSpec{
+						Image: "python:3.12",
+						Resources: &ResourcesSpec{
+							Limits:   &ResourceList{CPU: "2", Memory: "4Gi"},
+							Requests: &ResourceList{CPU: "500m", Memory: "1Gi"},
+						},
+					},
+				},
+			}
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			c := sb.Spec.PodTemplate.Spec.Containers[0]
+			Expect(c.Resources.Limits[corev1.ResourceCPU]).To(Equal(resource.MustParse("2")))
+			Expect(c.Resources.Limits[corev1.ResourceMemory]).To(Equal(resource.MustParse("4Gi")))
+			Expect(c.Resources.Requests[corev1.ResourceCPU]).To(Equal(resource.MustParse("500m")))
+			Expect(c.Resources.Requests[corev1.ResourceMemory]).To(Equal(resource.MustParse("1Gi")))
+		})
+
 		It("passes rootfsSnapshotSources through to the CRD", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
@@ -161,6 +217,74 @@ var _ = Describe("Conversion functions", func() {
 			Expect(resp.PodTemplate.Container.Command).To(BeNil())
 		})
 
+		It("uses only the first container when multiple containers exist", func() {
+			sb := &sandboxv1alpha1.Sandbox{
+				Spec: sandboxv1alpha1.SandboxSpec{
+					PodTemplate: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "sandbox",
+									Image: "python:3.12",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU:    resource.MustParse("2"),
+											corev1.ResourceMemory: resource.MustParse("4Gi"),
+										},
+									},
+								},
+								{
+									Name:  "sidecar",
+									Image: "nginx:latest",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU:    resource.MustParse("100m"),
+											corev1.ResourceMemory: resource.MustParse("128Mi"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			resp := sandboxToResponse(sb)
+			Expect(resp.PodTemplate.Container.Image).To(Equal("python:3.12"))
+			Expect(resp.PodTemplate.Container.Resources).NotTo(BeNil())
+			Expect(resp.PodTemplate.Container.Resources.Limits).NotTo(BeNil())
+			Expect(resp.PodTemplate.Container.Resources.Limits.CPU).To(Equal("2"))
+			Expect(resp.PodTemplate.Container.Resources.Limits.Memory).To(Equal("4Gi"))
+		})
+
+		It("returns resources with limits only when requests are empty", func() {
+			sb := &sandboxv1alpha1.Sandbox{
+				Spec: sandboxv1alpha1.SandboxSpec{
+					PodTemplate: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "sandbox",
+									Image: "alpine:latest",
+									Resources: corev1.ResourceRequirements{
+										Limits: corev1.ResourceList{
+											corev1.ResourceCPU:              resource.MustParse("1"),
+											corev1.ResourceEphemeralStorage: resource.MustParse("5Gi"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			resp := sandboxToResponse(sb)
+			Expect(resp.PodTemplate.Container.Resources).NotTo(BeNil())
+			Expect(resp.PodTemplate.Container.Resources.Limits).NotTo(BeNil())
+			Expect(resp.PodTemplate.Container.Resources.Limits.CPU).To(Equal("1"))
+			Expect(resp.PodTemplate.Container.Resources.Limits.EphemeralStorage).To(Equal("5Gi"))
+			Expect(resp.PodTemplate.Container.Resources.Requests).To(BeNil())
+		})
+
 		It("includes rootfsSnapshotSources in response", func() {
 			sb := &sandboxv1alpha1.Sandbox{
 				Spec: sandboxv1alpha1.SandboxSpec{
@@ -199,6 +323,27 @@ var _ = Describe("Conversion functions", func() {
 			}
 			Expect(containerResourcesToSpec(r)).To(BeNil())
 		})
+
+		It("returns both limits and requests when both are populated", func() {
+			r := corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("2"),
+					corev1.ResourceMemory: resource.MustParse("1Gi"),
+				},
+				Requests: corev1.ResourceList{
+					corev1.ResourceCPU:              resource.MustParse("500m"),
+					corev1.ResourceEphemeralStorage: resource.MustParse("10Gi"),
+				},
+			}
+			spec := containerResourcesToSpec(r)
+			Expect(spec).NotTo(BeNil())
+			Expect(spec.Limits).NotTo(BeNil())
+			Expect(spec.Limits.CPU).To(Equal("2"))
+			Expect(spec.Limits.Memory).To(Equal("1Gi"))
+			Expect(spec.Requests).NotTo(BeNil())
+			Expect(spec.Requests.CPU).To(Equal("500m"))
+			Expect(spec.Requests.EphemeralStorage).To(Equal("10Gi"))
+		})
 	})
 
 	Describe("crdNetworkToREST", func() {
@@ -219,6 +364,31 @@ var _ = Describe("Conversion functions", func() {
 		)
 	})
 
+	Describe("resourceListToREST", func() {
+		It("returns only recognized resources when mixed with unrecognized types", func() {
+			rl := corev1.ResourceList{
+				corev1.ResourceCPU:                    resource.MustParse("4"),
+				corev1.ResourceMemory:                 resource.MustParse("8Gi"),
+				corev1.ResourceName("nvidia.com/gpu"): resource.MustParse("2"),
+				corev1.ResourceName("hugepages-2Mi"):  resource.MustParse("100Mi"),
+			}
+			result := resourceListToREST(rl)
+			Expect(result).NotTo(BeNil())
+			Expect(result.CPU).To(Equal("4"))
+			Expect(result.Memory).To(Equal("8Gi"))
+			Expect(result.EphemeralStorage).To(BeEmpty())
+		})
+
+		It("returns nil when all resources are unrecognized", func() {
+			rl := corev1.ResourceList{
+				corev1.ResourceName("nvidia.com/gpu"): resource.MustParse("1"),
+				corev1.ResourceName("example.com/foo"): resource.MustParse("5"),
+			}
+			result := resourceListToREST(rl)
+			Expect(result).To(BeNil())
+		})
+	})
+
 	Describe("restResourceListToK8s", func() {
 		It("returns error mentioning cpu for invalid cpu", func() {
 			_, err := restResourceListToK8s(&ResourceList{CPU: "banana"})
@@ -234,6 +404,19 @@ var _ = Describe("Conversion functions", func() {
 
 		It("returns error mentioning ephemeralStorage for invalid ephemeralStorage", func() {
 			_, err := restResourceListToK8s(&ResourceList{EphemeralStorage: "nope"})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("ephemeralStorage"))
+		})
+
+		It("returns error on invalid memory even when cpu is valid", func() {
+			_, err := restResourceListToK8s(&ResourceList{CPU: "500m", Memory: "not-a-quantity"})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("memory"))
+			Expect(err.Error()).NotTo(ContainSubstring("cpu"))
+		})
+
+		It("returns error on invalid ephemeralStorage even when cpu and memory are valid", func() {
+			_, err := restResourceListToK8s(&ResourceList{CPU: "1", Memory: "512Mi", EphemeralStorage: "???"})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("ephemeralStorage"))
 		})
