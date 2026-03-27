@@ -792,6 +792,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	// todo benl: simplify requeue logic below
 	var requeueAfter time.Duration
 	if optionalTimeoutAt != nil {
 		requeueAfter = r.clock().Until(optionalTimeoutAt.Time)
