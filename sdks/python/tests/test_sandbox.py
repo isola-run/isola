@@ -673,6 +673,29 @@ def test_wait_seconds_none_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> 
     assert sandbox.status == SandboxStatus.RUNNING
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_wait_seconds_none_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> None:
+    """wait_seconds=None waits indefinitely (async variant)."""
+    monkeypatch.setattr("isola._sandbox.asyncio.sleep", _no_sleep)
+
+    respx.post("http://localhost:8080/v1/sandboxes").mock(
+        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+    )
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        side_effect=[
+            httpx.Response(200, json=_make_sandbox_response("creating")),
+            httpx.Response(200, json=_make_sandbox_response("creating")),
+            httpx.Response(200, json=_make_sandbox_response("running")),
+        ]
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.create(image="python:3.12", wait_seconds=None)
+
+    assert sandbox.status == SandboxStatus.RUNNING
+
+
 @respx.mock
 def test_wait_timeout_error_is_isola_error() -> None:
     """WaitTimeoutError is a subclass of IsolaError."""

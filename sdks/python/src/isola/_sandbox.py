@@ -75,8 +75,8 @@ def _wait_until_running(
     consecutive_poll_errors = 0
     while True:
         if deadline is not None and time.monotonic() >= deadline:
-            raise WaitTimeoutError(sandbox_id, timeout)  # type: ignore[arg-type]
-        time.sleep(_POLL_INTERVAL)
+            assert timeout is not None
+            raise WaitTimeoutError(sandbox_id, timeout)
         try:
             data = api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
             consecutive_poll_errors = 0
@@ -84,10 +84,12 @@ def _wait_until_running(
             consecutive_poll_errors += 1
             if consecutive_poll_errors >= _MAX_CONSECUTIVE_POLL_ERRORS:
                 raise
+            time.sleep(_POLL_INTERVAL)
             continue
         if data.status == SandboxStatus.RUNNING:
             return data
         _check_terminal(sandbox_id, data.status)
+        time.sleep(_POLL_INTERVAL)
 
 
 async def _async_wait_until_running(
@@ -99,8 +101,8 @@ async def _async_wait_until_running(
     consecutive_poll_errors = 0
     while True:
         if deadline is not None and time.monotonic() >= deadline:
-            raise WaitTimeoutError(sandbox_id, timeout)  # type: ignore[arg-type]
-        await asyncio.sleep(_POLL_INTERVAL)
+            assert timeout is not None
+            raise WaitTimeoutError(sandbox_id, timeout)
         try:
             data = await api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
             consecutive_poll_errors = 0
@@ -108,10 +110,12 @@ async def _async_wait_until_running(
             consecutive_poll_errors += 1
             if consecutive_poll_errors >= _MAX_CONSECUTIVE_POLL_ERRORS:
                 raise
+            await asyncio.sleep(_POLL_INTERVAL)
             continue
         if data.status == SandboxStatus.RUNNING:
             return data
         _check_terminal(sandbox_id, data.status)
+        await asyncio.sleep(_POLL_INTERVAL)
 
 
 class Sandboxes:
