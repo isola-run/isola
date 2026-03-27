@@ -261,9 +261,9 @@ var _ = Describe("Conversion functions", func() {
 	Describe("conditionsToStatus", func() {
 		It("maps unrecognized reason to unknown", func() {
 			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "SomethingNew"},
+				{Type: sandboxv1alpha1.SandboxReadyCondition, Status: metav1.ConditionFalse, Reason: "SomethingNew"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("unknown"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal(apigateway.StatusUnknown))
 		})
 	})
 

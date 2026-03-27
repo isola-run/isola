@@ -43,41 +43,31 @@ import (
 	"k8s.io/client-go/tools/events"
 )
 
+// Re-export condition types and reasons from the CRD package for use within the controller.
 const (
-	// Summary condition
-	SandboxReadyCondition = "Ready"
+	SandboxReadyCondition          = sandboxv1alpha1.SandboxReadyCondition
+	SandboxPodReadyCondition       = sandboxv1alpha1.SandboxPodReadyCondition
+	SandboxNetworkReadyCondition   = sandboxv1alpha1.SandboxNetworkReadyCondition
+	SandboxRootfsSnapshotCondition = sandboxv1alpha1.SandboxRootfsSnapshotCondition
 
-	SandboxPodReadyCondition       = "PodReady"
-	SandboxNetworkReadyCondition   = "NetworkConfigured"
-	SandboxRootfsSnapshotCondition = "RootfsSnapshot"
-)
-
-const (
-	CondReasonPodPending        = "PodPending"
-	CondReasonPodRunning        = "PodRunning"
-	CondReasonPodFailed         = "PodFailed"
-	CondReasonPodSucceeded      = "PodSucceeded"
-	CondReasonPodCreating       = "PodCreating"
-	CondReasonPodCreationFailed = "PodCreationFailed"
-	CondReasonDeleting          = "Deleting"
-	CondReasonReconciling       = "Reconciling"
-
-	// RootfsSnapshot-related reasons
-	CondReasonRootfsSnapshottingInProgress = "RootfsSnapshottingInProgress"
-	CondReasonRootfsSnapshotComplete       = "RootfsSnapshotComplete"
-	CondReasonRootfsSnapshotFailed         = "RootfsSnapshotFailed"
-	CondReasonRootfsSnapshotTimeout        = "RootfsSnapshotTimeout"
-	CondReasonInvalidRuntime               = "InvalidRuntime"
-
-	CondReasonStartupTimeoutExceeded = "StartupTimeoutExceeded"
-
-	// Restore-related reasons
-	CondReasonRootfsRestoreConfigError = "RootfsRestoreConfigurationError"
-	CondReasonNoRootfsSnapshot         = "NoRootfsSnapshot"
-
-	// NetworkPolicy-related reasons
-	CondReasonNetworkPolicyApplied = "NetworkPolicyApplied"
-	CondReasonNetworkPolicyFailed  = "NetworkPolicyFailed"
+	CondReasonPodPending                   = sandboxv1alpha1.CondReasonPodPending
+	CondReasonPodRunning                   = sandboxv1alpha1.CondReasonPodRunning
+	CondReasonPodFailed                    = sandboxv1alpha1.CondReasonPodFailed
+	CondReasonPodSucceeded                 = sandboxv1alpha1.CondReasonPodSucceeded
+	CondReasonPodCreating                  = sandboxv1alpha1.CondReasonPodCreating
+	CondReasonPodCreationFailed            = sandboxv1alpha1.CondReasonPodCreationFailed
+	CondReasonDeleting                     = sandboxv1alpha1.CondReasonDeleting
+	CondReasonReconciling                  = sandboxv1alpha1.CondReasonReconciling
+	CondReasonRootfsSnapshottingInProgress = sandboxv1alpha1.CondReasonRootfsSnapshottingInProgress
+	CondReasonRootfsSnapshotComplete       = sandboxv1alpha1.CondReasonRootfsSnapshotComplete
+	CondReasonRootfsSnapshotFailed         = sandboxv1alpha1.CondReasonRootfsSnapshotFailed
+	CondReasonRootfsSnapshotTimeout        = sandboxv1alpha1.CondReasonRootfsSnapshotTimeout
+	CondReasonInvalidRuntime               = sandboxv1alpha1.CondReasonInvalidRuntime
+	CondReasonStartupTimeoutExceeded       = sandboxv1alpha1.CondReasonStartupTimeoutExceeded
+	CondReasonRootfsRestoreConfigError     = sandboxv1alpha1.CondReasonRootfsRestoreConfigError
+	CondReasonNoRootfsSnapshot             = sandboxv1alpha1.CondReasonNoRootfsSnapshot
+	CondReasonNetworkPolicyApplied         = sandboxv1alpha1.CondReasonNetworkPolicyApplied
+	CondReasonNetworkPolicyFailed          = sandboxv1alpha1.CondReasonNetworkPolicyFailed
 )
 
 const defaultTimeoutSeconds int64 = 300
