@@ -46,7 +46,7 @@ def sandbox_response() -> dict[str, object]:
         "network": {
             "allowInternetEgress": True,
         },
-        "activeDeadlineSeconds": 3600,
+        "timeoutSeconds": 3600,
     }
 
 

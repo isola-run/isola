@@ -53,7 +53,7 @@ def test_spawn_and_command_lifecycle(sandbox_response_copy: dict[str, object]) -
             "print('hello')",
             env={"DEBUG": "1"},
             cwd="/workspace",
-            timeout=30,
+            timeout_seconds=30,
             container="worker",
         )
         code = cmd.exit_code()
@@ -69,7 +69,7 @@ def test_spawn_and_command_lifecycle(sandbox_response_copy: dict[str, object]) -
         "args": ["python", "-c", "print('hello')"],
         "env": {"DEBUG": "1"},
         "cwd": "/workspace",
-        "timeout": 30,
+        "timeoutSeconds": 30,
     }
 
     assert status_route.called

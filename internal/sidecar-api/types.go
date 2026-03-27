@@ -22,10 +22,10 @@ type FilesystemWriteResponse struct {
 }
 
 type CreateCommandRequest struct {
-	Args    []string          `json:"args" required:"true" minItems:"1" doc:"Argument vector: Args[0] is the executable path, Args[1:] are its arguments"`
-	Env     map[string]string `json:"env,omitempty" doc:"Environment variable overrides"`
-	Cwd     string            `json:"cwd,omitempty" doc:"Working directory inside the sandbox. Defaults to the target container process's working directory if omitted."`
-	Timeout *int              `json:"timeout,omitempty" minimum:"1" doc:"Max execution time in seconds"`
+	Args           []string          `json:"args" required:"true" minItems:"1" doc:"Argument vector: Args[0] is the executable path, Args[1:] are its arguments"`
+	Env            map[string]string `json:"env,omitempty" doc:"Environment variable overrides"`
+	Cwd            string            `json:"cwd,omitempty" doc:"Working directory inside the sandbox. Defaults to the target container process's working directory if omitted."`
+	TimeoutSeconds *int              `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max execution time in seconds"`
 }
 
 type CreateCommandResponse struct {

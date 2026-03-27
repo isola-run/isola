@@ -64,14 +64,6 @@ spec:
           spec:
             description: spec defines the snapshot request
             properties:
-              activeDeadlineSeconds:
-                default: 300
-                description: |-
-                  ActiveDeadlineSeconds specifies the duration in seconds for the snapshot job.
-                  If the job does not complete within this time, it will be terminated.
-                format: int64
-                minimum: 1
-                type: integer
               containerName:
                 description: |-
                   ContainerName is the name of the container to snapshot.
@@ -95,6 +87,14 @@ spec:
                 minLength: 1
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                 type: string
+              timeoutSeconds:
+                default: 300
+                description: |-
+                  TimeoutSeconds specifies the duration in seconds for the snapshot job.
+                  If the job does not complete within this time, it will be terminated.
+                format: int64
+                minimum: 1
+                type: integer
               ttlSecondsAfterFinished:
                 default: 300
                 description: |-

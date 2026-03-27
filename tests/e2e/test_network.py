@@ -21,9 +21,9 @@ from isola import Isola, NetworkSpec, Sandbox
 from conftest import wait_for_running
 
 
-def _run_and_collect_stdout(sandbox: Sandbox, *args: str, timeout: int | None = None) -> tuple[int, str]:
+def _run_and_collect_stdout(sandbox: Sandbox, *args: str, timeout_seconds: int | None = None) -> tuple[int, str]:
     """Run a command in a sandbox and return (exit_code, stdout)."""
-    result = sandbox.commands.run(*args, timeout=timeout)
+    result = sandbox.commands.run(*args, timeout_seconds=timeout_seconds)
     return result.exit_code, result.stdout
 
 
@@ -39,7 +39,7 @@ def test_default_no_internet(
     exit_code, _ = _run_and_collect_stdout(
         running,
         "wget", "-q", "-O-", "--timeout=3", "http://1.1.1.1",
-        timeout=5,
+        timeout_seconds=5,
     )
 
     assert exit_code != 0, "wget should fail when network is blocked by default"
@@ -60,7 +60,7 @@ def test_internet_egress_enabled(
     exit_code, output = _run_and_collect_stdout(
         running,
         "wget", "-q", "-O-", "--timeout=5", "http://1.1.1.1",
-        timeout=10,
+        timeout_seconds=10,
     )
 
     assert exit_code == 0, f"wget should succeed with internet egress enabled, got exit code {exit_code}"
@@ -112,7 +112,7 @@ def test_allowed_egress_cidrs(
     exit_code, _ = _run_and_collect_stdout(
         running,
         "sh", "-c", "echo | nc -w 5 1.1.1.1 53",
-        timeout=10,
+        timeout_seconds=10,
     )
 
     assert exit_code == 0, (

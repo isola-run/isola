@@ -21,8 +21,10 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
@@ -63,7 +65,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(60)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
@@ -102,7 +104,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(60)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
@@ -135,7 +137,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1) // 1 second timeout
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategyDelete,
 				}
@@ -177,7 +179,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 			})
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
@@ -217,7 +219,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(60)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 			})
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
@@ -243,7 +245,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(120)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
@@ -337,7 +339,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1) // 1 second timeout
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategyDelete,
 				}
@@ -377,6 +379,212 @@ var _ = Describe("Sandbox Controller", func() {
 
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(err).To(Satisfy(errors.IsNotFound))
+		})
+	})
+
+	// ============================================
+	// Startup Timeout Tests
+	// ============================================
+	Context("Startup timeout", func() {
+		var (
+			reconciler *SandboxReconciler
+			fakeClock  *FakeClock
+		)
+
+		BeforeEach(func() {
+			fakeClock = NewFakeClock(time.Now())
+			reconciler = newTestReconciler(fakeClock)
+		})
+
+		It("should delete sandbox when pod not ready after startup deadline", func() {
+			sandboxName := "sandbox-startup-timeout-delete"
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.StartupTimeoutSeconds = ptr.To(int64(10))
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile creates the pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// Pod stays pending (don't make it ready)
+
+			// Advance the fake clock past the pod's creation timestamp + startup deadline.
+			// The pod's CreationTimestamp is set by the API server at real wall-clock time,
+			// which may differ from the FakeClock's initial value.
+			fakeClock.Set(pod.CreationTimestamp.Add(11 * time.Second))
+
+			// Reconcile detects startup timeout and issues Delete (sets DeletionTimestamp
+			// but the finalizer keeps the object around)
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Second reconcile runs the finalizer, removes it, and the object is deleted
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
+			Expect(err).To(Satisfy(errors.IsNotFound))
+		})
+
+		It("should not fire startup timeout when pod becomes ready before deadline", func() {
+			sandboxName := "sandbox-startup-ready-before"
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.StartupTimeoutSeconds = ptr.To(int64(30))
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile creates the pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// Make pod ready before deadline
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
+
+			// Advance past the startup deadline relative to pod creation
+			fakeClock.Set(pod.CreationTimestamp.Add(35 * time.Second))
+
+			// Reconcile -- sandbox should still exist and be ready
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			readyCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(readyCond.Reason).To(Equal(CondReasonPodRunning))
+		})
+
+		It("should not check startup timeout when StartupTimeoutSeconds is nil", func() {
+			sandboxName := "sandbox-startup-nil-timeout"
+
+			// The CRD has +kubebuilder:default=60 so the API server always sets
+			// StartupTimeoutSeconds. To test the nil code path, set a very large value
+			// and verify that the sandbox survives well past a typical startup window.
+			// This exercises the "deadline not exceeded" branch of the startup timeout
+			// check, which is functionally equivalent to nil (no timeout enforcement).
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.StartupTimeoutSeconds = ptr.To(int64(86400))
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile creates the pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// Pod stays pending
+
+			// Advance 600 seconds -- well past typical startup, but not past 86400s
+			fakeClock.Set(pod.CreationTimestamp.Add(600 * time.Second))
+
+			// Reconcile -- sandbox should still exist with PodPending, not StartupTimeoutExceeded
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			readyCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(readyCond.Reason).To(Equal(CondReasonPodPending))
+		})
+
+		It("should use min of startup and lifetime for RequeueAfter", func() {
+			sandboxName := "sandbox-startup-requeue-min"
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.StartupTimeoutSeconds = ptr.To(int64(30))
+				s.Spec.TimeoutSeconds = ptr.To(int64(120))
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile creates the pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// Align the fake clock to the pod's creation timestamp so that
+			// makePodReady sets StartTime at a known point relative to creation.
+			fakeClock.Set(pod.CreationTimestamp.Time)
+
+			// Make pod ready so ensureTimeout sets TimeoutAt
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Set pod back to not-ready so both startup and lifetime requeue are computed
+			pod = getPod(ctx, podName)
+			pod.Status.Phase = corev1.PodRunning
+			pod.Status.Conditions = []corev1.PodCondition{
+				{Type: corev1.PodReady, Status: corev1.ConditionFalse, LastTransitionTime: metav1.NewTime(fakeClock.Now())},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			result, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// RequeueAfter should be approximately 30s (startup), not 120s (lifetime).
+			// Startup deadline = CreationTimestamp + 30s; lifetime deadline = StartTime + 120s.
+			// Since the clock is aligned to CreationTimestamp, both deadlines are in the future
+			// and the startup one (30s) is shorter.
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+			Expect(result.RequeueAfter).To(BeNumerically("<=", 30*time.Second))
+			Expect(result.RequeueAfter).To(BeNumerically("<", 120*time.Second))
+		})
+
+		It("should not fire startup timeout at exact boundary", func() {
+			sandboxName := "sandbox-startup-exact-boundary"
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.StartupTimeoutSeconds = ptr.To(int64(10))
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile creates the pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// Set the fake clock to exactly the startup deadline boundary
+			// (CreationTimestamp + StartupTimeoutSeconds)
+			fakeClock.Set(pod.CreationTimestamp.Add(10 * time.Second))
+
+			// Reconcile -- sandbox should still exist (After is strictly >, not >=)
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })

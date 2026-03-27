@@ -232,8 +232,8 @@ func (h *Handlers) startCommand(pid int, input *CreateCommandInput) (*commandEnt
 
 	var ctx context.Context
 	var cancel context.CancelFunc
-	if input.Body.Timeout != nil && *input.Body.Timeout > 0 {
-		duration := time.Duration(*input.Body.Timeout) * time.Second
+	if input.Body.TimeoutSeconds != nil && *input.Body.TimeoutSeconds > 0 {
+		duration := time.Duration(*input.Body.TimeoutSeconds) * time.Second
 		// will send SIGKILL to the process after timeout
 		ctx, cancel = context.WithTimeout(context.Background(), duration)
 	} else {

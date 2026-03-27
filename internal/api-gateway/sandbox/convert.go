@@ -43,7 +43,8 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 		resp.PodTemplate.Container.Resources = containerResourcesToSpec(c.Resources)
 	}
 
-	resp.ActiveDeadlineSeconds = sb.Spec.ActiveDeadlineSeconds
+	resp.TimeoutSeconds = sb.Spec.TimeoutSeconds
+	resp.StartupTimeoutSeconds = sb.Spec.StartupTimeoutSeconds
 	resp.Network = crdNetworkToREST(sb.Spec.Network)
 	resp.RootfsSnapshotSources = crdRootfsSnapshotSourcesToREST(sb.Spec.RootfsSnapshotSources)
 
@@ -161,7 +162,8 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 					Containers: []corev1.Container{container},
 				},
 			},
-			ActiveDeadlineSeconds: req.ActiveDeadlineSeconds,
+			TimeoutSeconds:        req.TimeoutSeconds,
+			StartupTimeoutSeconds: req.StartupTimeoutSeconds,
 		},
 	}
 

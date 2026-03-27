@@ -54,12 +54,6 @@ spec:
           spec:
             description: spec defines the desired state of Sandbox
             properties:
-              activeDeadlineSeconds:
-                description: ActiveDeadlineSeconds defines how long the sandbox runs
-                  before being shut down
-                format: int64
-                minimum: 1
-                type: integer
               network:
                 description: |-
                   Network specifies the network isolation configuration for this sandbox.
@@ -157,15 +151,6 @@ spec:
                 description: ShutdownPolicy defines what to do when the sandbox ends
                   (defaults to Delete if unspecified)
                 properties:
-                  activeDeadlineSeconds:
-                    default: 300
-                    description: |-
-                      ActiveDeadlineSeconds specifies the duration in seconds relative to the startTime
-                      that the snapshot job may be active before the system tries to terminate it.
-                      Only used when Strategy is SnapshotRootfs.
-                    format: int64
-                    minimum: 1
-                    type: integer
                   strategy:
                     allOf:
                     - enum:
@@ -178,7 +163,31 @@ spec:
                     description: Strategy determines the action taken when the sandbox
                       shuts down
                     type: string
+                  timeoutSeconds:
+                    default: 300
+                    description: |-
+                      TimeoutSeconds specifies the duration in seconds relative to the startTime
+                      that the snapshot job may be active before the system tries to terminate it.
+                      Only used when Strategy is SnapshotRootfs.
+                    format: int64
+                    minimum: 1
+                    type: integer
                 type: object
+              startupTimeoutSeconds:
+                default: 60
+                description: |-
+                  StartupTimeoutSeconds defines how long the sandbox has to become Ready
+                  after pod creation. If the pod hasn't reached Ready within this time,
+                  the sandbox is marked as failed.
+                format: int64
+                minimum: 1
+                type: integer
+              timeoutSeconds:
+                description: TimeoutSeconds defines how long the sandbox runs before
+                  being shut down
+                format: int64
+                minimum: 1
+                type: integer
             required:
             - podTemplate
             type: object

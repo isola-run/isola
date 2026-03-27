@@ -97,9 +97,8 @@ class PodTemplateInfo(IsolaModel):
 
 class CreateSandboxPayload(IsolaModel):
     pod_template: PodTemplate
-    # todo benl: rename to activeDeadlineSeconds?
-    # todo benl: maybe rename activeDeadlineSeconds to something like max_lifetime in CRD and here
-    timeout: int | None = Field(None, alias="activeDeadlineSeconds")
+    timeout_seconds: int | None = None
+    startup_timeout_seconds: int | None = None
     network: NetworkSpec | None = None
     rootfs_snapshot_sources: list[RootfsSnapshotSource] | None = None
 
@@ -119,7 +118,8 @@ class SandboxData(IsolaModel):
     pod_template: PodTemplateInfo
     status: SandboxStatus
     creation_timestamp: datetime
-    timeout: int | None = Field(None, alias="activeDeadlineSeconds")
+    timeout_seconds: int | None = None
+    startup_timeout_seconds: int | None = None
     network: NetworkSpec | None = None
     rootfs_snapshot_sources: list[RootfsSnapshotSource] | None = None
 
@@ -128,7 +128,7 @@ class CreateCommandPayload(IsolaModel):
     args: list[str]
     env: dict[str, str] | None = None
     cwd: str | None = None
-    timeout: int | None = None
+    timeout_seconds: int | None = None
 
 
 class CreateCommandResponse(IsolaModel):

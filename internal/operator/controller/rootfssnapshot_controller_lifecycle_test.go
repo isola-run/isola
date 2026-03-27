@@ -236,8 +236,8 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 		})
 	})
 
-	Context("ActiveDeadlineSeconds", func() {
-		It("should use spec activeDeadlineSeconds for jobs", func() {
+	Context("TimeoutSeconds", func() {
+		It("should use spec timeoutSeconds for jobs", func() {
 			snapName := "snap-deadline"
 			sandboxName := "sandbox-deadline"
 			podName := sandboxName + "-pod"
@@ -259,9 +259,9 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 					Namespace: testNamespace,
 				},
 				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
-					SandboxName:           sandboxName,
-					SnapshotName:          snapName,
-					ActiveDeadlineSeconds: &customDeadline,
+					SandboxName:    sandboxName,
+					SnapshotName:   snapName,
+					TimeoutSeconds: &customDeadline,
 				},
 			}
 			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
@@ -281,7 +281,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(*job.Spec.ActiveDeadlineSeconds).To(Equal(customDeadline))
 		})
 
-		It("should use default activeDeadlineSeconds when not specified", func() {
+		It("should use default timeoutSeconds when not specified", func() {
 			snapName := "rfs-snap-default-deadline"
 			sandboxName := "rfs-sandbox-default-deadline"
 			podName := sandboxName + "-pod"
@@ -310,7 +310,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			job := getSnapshotJob(ctx, jobName)
 			Expect(job).NotTo(BeNil())
 			Expect(job.Spec.ActiveDeadlineSeconds).NotTo(BeNil())
-			Expect(*job.Spec.ActiveDeadlineSeconds).To(Equal(defaultActiveDeadlineSecondsSnapshot))
+			Expect(*job.Spec.ActiveDeadlineSeconds).To(Equal(defaultTimeoutSecondsSnapshot))
 		})
 	})
 })

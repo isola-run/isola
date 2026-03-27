@@ -74,7 +74,7 @@ func ConditionsToStatus(conditions []metav1.Condition) string {
 		return "shuttingDown"
 	case "PodFailed", "PodCreationFailed", "InvalidRuntime",
 		"NetworkPolicyFailed", "RootfsSnapshotFailed", "RootfsSnapshotTimeout",
-		"RootfsRestoreConfigurationError":
+		"RootfsRestoreConfigurationError", "StartupTimeoutExceeded":
 		return "failed"
 	case "PodSucceeded", "RootfsSnapshotComplete":
 		return "stopped"

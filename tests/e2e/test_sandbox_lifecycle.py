@@ -48,15 +48,15 @@ def test_create_sandbox_with_full_config(
         cpu="100m",
         memory="128Mi",
         ephemeral_storage="512Mi",
-        timeout=300,
+        timeout_seconds=300,
         network=NetworkSpec(allow_internet_egress=True),
     )
     assert sb.id
-    assert sb.timeout == 300
+    assert sb.timeout_seconds == 300
 
     running = wait_for_running(isola_client, sb.id)
     assert running.status == SandboxStatus.RUNNING
-    assert running.timeout == 300
+    assert running.timeout_seconds == 300
     assert running.network is not None
     assert running.network.allow_internet_egress is True
 

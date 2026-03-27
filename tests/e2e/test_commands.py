@@ -95,7 +95,7 @@ def test_write_stdin(session_sandbox: Sandbox) -> None:
 
 def test_kill_running_command(session_sandbox: Sandbox) -> None:
     """Kill a long-running command and verify it terminates with a non-None exit code."""
-    cmd = session_sandbox.commands.spawn("sleep", "300", timeout=15)
+    cmd = session_sandbox.commands.spawn("sleep", "300", timeout_seconds=15)
 
     # Verify the command is running
     assert cmd.exit_code() is None
@@ -108,7 +108,7 @@ def test_kill_running_command(session_sandbox: Sandbox) -> None:
 
 def test_kill_is_idempotent(session_sandbox: Sandbox) -> None:
     """Kill a command twice to verify idempotency -- second kill must not raise."""
-    cmd = session_sandbox.commands.spawn("sleep", "300", timeout=15)
+    cmd = session_sandbox.commands.spawn("sleep", "300", timeout_seconds=15)
     cmd.kill()
     cmd.wait()
 
@@ -150,7 +150,7 @@ def test_kill_already_exited_command(session_sandbox: Sandbox) -> None:
 
 def test_empty_stdin_write(session_sandbox: Sandbox) -> None:
     """Writing zero bytes to stdin should succeed without raising."""
-    cmd = session_sandbox.commands.spawn("sleep", "30", timeout=15)
+    cmd = session_sandbox.commands.spawn("sleep", "30", timeout_seconds=15)
     try:
         cmd.write_stdin(b"")
     finally:
@@ -159,7 +159,7 @@ def test_empty_stdin_write(session_sandbox: Sandbox) -> None:
 
 def test_close_stdin_twice_raises_conflict(session_sandbox: Sandbox) -> None:
     """Closing stdin twice should raise ConflictError (409) on the second call."""
-    cmd = session_sandbox.commands.spawn("sleep", "30", timeout=15)
+    cmd = session_sandbox.commands.spawn("sleep", "30", timeout_seconds=15)
     try:
         cmd.close_stdin()
         with pytest.raises(ConflictError):
@@ -170,7 +170,7 @@ def test_close_stdin_twice_raises_conflict(session_sandbox: Sandbox) -> None:
 
 def test_write_stdin_after_close_raises_conflict(session_sandbox: Sandbox) -> None:
     """Writing to stdin after it has been closed should raise ConflictError (409)."""
-    cmd = session_sandbox.commands.spawn("sleep", "30", timeout=15)
+    cmd = session_sandbox.commands.spawn("sleep", "30", timeout_seconds=15)
     try:
         cmd.close_stdin()
         with pytest.raises(ConflictError):

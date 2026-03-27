@@ -47,7 +47,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
@@ -90,7 +90,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
@@ -131,7 +131,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
@@ -167,7 +167,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
@@ -214,7 +214,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
@@ -268,7 +268,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
@@ -302,7 +302,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 
-		It("should use default activeDeadlineSeconds when not specified", func() {
+		It("should use default timeoutSeconds when not specified", func() {
 			sandboxName := "sandbox-default-deadline"
 			runtimeClassName := "gvisor-default-deadline"
 
@@ -311,10 +311,10 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
-					// ActiveDeadlineSeconds not set - should use default (300)
+					// TimeoutSeconds not set - should use default (300)
 				}
 				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
@@ -337,11 +337,11 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Verify RootfsSnapshot was created with default activeDeadlineSeconds (300)
+			// Verify RootfsSnapshot was created with default timeoutSeconds (300)
 			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
-			Expect(rootfsSnapshot.Spec.ActiveDeadlineSeconds).NotTo(BeNil())
-			Expect(*rootfsSnapshot.Spec.ActiveDeadlineSeconds).To(Equal(int64(300)), "Should use default activeDeadlineSeconds of 300")
+			Expect(rootfsSnapshot.Spec.TimeoutSeconds).NotTo(BeNil())
+			Expect(*rootfsSnapshot.Spec.TimeoutSeconds).To(Equal(int64(300)), "Should use default timeoutSeconds of 300")
 		})
 
 		It("should handle RuntimeClass not found during snapshot verification", func() {
@@ -350,7 +350,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
@@ -378,7 +378,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
@@ -438,10 +438,10 @@ var _ = Describe("Sandbox Controller", func() {
 			snapshotDeadline := int64(10)
 			timeout := int64(1) // sandbox times out quickly to enter finalization
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ActiveDeadlineSeconds = &timeout
+				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy:              sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
-					ActiveDeadlineSeconds: &snapshotDeadline,
+					Strategy:       sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+					TimeoutSeconds: &snapshotDeadline,
 				}
 				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
