@@ -19,6 +19,40 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Condition types for Sandbox status.
+const (
+	SandboxReadyCondition           = "Ready"
+	SandboxPodReadyCondition        = "PodReady"
+	SandboxNetworkReadyCondition    = "NetworkConfigured"
+	SandboxRootfsSnapshotCondition  = "RootfsSnapshot"
+)
+
+// Condition reasons for Sandbox status.
+const (
+	CondReasonPodPending        = "PodPending"
+	CondReasonPodRunning        = "PodRunning"
+	CondReasonPodFailed         = "PodFailed"
+	CondReasonPodSucceeded      = "PodSucceeded"
+	CondReasonPodCreating       = "PodCreating"
+	CondReasonPodCreationFailed = "PodCreationFailed"
+	CondReasonDeleting          = "Deleting"
+	CondReasonReconciling       = "Reconciling"
+
+	CondReasonRootfsSnapshottingInProgress = "RootfsSnapshottingInProgress"
+	CondReasonRootfsSnapshotComplete       = "RootfsSnapshotComplete"
+	CondReasonRootfsSnapshotFailed         = "RootfsSnapshotFailed"
+	CondReasonRootfsSnapshotTimeout        = "RootfsSnapshotTimeout"
+	CondReasonInvalidRuntime               = "InvalidRuntime"
+
+	CondReasonStartupTimeoutExceeded = "StartupTimeoutExceeded"
+
+	CondReasonRootfsRestoreConfigError = "RootfsRestoreConfigurationError"
+	CondReasonNoRootfsSnapshot         = "NoRootfsSnapshot"
+
+	CondReasonNetworkPolicyApplied = "NetworkPolicyApplied"
+	CondReasonNetworkPolicyFailed  = "NetworkPolicyFailed"
+)
+
 // SandboxShutdownStrategy defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotRootfs
 type SandboxShutdownStrategy string
