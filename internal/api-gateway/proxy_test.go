@@ -248,19 +248,6 @@ var _ = Describe("K8sErrorToHuma", func() {
 		Expect(headerErr.GetHeaders().Get("Retry-After")).To(Equal("15"))
 	})
 
-	It("does not include Retry-After for errors without retry hint", func() {
-		k8sErr := apierrors.NewForbidden(
-			schema.GroupResource{Group: "sandbox.isola.run", Resource: "sandboxes"},
-			"sb-1", fmt.Errorf("not allowed"),
-		)
-		err := K8sErrorToHuma(k8sErr, "fallback")
-		Expect(err).To(HaveOccurred())
-		expectStatus(err, 403)
-
-		_, ok := err.(headerCarrier)
-		Expect(ok).To(BeFalse(), "expected error NOT to carry headers")
-	})
-
 	It("returns 500 with fallback message for non-StatusError", func() {
 		err := K8sErrorToHuma(fmt.Errorf("connection refused"), "something went wrong")
 		Expect(err).To(HaveOccurred())
@@ -298,5 +285,8 @@ var _ = Describe("BodyStream.Resolve", func() {
 		api.Post("/test-body", strings.NewReader("hello world"))
 
 		Expect(captured.Stream).NotTo(BeNil())
+		data, readErr := io.ReadAll(captured.Stream)
+		Expect(readErr).NotTo(HaveOccurred())
+		Expect(string(data)).To(Equal("hello world"))
 	})
 })

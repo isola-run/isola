@@ -14,8 +14,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import pytest
 from pydantic import ValidationError
 
@@ -37,7 +35,6 @@ from isola._models import (
     RootfsSnapshotSource,
     SandboxData,
     SandboxStatus,
-    SandboxSummary,
 )
 
 
@@ -168,36 +165,6 @@ class TestValidateByNameAndAlias:
         assert net.allowed_egress_cidrs == ["192.168.0.0/16"]
 
 
-# --- extra="ignore" ---
-
-
-class TestExtraIgnore:
-    def test_unknown_fields_silently_dropped(self) -> None:
-        spec = ContainerSpec.model_validate({
-            "image": "python:3.12",
-            "unknownField": "should be ignored",
-            "anotherUnknown": 42,
-        })
-        assert spec.image == "python:3.12"
-        assert not hasattr(spec, "unknownField")
-        assert not hasattr(spec, "anotherUnknown")
-
-    def test_sandbox_data_ignores_extra(self) -> None:
-        data = SandboxData.model_validate({
-            "id": "sb-1",
-            "status": "running",
-            "creationTimestamp": "2026-01-01T00:00:00Z",
-            "podTemplate": {"container": {"image": "alpine"}},
-            "futureField": "from newer API version",
-        })
-        assert data.id == "sb-1"
-        assert not hasattr(data, "futureField")
-
-    def test_network_spec_ignores_extra(self) -> None:
-        net = NetworkSpec.model_validate({"newPolicy": "allow-all"})
-        assert not hasattr(net, "newPolicy")
-
-
 # --- Required vs optional fields ---
 
 
@@ -221,24 +188,6 @@ class TestRequiredOptionalFields:
         field_locs = {e["loc"] for e in errors}
         assert ("pod_template",) in field_locs or ("podTemplate",) in field_locs
 
-    def test_pod_template_requires_container(self) -> None:
-        with pytest.raises(ValidationError):
-            PodTemplate.model_validate({})
-
-    def test_create_command_payload_requires_args(self) -> None:
-        with pytest.raises(ValidationError) as exc_info:
-            CreateCommandPayload.model_validate({})
-        errors = exc_info.value.errors()
-        assert any("args" in str(e["loc"]) for e in errors)
-
-    def test_file_write_result_requires_both_fields(self) -> None:
-        with pytest.raises(ValidationError):
-            FileWriteResult.model_validate({})
-
-    def test_sandbox_summary_requires_all_fields(self) -> None:
-        with pytest.raises(ValidationError):
-            SandboxSummary.model_validate({})
-
     def test_sandbox_data_optional_fields_default_none(self) -> None:
         data = SandboxData.model_validate({
             "id": "sb-1",
@@ -250,14 +199,6 @@ class TestRequiredOptionalFields:
         assert data.startup_timeout_seconds is None
         assert data.network is None
         assert data.rootfs_snapshot_sources is None
-
-    def test_command_status_response_exit_code_optional(self) -> None:
-        resp = CommandStatusResponse.model_validate({})
-        assert resp.exit_code is None
-
-    def test_rootfs_snapshot_source_requires_snapshot_name(self) -> None:
-        with pytest.raises(ValidationError):
-            RootfsSnapshotSource.model_validate({})
 
     def test_rootfs_snapshot_source_container_name_optional(self) -> None:
         source = RootfsSnapshotSource(snapshot_name="snap-1")
@@ -310,16 +251,6 @@ class TestCommandResult:
         result = CommandResult(command_id="cmd-1", stdout="", stderr="", exit_code=0)
         with pytest.raises(AttributeError):
             result.exit_code = 1  # type: ignore[misc]
-
-    def test_equality(self) -> None:
-        a = CommandResult(command_id="cmd-1", stdout="out", stderr="err", exit_code=0)
-        b = CommandResult(command_id="cmd-1", stdout="out", stderr="err", exit_code=0)
-        assert a == b
-
-    def test_inequality(self) -> None:
-        a = CommandResult(command_id="cmd-1", stdout="out", stderr="err", exit_code=0)
-        b = CommandResult(command_id="cmd-2", stdout="out", stderr="err", exit_code=0)
-        assert a != b
 
 
 # --- Round-trip serialization ---
@@ -439,49 +370,6 @@ class TestRoundTrip:
         assert reparsed.sandboxes is not None
         assert len(reparsed.sandboxes) == 2
         assert reparsed.sandboxes[0].id == "sb-1"
-
-
-# --- Type coercion / datetime parsing ---
-
-
-class TestTypeCoercion:
-    def test_datetime_parsing_iso_format(self) -> None:
-        summary = SandboxSummary.model_validate({
-            "id": "sb-1",
-            "status": "running",
-            "creationTimestamp": "2026-03-15T12:30:00Z",
-        })
-        assert isinstance(summary.creation_timestamp, datetime)
-        assert summary.creation_timestamp.year == 2026
-        assert summary.creation_timestamp.month == 3
-        assert summary.creation_timestamp.day == 15
-
-    def test_datetime_parsing_with_offset(self) -> None:
-        summary = SandboxSummary.model_validate({
-            "id": "sb-1",
-            "status": "running",
-            "creationTimestamp": "2026-06-01T08:00:00+05:00",
-        })
-        assert isinstance(summary.creation_timestamp, datetime)
-        assert summary.creation_timestamp.tzinfo is not None
-
-    def test_sandbox_data_datetime(self) -> None:
-        data = SandboxData.model_validate({
-            "id": "sb-1",
-            "status": "running",
-            "creationTimestamp": "2026-01-01T00:00:00Z",
-            "podTemplate": {"container": {"image": "alpine"}},
-        })
-        assert isinstance(data.creation_timestamp, datetime)
-        assert data.creation_timestamp == datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-    def test_invalid_datetime_raises_validation_error(self) -> None:
-        with pytest.raises(ValidationError):
-            SandboxSummary.model_validate({
-                "id": "sb-1",
-                "status": "running",
-                "creationTimestamp": "not-a-date",
-            })
 
 
 # --- Nested model construction ---

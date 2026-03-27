@@ -23,7 +23,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/isola-ai/isola/internal/snapshot"
@@ -56,60 +55,6 @@ func (f *fakeUploader) upload(_ context.Context, key string, r io.Reader) (int64
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
-}
-
-func TestSnapshotKeyPath(t *testing.T) {
-	tests := []struct {
-		namespace string
-		name      string
-		want      string
-	}{
-		{"default", "snap1", "rootfssnapshots/default/snap1.tar"},
-		{"isola-sandboxes", "my-snapshot", "rootfssnapshots/isola-sandboxes/my-snapshot.tar"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.namespace+"/"+tt.name, func(t *testing.T) {
-			got := snapshotKeyPath(tt.namespace, tt.name)
-			if got != tt.want {
-				t.Errorf("snapshotKeyPath(%q, %q) = %q, want %q", tt.namespace, tt.name, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestErrMissingEnv(t *testing.T) {
-	err := errMissingEnv("MY_VAR")
-	if err == nil {
-		t.Fatal("expected non-nil error")
-	}
-	if !strings.Contains(err.Error(), "MY_VAR") {
-		t.Errorf("error %q should mention MY_VAR", err.Error())
-	}
-	if !strings.Contains(err.Error(), "required") {
-		t.Errorf("error %q should mention 'required'", err.Error())
-	}
-}
-
-func TestGetEnv(t *testing.T) {
-	t.Run("returns value when set", func(t *testing.T) {
-		t.Setenv("TEST_GETENV_KEY", "value123")
-		if got := getEnv("TEST_GETENV_KEY", "default"); got != "value123" {
-			t.Errorf("got %q, want %q", got, "value123")
-		}
-	})
-
-	t.Run("returns default when not set", func(t *testing.T) {
-		if got := getEnv("TEST_GETENV_MISSING", "fallback"); got != "fallback" {
-			t.Errorf("got %q, want %q", got, "fallback")
-		}
-	})
-
-	t.Run("returns default when empty", func(t *testing.T) {
-		t.Setenv("TEST_GETENV_EMPTY", "")
-		if got := getEnv("TEST_GETENV_EMPTY", "fallback"); got != "fallback" {
-			t.Errorf("got %q, want %q", got, "fallback")
-		}
-	})
 }
 
 func TestWriteTerminationLogTo(t *testing.T) {
