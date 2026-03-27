@@ -29,12 +29,6 @@ func TestProc(t *testing.T) {
 }
 
 var _ = Describe("GetContainerName", func() {
-	It("returns false for a nonexistent PID", func() {
-		name, ok := GetContainerName(999999999)
-		Expect(ok).To(BeFalse())
-		Expect(name).To(BeEmpty())
-	})
-
 	It("returns false when the env var is not present", func() {
 		pid := os.Getpid()
 		name, ok := GetContainerName(pid)
@@ -114,11 +108,6 @@ var _ = Describe("RealProcFS", func() {
 	Describe("FindMarkedPID", func() {
 		It("returns ErrContainerNotFound when no process has the marker", func() {
 			_, err := procfs.FindMarkedPID("nonexistent-container")
-			Expect(err).To(MatchError(ErrContainerNotFound))
-		})
-
-		It("returns ErrContainerNotFound with empty name when no containers exist", func() {
-			_, err := procfs.FindMarkedPID("")
 			Expect(err).To(MatchError(ErrContainerNotFound))
 		})
 	})

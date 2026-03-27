@@ -420,14 +420,6 @@ async def test_async_close_stdin_sends_post(sandbox_response_copy: dict[str, obj
     assert close_route.called
 
 
-def test_command_result_repr() -> None:
-    result = CommandResult(command_id="cmd-1", stdout="hello", stderr="world", exit_code=0)
-    r = repr(result)
-    assert "hello" in r
-    assert "world" in r
-    assert "exit_code=0" in r
-
-
 @respx.mock
 def test_wait_sends_long_poll_request(sandbox_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(

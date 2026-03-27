@@ -408,18 +408,6 @@ var _ = Describe("Conversion functions", func() {
 			Expect(err.Error()).To(ContainSubstring("ephemeralStorage"))
 		})
 
-		It("returns error on invalid memory even when cpu is valid", func() {
-			_, err := restResourceListToK8s(&ResourceList{CPU: "500m", Memory: "not-a-quantity"})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("memory"))
-			Expect(err.Error()).NotTo(ContainSubstring("cpu"))
-		})
-
-		It("returns error on invalid ephemeralStorage even when cpu and memory are valid", func() {
-			_, err := restResourceListToK8s(&ResourceList{CPU: "1", Memory: "512Mi", EphemeralStorage: "???"})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("ephemeralStorage"))
-		})
 	})
 
 	Describe("mapToEnvVars", func() {

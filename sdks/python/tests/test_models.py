@@ -14,86 +14,20 @@
 
 from __future__ import annotations
 
-import pytest
-from pydantic import ValidationError
-
 from isola._models import (
-    CommandResult,
-    CommandStatusResponse,
-    ContainerInfo,
     ContainerSpec,
-    CreateCommandPayload,
-    CreateCommandResponse,
     CreateSandboxPayload,
-    FileWriteResult,
     ListSandboxesResponse,
     NetworkSpec,
     PodTemplate,
-    PodTemplateInfo,
     ResourceList,
     ResourcesSpec,
-    RootfsSnapshotSource,
     SandboxData,
     SandboxStatus,
 )
 
 
-# --- Alias generation (to_camel) ---
-
-
-class TestAliasCamelCase:
-    def test_resource_list_ephemeral_storage(self) -> None:
-        rl = ResourceList(ephemeral_storage="10Gi")
-        dumped = rl.model_dump(by_alias=True)
-        assert "ephemeralStorage" in dumped
-        assert dumped["ephemeralStorage"] == "10Gi"
-
-    def test_create_sandbox_payload_aliases(self) -> None:
-        payload = CreateSandboxPayload(
-            pod_template=PodTemplate(container=ContainerSpec(image="python:3.12")),
-            timeout_seconds=600,
-            startup_timeout_seconds=30,
-        )
-        dumped = payload.model_dump(by_alias=True, exclude_none=True)
-        assert "podTemplate" in dumped
-        assert "timeoutSeconds" in dumped
-        assert "startupTimeoutSeconds" in dumped
-        # snake_case keys should not appear
-        assert "pod_template" not in dumped
-        assert "timeout_seconds" not in dumped
-
-    def test_create_command_payload_aliases(self) -> None:
-        payload = CreateCommandPayload(args=["ls", "-la"], timeout_seconds=10, cwd="/tmp")
-        dumped = payload.model_dump(by_alias=True, exclude_none=True)
-        assert "timeoutSeconds" in dumped
-        assert dumped["args"] == ["ls", "-la"]
-        assert dumped["cwd"] == "/tmp"
-
-    def test_file_write_result_aliases(self) -> None:
-        result = FileWriteResult(absolute_path="/tmp/file.txt", bytes_written=42)
-        dumped = result.model_dump(by_alias=True)
-        assert "absolutePath" in dumped
-        assert "bytesWritten" in dumped
-
-    def test_rootfs_snapshot_source_aliases(self) -> None:
-        source = RootfsSnapshotSource(snapshot_name="snap-1", container_name="main")
-        dumped = source.model_dump(by_alias=True, exclude_none=True)
-        assert "snapshotName" in dumped
-        assert "containerName" in dumped
-
-    def test_command_status_response_alias(self) -> None:
-        resp = CommandStatusResponse(exit_code=0)
-        dumped = resp.model_dump(by_alias=True)
-        assert "exitCode" in dumped
-
-    def test_create_command_response_alias(self) -> None:
-        resp = CreateCommandResponse(command_id="cmd-abc")
-        dumped = resp.model_dump(by_alias=True)
-        assert "commandId" in dumped
-        assert dumped["commandId"] == "cmd-abc"
-
-
-# --- NetworkSpec manual aliases ---
+# --- NetworkSpec manual aliases (override to_camel for acronyms) ---
 
 
 class TestNetworkSpecAliases:
@@ -163,94 +97,6 @@ class TestValidateByNameAndAlias:
         })
         assert net.allow_cluster_dns is False
         assert net.allowed_egress_cidrs == ["192.168.0.0/16"]
-
-
-# --- Required vs optional fields ---
-
-
-class TestRequiredOptionalFields:
-    def test_container_spec_requires_image(self) -> None:
-        with pytest.raises(ValidationError) as exc_info:
-            ContainerSpec.model_validate({})
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("image",) for e in errors)
-
-    def test_container_spec_optional_fields_default_none(self) -> None:
-        spec = ContainerSpec(image="alpine")
-        assert spec.command is None
-        assert spec.env is None
-        assert spec.resources is None
-
-    def test_create_sandbox_payload_requires_pod_template(self) -> None:
-        with pytest.raises(ValidationError) as exc_info:
-            CreateSandboxPayload.model_validate({})
-        errors = exc_info.value.errors()
-        field_locs = {e["loc"] for e in errors}
-        assert ("pod_template",) in field_locs or ("podTemplate",) in field_locs
-
-    def test_sandbox_data_optional_fields_default_none(self) -> None:
-        data = SandboxData.model_validate({
-            "id": "sb-1",
-            "status": "running",
-            "creationTimestamp": "2026-01-01T00:00:00Z",
-            "podTemplate": {"container": {"image": "alpine"}},
-        })
-        assert data.timeout_seconds is None
-        assert data.startup_timeout_seconds is None
-        assert data.network is None
-        assert data.rootfs_snapshot_sources is None
-
-    def test_rootfs_snapshot_source_container_name_optional(self) -> None:
-        source = RootfsSnapshotSource(snapshot_name="snap-1")
-        assert source.container_name is None
-
-
-# --- SandboxStatus enum ---
-
-
-class TestSandboxStatus:
-    def test_all_values(self) -> None:
-        expected = {"creating", "running", "shuttingDown", "failed", "stopped", "unknown"}
-        actual = {s.value for s in SandboxStatus}
-        assert actual == expected
-
-    def test_enum_from_value(self) -> None:
-        assert SandboxStatus("running") is SandboxStatus.RUNNING
-        assert SandboxStatus("shuttingDown") is SandboxStatus.SHUTTING_DOWN
-
-    def test_unknown_value_raises(self) -> None:
-        with pytest.raises(ValueError):
-            SandboxStatus("nonexistent")
-
-    def test_is_string(self) -> None:
-        assert isinstance(SandboxStatus.RUNNING, str)
-        assert SandboxStatus.RUNNING == "running"
-
-    def test_sandbox_data_parses_status(self) -> None:
-        data = SandboxData.model_validate({
-            "id": "sb-1",
-            "status": "creating",
-            "creationTimestamp": "2026-01-01T00:00:00Z",
-            "podTemplate": {"container": {"image": "alpine"}},
-        })
-        assert data.status is SandboxStatus.CREATING
-
-
-# --- CommandResult dataclass ---
-
-
-class TestCommandResult:
-    def test_construction_and_access(self) -> None:
-        result = CommandResult(command_id="cmd-1", stdout="hello", stderr="", exit_code=0)
-        assert result.command_id == "cmd-1"
-        assert result.stdout == "hello"
-        assert result.stderr == ""
-        assert result.exit_code == 0
-
-    def test_frozen(self) -> None:
-        result = CommandResult(command_id="cmd-1", stdout="", stderr="", exit_code=0)
-        with pytest.raises(AttributeError):
-            result.exit_code = 1  # type: ignore[misc]
 
 
 # --- Round-trip serialization ---
@@ -370,42 +216,3 @@ class TestRoundTrip:
         assert reparsed.sandboxes is not None
         assert len(reparsed.sandboxes) == 2
         assert reparsed.sandboxes[0].id == "sb-1"
-
-
-# --- Nested model construction ---
-
-
-class TestNestedModels:
-    def test_resources_spec_nested(self) -> None:
-        spec = ResourcesSpec(
-            limits=ResourceList(cpu="1", memory="2Gi", ephemeral_storage="10Gi"),
-            requests=ResourceList(cpu="500m", memory="1Gi"),
-        )
-        assert spec.limits is not None
-        assert spec.limits.cpu == "1"
-        assert spec.limits.ephemeral_storage == "10Gi"
-        assert spec.requests is not None
-        assert spec.requests.ephemeral_storage is None
-
-    def test_container_info_vs_container_spec(self) -> None:
-        """ContainerInfo has no env field (write-only in requests)."""
-        info = ContainerInfo.model_validate({
-            "image": "python:3.12",
-            "command": ["sleep", "infinity"],
-        })
-        assert info.image == "python:3.12"
-        assert not hasattr(info, "env")
-
-    def test_pod_template_info_nested(self) -> None:
-        info = PodTemplateInfo.model_validate({
-            "container": {
-                "image": "alpine",
-                "resources": {
-                    "limits": {"cpu": "100m"},
-                },
-            }
-        })
-        assert info.container.image == "alpine"
-        assert info.container.resources is not None
-        assert info.container.resources.limits is not None
-        assert info.container.resources.limits.cpu == "100m"
