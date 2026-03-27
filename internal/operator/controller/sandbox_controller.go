@@ -52,32 +52,30 @@ const (
 	SandboxRootfsSnapshotCondition = "RootfsSnapshot"
 )
 
+// Condition reason aliases — canonical definitions live in internal/constants.
 const (
-	CondReasonPodPending        = "PodPending"
-	CondReasonPodRunning        = "PodRunning"
-	CondReasonPodFailed         = "PodFailed"
-	CondReasonPodSucceeded      = "PodSucceeded"
-	CondReasonPodCreating       = "PodCreating"
-	CondReasonPodCreationFailed = "PodCreationFailed"
-	CondReasonDeleting          = "Deleting"
-	CondReasonReconciling       = "Reconciling"
+	CondReasonPodPending        = constants.CondReasonPodPending
+	CondReasonPodRunning        = constants.CondReasonPodRunning
+	CondReasonPodFailed         = constants.CondReasonPodFailed
+	CondReasonPodSucceeded      = constants.CondReasonPodSucceeded
+	CondReasonPodCreating       = constants.CondReasonPodCreating
+	CondReasonPodCreationFailed = constants.CondReasonPodCreationFailed
+	CondReasonDeleting          = constants.CondReasonDeleting
+	CondReasonReconciling       = constants.CondReasonReconciling
 
-	// RootfsSnapshot-related reasons
-	CondReasonRootfsSnapshottingInProgress = "RootfsSnapshottingInProgress"
-	CondReasonRootfsSnapshotComplete       = "RootfsSnapshotComplete"
-	CondReasonRootfsSnapshotFailed         = "RootfsSnapshotFailed"
-	CondReasonRootfsSnapshotTimeout        = "RootfsSnapshotTimeout"
-	CondReasonInvalidRuntime               = "InvalidRuntime"
+	CondReasonRootfsSnapshottingInProgress = constants.CondReasonRootfsSnapshottingInProgress
+	CondReasonRootfsSnapshotComplete       = constants.CondReasonRootfsSnapshotComplete
+	CondReasonRootfsSnapshotFailed         = constants.CondReasonRootfsSnapshotFailed
+	CondReasonRootfsSnapshotTimeout        = constants.CondReasonRootfsSnapshotTimeout
+	CondReasonInvalidRuntime               = constants.CondReasonInvalidRuntime
 
-	CondReasonStartupTimeoutExceeded = "StartupTimeoutExceeded"
+	CondReasonStartupTimeoutExceeded = constants.CondReasonStartupTimeoutExceeded
 
-	// Restore-related reasons
-	CondReasonRootfsRestoreConfigError = "RootfsRestoreConfigurationError"
-	CondReasonNoRootfsSnapshot         = "NoRootfsSnapshot"
+	CondReasonRootfsRestoreConfigError = constants.CondReasonRootfsRestoreConfigError
+	CondReasonNoRootfsSnapshot         = constants.CondReasonNoRootfsSnapshot
 
-	// NetworkPolicy-related reasons
-	CondReasonNetworkPolicyApplied = "NetworkPolicyApplied"
-	CondReasonNetworkPolicyFailed  = "NetworkPolicyFailed"
+	CondReasonNetworkPolicyApplied = constants.CondReasonNetworkPolicyApplied
+	CondReasonNetworkPolicyFailed  = constants.CondReasonNetworkPolicyFailed
 )
 
 const defaultTimeoutSeconds int64 = 300

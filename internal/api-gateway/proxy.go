@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
+	"github.com/isola-ai/isola/internal/constants"
 	"github.com/isola-ai/isola/internal/httputil"
 )
 
@@ -55,31 +56,32 @@ func (b *BodyStream) Resolve(ctx huma.Context) []error {
 func ConditionsToStatus(conditions []metav1.Condition) string {
 	ready := meta.FindStatusCondition(conditions, "Ready")
 	if ready == nil {
-		return "unknown"
+		return constants.SandboxStatusUnknown
 	}
 
 	if ready.Status == metav1.ConditionTrue {
-		return "running"
+		return constants.SandboxStatusRunning
 	}
 
 	// TODO: remove snapshot-related reasons from Sandbox CRD — they should be
 	// encapsulated in the RootfsSnapshot CRD only.
-	// TODO benl: make them as constants and share them with routes.go openapi enum generation
 	switch ready.Reason {
-	case "PodPending", "PodCreating", "Reconciling", "NetworkPolicyApplied":
-		return "creating"
-	case "PodRunning", "RootfsSnapshottingInProgress":
-		return "running"
-	case "Deleting":
-		return "shuttingDown"
-	case "PodFailed", "PodCreationFailed", "InvalidRuntime",
-		"NetworkPolicyFailed", "RootfsSnapshotFailed", "RootfsSnapshotTimeout",
-		"RootfsRestoreConfigurationError", "StartupTimeoutExceeded":
-		return "failed"
-	case "PodSucceeded", "RootfsSnapshotComplete":
-		return "stopped"
+	case constants.CondReasonPodPending, constants.CondReasonPodCreating,
+		constants.CondReasonReconciling, constants.CondReasonNetworkPolicyApplied:
+		return constants.SandboxStatusCreating
+	case constants.CondReasonPodRunning, constants.CondReasonRootfsSnapshottingInProgress:
+		return constants.SandboxStatusRunning
+	case constants.CondReasonDeleting:
+		return constants.SandboxStatusShuttingDown
+	case constants.CondReasonPodFailed, constants.CondReasonPodCreationFailed,
+		constants.CondReasonInvalidRuntime, constants.CondReasonNetworkPolicyFailed,
+		constants.CondReasonRootfsSnapshotFailed, constants.CondReasonRootfsSnapshotTimeout,
+		constants.CondReasonRootfsRestoreConfigError, constants.CondReasonStartupTimeoutExceeded:
+		return constants.SandboxStatusFailed
+	case constants.CondReasonPodSucceeded, constants.CondReasonRootfsSnapshotComplete:
+		return constants.SandboxStatusStopped
 	default:
-		return "unknown"
+		return constants.SandboxStatusUnknown
 	}
 }
 
@@ -110,8 +112,7 @@ func GetReadySandbox(ctx context.Context, k8sClient client.Client, namespace, id
 		return nil, K8sErrorToHuma(err, "failed to get sandbox")
 	}
 
-	// todo benl: stop using raw strings for sandbox status
-	if ConditionsToStatus(sb.Status.Conditions) != "running" {
+	if ConditionsToStatus(sb.Status.Conditions) != constants.SandboxStatusRunning {
 		logger.Warn("sandbox is not ready", "id", id, "status", ConditionsToStatus(sb.Status.Conditions))
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}

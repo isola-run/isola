@@ -20,3 +20,39 @@ const IsolaContainerNameEnv = "ISOLA_CONTAINER_NAME"
 
 // SidecarPort is the HTTP port the sandbox-sidecar listens on.
 const SidecarPort = 10032
+
+// Sandbox condition reasons — shared between operator and api-gateway.
+const (
+	CondReasonPodPending        = "PodPending"
+	CondReasonPodRunning        = "PodRunning"
+	CondReasonPodFailed         = "PodFailed"
+	CondReasonPodSucceeded      = "PodSucceeded"
+	CondReasonPodCreating       = "PodCreating"
+	CondReasonPodCreationFailed = "PodCreationFailed"
+	CondReasonDeleting          = "Deleting"
+	CondReasonReconciling       = "Reconciling"
+
+	CondReasonRootfsSnapshottingInProgress = "RootfsSnapshottingInProgress"
+	CondReasonRootfsSnapshotComplete       = "RootfsSnapshotComplete"
+	CondReasonRootfsSnapshotFailed         = "RootfsSnapshotFailed"
+	CondReasonRootfsSnapshotTimeout        = "RootfsSnapshotTimeout"
+	CondReasonInvalidRuntime               = "InvalidRuntime"
+
+	CondReasonStartupTimeoutExceeded = "StartupTimeoutExceeded"
+
+	CondReasonRootfsRestoreConfigError = "RootfsRestoreConfigurationError"
+	CondReasonNoRootfsSnapshot         = "NoRootfsSnapshot"
+
+	CondReasonNetworkPolicyApplied = "NetworkPolicyApplied"
+	CondReasonNetworkPolicyFailed  = "NetworkPolicyFailed"
+)
+
+// User-facing sandbox status values — used by the api-gateway REST API.
+const (
+	SandboxStatusCreating    = "creating"
+	SandboxStatusRunning     = "running"
+	SandboxStatusShuttingDown = "shuttingDown"
+	SandboxStatusFailed      = "failed"
+	SandboxStatusStopped     = "stopped"
+	SandboxStatusUnknown     = "unknown"
+)
