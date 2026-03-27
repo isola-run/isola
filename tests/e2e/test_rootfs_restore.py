@@ -37,7 +37,7 @@ class TestRootfsSnapshotSourcesField:
     def test_create_response_includes_rootfs_snapshot_sources(
         self, sandbox_factory: ..., isola_client: Isola
     ) -> None:
-        sb = sandbox_factory(rootfs_snapshot_source="nonexistent-snap", wait=False)
+        sb = sandbox_factory(rootfs_snapshot_source="nonexistent-snap", wait_seconds=None)
         assert sb.rootfs_snapshot_sources is not None
         assert len(sb.rootfs_snapshot_sources) == 1
         assert sb.rootfs_snapshot_sources[0].snapshot_name == "nonexistent-snap"
@@ -45,7 +45,7 @@ class TestRootfsSnapshotSourcesField:
     def test_get_response_includes_rootfs_snapshot_sources(
         self, sandbox_factory: ..., isola_client: Isola
     ) -> None:
-        sb = sandbox_factory(rootfs_snapshot_source="nonexistent-snap", wait=False)
+        sb = sandbox_factory(rootfs_snapshot_source="nonexistent-snap", wait_seconds=None)
         fetched = isola_client.sandboxes.get(sb.id)
         assert fetched.rootfs_snapshot_sources is not None
         assert len(fetched.rootfs_snapshot_sources) == 1
@@ -64,7 +64,7 @@ class TestRootfsSnapshotSourcesField:
         sb = sandbox_factory(
             rootfs_snapshot_source="does-not-exist",
             startup_timeout_seconds=120,
-            wait=False,
+            wait_seconds=None,
         )
 
         # Wait for at least one restart (container exits 128, kubelet retries)

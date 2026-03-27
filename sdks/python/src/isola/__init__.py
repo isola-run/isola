@@ -24,6 +24,7 @@ from ._exceptions import (
     IsolaError,
     NotFoundError,
     ValidationError,
+    WaitTimeoutError,
 )
 from ._filesystem import AsyncFilesystem, Filesystem
 from ._models import CommandResult, FileWriteResult, NetworkSpec, RootfsSnapshotSource, SandboxStatus, SandboxSummary
@@ -60,4 +61,5 @@ __all__ = [
     "InternalError",
     "BadGatewayError",
     "APIConnectionError",
+    "WaitTimeoutError",
 ]
