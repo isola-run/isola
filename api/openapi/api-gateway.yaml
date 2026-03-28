@@ -664,7 +664,7 @@ paths:
         - rootfs-snapshots
   /v1/rootfs-snapshots/{id}:
     get:
-      description: Get the status and details of a rootfs snapshot. The Kubernetes resource is auto-deleted after ttlSecondsAfterFinished. The snapshot data in storage is not affected.
+      description: "Get the status and details of a rootfs snapshot. Eventually consistent: a recently created snapshot may briefly return 404. The Kubernetes resource is auto-deleted after ttlSecondsAfterFinished. The snapshot data in storage is not affected."
       operationId: getRootfsSnapshot
       parameters:
         - description: RootfsSnapshot identifier

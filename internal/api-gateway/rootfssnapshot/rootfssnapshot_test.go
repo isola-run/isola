@@ -176,7 +176,7 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 			Expect(snapshotStatus(nil, []metav1.Condition{})).To(Equal("pending"))
 		})
 
-		It("maps set startTime and no terminal conditions to in_progress", func() {
+		It("maps set startTime and no terminal conditions to inProgress", func() {
 			Expect(snapshotStatus(now, nil)).To(Equal("inProgress"))
 		})
 
@@ -194,7 +194,7 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 			Expect(snapshotStatus(now, conditions)).To(Equal("failed"))
 		})
 
-		It("maps startTime set with conditions present but none True to in_progress", func() {
+		It("maps startTime set with conditions present but none True to inProgress", func() {
 			conditions := []metav1.Condition{
 				{Type: string(sandboxv1alpha1.RootfsSnapshotComplete), Status: metav1.ConditionFalse, Reason: "InProgress"},
 			}

@@ -156,7 +156,7 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/rootfs-snapshots/{id}",
 		Summary:     "Get rootfs snapshot details",
-		Description: "Get the status and details of a rootfs snapshot. The Kubernetes resource is auto-deleted after ttlSecondsAfterFinished. The snapshot data in storage is not affected.",
+		Description: "Get the status and details of a rootfs snapshot. Eventually consistent: a recently created snapshot may briefly return 404. The Kubernetes resource is auto-deleted after ttlSecondsAfterFinished. The snapshot data in storage is not affected.",
 		Tags:        []string{"rootfs-snapshots"},
 		Errors:      []int{http.StatusNotFound},
 	}, h.GetRootfsSnapshot)

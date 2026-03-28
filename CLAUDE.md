@@ -70,6 +70,8 @@ Tool versions are pinned and must be kept in sync across locations:
 |------|----------|----------------|
 | Go | `Makefile` (`GO_VERSION`), `go.mod` | Dockerfile `FROM golang:` tags |
 | golangci-lint | `hack/setup.sh` | `.github/workflows/lint.yml` |
+| govulncheck | `hack/setup.sh` | - |
+| lefthook | `hack/setup.sh` | - |
 | setup-envtest | `hack/setup.sh` | `.github/workflows/test.yml` |
 | envtest K8s | `Makefile` | k8s.io/api in go.mod |
 | controller-gen | `hack/setup.sh` | `.github/workflows/codegen.yml` |
