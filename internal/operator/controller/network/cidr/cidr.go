@@ -21,8 +21,8 @@ import (
 
 // BlockedV4 are IPv4 prefixes excluded from sandbox egress via NetworkPolicy ipBlock rules.
 //
-// Goal: block nearby infrastructure, not the real internet. This covers private and
-// shared-address networks, link-local, cloud metadata endpoints, cluster Service CIDRs,
+// Goal: block nearby infrastructure (best-effort), not the real internet. This covers private and
+// shared-address networks, link-local, cloud metadata endpoints, known cluster Service CIDRs,
 // platform infrastructure (Azure Wire Server), and IANA-reserved non-globally-routable
 // space. Sandboxes keep normal internet and cloud-service access (uploading to S3/GCS,
 // calling external APIs, pulling images, etc.).
@@ -32,7 +32,7 @@ import (
 // breaks sandbox access to cloud services.
 //
 // CNI caveat: whether ipBlock rules match pod-to-pod traffic is not defined by the
-// Kubernetes API - it depends on the CNI. For example, on GKE Dataplane V2 and Cilium,
+// Kubernetes API - it depends on the CNI. For example, on GKE Dataplane V2,
 // ipBlock never covers pod traffic, pod isolation relies on the default-deny policy
 // alone. On Calico, ipBlock does cover pod traffic, so these entries also block egress
 // to pods whose IPs fall in the listed ranges.
