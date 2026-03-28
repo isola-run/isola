@@ -115,9 +115,6 @@ func (h *Handlers) PostRootfsSnapshot(ctx context.Context, input *CreateRootfsSn
 	cr := requestToRootfsSnapshotCR(req, name, h.sandboxNamespace)
 
 	if err := h.k8sClient.Create(ctx, cr); err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			return nil, huma.Error409Conflict("rootfs snapshot already exists")
-		}
 		h.logger.Error("failed to create rootfs snapshot", "error", err)
 		return nil, apigateway.K8sErrorToHuma(err, "failed to create rootfs snapshot")
 	}
