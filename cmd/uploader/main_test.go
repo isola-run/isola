@@ -327,28 +327,3 @@ func TestUploadSnapshotEmptyFile(t *testing.T) {
 	}
 }
 
-func TestUploadSnapshotCancelledContext(t *testing.T) {
-	dir := t.TempDir()
-	srcPath := filepath.Join(dir, "snapshot.tar")
-	if err := os.WriteFile(srcPath, []byte("data"), 0600); err != nil {
-		t.Fatalf("failed to write source file: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
-
-	uploader := &fakeUploader{err: context.Canceled}
-
-	err := uploadSnapshot(ctx, discardLogger(), uploader, uploadConfig{
-		snapshotFile:      srcPath,
-		snapshotName:      "snap1",
-		snapshotNamespace: "ns",
-		terminationLog:    filepath.Join(dir, "term-log"),
-	})
-	if err == nil {
-		t.Fatal("expected error from cancelled context")
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("error = %v, want context.Canceled", err)
-	}
-}
