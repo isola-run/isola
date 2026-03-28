@@ -113,6 +113,46 @@ components:
       required:
         - commandId
       type: object
+    CreateRootfsSnapshotRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/CreateRootfsSnapshotRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        containerName:
+          description: Container to snapshot. Defaults to the first container if omitted.
+          maxLength: 63
+          minLength: 1
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          type: string
+        sandboxId:
+          description: ID of the sandbox to snapshot (as returned by POST /v1/sandboxes)
+          minLength: 1
+          type: string
+        snapshotName:
+          description: Identifier for this snapshot, used both as the storage key and as the restore reference. To restore from this snapshot, pass this value as rootfsSnapshotSources[].snapshotName when creating a sandbox.
+          maxLength: 63
+          minLength: 1
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          type: string
+        timeoutSeconds:
+          description: Max duration in seconds for the snapshot job. Defaults to 300 if omitted.
+          format: int64
+          minimum: 1
+          type: integer
+        ttlSecondsAfterFinished:
+          description: Seconds to retain the resource after completion. 0 means immediate deletion. Defaults to 300 if omitted.
+          format: int32
+          minimum: 0
+          type: integer
+      required:
+        - sandboxId
+        - snapshotName
+      type: object
     CreateSandboxRequest:
       additionalProperties: false
       properties:
@@ -344,6 +384,53 @@ components:
           $ref: "#/components/schemas/ResourceList"
           description: Resource requests
       type: object
+    RootfsSnapshotResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/RootfsSnapshotResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        containerName:
+          description: Container being snapshotted
+          type: string
+        creationTimestamp:
+          description: Creation UTC timestamp in RFC3339 format
+          type: string
+        id:
+          description: RootfsSnapshot identifier
+          type: string
+        sandboxId:
+          description: ID of the sandbox being snapshotted
+          type: string
+        snapshotName:
+          description: Snapshot storage key and restore reference
+          type: string
+        status:
+          description: Snapshot status
+          enum:
+            - pending
+            - complete
+            - failed
+          type: string
+        timeoutSeconds:
+          description: Max duration in seconds for the snapshot job
+          format: int64
+          type: integer
+        ttlSecondsAfterFinished:
+          description: Seconds to retain the resource after completion
+          format: int32
+          type: integer
+      required:
+        - id
+        - sandboxId
+        - snapshotName
+        - status
+        - creationTimestamp
+      type: object
     RootfsSnapshotSource:
       additionalProperties: false
       properties:
@@ -530,6 +617,90 @@ paths:
       summary: Readiness check (alias)
       tags:
         - health
+  /v1/rootfs-snapshots:
+    post:
+      description: Creates a snapshot of a sandbox's root filesystem overlay upper layer.
+      operationId: createRootfsSnapshot
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRootfsSnapshotRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootfsSnapshotResponse"
+          description: Created
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Bad Request
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+      summary: Create a rootfs snapshot
+      tags:
+        - rootfs-snapshots
+  /v1/rootfs-snapshots/{id}:
+    get:
+      description: "Eventually consistent: a snapshot returned by POST may briefly return 404 on GET. Clients should retry if polling a recently-created snapshot."
+      operationId: getRootfsSnapshot
+      parameters:
+        - description: RootfsSnapshot identifier
+          in: path
+          name: id
+          required: true
+          schema:
+            description: RootfsSnapshot identifier
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootfsSnapshotResponse"
+          description: OK
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+      summary: Get rootfs snapshot details
+      tags:
+        - rootfs-snapshots
   /v1/sandboxes:
     get:
       description: "Eventually consistent: a sandbox returned by POST may not appear immediately in the list. Clients should retry or poll if a recently-created sandbox is missing."
