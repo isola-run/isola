@@ -44,6 +44,7 @@ import (
 	"github.com/isola-ai/isola/internal/api-gateway/command"
 	"github.com/isola-ai/isola/internal/api-gateway/filesystem"
 	"github.com/isola-ai/isola/internal/api-gateway/health"
+	"github.com/isola-ai/isola/internal/api-gateway/rootfssnapshot"
 	"github.com/isola-ai/isola/internal/api-gateway/sandbox"
 	"github.com/isola-ai/isola/internal/env"
 	"github.com/isola-ai/isola/internal/logging"
@@ -173,6 +174,7 @@ func main() {
 
 	v1 := huma.NewGroup(api, "/v1")
 	sandbox.Register(v1, sandbox.New(logger, cfg.sandboxNamespace, mgr.GetClient()))
+	rootfssnapshot.Register(v1, rootfssnapshot.New(logger, cfg.sandboxNamespace, mgr.GetClient()))
 
 	sandboxClient := initSandboxClient()
 

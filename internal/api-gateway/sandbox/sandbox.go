@@ -30,8 +30,6 @@ import (
 	apigateway "github.com/isola-ai/isola/internal/api-gateway"
 )
 
-// --- Request types ---
-
 type CreateSandboxInput struct {
 	Body CreateSandboxRequest
 }
@@ -88,7 +86,6 @@ type DeleteSandboxInput struct {
 	ID string `path:"id" doc:"Sandbox identifier"`
 }
 
-// --- Response types ---
 // Response types omit env vars (write-only) to avoid leaking secrets.
 
 type ContainerInfo struct {
@@ -134,22 +131,20 @@ type ListSandboxesResponse struct {
 	Sandboxes []SandboxSummary `json:"sandboxes" doc:"List of sandboxes"`
 }
 
-// --- Handlers ---
-
 const (
-	sandboxNameLength = 22
-	letterAlphabet    = "abcdefghijklmnopqrstuvwxyz"
-	fullAlphabet      = "abcdefghijklmnopqrstuvwxyz0123456789"
+	sandboxIDLength = 22
+	letterAlphabet  = "abcdefghijklmnopqrstuvwxyz"
+	fullAlphabet    = "abcdefghijklmnopqrstuvwxyz0123456789"
 )
 
-// generateSandboxName creates a unique sandbox name suitable for Kubernetes DNS-1123 labels.
-func generateSandboxName() (string, error) {
+// generateSandboxID creates a unique sandbox ID suitable for Kubernetes DNS-1123 labels.
+func generateSandboxID() (string, error) {
 	first, err := gonanoid.Generate(letterAlphabet, 1)
 	if err != nil {
 		return "", fmt.Errorf("generate first char: %w", err)
 	}
 
-	rest, err := gonanoid.Generate(fullAlphabet, sandboxNameLength-1)
+	rest, err := gonanoid.Generate(fullAlphabet, sandboxIDLength-1)
 	if err != nil {
 		return "", fmt.Errorf("generate remaining chars: %w", err)
 	}
@@ -174,10 +169,10 @@ func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client) 
 func (h *Handlers) PostSandbox(ctx context.Context, input *CreateSandboxInput) (*CreateSandboxOutput, error) {
 	req := input.Body
 
-	name, err := generateSandboxName()
+	name, err := generateSandboxID()
 	if err != nil {
-		h.logger.Error("failed to generate sandbox name", "error", err)
-		return nil, huma.Error500InternalServerError("failed to generate sandbox name")
+		h.logger.Error("failed to generate sandbox id", "error", err)
+		return nil, huma.Error500InternalServerError("failed to generate sandbox id")
 	}
 
 	sb, err := requestToSandboxCR(req, name, h.sandboxNamespace)
