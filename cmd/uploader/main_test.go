@@ -71,7 +71,7 @@ func TestWriteTerminationLogTo(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		data, err := os.ReadFile(logPath)
+		data, err := os.ReadFile(logPath) //nolint:gosec // test reads from t.TempDir()
 		if err != nil {
 			t.Fatalf("failed to read log: %v", err)
 		}
@@ -199,7 +199,7 @@ func TestUploadSnapshotSuccess(t *testing.T) {
 	}
 
 	// Verify termination log
-	logData, err := os.ReadFile(termLogPath)
+	logData, err := os.ReadFile(termLogPath) //nolint:gosec // test reads from t.TempDir()
 	if err != nil {
 		t.Fatalf("failed to read termination log: %v", err)
 	}
@@ -314,7 +314,7 @@ func TestUploadSnapshotEmptyFile(t *testing.T) {
 		t.Errorf("bytes written = %d, want 0", uploader.written)
 	}
 
-	logData, err := os.ReadFile(termLogPath)
+	logData, err := os.ReadFile(termLogPath) //nolint:gosec // test reads from t.TempDir()
 	if err != nil {
 		t.Fatalf("failed to read termination log: %v", err)
 	}

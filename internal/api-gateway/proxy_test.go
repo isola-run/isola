@@ -16,6 +16,7 @@ package apigateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -89,11 +90,11 @@ func newFakeClient(objs ...client.Object) client.Client {
 	return builder.Build()
 }
 
-// expectStatus asserts that err implements GetStatus() and returns the expected code.
+// expectStatus asserts that err (or a wrapped inner error) implements GetStatus() and returns the expected code.
 func expectStatus(err error, code int) {
 	GinkgoHelper()
-	se, ok := err.(statusError)
-	Expect(ok).To(BeTrue(), "expected error to implement GetStatus()")
+	var se statusError
+	Expect(errors.As(err, &se)).To(BeTrue(), "expected error chain to include GetStatus()")
 	Expect(se.GetStatus()).To(Equal(code))
 }
 
@@ -229,8 +230,8 @@ var _ = Describe("K8sErrorToHuma", func() {
 		Expect(err).To(HaveOccurred())
 		expectStatus(err, 429)
 
-		headerErr, ok := err.(headerCarrier)
-		Expect(ok).To(BeTrue(), "expected error to carry headers")
+		var headerErr headerCarrier
+		Expect(errors.As(err, &headerErr)).To(BeTrue(), "expected error chain to carry headers")
 		Expect(headerErr.GetHeaders().Get("Retry-After")).To(Equal("42"))
 	})
 
@@ -243,8 +244,8 @@ var _ = Describe("K8sErrorToHuma", func() {
 		Expect(err).To(HaveOccurred())
 		expectStatus(err, 500)
 
-		headerErr, ok := err.(headerCarrier)
-		Expect(ok).To(BeTrue(), "expected error to carry headers")
+		var headerErr headerCarrier
+		Expect(errors.As(err, &headerErr)).To(BeTrue(), "expected error chain to carry headers")
 		Expect(headerErr.GetHeaders().Get("Retry-After")).To(Equal("15"))
 	})
 
@@ -276,9 +277,9 @@ var _ = Describe("BodyStream.Resolve", func() {
 			Method:      "POST",
 			Path:        "/test-body",
 		}, func(_ context.Context, input *struct {
-			Body BodyStream
+			BodyStream
 		}) (*struct{}, error) {
-			captured = input.Body
+			captured = input.BodyStream
 			return nil, nil
 		})
 

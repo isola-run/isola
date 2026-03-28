@@ -381,7 +381,7 @@ var _ = Describe("Conversion functions", func() {
 
 		It("returns nil when all resources are unrecognized", func() {
 			rl := corev1.ResourceList{
-				corev1.ResourceName("nvidia.com/gpu"): resource.MustParse("1"),
+				corev1.ResourceName("nvidia.com/gpu"):  resource.MustParse("1"),
 				corev1.ResourceName("example.com/foo"): resource.MustParse("5"),
 			}
 			result := resourceListToREST(rl)
