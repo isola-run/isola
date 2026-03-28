@@ -263,6 +263,41 @@ def test_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @respx.mock
+def test_wait_raises_timeout_error_when_not_found_persists(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("isola._rootfs_snapshot.time.sleep", lambda _: None)
+
+    elapsed = 0.0
+
+    def fake_monotonic() -> float:
+        nonlocal elapsed
+        elapsed += 2.0
+        return elapsed
+
+    monkeypatch.setattr("isola._rootfs_snapshot.time.monotonic", fake_monotonic)
+
+    respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
+        return_value=httpx.Response(201, json=_make_rootfs_snapshot_response("pending"))
+    )
+    respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123").mock(
+        side_effect=[
+            httpx.Response(404, json={"detail": "not found"}),
+            httpx.Response(404, json={"detail": "not found"}),
+            httpx.Response(404, json={"detail": "not found"}),
+        ]
+    )
+
+    with (
+        Isola(base_url="http://localhost:8080") as client,
+        pytest.raises(IsolaTimeoutError, match="did not reach complete state within 5s"),
+    ):
+        client.rootfs_snapshots.create(
+            sandbox_id="sandbox-123",
+            snapshot_name="my-snapshot",
+            max_wait_seconds=5,
+        )
+
+
+@respx.mock
 def test_max_wait_seconds_none_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._rootfs_snapshot.time.sleep", lambda _: None)
 
@@ -518,6 +553,42 @@ async def test_async_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) 
     )
     respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123").mock(
         return_value=httpx.Response(200, json=_make_rootfs_snapshot_response("inProgress"))
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        with pytest.raises(IsolaTimeoutError, match="did not reach complete state within 5s"):
+            await client.rootfs_snapshots.create(
+                sandbox_id="sandbox-123",
+                snapshot_name="my-snapshot",
+                max_wait_seconds=5,
+            )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_wait_raises_timeout_error_when_not_found_persists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("isola._rootfs_snapshot.asyncio.sleep", _no_sleep)
+
+    elapsed = 0.0
+
+    def fake_monotonic() -> float:
+        nonlocal elapsed
+        elapsed += 2.0
+        return elapsed
+
+    monkeypatch.setattr("isola._rootfs_snapshot.time.monotonic", fake_monotonic)
+
+    respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
+        return_value=httpx.Response(201, json=_make_rootfs_snapshot_response("pending"))
+    )
+    respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123").mock(
+        side_effect=[
+            httpx.Response(404, json={"detail": "not found"}),
+            httpx.Response(404, json={"detail": "not found"}),
+            httpx.Response(404, json={"detail": "not found"}),
+        ]
     )
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:

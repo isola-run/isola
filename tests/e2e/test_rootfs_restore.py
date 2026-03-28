@@ -23,6 +23,7 @@ from isola import Isola, RootfsSnapshotStatus, Sandbox, SandboxStatus
 
 from conftest import (
     SANDBOXES_NAMESPACE,
+    wait_for_visible,
     wait_for_running,
 )
 
@@ -43,7 +44,7 @@ class TestRootfsSnapshotSourcesField:
         self, sandbox_factory: ..., isola_client: Isola
     ) -> None:
         sb = sandbox_factory(rootfs_snapshot_source="nonexistent-snap", max_wait_seconds=0)
-        fetched = isola_client.sandboxes.get(sb.id)
+        fetched = wait_for_visible(isola_client, sb.id)
         assert fetched.rootfs_snapshot_sources is not None
         assert len(fetched.rootfs_snapshot_sources) == 1
         assert fetched.rootfs_snapshot_sources[0].snapshot_name == "nonexistent-snap"

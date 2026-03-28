@@ -74,7 +74,11 @@ def _wait_until_running(
     while True:
         try:
             data = api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
-        except NotFoundError:
+        except NotFoundError as err:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise IsolaTimeoutError(
+                    f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s"
+                ) from err
             time.sleep(_POLL_INTERVAL)
             continue
         if data.status == SandboxStatus.RUNNING:
@@ -94,7 +98,11 @@ async def _async_wait_until_running(
     while True:
         try:
             data = await api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
-        except NotFoundError:
+        except NotFoundError as err:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise IsolaTimeoutError(
+                    f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s"
+                ) from err
             await asyncio.sleep(_POLL_INTERVAL)
             continue
         if data.status == SandboxStatus.RUNNING:

@@ -89,6 +89,16 @@ def wait_for_status(
     pytest.fail(f"Sandbox {sandbox_id} did not reach {target.value} within {timeout}s (last: {last_status})")
 
 
+def wait_for_visible(client: Isola, sandbox_id: str, timeout: float = POLL_TIMEOUT) -> Sandbox:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            return client.sandboxes.get(sandbox_id)
+        except NotFoundError:
+            time.sleep(POLL_INTERVAL)
+    pytest.fail(f"Sandbox {sandbox_id} did not become visible within {timeout}s")
+
+
 # --- Async helpers ---
 
 
