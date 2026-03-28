@@ -100,6 +100,10 @@ func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client) 
 }
 
 func (h *Handlers) PostRootfsSnapshot(ctx context.Context, input *CreateRootfsSnapshotInput) (*CreateRootfsSnapshotOutput, error) {
+	// by design, we currently DO NOT verify the target sandbox existence before creating the rootfs snapshot CR. This is because:
+	// 1) the controller will handle the missing sandbox case anyway.
+	// 2) if we handle it here, we hit eventual consistency issues where the informer cache may not have the sandbox immediately after it's created.
+	// we might revisit this decision in the future if and when it poses actual problems for users.
 	req := input.Body
 
 	name, err := generateSnapshotID()
