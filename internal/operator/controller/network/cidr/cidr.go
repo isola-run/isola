@@ -69,7 +69,6 @@ var BlockedV6 = []netip.Prefix{
 	netip.MustParsePrefix("100:0:0:1::/64"),     // RFC 9780: Dummy IPv6 Prefix
 	netip.MustParsePrefix("2001::/32"),          // RFC 4380: Teredo (largely obsolete)
 	netip.MustParsePrefix("2001:2::/48"),        // RFC 5180: Benchmarking
-	netip.MustParsePrefix("2001:10::/28"),       // RFC 4843: ORCHID (returned to IANA 2014-03)
 	netip.MustParsePrefix("2001:db8::/32"),      // RFC 3849: Documentation
 	netip.MustParsePrefix("2002::/16"),          // RFC 3056: 6to4 (relay anycast deprecated by RFC 7526)
 	netip.MustParsePrefix("3fff::/20"),          // RFC 9637: Documentation prefix
