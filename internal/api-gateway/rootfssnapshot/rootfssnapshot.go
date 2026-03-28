@@ -60,7 +60,7 @@ type RootfsSnapshotResponse struct {
 	ContainerName           string `json:"containerName,omitempty" doc:"Container being snapshotted"`
 	TimeoutSeconds          *int64 `json:"timeoutSeconds,omitempty" doc:"Max duration in seconds for the snapshot job"`
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" doc:"Seconds to retain the resource after completion"`
-	Status                  string `json:"status" doc:"Snapshot status" enum:"pending,in_progress,complete,failed"`
+	Status                  string `json:"status" doc:"Snapshot status" enum:"pending,inProgress,complete,failed"`
 	CreationTimestamp       string `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
 

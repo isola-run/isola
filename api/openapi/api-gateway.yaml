@@ -413,7 +413,7 @@ components:
           description: Snapshot status
           enum:
             - pending
-            - in_progress
+            - inProgress
             - complete
             - failed
           type: string
@@ -664,7 +664,7 @@ paths:
         - rootfs-snapshots
   /v1/rootfs-snapshots/{id}:
     get:
-      description: "Eventually consistent: a snapshot returned by POST may briefly return 404 on GET. Clients should retry if polling a recently-created snapshot."
+      description: Get the status and details of a rootfs snapshot. The Kubernetes resource is auto-deleted after ttlSecondsAfterFinished. The snapshot data in storage is not affected.
       operationId: getRootfsSnapshot
       parameters:
         - description: RootfsSnapshot identifier
