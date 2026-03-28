@@ -37,8 +37,8 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			var body SandboxResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body.ID).To(HaveLen(22))
-			Expect(body.ID).To(MatchRegexp(`^[a-z][a-z0-9]{21}$`))
+			Expect(body.SandboxID).To(HaveLen(22))
+			Expect(body.SandboxID).To(MatchRegexp(`^[a-z][a-z0-9]{21}$`))
 			Expect(body.PodTemplate.Container.Image).To(Equal("python:3.12"))
 			Expect(body.Status).To(Equal("unknown"))
 			_, err := time.Parse(time.RFC3339, body.CreationTimestamp)
@@ -106,9 +106,9 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			// Also verify via GET read-back (covers sandboxToResponse on the GET path)
 			Eventually(func() int {
-				return testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.ID)).Code
+				return testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.SandboxID)).Code
 			}).Should(Equal(200))
-			getResp := testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.ID))
+			getResp := testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.SandboxID))
 			var getRaw map[string]json.RawMessage
 			Expect(json.Unmarshal(getResp.Body.Bytes(), &getRaw)).To(Succeed())
 			var getPodTpl map[string]json.RawMessage
@@ -129,9 +129,9 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			// Verify via GET read-back
 			Eventually(func() int {
-				return testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.ID)).Code
+				return testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.SandboxID)).Code
 			}).Should(Equal(200))
-			getResp := testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.ID))
+			getResp := testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.SandboxID))
 			var got SandboxResponse
 			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
 			Expect(got.PodTemplate.Container.Command).To(Equal([]string{"python", "-c", "print('hello')"}))
@@ -147,9 +147,9 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			// Verify via GET read-back
 			Eventually(func() int {
-				return testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.ID)).Code
+				return testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.SandboxID)).Code
 			}).Should(Equal(200))
-			getResp := testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.ID))
+			getResp := testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", body.SandboxID))
 			var got SandboxResponse
 			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
 			Expect(got.PodTemplate.Container.Command).To(BeNil())
@@ -195,7 +195,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			// Verify the CR also has nil timeoutSeconds (wait for cache sync)
 			sb := &sandboxv1alpha1.Sandbox{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, keyFor(body.ID), sb)
+				return k8sClient.Get(ctx, keyFor(body.SandboxID), sb)
 			}).Should(Succeed())
 			Expect(sb.Spec.TimeoutSeconds).To(BeNil())
 		})
@@ -210,13 +210,13 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			sb := &sandboxv1alpha1.Sandbox{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, keyFor(body.ID), sb)
+				return k8sClient.Get(ctx, keyFor(body.SandboxID), sb)
 			}).Should(Succeed())
 			Expect(sb.Spec.Network).To(BeNil())
 		})
 	})
 
-	Describe("GET /sandboxes/{id}", func() {
+	Describe("GET /sandboxes/{sandboxId}", func() {
 		It("returns sandbox details", func() {
 			// Create a sandbox first
 			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"redis:7"}}}`))
@@ -227,13 +227,13 @@ var _ = Describe("Sandbox Endpoints", func() {
 
 			// GET it back
 			Eventually(func() int {
-				return testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", created.ID)).Code
+				return testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", created.SandboxID)).Code
 			}).Should(Equal(200))
 
-			getResp := testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", created.ID))
+			getResp := testAPI.Get(fmt.Sprintf("/v1/sandboxes/%s", created.SandboxID))
 			var got SandboxResponse
 			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
-			Expect(got.ID).To(Equal(created.ID))
+			Expect(got.SandboxID).To(Equal(created.SandboxID))
 			Expect(got.PodTemplate.Container.Image).To(Equal("redis:7"))
 		})
 
@@ -263,7 +263,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 					return false
 				}
 				for _, s := range list.Sandboxes {
-					if s.ID == created.ID {
+					if s.SandboxID == created.SandboxID {
 						return true
 					}
 				}
@@ -272,7 +272,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 		})
 	})
 
-	Describe("DELETE /sandboxes/{id}", func() {
+	Describe("DELETE /sandboxes/{sandboxId}", func() {
 		It("deletes a sandbox and returns 204", func() {
 			createResp := testAPI.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"busybox:latest"}}}`))
 			Expect(createResp.Code).To(Equal(201))
@@ -280,7 +280,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			var created SandboxResponse
 			Expect(json.NewDecoder(createResp.Body).Decode(&created)).To(Succeed())
 
-			delResp := testAPI.Delete(fmt.Sprintf("/v1/sandboxes/%s", created.ID))
+			delResp := testAPI.Delete(fmt.Sprintf("/v1/sandboxes/%s", created.SandboxID))
 			Expect(delResp.Code).To(Equal(204))
 		})
 

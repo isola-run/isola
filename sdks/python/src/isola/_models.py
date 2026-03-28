@@ -26,7 +26,7 @@ from pydantic.alias_generators import to_camel
 class CommandResult:
     """Result of a completed command execution."""
 
-    command_id: str
+    cmd_id: str
     stdout: str
     stderr: str
     exit_code: int
@@ -104,7 +104,7 @@ class CreateSandboxPayload(IsolaModel):
 
 
 class SandboxSummary(IsolaModel):
-    id: str
+    sandbox_id: str
     status: SandboxStatus
     creation_timestamp: datetime
 
@@ -114,7 +114,7 @@ class ListSandboxesResponse(IsolaModel):
 
 
 class SandboxData(IsolaModel):
-    id: str
+    sandbox_id: str
     pod_template: PodTemplateInfo
     status: SandboxStatus
     creation_timestamp: datetime
@@ -132,7 +132,7 @@ class CreateCommandPayload(IsolaModel):
 
 
 class CreateCommandResponse(IsolaModel):
-    command_id: str
+    cmd_id: str
 
 
 class CommandStatusResponse(IsolaModel):

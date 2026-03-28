@@ -46,7 +46,7 @@ class TestRootfsSnapshotSourcesField:
         self, sandbox_factory: ..., isola_client: Isola
     ) -> None:
         sb = sandbox_factory(rootfs_snapshot_source="nonexistent-snap", wait=False)
-        fetched = isola_client.sandboxes.get(sb.id)
+        fetched = isola_client.sandboxes.get(sb.sandbox_id)
         assert fetched.rootfs_snapshot_sources is not None
         assert len(fetched.rootfs_snapshot_sources) == 1
         assert fetched.rootfs_snapshot_sources[0].snapshot_name == "nonexistent-snap"
@@ -73,7 +73,7 @@ class TestRootfsSnapshotSourcesField:
         while time.monotonic() < deadline:
             result = subprocess.run(
                 [
-                    "kubectl", "get", "pod", f"{sb.id}-pod",
+                    "kubectl", "get", "pod", f"{sb.sandbox_id}-pod",
                     "-n", SANDBOXES_NAMESPACE,
                     "-o", "jsonpath={.status.containerStatuses[0].restartCount}",
                 ],
@@ -88,7 +88,7 @@ class TestRootfsSnapshotSourcesField:
         assert restarts > 0, "Expected pod to restart on exit code 128"
 
         # Sandbox should stay in creating (not failed)
-        current = isola_client.sandboxes.get(sb.id)
+        current = isola_client.sandboxes.get(sb.sandbox_id)
         assert current.status == SandboxStatus.CREATING
 
 
@@ -101,20 +101,20 @@ class TestRootfsRestoreWorkflow:
     ) -> None:
         # 1. Create a sandbox and write a marker file
         sb = sandbox_factory()
-        running = wait_for_running(isola_client, sb.id)
+        running = wait_for_running(isola_client, sb.sandbox_id)
         result = running.commands.run("sh", "-c", "echo 'restored-data-marker' > /root/restore-test.txt")
         assert result.exit_code == 0
 
         # 2. Create a RootfsSnapshot CR via kubectl
-        snapshot_name = f"e2e-restore-{sb.id}"
-        create_rootfs_snapshot(sb.id, snapshot_name)
+        snapshot_name = f"e2e-restore-{sb.sandbox_id}"
+        create_rootfs_snapshot(sb.sandbox_id, snapshot_name)
 
         # 3. Wait for snapshot to complete
         wait_for_snapshot_complete(snapshot_name, timeout=120)
 
         # 4. Create a new sandbox restoring from the snapshot
         restored = sandbox_factory(rootfs_snapshot_source=snapshot_name)
-        restored_running = wait_for_running(isola_client, restored.id)
+        restored_running = wait_for_running(isola_client, restored.sandbox_id)
 
         # 5. Verify the restored sandbox has the marker file
         read_result = restored_running.commands.run("cat", "/root/restore-test.txt")

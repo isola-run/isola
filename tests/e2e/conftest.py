@@ -181,7 +181,7 @@ def sandbox_factory(isola_client: Isola):
         if "image" not in kwargs:
             kwargs["image"] = "alpine:3.21"
         sb = isola_client.sandboxes.create(**kwargs)
-        created.append(sb.id)
+        created.append(sb.sandbox_id)
         return sb
 
     yield _create
@@ -198,7 +198,7 @@ def sandbox_factory(isola_client: Isola):
 @pytest.fixture(scope="session")
 def session_sandbox(isola_client: Isola, sandbox_factory) -> Sandbox:
     sb = sandbox_factory(image="alpine:3.21")
-    return wait_for_running(isola_client, sb.id)
+    return wait_for_running(isola_client, sb.sandbox_id)
 
 
 # --- Async fixtures ---
@@ -219,7 +219,7 @@ async def async_sandbox_factory(async_isola_client: AsyncIsola):
         if "image" not in kwargs:
             kwargs["image"] = "alpine:3.21"
         sb = await async_isola_client.sandboxes.create(**kwargs)
-        created.append(sb.id)
+        created.append(sb.sandbox_id)
         return sb
 
     yield _create
@@ -237,4 +237,4 @@ async def async_sandbox_factory(async_isola_client: AsyncIsola):
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
 async def async_session_sandbox(async_isola_client: AsyncIsola, async_sandbox_factory) -> AsyncSandbox:
     sb = await async_sandbox_factory(image="alpine:3.21")
-    return await wait_for_running_async(async_isola_client, sb.id)
+    return await wait_for_running_async(async_isola_client, sb.sandbox_id)

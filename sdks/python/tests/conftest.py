@@ -22,7 +22,7 @@ import pytest
 @pytest.fixture
 def sandbox_response() -> dict[str, object]:
     return {
-        "id": "sandbox-123",
+        "sandboxId": "sandbox-123",
         "status": "running",
         "creationTimestamp": "2026-02-18T00:00:00Z",
         "podTemplate": {
@@ -55,12 +55,12 @@ def sandbox_summary_response() -> dict[str, object]:
     return {
         "sandboxes": [
             {
-                "id": "sandbox-123",
+                "sandboxId": "sandbox-123",
                 "status": "running",
                 "creationTimestamp": "2026-02-18T00:00:00Z",
             },
             {
-                "id": "sandbox-456",
+                "sandboxId": "sandbox-456",
                 "status": "creating",
                 "creationTimestamp": "2026-02-18T00:01:00Z",
             },

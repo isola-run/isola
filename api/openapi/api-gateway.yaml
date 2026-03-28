@@ -107,11 +107,11 @@ components:
           format: uri
           readOnly: true
           type: string
-        commandId:
+        cmdId:
           description: Unique command identifier
           type: string
       required:
-        - commandId
+        - cmdId
       type: object
     CreateRootfsSnapshotRequest:
       additionalProperties: false
@@ -400,11 +400,11 @@ components:
         creationTimestamp:
           description: Creation UTC timestamp in RFC3339 format
           type: string
-        id:
-          description: RootfsSnapshot identifier
-          type: string
         sandboxId:
           description: ID of the sandbox being snapshotted
+          type: string
+        snapshotId:
+          description: RootfsSnapshot identifier
           type: string
         snapshotName:
           description: Snapshot storage key and restore reference
@@ -426,7 +426,7 @@ components:
           format: int32
           type: integer
       required:
-        - id
+        - snapshotId
         - sandboxId
         - snapshotName
         - status
@@ -463,9 +463,6 @@ components:
         creationTimestamp:
           description: Creation UTC timestamp in RFC3339 format
           type: string
-        id:
-          description: Sandbox identifier
-          type: string
         network:
           $ref: "#/components/schemas/NetworkSpec"
           description: Network isolation config
@@ -479,6 +476,9 @@ components:
           type:
             - array
             - "null"
+        sandboxId:
+          description: Sandbox identifier
+          type: string
         startupTimeoutSeconds:
           description: Max seconds for the sandbox to become Ready
           format: int64
@@ -498,7 +498,7 @@ components:
           format: int64
           type: integer
       required:
-        - id
+        - sandboxId
         - podTemplate
         - status
         - creationTimestamp
@@ -509,14 +509,14 @@ components:
         creationTimestamp:
           description: Creation timestamp
           type: string
-        id:
+        sandboxId:
           description: Sandbox identifier
           type: string
         status:
           description: Sandbox status
           type: string
       required:
-        - id
+        - sandboxId
         - status
         - creationTimestamp
       type: object
@@ -662,14 +662,14 @@ paths:
       summary: Create a rootfs snapshot
       tags:
         - rootfs-snapshots
-  /v1/rootfs-snapshots/{id}:
+  /v1/rootfs-snapshots/{snapshotId}:
     get:
       description: "Get the status and details of a rootfs snapshot. Eventually consistent: a recently created snapshot may briefly return 404. The Kubernetes resource is auto-deleted after ttlSecondsAfterFinished. The snapshot data in storage is not affected."
       operationId: getRootfsSnapshot
       parameters:
         - description: RootfsSnapshot identifier
           in: path
-          name: id
+          name: snapshotId
           required: true
           schema:
             description: RootfsSnapshot identifier
@@ -764,13 +764,13 @@ paths:
       summary: Create a sandbox
       tags:
         - sandboxes
-  /v1/sandboxes/{id}:
+  /v1/sandboxes/{sandboxId}:
     delete:
       operationId: deleteSandbox
       parameters:
         - description: Sandbox identifier
           in: path
-          name: id
+          name: sandboxId
           required: true
           schema:
             description: Sandbox identifier
@@ -793,7 +793,7 @@ paths:
       parameters:
         - description: Sandbox identifier
           in: path
-          name: id
+          name: sandboxId
           required: true
           schema:
             description: Sandbox identifier
@@ -826,14 +826,14 @@ paths:
       summary: Get sandbox details
       tags:
         - sandboxes
-  /v1/sandboxes/{id}/commands:
+  /v1/sandboxes/{sandboxId}/commands:
     post:
       description: Starts a new command in the sandbox container and returns a command ID for tracking. Commands always run as root (UID 0, GID 0).
       operationId: createSandboxCommand
       parameters:
         - description: Sandbox identifier
           in: path
-          name: id
+          name: sandboxId
           required: true
           schema:
             description: Sandbox identifier
@@ -898,14 +898,14 @@ paths:
       tags:
         - sandboxes
         - commands
-  /v1/sandboxes/{id}/commands/{cmdId}:
+  /v1/sandboxes/{sandboxId}/commands/{cmdId}:
     delete:
       description: Kills the command process. Idempotent for already-exited commands.
       operationId: deleteSandboxCommand
       parameters:
         - description: Sandbox identifier
           in: path
-          name: id
+          name: sandboxId
           required: true
           schema:
             description: Sandbox identifier
@@ -955,14 +955,14 @@ paths:
       tags:
         - sandboxes
         - commands
-  /v1/sandboxes/{id}/commands/{cmdId}/status:
+  /v1/sandboxes/{sandboxId}/commands/{cmdId}/status:
     get:
       description: Returns the exit code of the command, or null if still running. Supports long-polling via ?waitSeconds=N to block until the command exits or the wait expires.
       operationId: getSandboxCommandStatus
       parameters:
         - description: Sandbox identifier
           in: path
-          name: id
+          name: sandboxId
           required: true
           schema:
             description: Sandbox identifier
@@ -1026,14 +1026,14 @@ paths:
       tags:
         - sandboxes
         - commands
-  /v1/sandboxes/{id}/commands/{cmdId}/stderr:
+  /v1/sandboxes/{sandboxId}/commands/{cmdId}/stderr:
     get:
       description: Streams the command's stderr as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.
       operationId: getSandboxCommandStderr
       parameters:
         - description: Sandbox identifier
           in: path
-          name: id
+          name: sandboxId
           required: true
           schema:
             description: Sandbox identifier
@@ -1093,14 +1093,14 @@ paths:
       tags:
         - sandboxes
         - commands
-  /v1/sandboxes/{id}/commands/{cmdId}/stdin:
+  /v1/sandboxes/{sandboxId}/commands/{cmdId}/stdin:
     post:
       description: Writes raw bytes to the command's stdin
       operationId: postSandboxCommandStdin
       parameters:
         - description: Sandbox identifier
           in: path
-          name: id
+          name: sandboxId
           required: true
           schema:
             description: Sandbox identifier
@@ -1158,14 +1158,14 @@ paths:
       tags:
         - sandboxes
         - commands
-  /v1/sandboxes/{id}/commands/{cmdId}/stdin/close:
+  /v1/sandboxes/{sandboxId}/commands/{cmdId}/stdin/close:
     post:
       description: Closes the command's stdin pipe
       operationId: closeSandboxCommandStdin
       parameters:
         - description: Sandbox identifier
           in: path
-          name: id
+          name: sandboxId
           required: true
           schema:
             description: Sandbox identifier
@@ -1215,14 +1215,14 @@ paths:
       tags:
         - sandboxes
         - commands
-  /v1/sandboxes/{id}/commands/{cmdId}/stdout:
+  /v1/sandboxes/{sandboxId}/commands/{cmdId}/stdout:
     get:
       description: Streams the command's stdout as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.
       operationId: getSandboxCommandStdout
       parameters:
         - description: Sandbox identifier
           in: path
-          name: id
+          name: sandboxId
           required: true
           schema:
             description: Sandbox identifier
@@ -1282,14 +1282,14 @@ paths:
       tags:
         - sandboxes
         - commands
-  /v1/sandboxes/{id}/filesystem:
+  /v1/sandboxes/{sandboxId}/filesystem:
     get:
       description: Streams a file download from the specified path in the sandbox container
       operationId: readSandboxFilesystem
       parameters:
         - description: Sandbox identifier
           in: path
-          name: id
+          name: sandboxId
           required: true
           schema:
             description: Sandbox identifier
@@ -1365,7 +1365,7 @@ paths:
       parameters:
         - description: Sandbox identifier
           in: path
-          name: id
+          name: sandboxId
           required: true
           schema:
             description: Sandbox identifier

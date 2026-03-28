@@ -49,7 +49,7 @@ def test_memory_limit_not_enforced_by_gvisor(
     memory_limit = "64Mi"
 
     sb = sandbox_factory(image="alpine:3.21", memory=memory_limit, ephemeral_storage="64Mi")
-    running = wait_for_running(isola_client, sb.id)
+    running = wait_for_running(isola_client, sb.sandbox_id)
 
     # Verify the limits are reported in the API response (set, just not enforced)
     container = running._data.pod_template.container
@@ -93,7 +93,7 @@ def test_ephemeral_storage_limit_not_enforced_by_gvisor(
     storage_limit = "64Mi"
 
     sb = sandbox_factory(image="alpine:3.21", ephemeral_storage=storage_limit)
-    running = wait_for_running(isola_client, sb.id)
+    running = wait_for_running(isola_client, sb.sandbox_id)
 
     # Verify the limit is reported in the API response
     container = running._data.pod_template.container

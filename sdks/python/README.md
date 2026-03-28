@@ -114,7 +114,7 @@ data = sandbox.filesystem.read("/tmp/hello.txt")  # bytes
 # List all sandboxes
 summaries = client.sandboxes.list()
 for s in summaries:
-    print(s.id, s.status)
+    print(s.sandbox_id, s.status)
 
 # Get a sandbox by ID
 sandbox = client.sandboxes.get("sandbox-id")

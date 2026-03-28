@@ -31,7 +31,7 @@ const containerName = "sandbox"
 
 func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 	resp := SandboxResponse{
-		ID:                sb.Name,
+		SandboxID:         sb.Name,
 		Status:            apigateway.ConditionsToStatus(sb.Status.Conditions),
 		CreationTimestamp: sb.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
@@ -53,7 +53,7 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 
 func sandboxToSummary(sb *sandboxv1alpha1.Sandbox) SandboxSummary {
 	return SandboxSummary{
-		ID:                sb.Name,
+		SandboxID:         sb.Name,
 		Status:            apigateway.ConditionsToStatus(sb.Status.Conditions),
 		CreationTimestamp: sb.CreationTimestamp.UTC().Format(time.RFC3339),
 	}

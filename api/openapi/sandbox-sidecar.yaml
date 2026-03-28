@@ -63,11 +63,11 @@ components:
           format: uri
           readOnly: true
           type: string
-        commandId:
+        cmdId:
           description: Unique command identifier
           type: string
       required:
-        - commandId
+        - cmdId
       type: object
     ErrorDetail:
       additionalProperties: false

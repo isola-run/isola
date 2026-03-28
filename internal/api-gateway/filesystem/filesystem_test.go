@@ -130,7 +130,7 @@ func newFilesystemTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humat
 }
 
 var _ = Describe("Filesystem Proxy", func() {
-	Describe("GET /sandboxes/{id}/filesystem", func() {
+	Describe("GET /sandboxes/{sandboxId}/filesystem", func() {
 		It("proxies file read and returns body", func() {
 			fileContent := []byte{0xDE, 0xAD, 0xBE, 0xEF}
 			var capturedPath, capturedContainer string
@@ -261,7 +261,7 @@ var _ = Describe("Filesystem Proxy", func() {
 		})
 	})
 
-	Describe("POST /sandboxes/{id}/filesystem", func() {
+	Describe("POST /sandboxes/{sandboxId}/filesystem", func() {
 		It("proxies file write to sidecar and returns response", func() {
 			var capturedBody []byte
 			var capturedPath, capturedContainer, capturedContentType string

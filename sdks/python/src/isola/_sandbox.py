@@ -175,12 +175,12 @@ class Sandbox:
     def __init__(self, api: _SyncAPI, data: SandboxData) -> None:
         self._api = api
         self._data = data
-        self.commands = Commands(api, data.id)
-        self.filesystem = Filesystem(api, data.id)
+        self.commands = Commands(api, data.sandbox_id)
+        self.filesystem = Filesystem(api, data.sandbox_id)
 
     @property
-    def id(self) -> str:
-        return self._data.id
+    def sandbox_id(self) -> str:
+        return self._data.sandbox_id
 
     @property
     def status(self) -> SandboxStatus:
@@ -217,11 +217,11 @@ class Sandbox:
         while self._data.status != SandboxStatus.RUNNING:
             if self._data.status in _TERMINAL_STATUSES:
                 raise IsolaError(
-                    f"sandbox {self._data.id} reached terminal state: {self._data.status.value}",
+                    f"sandbox {self._data.sandbox_id} reached terminal state: {self._data.status.value}",
                 )
             time.sleep(_POLL_INTERVAL)
             try:
-                self._data = self._api.request_model("GET", _sandbox_path(self._data.id), SandboxData)
+                self._data = self._api.request_model("GET", _sandbox_path(self._data.sandbox_id), SandboxData)
                 consecutive_poll_errors = 0
             except NotFoundError:
                 consecutive_poll_errors += 1
@@ -229,19 +229,19 @@ class Sandbox:
                     raise
 
     def delete(self) -> None:
-        self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
+        self._api.request_no_content("DELETE", _sandbox_path(self._data.sandbox_id))
 
 
 class AsyncSandbox:
     def __init__(self, api: _AsyncAPI, data: SandboxData) -> None:
         self._api = api
         self._data = data
-        self.commands = AsyncCommands(api, data.id)
-        self.filesystem = AsyncFilesystem(api, data.id)
+        self.commands = AsyncCommands(api, data.sandbox_id)
+        self.filesystem = AsyncFilesystem(api, data.sandbox_id)
 
     @property
-    def id(self) -> str:
-        return self._data.id
+    def sandbox_id(self) -> str:
+        return self._data.sandbox_id
 
     @property
     def status(self) -> SandboxStatus:
@@ -278,11 +278,11 @@ class AsyncSandbox:
         while self._data.status != SandboxStatus.RUNNING:
             if self._data.status in _TERMINAL_STATUSES:
                 raise IsolaError(
-                    f"sandbox {self._data.id} reached terminal state: {self._data.status.value}",
+                    f"sandbox {self._data.sandbox_id} reached terminal state: {self._data.status.value}",
                 )
             await asyncio.sleep(_POLL_INTERVAL)
             try:
-                self._data = await self._api.request_model("GET", _sandbox_path(self._data.id), SandboxData)
+                self._data = await self._api.request_model("GET", _sandbox_path(self._data.sandbox_id), SandboxData)
                 consecutive_poll_errors = 0
             except NotFoundError:
                 consecutive_poll_errors += 1
@@ -290,4 +290,4 @@ class AsyncSandbox:
                     raise
 
     async def delete(self) -> None:
-        await self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
+        await self._api.request_no_content("DELETE", _sandbox_path(self._data.sandbox_id))
