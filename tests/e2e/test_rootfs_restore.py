@@ -19,14 +19,12 @@ import time
 
 import pytest
 
-from isola import Isola, Sandbox, SandboxStatus
+from isola import Isola, RootfsSnapshotStatus, Sandbox, SandboxStatus
 
 from conftest import (
     SANDBOXES_NAMESPACE,
-    create_rootfs_snapshot,
+    wait_for_visible,
     wait_for_running,
-    wait_for_snapshot_complete,
-    wait_for_status,
 )
 
 
@@ -46,7 +44,7 @@ class TestRootfsSnapshotSourcesField:
         self, sandbox_factory: ..., isola_client: Isola
     ) -> None:
         sb = sandbox_factory(rootfs_snapshot_source="nonexistent-snap", max_wait_seconds=0)
-        fetched = isola_client.sandboxes.get(sb.id)
+        fetched = wait_for_visible(isola_client, sb.id)
         assert fetched.rootfs_snapshot_sources is not None
         assert len(fetched.rootfs_snapshot_sources) == 1
         assert fetched.rootfs_snapshot_sources[0].snapshot_name == "nonexistent-snap"
@@ -96,6 +94,40 @@ class TestRootfsSnapshotSourcesField:
 class TestRootfsRestoreWorkflow:
     """Full end-to-end: create sandbox, write data, snapshot, restore, verify."""
 
+    def test_snapshot_and_restore_via_python_sdk(
+        self, sandbox_factory: ..., isola_client: Isola
+    ) -> None:
+        # 1. Create a sandbox and write a marker file
+        sb = sandbox_factory()
+        running = wait_for_running(isola_client, sb.id)
+        result = running.commands.run("sh", "-c", "echo 'sdk-restored-data-marker' > /root/sdk-restore-test.txt")
+        assert result.exit_code == 0
+
+        # 2. Create a rootfs snapshot through the Python SDK and wait for completion
+        snapshot_name = f"e2e-sdk-restore-{sb.id}"
+        snapshot = isola_client.rootfs_snapshots.create(
+            sandbox_id=sb.id,
+            snapshot_name=snapshot_name,
+            max_wait_seconds=120,
+        )
+
+        assert snapshot.sandbox_id == sb.id
+        assert snapshot.snapshot_name == snapshot_name
+        assert snapshot.status == RootfsSnapshotStatus.COMPLETE
+
+        fetched = isola_client.rootfs_snapshots.get(snapshot.id)
+        assert fetched.id == snapshot.id
+        assert fetched.status == RootfsSnapshotStatus.COMPLETE
+
+        # 3. Create a new sandbox restoring from the snapshot
+        restored = sandbox_factory(rootfs_snapshot_source=snapshot_name)
+        restored_running = wait_for_running(isola_client, restored.id)
+
+        # 4. Verify the restored sandbox has the marker file
+        read_result = restored_running.commands.run("cat", "/root/sdk-restore-test.txt")
+        assert read_result.exit_code == 0
+        assert "sdk-restored-data-marker" in read_result.stdout
+
     def test_snapshot_and_restore_preserves_data(
         self, sandbox_factory: ..., isola_client: Isola
     ) -> None:
@@ -105,12 +137,21 @@ class TestRootfsRestoreWorkflow:
         result = running.commands.run("sh", "-c", "echo 'restored-data-marker' > /root/restore-test.txt")
         assert result.exit_code == 0
 
-        # 2. Create a RootfsSnapshot CR via kubectl
+        # 2. Create a rootfs snapshot through the Python SDK and wait for completion
         snapshot_name = f"e2e-restore-{sb.id}"
-        create_rootfs_snapshot(sb.id, snapshot_name)
+        snapshot = isola_client.rootfs_snapshots.create(
+            sandbox_id=sb.id,
+            snapshot_name=snapshot_name,
+            max_wait_seconds=120,
+        )
 
-        # 3. Wait for snapshot to complete
-        wait_for_snapshot_complete(snapshot_name, timeout=120)
+        assert snapshot.sandbox_id == sb.id
+        assert snapshot.snapshot_name == snapshot_name
+        assert snapshot.status == RootfsSnapshotStatus.COMPLETE
+
+        fetched = isola_client.rootfs_snapshots.get(snapshot.id)
+        assert fetched.id == snapshot.id
+        assert fetched.status == RootfsSnapshotStatus.COMPLETE
 
         # 4. Create a new sandbox restoring from the snapshot
         restored = sandbox_factory(rootfs_snapshot_source=snapshot_name)
@@ -125,5 +166,3 @@ class TestRootfsRestoreWorkflow:
         assert restored_running.rootfs_snapshot_sources is not None
         assert len(restored_running.rootfs_snapshot_sources) == 1
         assert restored_running.rootfs_snapshot_sources[0].snapshot_name == snapshot_name
-
-

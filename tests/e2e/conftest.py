@@ -22,9 +22,6 @@ import warnings
 import pytest
 import pytest_asyncio
 
-import json
-import subprocess
-
 from isola import AsyncIsola, AsyncSandbox, Isola, NotFoundError, Sandbox, SandboxStatus
 
 
@@ -92,52 +89,14 @@ def wait_for_status(
     pytest.fail(f"Sandbox {sandbox_id} did not reach {target.value} within {timeout}s (last: {last_status})")
 
 
-# --- Snapshot helpers ---
-
-
-def create_rootfs_snapshot(
-    sandbox_id: str, snapshot_name: str, ttl_seconds: int = 300
-) -> None:
-    snapshot_cr = {
-        "apiVersion": "sandbox.isola.run/v1alpha1",
-        "kind": "RootfsSnapshot",
-        "metadata": {
-            "name": snapshot_name,
-            "namespace": SANDBOXES_NAMESPACE,
-        },
-        "spec": {
-            "sandboxName": sandbox_id,
-            "snapshotName": snapshot_name,
-            "ttlSecondsAfterFinished": ttl_seconds,
-        },
-    }
-    subprocess.run(
-        ["kubectl", "apply", "-f", "-"],
-        input=json.dumps(snapshot_cr),
-        capture_output=True, check=True, text=True,
-    )
-
-
-def wait_for_snapshot_complete(snapshot_name: str, timeout: float = 120) -> None:
+def wait_for_visible(client: Isola, sandbox_id: str, timeout: float = POLL_TIMEOUT) -> Sandbox:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        result = subprocess.run(
-            [
-                "kubectl", "get", "rootfssnapshot", snapshot_name,
-                "-n", SANDBOXES_NAMESPACE, "-o", "json",
-            ],
-            capture_output=True, text=True, check=True,
-        )
-        status = json.loads(result.stdout).get("status", {})
-        conditions = status.get("conditions", [])
-        complete = next((c for c in conditions if c["type"] == "Complete"), None)
-        if complete and complete["status"] == "True":
-            return
-        failed = next((c for c in conditions if c["type"] == "Failed"), None)
-        if failed and failed["status"] == "True":
-            pytest.fail(f"Snapshot {snapshot_name} failed: {failed.get('message', 'unknown')}")
-        time.sleep(2)
-    pytest.fail(f"Snapshot {snapshot_name} did not complete within {timeout}s")
+        try:
+            return client.sandboxes.get(sandbox_id)
+        except NotFoundError:
+            time.sleep(POLL_INTERVAL)
+    pytest.fail(f"Sandbox {sandbox_id} did not become visible within {timeout}s")
 
 
 # --- Async helpers ---

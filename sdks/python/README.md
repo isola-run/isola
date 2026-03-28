@@ -129,6 +129,31 @@ print(sandbox.creation_timestamp)  # datetime
 sandbox.delete()
 ```
 
+## Rootfs snapshots
+
+```python
+from isola import IsolaError, RootfsSnapshotStatus
+
+snapshot = client.rootfs_snapshots.create(
+    sandbox_id=sandbox.id,
+    snapshot_name="my-snapshot",
+    max_wait_seconds=300,
+)
+
+print(snapshot.status)  # RootfsSnapshotStatus.COMPLETE
+
+# Fetch the latest snapshot state by ID
+snapshot = client.rootfs_snapshots.get(snapshot.id)
+
+# Restore a new sandbox from the snapshot name
+restored = client.sandboxes.create(
+    image="alpine:3.21",
+    rootfs_snapshot_source="my-snapshot",
+)
+```
+
+`rootfs_snapshots.create()` waits for completion by default. Pass `max_wait_seconds=0` to return immediately, or a finite value to bound the client-side wait. If the snapshot reaches `failed` while waiting, `create()` raises `IsolaError`.
+
 ## Async client
 
 ```python
@@ -149,13 +174,15 @@ async with AsyncIsola() as client:
 ## Error handling
 
 ```python
-from isola import IsolaError, NotFoundError, APIConnectionError
+from isola import APIConnectionError, IsolaError, IsolaTimeoutError, NotFoundError
 
 try:
     sandbox = client.sandboxes.get("nonexistent")
 except NotFoundError as e:
     print(e.status_code)  # 404
     print(e.message)
+except IsolaTimeoutError:
+    print("Timed out waiting for completion")
 except APIConnectionError:
     print("Could not connect to API")
 except IsolaError:
