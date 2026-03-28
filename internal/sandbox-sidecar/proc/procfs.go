@@ -42,7 +42,7 @@ type ProcFS interface {
 	GetCwd(pid int) (string, error)
 	// GetRoot returns the path to /proc/<pid>/root for the given PID.
 	GetRoot(pid int) string
-	// GetUIDGID reads the real UID and GID from /proc/<pid>/status.
+	// GetUIDGID reads the real UID and GID by stat'ing /proc/<pid>.
 	GetUIDGID(pid int) (uid, gid int, err error)
 	// GetEnviron reads /proc/<pid>/environ and returns all environment variables as "KEY=VALUE" strings.
 	GetEnviron(pid int) ([]string, error)

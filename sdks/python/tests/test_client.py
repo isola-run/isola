@@ -349,3 +349,74 @@ async def test_async_exhausts_retries_raises(monkeypatch: pytest.MonkeyPatch) ->
         with pytest.raises(BadGatewayError):
             await client.sandboxes.list()
     assert route.call_count == 1 + MAX_RETRIES
+
+
+# --- Context manager and close() tests ---
+
+
+@respx.mock
+def test_sync_context_manager_closes_client() -> None:
+    respx.get("http://localhost:8080/v1/sandboxes").mock(
+        return_value=httpx.Response(200, json={"sandboxes": []})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        client.sandboxes.list()
+
+    assert client._api._client.is_closed
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_context_manager_closes_client() -> None:
+    respx.get("http://localhost:8080/v1/sandboxes").mock(
+        return_value=httpx.Response(200, json={"sandboxes": []})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        await client.sandboxes.list()
+
+    assert client._api._client.is_closed
+
+
+@respx.mock
+def test_sync_context_manager_closes_on_exception() -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/missing").mock(
+        return_value=httpx.Response(404, json={"detail": "not found"})
+    )
+
+    with pytest.raises(NotFoundError), Isola(base_url="http://localhost:8080") as client:
+        client.sandboxes.get("missing")
+
+    assert client._api._client.is_closed
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_context_manager_closes_on_exception() -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/missing").mock(
+        return_value=httpx.Response(404, json={"detail": "not found"})
+    )
+
+    with pytest.raises(NotFoundError):
+        async with AsyncIsola(base_url="http://localhost:8080") as client:
+            await client.sandboxes.get("missing")
+
+    assert client._api._client.is_closed
+
+
+def test_sync_close_is_idempotent() -> None:
+    client = Isola(base_url="http://localhost:8080")
+    client.close()
+    client.close()
+    assert client._api._client.is_closed
+
+
+@pytest.mark.asyncio
+async def test_async_close_is_idempotent() -> None:
+    client = AsyncIsola(base_url="http://localhost:8080")
+    await client.close()
+    await client.close()
+    assert client._api._client.is_closed
+
+

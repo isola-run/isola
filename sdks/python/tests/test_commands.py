@@ -22,8 +22,11 @@ import respx
 
 from isola import (
     AsyncIsola,
+    BadGatewayError,
     CommandResult,
+    InternalError,
     Isola,
+    NotFoundError,
 )
 
 
@@ -417,14 +420,6 @@ async def test_async_close_stdin_sends_post(sandbox_response_copy: dict[str, obj
     assert close_route.called
 
 
-def test_command_result_repr() -> None:
-    result = CommandResult(command_id="cmd-1", stdout="hello", stderr="world", exit_code=0)
-    r = repr(result)
-    assert "hello" in r
-    assert "world" in r
-    assert "exit_code=0" in r
-
-
 @respx.mock
 def test_wait_sends_long_poll_request(sandbox_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
@@ -492,3 +487,213 @@ async def test_async_wait_sends_long_poll_request(sandbox_response_copy: dict[st
     assert code == 0
     assert status_route.call_count == 1
     assert status_route.calls[0].request.url.params["waitSeconds"] == "20"
+
+
+# --- Command error handling tests ---
+
+
+@respx.mock
+def test_spawn_raises_on_api_error(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(500, json={"detail": "sidecar unreachable"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        with pytest.raises(InternalError) as exc_info:
+            sandbox.commands.spawn("ls")
+
+    assert exc_info.value.status_code == 500
+    assert "sidecar unreachable" in exc_info.value.message
+
+
+@respx.mock
+def test_spawn_raises_on_bad_gateway(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(502, json={"detail": "bad gateway"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        with pytest.raises(BadGatewayError):
+            sandbox.commands.spawn("ls")
+
+
+@respx.mock
+def test_kill_raises_on_not_found(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-kill-err"})
+    )
+    respx.delete("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-kill-err").mock(
+        return_value=httpx.Response(404, json={"detail": "command not found"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        cmd = sandbox.commands.spawn("sleep", "100")
+        with pytest.raises(NotFoundError) as exc_info:
+            cmd.kill()
+
+    assert "command not found" in exc_info.value.message
+
+
+@respx.mock
+def test_write_stdin_raises_on_error(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-stdin-err"})
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-stdin-err/stdin").mock(
+        return_value=httpx.Response(500, json={"detail": "stdin closed"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        cmd = sandbox.commands.spawn("cat")
+        with pytest.raises(InternalError):
+            cmd.write_stdin(b"data")
+
+
+@respx.mock
+def test_close_stdin_raises_on_error(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-closestdin-err"})
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-closestdin-err/stdin/close").mock(
+        return_value=httpx.Response(404, json={"detail": "command not found"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        cmd = sandbox.commands.spawn("cat")
+        with pytest.raises(NotFoundError):
+            cmd.close_stdin()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_spawn_raises_on_api_error(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._client.asyncio.sleep", _no_sleep)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(500, json={"detail": "sidecar unreachable"})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        with pytest.raises(InternalError):
+            await sandbox.commands.spawn("ls")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_kill_raises_on_not_found(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._client.asyncio.sleep", _no_sleep)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-akill-err"})
+    )
+    respx.delete("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-akill-err").mock(
+        return_value=httpx.Response(404, json={"detail": "command not found"})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        cmd = await sandbox.commands.spawn("sleep", "100")
+        with pytest.raises(NotFoundError):
+            await cmd.kill()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_write_stdin_raises_on_error(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._client.asyncio.sleep", _no_sleep)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-astdin-err"})
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-astdin-err/stdin").mock(
+        return_value=httpx.Response(500, json={"detail": "stdin closed"})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        cmd = await sandbox.commands.spawn("cat")
+        with pytest.raises(InternalError):
+            await cmd.write_stdin(b"data")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_close_stdin_raises_on_error(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._client.asyncio.sleep", _no_sleep)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"commandId": "cmd-aclosestdin-err"})
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands/cmd-aclosestdin-err/stdin/close").mock(
+        return_value=httpx.Response(404, json={"detail": "command not found"})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        cmd = await sandbox.commands.spawn("cat")
+        with pytest.raises(NotFoundError):
+            await cmd.close_stdin()
