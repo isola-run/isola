@@ -33,12 +33,12 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 
-	"github.com/isola-ai/isola/internal/constants"
-	"github.com/isola-ai/isola/internal/httputil"
-	sandboxsidecar "github.com/isola-ai/isola/internal/sandbox-sidecar"
-	"github.com/isola-ai/isola/internal/sandbox-sidecar/proc"
-	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
-	"github.com/isola-ai/isola/internal/sseutil"
+	"github.com/isola-run/isola/internal/constants"
+	"github.com/isola-run/isola/internal/httputil"
+	sandboxsidecar "github.com/isola-run/isola/internal/sandbox-sidecar"
+	"github.com/isola-run/isola/internal/sandbox-sidecar/proc"
+	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
+	"github.com/isola-run/isola/internal/sseutil"
 )
 
 // time cmd.Wait() has to drain before giving up

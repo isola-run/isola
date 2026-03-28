@@ -1,4 +1,4 @@
-module github.com/isola-ai/isola
+module github.com/isola-run/isola
 
 go 1.26.1
 

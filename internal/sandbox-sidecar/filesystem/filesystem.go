@@ -26,10 +26,10 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/isola-ai/isola/internal/httputil"
-	sandboxsidecar "github.com/isola-ai/isola/internal/sandbox-sidecar"
-	"github.com/isola-ai/isola/internal/sandbox-sidecar/proc"
-	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
+	"github.com/isola-run/isola/internal/httputil"
+	sandboxsidecar "github.com/isola-run/isola/internal/sandbox-sidecar"
+	"github.com/isola-run/isola/internal/sandbox-sidecar/proc"
+	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
 
 type FilesystemWriteInput struct {

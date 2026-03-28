@@ -41,4 +41,4 @@ NOTE: RootfsSnapshot storage is not configured. To enable rootfs snapshots, upgr
   --set operator.sandboxRuntime.gvisor.rootfssnapshot.storage.s3.region=us-east-1
 {{- end }}
 
-DOCUMENTATION: https://github.com/isola-ai/isola
+DOCUMENTATION: https://github.com/isola-run/isola
