@@ -373,14 +373,14 @@ func TestBuildCustomNetworkPolicy_MixedIPv4IPv6Nameservers(t *testing.T) {
 func TestBuildCustomNetworkPolicy_IPv6AllowedEgressCIDR(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		AllowedEgressCIDRs: []string{"2001:4860::/32"},
+		AllowedEgressCIDRs: []string{"2607:f8b0::/32"},
 	}
 
 	np := mustBuildCustomNetworkPolicy(t, network)
 
 	g.Expect(np.Spec.Egress).To(HaveLen(1))
 	ipBlock := np.Spec.Egress[0].To[0].IPBlock
-	g.Expect(ipBlock.CIDR).To(Equal("2001:4860::/32"))
+	g.Expect(ipBlock.CIDR).To(Equal("2607:f8b0::/32"))
 	// Public IPv6 range should have no exceptions
 	g.Expect(ipBlock.Except).To(BeEmpty())
 }

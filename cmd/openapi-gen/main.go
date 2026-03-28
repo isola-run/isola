@@ -31,6 +31,7 @@ import (
 	"github.com/isola-ai/isola/internal/api-gateway/command"
 	"github.com/isola-ai/isola/internal/api-gateway/filesystem"
 	"github.com/isola-ai/isola/internal/api-gateway/health"
+	"github.com/isola-ai/isola/internal/api-gateway/rootfssnapshot"
 	"github.com/isola-ai/isola/internal/api-gateway/sandbox"
 	sidecarCmd "github.com/isola-ai/isola/internal/sandbox-sidecar/command"
 	sidecarFs "github.com/isola-ai/isola/internal/sandbox-sidecar/filesystem"
@@ -86,6 +87,7 @@ func setupAPIGateway() huma.API {
 
 	v1 := huma.NewGroup(api, "/v1")
 	sandbox.Register(v1, sandbox.New(nil, "", nil))
+	rootfssnapshot.Register(v1, rootfssnapshot.New(nil, "", nil))
 	filesystem.Register(v1, filesystem.New(nil, "", nil, nil))
 	command.Register(v1, command.New(nil, "", nil, nil))
 

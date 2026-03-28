@@ -534,7 +534,6 @@ def test_wait_tolerates_transient_not_found(monkeypatch: pytest.MonkeyPatch) -> 
     assert sandbox.status == SandboxStatus.RUNNING
 
 
-
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_wait_tolerates_transient_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -556,7 +555,6 @@ async def test_async_wait_tolerates_transient_not_found(monkeypatch: pytest.Monk
         sandbox = await client.sandboxes.create(image="python:3.12")
 
     assert sandbox.status == SandboxStatus.RUNNING
-
 
 
 # --- Wait timeout tests ---
@@ -582,8 +580,9 @@ def test_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) -> None:
         return_value=httpx.Response(200, json=_make_sandbox_response("creating"))
     )
 
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(
-        IsolaTimeoutError, match="did not reach running state within 5s"
+    with (
+        Isola(base_url="http://localhost:8080") as client,
+        pytest.raises(IsolaTimeoutError, match="did not reach running state within 5s"),
     ):
         client.sandboxes.create(image="python:3.12", max_wait_seconds=5)
 

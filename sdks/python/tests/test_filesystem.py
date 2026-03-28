@@ -22,7 +22,7 @@ import httpx
 import pytest
 import respx
 
-from isola import AsyncIsola, Isola
+from isola import AsyncIsola, InternalError, Isola, NotFoundError
 
 
 @respx.mock
@@ -209,3 +209,132 @@ def test_filesystem_upload_real_file(sandbox_response_copy: dict[str, object], t
 
     assert result.bytes_written == 15
     assert write_route.calls[0].request.content == b"print('hello')\n"
+
+
+# --- Filesystem error handling tests ---
+
+
+@respx.mock
+def test_filesystem_read_raises_on_404(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(404, json={"detail": "file not found"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        with pytest.raises(NotFoundError) as exc_info:
+            sandbox.filesystem.read("/nonexistent/file.txt")
+
+    assert exc_info.value.status_code == 404
+    assert "file not found" in exc_info.value.message
+
+
+@respx.mock
+def test_filesystem_read_raises_on_500(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(500, json={"detail": "internal server error"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        with pytest.raises(InternalError) as exc_info:
+            sandbox.filesystem.read("/some/file.txt")
+
+    assert exc_info.value.status_code == 500
+
+
+@respx.mock
+def test_filesystem_write_raises_on_404(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(404, json={"detail": "sandbox not found"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        with pytest.raises(NotFoundError) as exc_info:
+            sandbox.filesystem.write("/workspace/file.txt", b"data")
+
+    assert exc_info.value.status_code == 404
+
+
+@respx.mock
+def test_filesystem_write_raises_on_500(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(500, json={"detail": "disk full"})
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        with pytest.raises(InternalError) as exc_info:
+            sandbox.filesystem.write("/workspace/file.txt", b"data")
+
+    assert exc_info.value.status_code == 500
+    assert "disk full" in exc_info.value.message
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_filesystem_read_raises_on_404(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._client.asyncio.sleep", _no_sleep)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(404, json={"detail": "file not found"})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        with pytest.raises(NotFoundError):
+            await sandbox.filesystem.read("/nonexistent/file.txt")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_filesystem_write_raises_on_500(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._client.asyncio.sleep", _no_sleep)
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(500, json={"detail": "disk full"})
+    )
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        with pytest.raises(InternalError):
+            await sandbox.filesystem.write("/workspace/file.txt", b"data")

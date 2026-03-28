@@ -19,25 +19,61 @@ import (
 	"net/netip"
 )
 
-// BlockedV4 are IPv4 prefixes that sandboxes should never reach via CIDR-based rules.
+// BlockedV4 are IPv4 prefixes excluded from sandbox egress via NetworkPolicy ipBlock rules.
+//
+// Goal: block nearby infrastructure (best-effort), not the real internet. This covers private and
+// shared-address networks, link-local, cloud metadata endpoints, known cluster Service CIDRs,
+// platform infrastructure (Azure Wire Server), and IANA-reserved non-globally-routable
+// space. Sandboxes keep normal internet and cloud-service access (uploading to S3/GCS,
+// calling external APIs, pulling images, etc.).
+//
+// Do not add cloud API data-plane endpoints here (GCP Private Google Access VIPs,
+// DirectPath ranges, etc.). Those carry real application traffic and blocking them
+// breaks sandbox access to cloud services.
+//
+// CNI caveat: whether ipBlock rules match pod-to-pod traffic is not defined by the
+// Kubernetes API - it depends on the CNI. For example, on GKE Dataplane V2,
+// ipBlock never covers pod traffic, pod isolation relies on the default-deny policy
+// alone. On Calico, ipBlock does cover pod traffic, so these entries also block egress
+// to pods whose IPs fall in the listed ranges.
+//
+// These entries must be kept in sync with the static Helm NetworkPolicy template
+// (sandbox-allow-internet-egress-networkpolicy.yaml).
 var BlockedV4 = []netip.Prefix{
-	netip.MustParsePrefix("10.0.0.0/8"),      // RFC 1918: 10.0.0.0 - 10.255.255.255 (Class A private)
-	netip.MustParsePrefix("100.64.0.0/10"),   // RFC 6598: 100.64.0.0 - 100.127.255.255 (Carrier-grade NAT / shared address space)
-	netip.MustParsePrefix("169.254.0.0/16"),  // RFC 3927: Link-local (includes cloud metadata 169.254.169.254)
-	netip.MustParsePrefix("172.16.0.0/12"),   // RFC 1918: 172.16.0.0 - 172.31.255.255 (Class B private)
-	netip.MustParsePrefix("192.168.0.0/16"),  // RFC 1918: 192.168.0.0 - 192.168.255.255 (Class C private)
-	netip.MustParsePrefix("198.18.0.0/15"),   // RFC 2544: Benchmark testing range (also used by GKE on AWS)
-	netip.MustParsePrefix("240.0.0.0/4"),     // RFC 1112: 240.0.0.0 - 255.255.255.255 (Class E reserved)
-	netip.MustParsePrefix("34.118.224.0/20"), // GKE-managed Service ClusterIP range (newer GKE)
-	netip.MustParsePrefix("224.0.0.0/4"),     // Multicast
+	netip.MustParsePrefix("10.0.0.0/8"),       // RFC 1918: 10.0.0.0 - 10.255.255.255 (Class A private)
+	netip.MustParsePrefix("100.64.0.0/10"),    // RFC 6598: 100.64.0.0 - 100.127.255.255 (Carrier-grade NAT / shared address space)
+	netip.MustParsePrefix("169.254.0.0/16"),   // RFC 3927: Link-local (includes cloud metadata 169.254.169.254)
+	netip.MustParsePrefix("172.16.0.0/12"),    // RFC 1918: 172.16.0.0 - 172.31.255.255 (Class B private)
+	netip.MustParsePrefix("192.168.0.0/16"),   // RFC 1918: 192.168.0.0 - 192.168.255.255 (Class C private)
+	netip.MustParsePrefix("198.18.0.0/15"),    // RFC 2544: Benchmark testing range (also used by GKE on AWS)
+	netip.MustParsePrefix("240.0.0.0/4"),      // RFC 1112: Reserved (Class E)
+	netip.MustParsePrefix("34.118.224.0/20"),  // GKE-managed Service ClusterIP range (newer GKE)
+	netip.MustParsePrefix("224.0.0.0/4"),      // RFC 1112: Multicast
+	netip.MustParsePrefix("192.0.0.0/24"),     // RFC 6890: IETF Protocol Assignments
+	netip.MustParsePrefix("192.0.2.0/24"),     // RFC 5737: Documentation (TEST-NET-1)
+	netip.MustParsePrefix("192.88.99.0/24"),   // RFC 7526: 6to4 Relay Anycast (deprecated)
+	netip.MustParsePrefix("198.51.100.0/24"),  // RFC 5737: Documentation (TEST-NET-2)
+	netip.MustParsePrefix("203.0.113.0/24"),   // RFC 5737: Documentation (TEST-NET-3)
+	netip.MustParsePrefix("168.63.129.16/32"), // Azure: Wire Server (VM Agent, DHCP, DNS, health probes)
 }
 
-// BlockedV6 are IPv6 prefixes that sandboxes should never reach via CIDR-based rules.
+// BlockedV6 are IPv6 prefixes excluded from sandbox egress. Same policy as BlockedV4.
 var BlockedV6 = []netip.Prefix{
 	netip.MustParsePrefix("fc00::/7"),           // RFC 4193: Unique Local Address (ULA) - IPv6 equivalent of RFC 1918
 	netip.MustParsePrefix("fe80::/10"),          // RFC 4291: Link-local - auto-configured addresses for local network
 	netip.MustParsePrefix("2600:2d00:0:4::/64"), // GKE-managed Service IPv6 range (dual-stack clusters)
 	netip.MustParsePrefix("ff00::/8"),           // Multicast
+	netip.MustParsePrefix("::ffff:0:0/96"),      // RFC 4291: IPv4-mapped address (not globally routable)
+	netip.MustParsePrefix("64:ff9b:1::/48"),     // RFC 8215: NAT64 local-use prefix
+	netip.MustParsePrefix("100::/64"),           // RFC 6666: Discard-Only prefix
+	netip.MustParsePrefix("100:0:0:1::/64"),     // RFC 9780: Dummy IPv6 Prefix
+	netip.MustParsePrefix("2001::/32"),          // RFC 4380: Teredo (largely obsolete)
+	netip.MustParsePrefix("2001:2::/48"),        // RFC 5180: Benchmarking
+	netip.MustParsePrefix("2001:db8::/32"),      // RFC 3849: Documentation
+	netip.MustParsePrefix("2002::/16"),          // RFC 3056: 6to4 (relay anycast deprecated by RFC 7526)
+	netip.MustParsePrefix("3fff::/20"),          // RFC 9637: Documentation prefix
+	netip.MustParsePrefix("5f00::/16"),          // RFC 9602: SRv6 SIDs (not globally routable)
+	netip.MustParsePrefix("2600:2d00:0:2::/63"), // GCP: Cloud Router Next Hop
 }
 
 // ComputeExcept returns the list of blocked CIDRs to exclude from allowed in a NetworkPolicy.

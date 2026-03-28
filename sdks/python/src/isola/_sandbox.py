@@ -81,9 +81,7 @@ def _wait_until_running(
             return data
         _check_terminal(sandbox_id, data.status)
         if deadline is not None and time.monotonic() >= deadline:
-            raise IsolaTimeoutError(
-                f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s"
-            )
+            raise IsolaTimeoutError(f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s")
         time.sleep(_POLL_INTERVAL)
 
 
@@ -103,9 +101,7 @@ async def _async_wait_until_running(
             return data
         _check_terminal(sandbox_id, data.status)
         if deadline is not None and time.monotonic() >= deadline:
-            raise IsolaTimeoutError(
-                f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s"
-            )
+            raise IsolaTimeoutError(f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s")
         await asyncio.sleep(_POLL_INTERVAL)
 
 
