@@ -38,7 +38,6 @@ from ._models import (
 )
 
 _POLL_INTERVAL = 1.0
-_MAX_CONSECUTIVE_POLL_ERRORS = 15
 
 _TERMINAL_STATUSES = frozenset({SandboxStatus.FAILED, SandboxStatus.STOPPED})
 
@@ -72,15 +71,10 @@ def _wait_until_running(
     max_wait_seconds: int | None,
 ) -> SandboxData:
     deadline = time.monotonic() + max_wait_seconds if max_wait_seconds is not None else None
-    consecutive_poll_errors = 0
     while True:
         try:
             data = api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
-            consecutive_poll_errors = 0
         except NotFoundError:
-            consecutive_poll_errors += 1
-            if consecutive_poll_errors >= _MAX_CONSECUTIVE_POLL_ERRORS:
-                raise
             time.sleep(_POLL_INTERVAL)
             continue
         if data.status == SandboxStatus.RUNNING:
@@ -99,15 +93,10 @@ async def _async_wait_until_running(
     max_wait_seconds: int | None,
 ) -> SandboxData:
     deadline = time.monotonic() + max_wait_seconds if max_wait_seconds is not None else None
-    consecutive_poll_errors = 0
     while True:
         try:
             data = await api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
-            consecutive_poll_errors = 0
         except NotFoundError:
-            consecutive_poll_errors += 1
-            if consecutive_poll_errors >= _MAX_CONSECUTIVE_POLL_ERRORS:
-                raise
             await asyncio.sleep(_POLL_INTERVAL)
             continue
         if data.status == SandboxStatus.RUNNING:

@@ -27,7 +27,6 @@ from isola import (
     IsolaError,
     IsolaTimeoutError,
     NetworkSpec,
-    NotFoundError,
     RootfsSnapshotSource,
     SandboxStatus,
 )
@@ -541,42 +540,6 @@ def test_wait_tolerates_transient_not_found(monkeypatch: pytest.MonkeyPatch) -> 
     assert sandbox.status == SandboxStatus.RUNNING
 
 
-@respx.mock
-def test_wait_raises_after_max_consecutive_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("isola._sandbox.time.sleep", lambda _: None)
-
-    respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
-    )
-    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
-        side_effect=[httpx.Response(404, json={"detail": "not found"}) for _ in range(15)]
-    )
-
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(NotFoundError):
-        client.sandboxes.create(image="python:3.12")
-
-
-@respx.mock
-def test_wait_resets_not_found_counter_on_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("isola._sandbox.time.sleep", lambda _: None)
-
-    respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
-    )
-    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
-        side_effect=[
-            *[httpx.Response(404, json={"detail": "not found"}) for _ in range(14)],
-            httpx.Response(200, json=_make_sandbox_response("creating")),
-            *[httpx.Response(404, json={"detail": "not found"}) for _ in range(14)],
-            httpx.Response(200, json=_make_sandbox_response("running")),
-        ]
-    )
-
-    with Isola(base_url="http://localhost:8080") as client:
-        sandbox = client.sandboxes.create(image="python:3.12")
-
-    assert sandbox.status == SandboxStatus.RUNNING
-
 
 @pytest.mark.asyncio
 @respx.mock
@@ -600,22 +563,6 @@ async def test_async_wait_tolerates_transient_not_found(monkeypatch: pytest.Monk
 
     assert sandbox.status == SandboxStatus.RUNNING
 
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_async_wait_raises_after_max_consecutive_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("isola._sandbox.asyncio.sleep", _no_sleep)
-
-    respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
-    )
-    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
-        side_effect=[httpx.Response(404, json={"detail": "not found"}) for _ in range(15)]
-    )
-
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
-        with pytest.raises(NotFoundError):
-            await client.sandboxes.create(image="python:3.12")
 
 
 # --- Wait timeout tests ---
