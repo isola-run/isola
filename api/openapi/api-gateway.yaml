@@ -413,6 +413,7 @@ components:
           description: Snapshot status
           enum:
             - pending
+            - in_progress
             - complete
             - failed
           type: string

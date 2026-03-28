@@ -166,33 +166,39 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 	})
 
 	Describe("Status mapping", func() {
-		It("maps no conditions to pending", func() {
-			Expect(snapshotConditionsToStatus(nil)).To(Equal("pending"))
+		now := &metav1.Time{Time: time.Now()}
+
+		It("maps nil startTime and no conditions to pending", func() {
+			Expect(snapshotStatus(nil, nil)).To(Equal("pending"))
 		})
 
-		It("maps empty conditions to pending", func() {
-			Expect(snapshotConditionsToStatus([]metav1.Condition{})).To(Equal("pending"))
+		It("maps nil startTime and empty conditions to pending", func() {
+			Expect(snapshotStatus(nil, []metav1.Condition{})).To(Equal("pending"))
+		})
+
+		It("maps set startTime and no terminal conditions to in_progress", func() {
+			Expect(snapshotStatus(now, nil)).To(Equal("in_progress"))
 		})
 
 		It("maps Complete=True to complete", func() {
 			conditions := []metav1.Condition{
 				{Type: string(sandboxv1alpha1.RootfsSnapshotComplete), Status: metav1.ConditionTrue, Reason: sandboxv1alpha1.ReasonRootfsSnapshotSucceeded},
 			}
-			Expect(snapshotConditionsToStatus(conditions)).To(Equal("complete"))
+			Expect(snapshotStatus(now, conditions)).To(Equal("complete"))
 		})
 
 		It("maps Failed=True to failed", func() {
 			conditions := []metav1.Condition{
 				{Type: string(sandboxv1alpha1.RootfsSnapshotFailed), Status: metav1.ConditionTrue, Reason: sandboxv1alpha1.ReasonRootfsSnapshotFailed},
 			}
-			Expect(snapshotConditionsToStatus(conditions)).To(Equal("failed"))
+			Expect(snapshotStatus(now, conditions)).To(Equal("failed"))
 		})
 
-		It("maps conditions present but none True to pending", func() {
+		It("maps startTime set with conditions present but none True to in_progress", func() {
 			conditions := []metav1.Condition{
 				{Type: string(sandboxv1alpha1.RootfsSnapshotComplete), Status: metav1.ConditionFalse, Reason: "InProgress"},
 			}
-			Expect(snapshotConditionsToStatus(conditions)).To(Equal("pending"))
+			Expect(snapshotStatus(now, conditions)).To(Equal("in_progress"))
 		})
 	})
 })

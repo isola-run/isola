@@ -60,7 +60,7 @@ type RootfsSnapshotResponse struct {
 	ContainerName           string `json:"containerName,omitempty" doc:"Container being snapshotted"`
 	TimeoutSeconds          *int64 `json:"timeoutSeconds,omitempty" doc:"Max duration in seconds for the snapshot job"`
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" doc:"Seconds to retain the resource after completion"`
-	Status                  string `json:"status" doc:"Snapshot status" enum:"pending,complete,failed"`
+	Status                  string `json:"status" doc:"Snapshot status" enum:"pending,in_progress,complete,failed"`
 	CreationTimestamp       string `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
 
@@ -70,7 +70,8 @@ const (
 	fullAlphabet     = "abcdefghijklmnopqrstuvwxyz0123456789"
 )
 
-func generateSnapshotID() (string, error) {
+// generateSnapshotName creates a unique snapshot name suitable for Kubernetes DNS-1123 labels.
+func generateSnapshotName() (string, error) {
 	first, err := gonanoid.Generate(letterAlphabet, 1)
 	if err != nil {
 		return "", fmt.Errorf("generate first char: %w", err)
@@ -101,10 +102,10 @@ func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client) 
 func (h *Handlers) PostRootfsSnapshot(ctx context.Context, input *CreateRootfsSnapshotInput) (*CreateRootfsSnapshotOutput, error) {
 	req := input.Body
 
-	name, err := generateSnapshotID()
+	name, err := generateSnapshotName()
 	if err != nil {
-		h.logger.Error("failed to generate snapshot id", "error", err)
-		return nil, huma.Error500InternalServerError("failed to generate snapshot id")
+		h.logger.Error("failed to generate snapshot name", "error", err)
+		return nil, huma.Error500InternalServerError("failed to generate snapshot name")
 	}
 
 	cr := requestToRootfsSnapshotCR(req, name, h.sandboxNamespace)

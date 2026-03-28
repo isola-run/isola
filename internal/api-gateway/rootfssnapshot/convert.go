@@ -47,12 +47,12 @@ func rootfsSnapshotToResponse(rs *sandboxv1alpha1.RootfsSnapshot) RootfsSnapshot
 		ContainerName:           rs.Spec.ContainerName,
 		TimeoutSeconds:          rs.Spec.TimeoutSeconds,
 		TTLSecondsAfterFinished: rs.Spec.TTLSecondsAfterFinished,
-		Status:                  snapshotConditionsToStatus(rs.Status.Conditions),
+		Status:                  snapshotStatus(rs.Status.StartTime, rs.Status.Conditions),
 		CreationTimestamp:       rs.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 }
 
-func snapshotConditionsToStatus(conditions []metav1.Condition) string {
+func snapshotStatus(startTime *metav1.Time, conditions []metav1.Condition) string {
 	complete := meta.FindStatusCondition(conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
 	if complete != nil && complete.Status == metav1.ConditionTrue {
 		return "complete"
@@ -61,6 +61,10 @@ func snapshotConditionsToStatus(conditions []metav1.Condition) string {
 	failed := meta.FindStatusCondition(conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
 	if failed != nil && failed.Status == metav1.ConditionTrue {
 		return "failed"
+	}
+
+	if startTime != nil {
+		return "in_progress"
 	}
 
 	return "pending"
