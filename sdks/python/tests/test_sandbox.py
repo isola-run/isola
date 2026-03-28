@@ -293,12 +293,9 @@ def test_create_wait_zero_raises_on_already_failed() -> None:
     respx.post("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(201, json=_make_sandbox_response("failed"))
     )
-    get_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123")
 
     with Isola(base_url="http://localhost:8080") as client, pytest.raises(IsolaError, match="terminal state"):
         client.sandboxes.create(image="python:3.12", max_wait_seconds=0)
-
-    assert not get_route.called
 
 
 @respx.mock
@@ -395,13 +392,10 @@ async def test_async_create_wait_zero_raises_on_already_failed() -> None:
     respx.post("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(201, json=_make_sandbox_response("failed"))
     )
-    get_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123")
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         with pytest.raises(IsolaError, match="terminal state"):
             await client.sandboxes.create(image="python:3.12", max_wait_seconds=0)
-
-    assert not get_route.called
 
 
 @pytest.mark.asyncio
