@@ -29,8 +29,6 @@ import (
 	apigateway "github.com/isola-ai/isola/internal/api-gateway"
 )
 
-// --- Request types ---
-
 type CreateRootfsSnapshotInput struct {
 	Body CreateRootfsSnapshotRequest
 }
@@ -46,8 +44,6 @@ type CreateRootfsSnapshotRequest struct {
 type GetRootfsSnapshotInput struct {
 	ID string `path:"id" doc:"RootfsSnapshot identifier"`
 }
-
-// --- Response types ---
 
 type CreateRootfsSnapshotOutput struct {
 	Body RootfsSnapshotResponse
@@ -67,8 +63,6 @@ type RootfsSnapshotResponse struct {
 	Status                  string `json:"status" doc:"Snapshot status" enum:"pending,complete,failed"`
 	CreationTimestamp       string `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
-
-// --- Handlers ---
 
 const (
 	snapshotIDLength = 22

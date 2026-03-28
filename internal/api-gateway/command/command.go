@@ -36,8 +36,6 @@ import (
 	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
 )
 
-// --- Types ---
-
 type CreateCommandRequest struct {
 	Args           []string          `json:"args" required:"true" minItems:"1" doc:"Argument vector: Args[0] is the executable path, Args[1:] are its arguments"`
 	Env            map[string]string `json:"env,omitempty" doc:"Environment variable overrides"`
@@ -97,8 +95,6 @@ type DeleteSandboxCommandInput struct {
 	ID    string `path:"id" doc:"Sandbox identifier"`
 	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
-
-// --- Handlers ---
 
 type Handlers struct {
 	logger           *slog.Logger

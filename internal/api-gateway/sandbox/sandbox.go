@@ -30,8 +30,6 @@ import (
 	apigateway "github.com/isola-ai/isola/internal/api-gateway"
 )
 
-// --- Request types ---
-
 type CreateSandboxInput struct {
 	Body CreateSandboxRequest
 }
@@ -88,7 +86,6 @@ type DeleteSandboxInput struct {
 	ID string `path:"id" doc:"Sandbox identifier"`
 }
 
-// --- Response types ---
 // Response types omit env vars (write-only) to avoid leaking secrets.
 
 type ContainerInfo struct {
@@ -133,8 +130,6 @@ type SandboxSummary struct {
 type ListSandboxesResponse struct {
 	Sandboxes []SandboxSummary `json:"sandboxes" doc:"List of sandboxes"`
 }
-
-// --- Handlers ---
 
 const (
 	sandboxNameLength = 22

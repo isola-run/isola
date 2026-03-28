@@ -34,8 +34,6 @@ import (
 	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
 )
 
-// --- Types ---
-
 type FilesystemWriteInput struct {
 	ID        string `path:"id" doc:"Sandbox identifier"`
 	Path      string `query:"path" required:"true" minLength:"1" doc:"Destination path (absolute or relative to container cwd)"`
@@ -57,8 +55,6 @@ type FilesystemReadInput struct {
 	Path      string `query:"path" required:"true" minLength:"1" doc:"Source path (absolute or relative to container cwd)"`
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 }
-
-// --- Handlers ---
 
 type Handlers struct {
 	logger           *slog.Logger
