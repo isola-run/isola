@@ -58,11 +58,11 @@ class BadGatewayError(APIError):
 class WaitTimeoutError(IsolaError):
     """Client-side wait timeout exceeded. The sandbox may still be starting."""
 
-    def __init__(self, sandbox_id: str, timeout: int) -> None:
+    def __init__(self, sandbox_id: str, max_wait_seconds: int) -> None:
         self.sandbox_id = sandbox_id
-        self.timeout = timeout
+        self.max_wait_seconds = max_wait_seconds
         super().__init__(
-            f"sandbox {sandbox_id} did not reach running state within {timeout}s"
+            f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s"
         )
 
 

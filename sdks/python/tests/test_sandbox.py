@@ -283,9 +283,22 @@ def test_create_wait_zero_returns_immediately() -> None:
     get_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123")
 
     with Isola(base_url="http://localhost:8080") as client:
-        sandbox = client.sandboxes.create(image="python:3.12", wait_seconds=0)
+        sandbox = client.sandboxes.create(image="python:3.12", max_wait_seconds=0)
 
     assert sandbox.status == SandboxStatus.CREATING
+    assert not get_route.called
+
+
+@respx.mock
+def test_create_wait_zero_raises_on_already_failed() -> None:
+    respx.post("http://localhost:8080/v1/sandboxes").mock(
+        return_value=httpx.Response(201, json=_make_sandbox_response("failed"))
+    )
+    get_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123")
+
+    with Isola(base_url="http://localhost:8080") as client, pytest.raises(IsolaError, match="terminal state"):
+        client.sandboxes.create(image="python:3.12", max_wait_seconds=0)
+
     assert not get_route.called
 
 
@@ -371,9 +384,24 @@ async def test_async_create_wait_zero_returns_immediately() -> None:
     get_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123")
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
-        sandbox = await client.sandboxes.create(image="python:3.12", wait_seconds=0)
+        sandbox = await client.sandboxes.create(image="python:3.12", max_wait_seconds=0)
 
     assert sandbox.status == SandboxStatus.CREATING
+    assert not get_route.called
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_create_wait_zero_raises_on_already_failed() -> None:
+    respx.post("http://localhost:8080/v1/sandboxes").mock(
+        return_value=httpx.Response(201, json=_make_sandbox_response("failed"))
+    )
+    get_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123")
+
+    async with AsyncIsola(base_url="http://localhost:8080") as client:
+        with pytest.raises(IsolaError, match="terminal state"):
+            await client.sandboxes.create(image="python:3.12", max_wait_seconds=0)
+
     assert not get_route.called
 
 
@@ -616,10 +644,10 @@ def test_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) -> None:
     with Isola(base_url="http://localhost:8080") as client, pytest.raises(
         WaitTimeoutError, match="did not reach running state within 5s"
     ) as exc_info:
-        client.sandboxes.create(image="python:3.12", wait_seconds=5)
+        client.sandboxes.create(image="python:3.12", max_wait_seconds=5)
 
     assert exc_info.value.sandbox_id == "sandbox-123"
-    assert exc_info.value.timeout == 5
+    assert exc_info.value.max_wait_seconds == 5
 
 
 @pytest.mark.asyncio
@@ -645,15 +673,15 @@ async def test_async_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) 
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         with pytest.raises(WaitTimeoutError, match="did not reach running state within 5s") as exc_info:
-            await client.sandboxes.create(image="python:3.12", wait_seconds=5)
+            await client.sandboxes.create(image="python:3.12", max_wait_seconds=5)
 
     assert exc_info.value.sandbox_id == "sandbox-123"
-    assert exc_info.value.timeout == 5
+    assert exc_info.value.max_wait_seconds == 5
 
 
 @respx.mock
-def test_wait_seconds_none_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> None:
-    """wait_seconds=None waits indefinitely (no client-side deadline), relying on server-side timeout."""
+def test_max_wait_seconds_none_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> None:
+    """max_wait_seconds=None waits indefinitely (no client-side deadline), relying on server-side timeout."""
     monkeypatch.setattr("isola._sandbox.time.sleep", lambda _: None)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
@@ -668,15 +696,15 @@ def test_wait_seconds_none_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> 
     )
 
     with Isola(base_url="http://localhost:8080") as client:
-        sandbox = client.sandboxes.create(image="python:3.12", wait_seconds=None)
+        sandbox = client.sandboxes.create(image="python:3.12", max_wait_seconds=None)
 
     assert sandbox.status == SandboxStatus.RUNNING
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_async_wait_seconds_none_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> None:
-    """wait_seconds=None waits indefinitely (async variant)."""
+async def test_async_max_wait_seconds_none_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> None:
+    """max_wait_seconds=None waits indefinitely (async variant)."""
     monkeypatch.setattr("isola._sandbox.asyncio.sleep", _no_sleep)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
@@ -691,7 +719,7 @@ async def test_async_wait_seconds_none_means_indefinite(monkeypatch: pytest.Monk
     )
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
-        sandbox = await client.sandboxes.create(image="python:3.12", wait_seconds=None)
+        sandbox = await client.sandboxes.create(image="python:3.12", max_wait_seconds=None)
 
     assert sandbox.status == SandboxStatus.RUNNING
 
@@ -702,4 +730,4 @@ def test_wait_timeout_error_is_isola_error() -> None:
     err = WaitTimeoutError("sandbox-123", 60)
     assert isinstance(err, IsolaError)
     assert err.sandbox_id == "sandbox-123"
-    assert err.timeout == 60
+    assert err.max_wait_seconds == 60

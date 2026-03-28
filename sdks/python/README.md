@@ -41,14 +41,14 @@ sandbox = client.sandboxes.create(
     memory="256Mi",
     ephemeral_storage="1Gi",
     timeout_seconds=3600,  # max lifetime in seconds
-    wait_seconds=120,      # wait up to 120s for sandbox to be ready (default: 60)
+    max_wait_seconds=120,   # wait up to 120s for sandbox to be ready (default: 60)
     network=NetworkSpec(
         allow_internet_egress=True,
     ),
 )
 
 # Don't wait for ready — return immediately
-sandbox = client.sandboxes.create(image="alpine:3.21", wait_seconds=0)
+sandbox = client.sandboxes.create(image="alpine:3.21", max_wait_seconds=0)
 ```
 
 ## Commands

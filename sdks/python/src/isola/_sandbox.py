@@ -69,13 +69,11 @@ def _check_terminal(sandbox_id: str, status: SandboxStatus) -> None:
 def _wait_until_running(
     sandbox_id: str,
     api: _SyncAPI,
-    timeout: int | None,
+    max_wait_seconds: int | None,
 ) -> SandboxData:
-    deadline = time.monotonic() + timeout if timeout is not None else None
+    deadline = time.monotonic() + max_wait_seconds if max_wait_seconds is not None else None
     consecutive_poll_errors = 0
     while True:
-        if timeout is not None and deadline is not None and time.monotonic() >= deadline:
-            raise WaitTimeoutError(sandbox_id, timeout)
         try:
             data = api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
             consecutive_poll_errors = 0
@@ -88,19 +86,19 @@ def _wait_until_running(
         if data.status == SandboxStatus.RUNNING:
             return data
         _check_terminal(sandbox_id, data.status)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise WaitTimeoutError(sandbox_id, max_wait_seconds)  # type: ignore[arg-type]
         time.sleep(_POLL_INTERVAL)
 
 
 async def _async_wait_until_running(
     sandbox_id: str,
     api: _AsyncAPI,
-    timeout: int | None,
+    max_wait_seconds: int | None,
 ) -> SandboxData:
-    deadline = time.monotonic() + timeout if timeout is not None else None
+    deadline = time.monotonic() + max_wait_seconds if max_wait_seconds is not None else None
     consecutive_poll_errors = 0
     while True:
-        if timeout is not None and deadline is not None and time.monotonic() >= deadline:
-            raise WaitTimeoutError(sandbox_id, timeout)
         try:
             data = await api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
             consecutive_poll_errors = 0
@@ -113,6 +111,8 @@ async def _async_wait_until_running(
         if data.status == SandboxStatus.RUNNING:
             return data
         _check_terminal(sandbox_id, data.status)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise WaitTimeoutError(sandbox_id, max_wait_seconds)  # type: ignore[arg-type]
         await asyncio.sleep(_POLL_INTERVAL)
 
 
@@ -133,7 +133,7 @@ class Sandboxes:
         startup_timeout_seconds: int | None = 60,
         network: NetworkSpec | None = None,
         rootfs_snapshot_source: str | None = None,
-        wait_seconds: int | None = 60,
+        max_wait_seconds: int | None = 60,
     ) -> Sandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -157,10 +157,9 @@ class Sandboxes:
             SandboxData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        if wait_seconds != 0:
-            _check_terminal(data.id, data.status)
-            if data.status != SandboxStatus.RUNNING:
-                data = _wait_until_running(data.id, self._api, wait_seconds)
+        _check_terminal(data.id, data.status)
+        if data.status != SandboxStatus.RUNNING and max_wait_seconds != 0:
+            data = _wait_until_running(data.id, self._api, max_wait_seconds)
         return Sandbox(self._api, data)
 
     def list(self) -> list[SandboxSummary]:
@@ -189,7 +188,7 @@ class AsyncSandboxes:
         startup_timeout_seconds: int | None = 60,
         network: NetworkSpec | None = None,
         rootfs_snapshot_source: str | None = None,
-        wait_seconds: int | None = 60,
+        max_wait_seconds: int | None = 60,
     ) -> AsyncSandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -213,10 +212,9 @@ class AsyncSandboxes:
             SandboxData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        if wait_seconds != 0:
-            _check_terminal(data.id, data.status)
-            if data.status != SandboxStatus.RUNNING:
-                data = await _async_wait_until_running(data.id, self._api, wait_seconds)
+        _check_terminal(data.id, data.status)
+        if data.status != SandboxStatus.RUNNING and max_wait_seconds != 0:
+            data = await _async_wait_until_running(data.id, self._api, max_wait_seconds)
         return AsyncSandbox(self._api, data)
 
     async def list(self) -> list[SandboxSummary]:
