@@ -66,34 +66,42 @@ class TestValidateByNameAndAlias:
         assert spec.image == "ubuntu:22.04"
 
     def test_construct_with_camel_case(self) -> None:
-        payload = CreateSandboxPayload.model_validate({
-            "podTemplate": {"container": {"image": "node:20"}},
-            "timeoutSeconds": 300,
-        })
+        payload = CreateSandboxPayload.model_validate(
+            {
+                "podTemplate": {"container": {"image": "node:20"}},
+                "timeoutSeconds": 300,
+            }
+        )
         assert payload.pod_template.container.image == "node:20"
         assert payload.timeout_seconds == 300
 
     def test_construct_with_snake_case_dict(self) -> None:
-        payload = CreateSandboxPayload.model_validate({
-            "pod_template": {"container": {"image": "node:20"}},
-            "timeout_seconds": 300,
-        })
+        payload = CreateSandboxPayload.model_validate(
+            {
+                "pod_template": {"container": {"image": "node:20"}},
+                "timeout_seconds": 300,
+            }
+        )
         assert payload.pod_template.container.image == "node:20"
         assert payload.timeout_seconds == 300
 
     def test_network_spec_by_alias(self) -> None:
-        net = NetworkSpec.model_validate({
-            "allowClusterDNS": True,
-            "allowedEgressCIDRs": ["10.0.0.0/8"],
-        })
+        net = NetworkSpec.model_validate(
+            {
+                "allowClusterDNS": True,
+                "allowedEgressCIDRs": ["10.0.0.0/8"],
+            }
+        )
         assert net.allow_cluster_dns is True
         assert net.allowed_egress_cidrs == ["10.0.0.0/8"]
 
     def test_network_spec_by_name(self) -> None:
-        net = NetworkSpec.model_validate({
-            "allow_cluster_dns": False,
-            "allowed_egress_cidrs": ["192.168.0.0/16"],
-        })
+        net = NetworkSpec.model_validate(
+            {
+                "allow_cluster_dns": False,
+                "allowed_egress_cidrs": ["192.168.0.0/16"],
+            }
+        )
         assert net.allow_cluster_dns is False
         assert net.allowed_egress_cidrs == ["192.168.0.0/16"]
 

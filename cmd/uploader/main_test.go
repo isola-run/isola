@@ -326,4 +326,3 @@ func TestUploadSnapshotEmptyFile(t *testing.T) {
 		t.Errorf("termination log bytesWritten = %d, want 0", result.BytesWritten)
 	}
 }
-

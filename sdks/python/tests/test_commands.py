@@ -493,9 +493,7 @@ async def test_async_wait_sends_long_poll_request(sandbox_response_copy: dict[st
 
 
 @respx.mock
-def test_spawn_raises_on_api_error(
-    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_spawn_raises_on_api_error(sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
@@ -514,9 +512,7 @@ def test_spawn_raises_on_api_error(
 
 
 @respx.mock
-def test_spawn_raises_on_bad_gateway(
-    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_spawn_raises_on_bad_gateway(sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
@@ -532,9 +528,7 @@ def test_spawn_raises_on_bad_gateway(
 
 
 @respx.mock
-def test_kill_raises_on_not_found(
-    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_kill_raises_on_not_found(sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
@@ -556,9 +550,7 @@ def test_kill_raises_on_not_found(
 
 
 @respx.mock
-def test_write_stdin_raises_on_error(
-    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_write_stdin_raises_on_error(sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
@@ -578,9 +570,7 @@ def test_write_stdin_raises_on_error(
 
 
 @respx.mock
-def test_close_stdin_raises_on_error(
-    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_close_stdin_raises_on_error(sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)

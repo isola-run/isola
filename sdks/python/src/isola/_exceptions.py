@@ -55,6 +55,12 @@ class BadGatewayError(APIError):
     pass
 
 
+class IsolaTimeoutError(IsolaError):
+    """Client-side timeout exceeded."""
+
+    pass
+
+
 class APIConnectionError(IsolaError, ConnectionError):
     pass
 

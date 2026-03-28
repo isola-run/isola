@@ -467,9 +467,7 @@ def test_sync_stream_zero_length_data_events() -> None:
 
 def test_sync_stream_only_comments() -> None:
     """A stream containing only SSE comments produces no output."""
-    api = _FakeSyncAPI(
-        [_FakeSyncCM(_FakeSyncResponse([": keepalive\n\n", ": another comment\n\n"]))]
-    )
+    api = _FakeSyncAPI([_FakeSyncCM(_FakeSyncResponse([": keepalive\n\n", ": another comment\n\n"]))])
 
     assert list(StreamReader(api, "/path")) == []
 
@@ -498,8 +496,6 @@ async def test_async_stream_zero_length_data_events() -> None:
 @pytest.mark.asyncio
 async def test_async_stream_only_comments() -> None:
     """A stream containing only SSE comments produces no output."""
-    api = _FakeAsyncAPI(
-        [_FakeAsyncCM(_FakeAsyncResponse([": keepalive\n\n", ": another comment\n\n"]))]
-    )
+    api = _FakeAsyncAPI([_FakeAsyncCM(_FakeAsyncResponse([": keepalive\n\n", ": another comment\n\n"]))])
 
     assert [c async for c in AsyncStreamReader(api, "/path")] == []

@@ -22,6 +22,7 @@ from ._exceptions import (
     ConflictError,
     InternalError,
     IsolaError,
+    IsolaTimeoutError,
     NotFoundError,
     ValidationError,
 )
@@ -60,4 +61,5 @@ __all__ = [
     "InternalError",
     "BadGatewayError",
     "APIConnectionError",
+    "IsolaTimeoutError",
 ]
