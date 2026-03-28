@@ -121,6 +121,7 @@ func crdNetworkToREST(n *sandboxv1alpha1.NetworkSpec) *NetworkSpec {
 	return &NetworkSpec{
 		AllowInternetEgress: n.AllowInternetEgress,
 		AllowClusterDNS:     n.AllowClusterDNS,
+		AllowIPv6Egress:     n.AllowIPv6Egress,
 		AllowedEgressCIDRs:  n.AllowedEgressCIDRs,
 		Nameservers:         n.Nameservers,
 	}
@@ -246,6 +247,7 @@ func restNetworkToCRD(n *NetworkSpec) *sandboxv1alpha1.NetworkSpec {
 	return &sandboxv1alpha1.NetworkSpec{
 		AllowInternetEgress: n.AllowInternetEgress,
 		AllowClusterDNS:     n.AllowClusterDNS,
+		AllowIPv6Egress:     n.AllowIPv6Egress,
 		AllowedEgressCIDRs:  n.AllowedEgressCIDRs,
 		Nameservers:         n.Nameservers,
 	}

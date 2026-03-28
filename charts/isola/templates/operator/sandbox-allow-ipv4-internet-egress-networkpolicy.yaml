@@ -1,0 +1,34 @@
+# Allow IPv4 internet egress for sandbox pods with isola.run/allow-ipv4-internet-egress=true label
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "isola.fullname" . }}-sandbox-allow-ipv4-internet-egress
+  namespace: {{ include "isola.sandboxNamespace" . }}
+  labels:
+    {{- include "isola.sandbox.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      isola.run/allow-ipv4-internet-egress: "true"
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8         # RFC 1918: Class A private
+              - 100.64.0.0/10      # RFC 6598: Carrier-grade NAT
+              - 169.254.0.0/16     # RFC 3927: Link-local (cloud metadata)
+              - 172.16.0.0/12      # RFC 1918: Class B private
+              - 192.168.0.0/16     # RFC 1918: Class C private
+              - 198.18.0.0/15      # RFC 2544: Benchmark testing
+              - 240.0.0.0/4        # RFC 1112: Reserved (Class E)
+              - 34.118.224.0/20    # GKE-managed Service ClusterIP range
+              - 224.0.0.0/4        # RFC 1112: Multicast
+              - 192.0.0.0/24       # RFC 6890: IETF Protocol Assignments
+              - 192.0.2.0/24       # RFC 5737: Documentation (TEST-NET-1)
+              - 192.88.99.0/24     # RFC 7526: 6to4 Relay Anycast (deprecated)
+              - 198.51.100.0/24    # RFC 5737: Documentation (TEST-NET-2)
+              - 203.0.113.0/24     # RFC 5737: Documentation (TEST-NET-3)
+              - 168.63.129.16/32   # Azure: Wire Server

@@ -38,7 +38,7 @@ import (
 // to pods whose IPs fall in the listed ranges.
 //
 // These entries must be kept in sync with the static Helm NetworkPolicy template
-// (sandbox-allow-internet-egress-networkpolicy.yaml).
+// (sandbox-allow-ipv4-internet-egress-networkpolicy.yaml and sandbox-allow-ipv6-internet-egress-networkpolicy.yaml).
 var BlockedV4 = []netip.Prefix{
 	netip.MustParsePrefix("10.0.0.0/8"),       // RFC 1918: 10.0.0.0 - 10.255.255.255 (Class A private)
 	netip.MustParsePrefix("100.64.0.0/10"),    // RFC 6598: 100.64.0.0 - 100.127.255.255 (Carrier-grade NAT / shared address space)

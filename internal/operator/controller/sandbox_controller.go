@@ -101,8 +101,9 @@ const (
 	sandboxSidecarContainerName = "sandbox-sidecar"
 
 	// Network labels for pod selection by Helm-installed NetworkPolicies
-	LabelAllowInternet   = "isola.run/allow-internet-egress"
-	LabelAllowClusterDNS = "isola.run/allow-cluster-dns"
+	LabelAllowIPv4Internet = "isola.run/allow-ipv4-internet-egress"
+	LabelAllowClusterDNS   = "isola.run/allow-cluster-dns"
+	LabelAllowIPv6Internet = "isola.run/allow-ipv6-internet-egress"
 )
 
 func (r *SandboxReconciler) clock() Clock {
@@ -118,10 +119,14 @@ func buildNetworkLabels(network *sandboxv1alpha1.NetworkSpec) map[string]string 
 		return labels
 	}
 	if network.AllowInternetEgress != nil && *network.AllowInternetEgress {
-		labels[LabelAllowInternet] = "true"
+		labels[LabelAllowIPv4Internet] = "true"
 	}
 	if network.AllowClusterDNS != nil && *network.AllowClusterDNS {
 		labels[LabelAllowClusterDNS] = "true"
+	}
+	if network.AllowIPv6Egress != nil && *network.AllowIPv6Egress &&
+		network.AllowInternetEgress != nil && *network.AllowInternetEgress {
+		labels[LabelAllowIPv6Internet] = "true"
 	}
 	return labels
 }

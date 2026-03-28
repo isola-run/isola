@@ -318,6 +318,9 @@ components:
         allowClusterDNS:
           description: Allow cluster DNS queries
           type: boolean
+        allowIPv6Egress:
+          description: "Enable IPv6 in egress configuration (default: IPv4 only)"
+          type: boolean
         allowInternetEgress:
           description: Allow public internet egress
           type: boolean
@@ -325,6 +328,7 @@ components:
           description: Allowed egress CIDRs
           items:
             type: string
+          maxItems: 16
           type:
             - array
             - "null"
