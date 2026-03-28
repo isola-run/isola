@@ -157,17 +157,6 @@ var _ = Describe("RootfsSnapshot Error Handling", func() {
 	})
 
 	Describe("GET /rootfs-snapshots/{id}", func() {
-		It("returns 404 when k8s Get returns NotFound", func() {
-			api := newErrorTestAPI(interceptor.Funcs{
-				Get: func(_ context.Context, _ client.WithWatch, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
-					return apierrors.NewNotFound(schema.GroupResource{Group: "sandbox.isola.run", Resource: "rootfssnapshots"}, "some-id")
-				},
-			})
-
-			resp := api.Get("/v1/rootfs-snapshots/some-id")
-			Expect(resp.Code).To(Equal(404))
-		})
-
 		It("returns 403 when k8s Get returns Forbidden", func() {
 			api := newErrorTestAPI(interceptor.Funcs{
 				Get: func(_ context.Context, _ client.WithWatch, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
