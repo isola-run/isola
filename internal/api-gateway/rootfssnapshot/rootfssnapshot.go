@@ -108,8 +108,8 @@ func (h *Handlers) PostRootfsSnapshot(ctx context.Context, input *CreateRootfsSn
 
 	name, err := generateSnapshotID()
 	if err != nil {
-		h.logger.Error("failed to generate snapshot name", "error", err)
-		return nil, huma.Error500InternalServerError("failed to generate snapshot name")
+		h.logger.Error("failed to generate snapshot id", "error", err)
+		return nil, huma.Error500InternalServerError("failed to generate snapshot id")
 	}
 
 	cr := requestToRootfsSnapshotCR(req, name, h.sandboxNamespace)

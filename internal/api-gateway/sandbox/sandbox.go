@@ -171,8 +171,8 @@ func (h *Handlers) PostSandbox(ctx context.Context, input *CreateSandboxInput) (
 
 	name, err := generateSandboxID()
 	if err != nil {
-		h.logger.Error("failed to generate sandbox name", "error", err)
-		return nil, huma.Error500InternalServerError("failed to generate sandbox name")
+		h.logger.Error("failed to generate sandbox id", "error", err)
+		return nil, huma.Error500InternalServerError("failed to generate sandbox id")
 	}
 
 	sb, err := requestToSandboxCR(req, name, h.sandboxNamespace)
