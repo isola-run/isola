@@ -2,250 +2,83 @@
 
 ## Commands
 
+Run `make help` for all available targets. Key commands:
+
 ```bash
-# Lint/format (from repo root)
-make check-all          # All checks, no tests (Go + Python SDK, CI-safe)
-make fix-all            # Auto-fix formatting and lint issues (Go + Python SDK)
-
-# Testing (Go)
-make test               # Unit tests with coverage
-make test-verbose       # All tests with verbose output
-make test-operator FOCUS="TestName"  # Run focused operator test
-make test-gateway       # Run api-gateway tests
-make test-sidecar       # Run sandbox-sidecar tests
-make test GO_TEST_FLAGS="-race"  # With race detector
-make generate           # Regenerate DeepCopy methods after CRD changes
-make manifests          # Regenerate CRD YAML after CRD changes
-
-# Testing (Python SDK)
-make test-sdk-python    # Run Python SDK tests
-make test-sdk-python-verbose  # Run with verbose output
-
-# Testing (E2E) — requires running cluster: tilt up
-make test-e2e           # Run E2E tests in parallel (20 workers, skips @slow)
-make test-e2e-slow      # Include slow tests (50s+ idle gaps, late tar)
-make test-e2e-verbose   # Verbose output
-make test-e2e FOCUS="pattern"  # Run specific tests matching pattern
-make test-e2e E2E_WORKERS=8  # Override parallel worker count (default: 20)
-
-# Build
-make build              # Build all binaries to bin/
+make check-all                     # All checks, no tests (Go + Python SDK)
+make fix-all                       # Auto-fix formatting and lint
+make test                          # Unit tests with coverage
+make test-operator FOCUS="Name"    # Focused operator test
+make test-gateway                  # API gateway tests
+make test-e2e                      # E2E tests (requires tilt up)
+make openapi                       # Regenerate OpenAPI after handler/route changes
+make generate manifests            # Regenerate after CRD type changes
+make build                         # Build all binaries
 
 # Local dev
-./hack/setup.sh         # One-time: Kind cluster + registry
-tilt up                 # Start dev environment (http://localhost:10350)
-# Make sure to keep the Tiltfile updated on changes to the cluster
+./hack/setup.sh                    # One-time: Kind cluster + registry
+tilt up                            # Start dev environment (http://localhost:10350)
 ```
+
+Keep the Tiltfile updated when changing cluster resources.
 
 ## Critical Rules
 
-**NEVER GUESS technical details.** This includes but is not limited to:
-- Version numbers or version tags (e.g., package versions, tool versions, API versions)
-- Package import paths or module names
-- API endpoints, URLs, or connection strings
-- Configuration file formats or schema details
-- Command-line flags or arguments
+**NEVER GUESS technical details** -- version numbers, import paths, API endpoints, CLI flags, config formats. Always search/verify first, ask the user if unsure, or test it.
 
-If you don't know something:
-1. **Search/verify first** - Use WebSearch, WebFetch, or Read to find accurate information
-2. **Ask the user** - If you can't verify, ask rather than assume
-3. **Test it** - When possible, try the command/code to verify it works
-
-Never make assumptions about version compatibility, release tag formats, or tool behavior. Always verify.
+**Backward compatibility** is not required. Breaking changes to CRDs, APIs, and internal interfaces are fine if they simplify the design, provided tests are updated.
 
 ## Generated Files (do not edit manually)
 
-After modifying `api/v1alpha1/*_types.go`:
-```bash
-make generate manifests
-```
-- CRDs → `charts/isola/crds/`
-- RBAC → `charts/isola/generated/role.yaml`
+After modifying `api/v1alpha1/*_types.go`, run `make generate manifests`:
+- CRDs -> `charts/isola/crds/`
+- RBAC -> `charts/isola/generated/role.yaml`
 
-The Helm `clusterrole.yaml` template uses `.Files.Get` to include the generated RBAC rules
-with proper Helm templating for name/labels.
+After modifying handler input/output types or route registrations, run `make openapi`:
+- `api/openapi/api-gateway.yaml` and `api/openapi/sandbox-sidecar.yaml`
+- CI runs `make check-openapi` to verify specs are in sync
 
-After modifying handler input/output types or route registrations:
-```bash
-make openapi
-```
-- `api/openapi/api-gateway.yaml` - End-user facing API
-- `api/openapi/sandbox-sidecar.yaml` - Internal API (api-gateway → sidecar)
+## Cross-Cutting Constraints
 
-CI runs `make check-openapi` to verify generated specs are in sync.
+**Gateway is a thin passthrough** -- it validates input structure (via Huma struct tags) but does not apply domain defaults or domain validation. That is the operator's job. Do not add default logic or sandbox-existence checks to the gateway.
 
-## Architecture Notes
+**REST/CRD validation alignment:** Huma struct tags on REST types (e.g., `maxItems:"16"`, `pattern:"..."`) must match the kubebuilder markers on the corresponding CRD type fields. Adding a validation to one layer without the other causes confusing errors.
 
-**Backward compatibility:** not required at this stage. You may introduce breaking changes to CRDs, APIs, and internal interfaces if it simplifies the design, provided tests are updated accordingly.
+**Identifier vocabulary:** REST API uses `id` for system-generated opaque identifiers and `name` for user-chosen ones. Cross-resource references use `{resource}Id` (e.g., `sandboxId`). The conversion layer maps REST vocabulary to CRD vocabulary (e.g., `sandboxId` -> CRD `sandboxName`).
 
-**Single Go module:** The project uses a single `go.mod` at the root (`github.com/isola-ai/isola`). All binaries import from this module.
+**Env vars are write-only:** Request types accept env vars; response types intentionally omit them to avoid leaking secrets. Do not add `Env` to response types.
 
-**Multi-service architecture:** Four binaries in `cmd/` — `operator`, `api-gateway`, `sandbox-sidecar`, `uploader`. Each has its own `internal/` packages under the matching path. The api-gateway uses domain sub-packages (`{health,sandbox,filesystem,command}/`) with shared utilities in `proxy.go`. The sandbox-sidecar uses domain sub-packages (`{health,filesystem,command}/`) with shared utilities in `sidecar.go`. Cross-service packages:
-- `internal/sidecar-api/` - Shared contract types between api-gateway and sandbox-sidecar
-- `internal/snapshot/` - Shared types used by both operator and uploader
-- `internal/sandbox-sidecar/proc/` - Procfs abstraction for container PID discovery and filesystem access via `/proc/<pid>/root`
-- `internal/httputil/` - Deadline/timeout protection for streaming I/O (per-operation write/read deadlines via `http.ResponseController`)
-- `internal/sseutil/` - SSE (Server-Sent Events) writer for streaming command stdout/stderr with UTF-8 encoding, keepalive, and offset-based resume via `id:` fields
+**Compile-time type assertions** in gateway command/filesystem handlers (`_ = sidecarapi.CreateCommandRequest(CreateCommandRequest{})`) enforce structural compatibility with sidecar-api contract types. Do not remove these.
 
-**Default namespaces:** `isola-system` (operator), `isola-sandboxes` (sandbox pods)
+**Long-poll timeout chain** -- values MUST satisfy: SDK (20s) < gateway max (25s) < sidecar max (30s) < gateway WriteTimeout (45s) < sidecar WriteTimeout (75s). Changing any value without adjusting the others causes cascading failures. Locations: SDK `_commands.py`, gateway `command.go`, sidecar `command.go`, gateway `main.go`, sidecar `main.go`.
 
-**Operator metrics:** Custom Prometheus metrics are defined in `internal/operator/controller/metrics.go` and auto-registered via `promauto.With(metrics.Registry)`. Helm includes a metrics Service and optional ServiceMonitor (`serviceMonitor.enabled: false` by default). Tiltfile port-forwards operator metrics to `localhost:8082`.
+**Operator metrics** use `promauto.With(metrics.Registry)` in `internal/operator/controller/metrics.go`. New metrics must use this registry, not the default.
 
-## Python SDK (`sdks/python/`)
-
-**Package:** `isola` — thin client for the api-gateway REST API. Uses httpx for HTTP and pydantic for models. Managed with uv.
-
-**Client initialization:** `Isola(base_url=...)` or via `ISOLA_BASE_URL` env var. Built-in retry logic (max 5 retries with 1s backoff) for transient errors (connection failures, 502/503/504).
-
-**Dual sync/async pattern:** Every public class has a sync and async variant — `Isola`/`AsyncIsola`, `Sandbox`/`AsyncSandbox`, `Command`/`AsyncCommand`, `Commands`/`AsyncCommands`, `Filesystem`/`AsyncFilesystem`. Internal API clients follow the same split: `_SyncAPI`/`_AsyncAPI`.
-
-**Object hierarchy:** `Isola` → `client.sandboxes.create()` returns a `Sandbox` → `sandbox.commands` (Commands), `sandbox.filesystem` (Filesystem). Each resource object holds a reference to the underlying API client and the sandbox ID.
-
-**Command execution (`_commands.py`):** Two modes -- `spawn(*args)` returns a `Command` immediately (non-blocking), `run(*args)` waits and returns a `CommandResult` (with `stdout`, `stderr`, `exit_code`). Both accept `timeout_seconds` for per-command timeout. `Command` provides `.stdout`/`.stderr` (`StreamReader`), `.wait()` (long-polls), `.exit_code()`, `.write_stdin()`, `.close_stdin()`, `.kill()`. Long-poll interval: 20s (must stay <= gateway max of 25s).
-
-**Pydantic models (`_models.py`):** All models extend `IsolaModel` which uses `to_camel` alias generator for Python snake_case ↔ API camelCase. Models accept both forms (`validate_by_name=True, validate_by_alias=True`). `extra="ignore"` so the server can add fields without breaking the client. `NetworkSpec` has manual `Field(alias=...)` overrides for acronyms (`allowClusterDNS`, `allowedEgressCIDRs`) that `to_camel` can't handle.
-
-**Streaming (`_streaming.py`):** `StreamReader`/`AsyncStreamReader` consume SSE streams (via `httpx-sse`) with auto-reconnect (exponential backoff, offset-based resume via `Last-Event-ID` header, max 5 reconnects). Iterable (`for chunk in cmd.stdout`) or bulk read (`cmd.stdout.read()`).
-
-**Error hierarchy:** `IsolaError` base → `APIError` → status-specific subclasses (`BadRequestError`, `NotFoundError`, `ConflictError`, `ValidationError`, `InternalError`, `BadGatewayError`) mapped from HTTP status codes. `APIConnectionError` for transport failures. `is_transient()` helper identifies retryable errors.
-
-**Testing:** pytest + pytest-asyncio (auto mode) + respx for HTTP mocking. Tests use fake API/response objects rather than respx routes for streaming tests. Strict mypy type checking enabled.
-
-**Linting:** ruff (format + lint), mypy (strict). Run `make sdk-python-check-all` for lint + typecheck, `make sdk-python-fix-all` for auto-fix.
-
-## CRDs
-
-**Sandbox** - A running sandbox instance. Key spec fields:
-- `podTemplate` (required) - Inlined pod template with containers, volumes, etc.
-- `timeoutSeconds` - Max lifetime; operator calculates `status.timeoutAt` from pod start time
-- `startupTimeoutSeconds` - Max time allowed for the sandbox to reach Running status (from pod creation). If exceeded, the operator sets the `Ready` condition to `False` with reason `StartupTimeoutExceeded` and the sandbox transitions to `failed` status. Useful for bounding rootfs restore retry time without limiting the running sandbox lifetime.
-- `shutdownPolicy` - ShutdownPolicy struct with `strategy` (`Delete` default, or `SnapshotRootfs`) and optional `timeoutSeconds` for the snapshot job
-- `network` - NetworkSpec for isolation rules (immutable after creation)
-- `rootfsSnapshotSources` - List of `RootfsSnapshotSource` entries to restore at creation time (immutable after creation). Each source has `snapshotName` (required, references a prior snapshot) and `containerName` (optional if only one user container). Requires gVisor runtime and the snapshot-mounter NFS mount on the node (`--rootfssnapshot-host-mount-path` operator flag). Only the overlay rootfs upper layer is restored.
-
-**RootfsSnapshot** - Triggers a snapshot of a sandbox's overlay rootfs upper layer. Creates a Job with an init container that runs `runsc tar rootfs-upper` and a main container (uploader) that uploads the resulting tarball to cloud storage. Key spec fields:
-- `sandboxName` (required) - The sandbox to snapshot (must be in the same namespace)
-- `snapshotName` (required) - Name used for the storage key (`rootfssnapshots/<namespace>/<snapshotName>.tar`); validated as an RFC 1123 DNS label
-- `containerName` (optional) - Which container to snapshot; defaults to the first container in the sandbox pod
-- `timeoutSeconds` (optional, default 300) - Max duration for the snapshot job
-- `ttlSecondsAfterFinished` (optional, default 300) - Auto-deletion delay after completion; 0 means immediate
-
-## REST API (api-gateway)
-
-The api-gateway is a thin passthrough to K8s -- it validates input structure but does not apply domain defaults (that's the operator's job). Uses Huma framework on chi router. All API endpoints are under `/v1/` (via `huma.NewGroup`); health endpoints remain at root.
-
-**Endpoints:**
-- `POST /v1/sandboxes` -- create
-- `GET /v1/sandboxes` -- list (not paginated)
-- `GET /v1/sandboxes/{id}` -- get details
-- `DELETE /v1/sandboxes/{id}` -- delete (idempotent)
-- `POST /v1/sandboxes/{id}/filesystem` -- file upload (proxied to sidecar)
-- `GET /v1/sandboxes/{id}/filesystem` -- file download (proxied to sidecar)
-- `POST /v1/sandboxes/{id}/commands` -- start command (proxied to sidecar, 202 Accepted). Request body uses `args` (not `cmd`): `args[0]` is executable, `args[1:]` are arguments. Optional `timeoutSeconds`, `env`, `cwd`.
-- `GET /v1/sandboxes/{id}/commands/{cmdId}/status` -- exit code (null if running). Supports long-polling via `?waitSeconds=N` (max 25 at gateway, max 30 at sidecar).
-- `GET /v1/sandboxes/{id}/commands/{cmdId}/stdout` -- SSE stream of stdout (`text/event-stream`). Resume via `Last-Event-ID` header (byte offset).
-- `GET /v1/sandboxes/{id}/commands/{cmdId}/stderr` -- SSE stream of stderr (`text/event-stream`). Resume via `Last-Event-ID` header (byte offset).
-- `POST /v1/sandboxes/{id}/commands/{cmdId}/stdin` -- write to stdin
-- `POST /v1/sandboxes/{id}/commands/{cmdId}/stdin/close` -- close stdin pipe
-- `DELETE /v1/sandboxes/{id}/commands/{cmdId}` -- kill command (idempotent)
-
-**REST ↔ CRD conversion (`sandbox/convert.go`):**
-REST types are separate from CRD types with explicit conversion in `sandbox/convert.go`. Key behaviors:
-- User-facing status enum: `creating`, `running`, `shuttingDown`, `failed`, `stopped`, `unknown`
-- `StartupTimeoutExceeded` condition reason maps to `failed` status
-
-**Env vars are write-only:** Request types accept env vars but response types intentionally omit them to avoid leaking secrets. `ContainerSpec` (request) has `Env`; `ContainerInfo` (response) does not.
-
-**Default command:** Containers with no `command` get `["sleep", "infinity"]` injected by the operator so sandboxes stay alive by default. The gateway passes `command` through as-is (nil when omitted); the operator applies the default at pod creation time.
-
-## Sharp Edges
-
-**Two-client pattern in operator tests:** `suite_test.go` uses both `k8sClient` (direct, no cache delay for test writes) and `k8sCache` (cached, required for field index queries). Use the direct client for test assertions. The api-gateway tests use a single cached client from the manager.
-
-**Conditions, not phases:** Sandbox status uses K8s conditions (`Ready`, `PodReady`, `NetworkConfigured`), not the deprecated phase pattern.
-
-**Network isolation:**
-- Default: deny-all egress with sink DNS (127.0.0.1) so DNS queries fail fast
-- Custom rules via `Sandbox.spec.network` (NetworkSpec):
-  - `allowInternetEgress: true` - allows 0.0.0.0/0 egress (private ranges auto-blocked)
-  - `allowedEgressCIDRs` - specific CIDR allowlist
-  - `nameservers` - custom DNS servers (no automatic default — user must specify explicitly; without them, sink DNS 127.0.0.1 is used)
-- Static NetworkPolicies deployed via Helm handle base isolation
-- Custom per-sandbox NetworkPolicy created by operator only when CIDRs or custom nameservers are specified (and `allowInternetEgress` is not true)
-
-**Finalizers:** `sandbox.isola.run/cleanup` ensures cleanup before sandbox deletion.
-
-**Snapshot workflow:**
-1. Create RootfsSnapshot CR referencing a sandbox
-2. Operator creates a Job on the same node as the sandbox pod
-3. Init container (snapshotter) runs `runsc tar rootfs-upper` to tar the overlay upper layer
-4. Main container (uploader) uploads the tarball to cloud storage (S3/GCS/Azure via gocloud.dev)
-5. Uploader writes result to termination log; operator reads it and updates RootfsSnapshot status
-6. TTL controller deletes the RootfsSnapshot after `ttlSecondsAfterFinished`
-
-**Rootfs restore workflow:**
-1. Create a Sandbox with `rootfsSnapshotSources` referencing prior snapshot names
-2. Operator validates gVisor runtime and snapshot-mounter host path configuration
-3. Operator injects `dev.gvisor.tar.rootfs.upper.<container>` annotations on the pod, pointing to the NFS-mounted tar on the host (`<hostMountPath>/<namespace>/<snapshotName>.tar`)
-4. Operator injects per-container `restartPolicyRules` on restored containers to retry exit code 128 (gVisor OCI runtime start failure when tar is missing). Retries follow kubelet exponential backoff (10s, 20s, 40s, ... capped at 5min). `startupTimeoutSeconds` bounds total retry time; without it, retries are unbounded. User-facing sandbox status during retry: `creating`
-5. gVisor reads the tar annotations at container start and pre-populates the overlay upper layer
-6. The snapshot-mounter DaemonSet runs on each node, NFS-mounting snapshot tars from cloud storage so they are available at the configured host path
-
-**Rootfs restore retry (K8s version prerequisite):** `rootfsSnapshotSources` uses per-container `restartPolicyRules` to retry exit code 128 when the snapshot tar is not yet available on NFS. This requires the `ContainerRestartRules` feature gate: alpha in K8s 1.34 (must be explicitly enabled), beta/on-by-default in K8s 1.35+, not yet GA. Without the feature gate, `restartPolicyRules` fields are silently ignored and the container falls back to pod-level `RestartPolicy: Never` (pod fails permanently on missing tar, no retry).
-
-**Command execution:**
-- Commands run via `SysProcAttr.Chroot` to `/proc/<pid>/root`, entering the sandbox container's filesystem view without changing namespaces. The sidecar uses `/bin/sh -c 'exec "$@"'` for PATH lookup inside the container, and `exec` replaces the shell so SIGKILL reaches the user's process directly. Requires `CAP_SYS_PTRACE` (for gVisor's `/proc/<pid>/root` access check) and `CAP_SYS_CHROOT` (default capability set).
-- Non-blocking model: POST returns 202 immediately with a `commandId`; status is polled via long-polling (`?waitSeconds=N`).
-- Per-command `timeoutSeconds`: enforced via `context.WithTimeout` -- SIGKILL on expiration (exit code -1).
-- Command stdout/stderr are stored on the container's ephemeral storage (counts against resource limits).
-- Command state is in-memory in the sidecar — all running/completed commands are lost on sidecar restart.
-- Stdout/stderr are streamed as SSE (`text/event-stream`). The sidecar produces SSE via `internal/sseutil/` (UTF-8 sanitization, `id:` fields for byte-offset resume, 15s keepalive comments). The gateway proxies SSE transparently. The Python SDK consumes SSE via `httpx-sse` and resumes with `Last-Event-ID` header. Non-UTF-8 bytes in output are replaced with U+FFFD; for binary content, redirect to a file and download via the filesystem API.
-- Streaming I/O uses per-operation deadline protection (10s via `internal/httputil`) to detect stalled connections.
-- Gateway command handlers use compile-time type assertions (`_ = sidecarapi.CreateCommandRequest(CreateCommandRequest{})`) to enforce structural compatibility with `sidecar-api` contract types. Do not remove these.
-
-**Long-poll timeout chain:** Values must satisfy: SDK (20s) < gateway max (25s) < sidecar max (30s) < gateway WriteTimeout (45s) < sidecar WriteTimeout (75s). Changing any one value without adjusting the others can cause cascading failures (premature disconnects or stalled connections). Locations: SDK `_commands.py` (`_LONG_POLL_WAIT_SECONDS`), gateway `command.go` (`maximum:"25"`), sidecar `command.go` (`maximum:"30"`), gateway `main.go` (`serverWriteTimeout`), sidecar `main.go` (`serverWriteTimeout`).
-
-**Dockerfiles copy all of internal/:** Each binary's Dockerfile copies the entire `internal/` directory rather than individual packages. This avoids needing to update Dockerfiles and Tiltfile when adding new `internal/` packages.
+**Rootfs restore retry requires K8s 1.34+:** Uses `ContainerRestartRules` feature gate (alpha in 1.34, beta/on-by-default in 1.35+). Without it, `restartPolicyRules` fields are silently ignored and containers fail permanently on missing tar.
 
 ## Testing
 
-**Go tests:** Ginkgo/Gomega with envtest (K8s API simulation)
+**Two-client pattern in operator tests:** `suite_test.go` uses `k8sClient` (direct, no cache delay) for test writes/assertions and `k8sCache` (cached, for field index queries). Use the direct client for new test assertions.
 
-**Variables** (following Cluster API / Kubernetes patterns):
-- `FOCUS` - Ginkgo focus pattern for component targets
-- `SKIP` - Ginkgo skip pattern
-- `GO_TEST_FLAGS` - Additional go test flags
-
-**Operator tests** use a `FakeClock` (internal `Clock` interface) for deterministic timeout and snapshot testing — no flaky time.Sleep waits. Test helpers in `sandbox_controller_helpers_test.go` use inline functional options (e.g., `func(s *sandboxv1alpha1.Sandbox) { ... }`) for sandbox customization.
-
-**API gateway tests** use `humatest.TestAPI` for HTTP request/response testing against a real envtest K8s backend. Tests use `Eventually()` for cache eventual consistency. Error injection tests use controller-runtime's `interceptor.Funcs` to inject fake K8s API errors.
-
-**Python SDK tests** use pytest + pytest-asyncio with `asyncio_mode = "auto"`. HTTP mocking via respx for client/sandbox/filesystem tests. Streaming tests use hand-rolled fake API/response objects (not respx) to simulate reconnects, network errors, and chunked delivery. Run with `make test-sdk-python`.
-
-**E2E tests** (`tests/e2e/`) use pytest + pytest-asyncio against a live cluster (requires `tilt up`). Both sync and async fixtures. Base URL from `ISOLA_BASE_URL` env var (defaults to `http://localhost:8080`). Metrics URL from `ISOLA_METRICS_URL` (defaults to `http://localhost:8082`). Covers commands, streaming, filesystem, network isolation, timeouts, error handling, lifecycle, and operator metrics. Run with `make test-e2e`.
+**Python SDK:** `sdks/python/`, managed with uv. `NetworkSpec` has manual `Field(alias=...)` overrides for acronyms (`allowClusterDNS`, `allowedEgressCIDRs`) that `to_camel` cannot handle -- new fields with acronyms need the same treatment.
 
 ## Tooling Versions
 
-Tool versions are pinned and must be kept in sync:
+Tool versions are pinned and must be kept in sync across locations:
 
 | Tool | Location | Also sync with |
 |------|----------|----------------|
 | Go | `Makefile` (`GO_VERSION`), `go.mod` | Dockerfile `FROM golang:` tags |
 | golangci-lint | `hack/setup.sh` | `.github/workflows/lint.yml` |
-| govulncheck | `hack/setup.sh` | - |
-| setup-envtest | `hack/setup.sh`, `.github/workflows/test.yml` | - |
+| setup-envtest | `hack/setup.sh` | `.github/workflows/test.yml` |
 | envtest K8s | `Makefile` | k8s.io/api in go.mod |
-| lefthook | `hack/setup.sh` | - |
 | controller-gen | `hack/setup.sh` | `.github/workflows/codegen.yml` |
 | gVisor | `hack/setup.sh` | `.github/workflows/e2e.yml` |
-| Python | `sdks/python/pyproject.toml` `requires-python`, CI workflows | - |
-| uv | - | Manages `sdks/python/uv.lock` |
-| ruff | `sdks/python/pyproject.toml` | - |
-| mypy | `sdks/python/pyproject.toml` | - |
+| Python | `sdks/python/pyproject.toml` | CI workflows |
 
 ## Comment Policy
 
-Only comment non-obvious code. Bad: `// Check if job failed`. Good: explain *why* something unexpected is needed:
+Only comment non-obvious code. Explain *why*, not *what*:
 ```go
 // RunAsUser 0 (root) needed to read /proc/<pid>/environ of other users' processes
 SecurityContext: &corev1.SecurityContext{RunAsUser: ptr.To(int64(0))}
