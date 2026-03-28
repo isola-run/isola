@@ -25,7 +25,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 )
 
 func newTestReconcilerWithRestore(clock Clock, runtimeClassName, hostMountPath string) *SandboxReconciler {

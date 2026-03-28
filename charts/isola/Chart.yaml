@@ -14,11 +14,11 @@ keywords:
   - operator
   - security
   - gvisor
-home: https://github.com/isola-ai/isola
+home: https://github.com/isola-run/isola
 sources:
-  - https://github.com/isola-ai/isola
+  - https://github.com/isola-run/isola
 maintainers:
   - name: Isola Team
-    url: https://github.com/isola-ai
+    url: https://github.com/isola-run
 annotations:
   artifacthub.io/license: Apache-2.0

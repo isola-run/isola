@@ -37,9 +37,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
-	"github.com/isola-ai/isola/internal/operator/controller/network/cidr"
-	"github.com/isola-ai/isola/internal/operator/controller/podutil"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	"github.com/isola-run/isola/internal/operator/controller/network/cidr"
+	"github.com/isola-run/isola/internal/operator/controller/podutil"
 )
 
 // egressCIDR holds a validated egress prefix with its computed exceptions.

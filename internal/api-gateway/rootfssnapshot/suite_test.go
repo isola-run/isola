@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 )
 
 const testNamespace = "test-rootfssnapshot"

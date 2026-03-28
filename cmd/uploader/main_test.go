@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/isola-ai/isola/internal/snapshot"
+	"github.com/isola-run/isola/internal/snapshot"
 )
 
 // fakeUploader records calls and can return a configurable error.
