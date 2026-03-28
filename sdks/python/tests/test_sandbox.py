@@ -25,11 +25,11 @@ from isola import (
     AsyncIsola,
     Isola,
     IsolaError,
+    IsolaTimeoutError,
     NetworkSpec,
     NotFoundError,
     RootfsSnapshotSource,
     SandboxStatus,
-    WaitTimeoutError,
 )
 
 
@@ -642,12 +642,9 @@ def test_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     with Isola(base_url="http://localhost:8080") as client, pytest.raises(
-        WaitTimeoutError, match="did not reach running state within 5s"
-    ) as exc_info:
+        IsolaTimeoutError, match="did not reach running state within 5s"
+    ):
         client.sandboxes.create(image="python:3.12", max_wait_seconds=5)
-
-    assert exc_info.value.sandbox_id == "sandbox-123"
-    assert exc_info.value.max_wait_seconds == 5
 
 
 @pytest.mark.asyncio
@@ -672,11 +669,8 @@ async def test_async_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) 
     )
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
-        with pytest.raises(WaitTimeoutError, match="did not reach running state within 5s") as exc_info:
+        with pytest.raises(IsolaTimeoutError, match="did not reach running state within 5s"):
             await client.sandboxes.create(image="python:3.12", max_wait_seconds=5)
-
-    assert exc_info.value.sandbox_id == "sandbox-123"
-    assert exc_info.value.max_wait_seconds == 5
 
 
 @respx.mock
@@ -724,10 +718,6 @@ async def test_async_max_wait_seconds_none_means_indefinite(monkeypatch: pytest.
     assert sandbox.status == SandboxStatus.RUNNING
 
 
-@respx.mock
-def test_wait_timeout_error_is_isola_error() -> None:
-    """WaitTimeoutError is a subclass of IsolaError."""
-    err = WaitTimeoutError("sandbox-123", 60)
+def test_timeout_exception_is_isola_error() -> None:
+    err = IsolaTimeoutError("timed out")
     assert isinstance(err, IsolaError)
-    assert err.sandbox_id == "sandbox-123"
-    assert err.max_wait_seconds == 60
