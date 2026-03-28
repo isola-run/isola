@@ -282,9 +282,7 @@ class AsyncSandbox:
                 )
             await asyncio.sleep(_POLL_INTERVAL)
             try:
-                self._data = await self._api.request_model(
-                    "GET", _sandbox_path(self._data.id), SandboxData
-                )
+                self._data = await self._api.request_model("GET", _sandbox_path(self._data.id), SandboxData)
                 consecutive_poll_errors = 0
             except NotFoundError:
                 consecutive_poll_errors += 1

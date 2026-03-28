@@ -70,8 +70,8 @@ const (
 	fullAlphabet     = "abcdefghijklmnopqrstuvwxyz0123456789"
 )
 
-// generateSnapshotName creates a unique snapshot name suitable for Kubernetes DNS-1123 labels.
-func generateSnapshotName() (string, error) {
+// generateSnapshotID creates a unique snapshot ID suitable for Kubernetes DNS-1123 labels.
+func generateSnapshotID() (string, error) {
 	first, err := gonanoid.Generate(letterAlphabet, 1)
 	if err != nil {
 		return "", fmt.Errorf("generate first char: %w", err)
@@ -102,7 +102,7 @@ func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client) 
 func (h *Handlers) PostRootfsSnapshot(ctx context.Context, input *CreateRootfsSnapshotInput) (*CreateRootfsSnapshotOutput, error) {
 	req := input.Body
 
-	name, err := generateSnapshotName()
+	name, err := generateSnapshotID()
 	if err != nil {
 		h.logger.Error("failed to generate snapshot name", "error", err)
 		return nil, huma.Error500InternalServerError("failed to generate snapshot name")
