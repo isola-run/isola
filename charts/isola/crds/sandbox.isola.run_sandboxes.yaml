@@ -148,9 +148,32 @@ spec:
                   rule: self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName
                     != j.containerName))
               shutdownPolicy:
-                description: ShutdownPolicy defines what to do when the sandbox ends
-                  (defaults to Delete if unspecified)
+                description: ShutdownPolicy controls how the sandbox is handled when
+                  it ends.
                 properties:
+                  snapshotRootfs:
+                    description: |-
+                      SnapshotRootfs holds configuration for the SnapshotRootfs strategy.
+                      Must be set when strategy is SnapshotRootfs, must be nil otherwise.
+                    properties:
+                      snapshotName:
+                        description: |-
+                          SnapshotName is the user-chosen name for the resulting rootfs snapshot storage key.
+                          If omitted, the controller generates a name derived from the sandbox name.
+                          Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                      timeoutSeconds:
+                        default: 300
+                        description: TimeoutSeconds specifies the duration in seconds
+                          relative to the startTime that the snapshot job may be active
+                          before the system tries to terminate it.
+                        format: int64
+                        minimum: 1
+                        type: integer
+                    type: object
                   strategy:
                     allOf:
                     - enum:
@@ -161,18 +184,14 @@ spec:
                       - SnapshotRootfs
                     default: Delete
                     description: Strategy determines the action taken when the sandbox
-                      shuts down
+                      shuts down.
                     type: string
-                  timeoutSeconds:
-                    default: 300
-                    description: |-
-                      TimeoutSeconds specifies the duration in seconds relative to the startTime
-                      that the snapshot job may be active before the system tries to terminate it.
-                      Only used when Strategy is SnapshotRootfs.
-                    format: int64
-                    minimum: 1
-                    type: integer
                 type: object
+                x-kubernetes-validations:
+                - message: snapshotRootfs must be nil if strategy is not SnapshotRootfs
+                  rule: '!(has(self.snapshotRootfs) && self.strategy != ''SnapshotRootfs'')'
+                - message: snapshotRootfs must be specified for SnapshotRootfs strategy
+                  rule: '!(!has(self.snapshotRootfs) && self.strategy == ''SnapshotRootfs'')'
               startupTimeoutSeconds:
                 default: 60
                 description: |-

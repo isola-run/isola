@@ -400,10 +400,28 @@ func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv
 	return sandboxPod, nil
 }
 
+// shutdownSnapshotCRName returns the K8s object name for the shutdown RootfsSnapshot CR.
+// This is always derived from the sandbox name (not the user-chosen snapshotName)
+// because K8s object names must be unique per namespace and deterministic for idempotent reconciles.
+func shutdownSnapshotCRName(sandbox *sandboxv1alpha1.Sandbox) string {
+	return podutil.GetShutdownSnapshotName(sandbox.Name)
+}
+
+// shutdownSnapshotStorageName returns the storage key name for the snapshot.
+// Uses the user-provided snapshotName if set, otherwise falls back to the sandbox name.
+func shutdownSnapshotStorageName(sandbox *sandboxv1alpha1.Sandbox) string {
+	if sandbox.Spec.ShutdownPolicy != nil &&
+		sandbox.Spec.ShutdownPolicy.SnapshotRootfs != nil &&
+		sandbox.Spec.ShutdownPolicy.SnapshotRootfs.SnapshotName != nil {
+		return *sandbox.Spec.ShutdownPolicy.SnapshotRootfs.SnapshotName
+	}
+	return sandbox.Name
+}
+
 func (r *SandboxReconciler) getShutdownRootfssnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      podutil.GetShutdownSnapshotName(sandbox.Name),
+		Name:      shutdownSnapshotCRName(sandbox),
 		Namespace: sandbox.Namespace,
 	}, snap)
 	if apierrors.IsNotFound(err) {
@@ -923,8 +941,10 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 }
 
 func (r *SandboxReconciler) getTimeoutSeconds(sandbox *sandboxv1alpha1.Sandbox) int64 {
-	if sandbox != nil && sandbox.Spec.ShutdownPolicy != nil && sandbox.Spec.ShutdownPolicy.TimeoutSeconds != nil {
-		return *sandbox.Spec.ShutdownPolicy.TimeoutSeconds
+	if sandbox != nil && sandbox.Spec.ShutdownPolicy != nil &&
+		sandbox.Spec.ShutdownPolicy.SnapshotRootfs != nil &&
+		sandbox.Spec.ShutdownPolicy.SnapshotRootfs.TimeoutSeconds != nil {
+		return *sandbox.Spec.ShutdownPolicy.SnapshotRootfs.TimeoutSeconds
 	}
 	return defaultTimeoutSeconds
 }
@@ -1123,15 +1143,16 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	snapshotName := podutil.GetShutdownSnapshotName(sandbox.Name)
+	crName := shutdownSnapshotCRName(sandbox)
+	storageName := shutdownSnapshotStorageName(sandbox)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      snapshotName,
+			Name:      crName,
 			Namespace: sandbox.Namespace,
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 			SandboxName:    sandbox.Name,
-			SnapshotName:   sandbox.Name,
+			SnapshotName:   storageName,
 			TimeoutSeconds: &timeoutSeconds,
 		},
 	}

@@ -28,17 +28,37 @@ const (
 	ShutdownStrategySnapshotRootfs SandboxShutdownStrategy = "SnapshotRootfs"
 )
 
-// ShutdownPolicy controls how the sandbox is handled when it ends
+// ShutdownPolicy controls how the sandbox is handled when it ends.
+//
+// +kubebuilder:validation:XValidation:rule="!(has(self.snapshotRootfs) && self.strategy != 'SnapshotRootfs')",message="snapshotRootfs must be nil if strategy is not SnapshotRootfs"
+// +kubebuilder:validation:XValidation:rule="!(!has(self.snapshotRootfs) && self.strategy == 'SnapshotRootfs')",message="snapshotRootfs must be specified for SnapshotRootfs strategy"
 type ShutdownPolicy struct {
-	// Strategy determines the action taken when the sandbox shuts down
+	// Strategy determines the action taken when the sandbox shuts down.
+	// +unionDiscriminator
 	// +optional
 	// +kubebuilder:default=Delete
 	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
 	Strategy SandboxShutdownStrategy `json:"strategy,omitempty"`
 
+	// SnapshotRootfs holds configuration for the SnapshotRootfs strategy.
+	// Must be set when strategy is SnapshotRootfs, must be nil otherwise.
+	// +optional
+	SnapshotRootfs *SnapshotRootfsConfig `json:"snapshotRootfs,omitempty"`
+}
+
+// SnapshotRootfsConfig holds parameters specific to the SnapshotRootfs shutdown strategy.
+type SnapshotRootfsConfig struct {
+	// SnapshotName is the user-chosen name for the resulting rootfs snapshot storage key.
+	// If omitted, the controller generates a name derived from the sandbox name.
+	// Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	SnapshotName *string `json:"snapshotName,omitempty"`
+
 	// TimeoutSeconds specifies the duration in seconds relative to the startTime
 	// that the snapshot job may be active before the system tries to terminate it.
-	// Only used when Strategy is SnapshotRootfs.
 	// +optional
 	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=1

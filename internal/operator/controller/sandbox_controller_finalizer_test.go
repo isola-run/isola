@@ -122,7 +122,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+					Strategy:       sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsConfig{},
 				}
 				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
