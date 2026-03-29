@@ -29,15 +29,36 @@
         <a class="repo-link" href="https://github.com/isola-run/isola">GitHub</a>
       </header>
 
-      <main class="hero">
-        <section class="hero-copy">
-          <h1>Secure Sandboxing for Kubernetes</h1>
-          <p class="hero-meta">gVisor · Snapshotting · Open source · Developer-first SDKs</p>
-          <p class="hero-text">Run untrusted code in gVisor-isolated containers with instant snapshot and restore. Kubernetes-native, open source, Python SDK.</p>
+      <main>
+        <section class="hero">
+          <section class="hero-copy">
+            <h1>Secure Sandboxing for Kubernetes</h1>
+            <p class="hero-meta">gVisor · Snapshotting · Open source · Developer-first SDKs</p>
+            <p class="hero-text">Run untrusted code in gVisor-isolated containers with instant snapshot and restore. Kubernetes-native, open source, Python SDK.</p>
+          </section>
+
+          <section class="hero-visual" aria-label="Isola logo">
+            <img class="hero-logo" src="./isola-logo.svg" alt="Isola logo" />
+          </section>
         </section>
 
-        <section class="hero-visual" aria-label="Isola logo">
-          <img class="hero-logo" src="./isola-logo.svg" alt="Isola logo" />
+        <section class="features">
+          <div class="card">
+            <h3 class="card-title">gVisor Isolation</h3>
+            <p class="card-desc">Hardware-virtualized sandboxing via gVisor with Kubernetes-native pod scheduling</p>
+          </div>
+          <div class="card">
+            <h3 class="card-title">Rootfs Snapshots</h3>
+            <p class="card-desc">Snapshot filesystem changes and restore instantly. Snapshots are stored in a shared bucket, accessible on demand from any node.</p>
+          </div>
+          <div class="card">
+            <h3 class="card-title">Python SDK</h3>
+            <p class="card-desc">Create sandboxes, run commands, and manage snapshots in a few lines of code</p>
+          </div>
+          <div class="card">
+            <h3 class="card-title">Open Source</h3>
+            <p class="card-desc">Apache 2.0 licensed, built on Kubernetes primitives, no vendor lock-in</p>
+          </div>
         </section>
       </main>
     </div>

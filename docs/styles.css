@@ -179,11 +179,43 @@ h1 {
   width: min(100%, 560px);
 }
 
+.features {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  padding-top: 80px;
+  margin-top: 80px;
+}
+
+.card {
+  backdrop-filter: blur(16px);
+  background: rgba(14, 20, 37, 0.74);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  padding: 24px;
+}
+
+.card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  margin: 0;
+}
+
+.card-desc {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.7;
+  margin: 10px 0 0;
+}
+
 @media (max-width: 980px) {
   .hero {
     gap: 36px;
     grid-template-columns: 1fr;
-    min-height: auto;
     padding-top: 28px;
   }
 
@@ -205,6 +237,11 @@ h1 {
 @media (max-width: 640px) {
   .page {
     padding: 20px 18px 30px;
+  }
+
+  .features {
+    margin-top: 48px;
+    padding-top: 48px;
   }
 
   .site-header {
