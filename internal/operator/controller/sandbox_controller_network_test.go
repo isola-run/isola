@@ -403,7 +403,7 @@ var _ = Describe("Sandbox Controller", func() {
 		})
 
 		It("should not create custom NetworkPolicy for public nameservers with internet access", func() {
-			// Public nameservers (8.8.8.8) already reachable via static allow-internet-egress policy
+			// Public nameservers (8.8.8.8) already reachable via static allow-ipv4-internet-egress policy
 			sandboxName := "sandbox-internet-dns"
 
 			network := &sandboxv1alpha1.NetworkSpec{
