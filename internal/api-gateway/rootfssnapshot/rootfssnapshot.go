@@ -42,7 +42,7 @@ type CreateRootfsSnapshotRequest struct {
 }
 
 type GetRootfsSnapshotInput struct {
-	SnapshotID string `path:"snapshotId" doc:"RootfsSnapshot identifier"`
+	ID string `path:"id" doc:"RootfsSnapshot identifier"`
 }
 
 type CreateRootfsSnapshotOutput struct {
@@ -54,7 +54,7 @@ type GetRootfsSnapshotOutput struct {
 }
 
 type RootfsSnapshotResponse struct {
-	SnapshotID              string `json:"snapshotId" doc:"RootfsSnapshot identifier"`
+	ID                      string `json:"id" doc:"RootfsSnapshot identifier"`
 	SandboxID               string `json:"sandboxId" doc:"ID of the sandbox being snapshotted"`
 	SnapshotName            string `json:"snapshotName" doc:"Snapshot storage key and restore reference"`
 	ContainerName           string `json:"containerName,omitempty" doc:"Container being snapshotted"`
@@ -125,13 +125,13 @@ func (h *Handlers) PostRootfsSnapshot(ctx context.Context, input *CreateRootfsSn
 
 func (h *Handlers) GetRootfsSnapshot(ctx context.Context, input *GetRootfsSnapshotInput) (*GetRootfsSnapshotOutput, error) {
 	rs := &sandboxv1alpha1.RootfsSnapshot{}
-	key := client.ObjectKey{Name: input.SnapshotID, Namespace: h.sandboxNamespace}
+	key := client.ObjectKey{Name: input.ID, Namespace: h.sandboxNamespace}
 
 	if err := h.k8sClient.Get(ctx, key, rs); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, huma.Error404NotFound(fmt.Sprintf("rootfs snapshot %q not found", input.SnapshotID))
+			return nil, huma.Error404NotFound(fmt.Sprintf("rootfs snapshot %q not found", input.ID))
 		}
-		h.logger.Error("failed to get rootfs snapshot", "error", err, "id", input.SnapshotID)
+		h.logger.Error("failed to get rootfs snapshot", "error", err, "id", input.ID)
 		return nil, apigateway.K8sErrorToHuma(err, "failed to get rootfs snapshot")
 	}
 
@@ -154,7 +154,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getRootfsSnapshot",
 		Method:      http.MethodGet,
-		Path:        "/rootfs-snapshots/{snapshotId}",
+		Path:        "/rootfs-snapshots/{id}",
 		Summary:     "Get rootfs snapshot details",
 		Description: "Get the status and details of a rootfs snapshot. Eventually consistent: a recently created snapshot may briefly return 404. The Kubernetes resource is auto-deleted after ttlSecondsAfterFinished. The snapshot data in storage is not affected.",
 		Tags:        []string{"rootfs-snapshots"},

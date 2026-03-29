@@ -49,7 +49,7 @@ def test_create_sandbox_maps_flat_resources(sandbox_response_copy: dict[str, obj
             timeout_seconds=3600,
         )
 
-    assert sandbox.sandbox_id == "sandbox-123"
+    assert sandbox.id == "sandbox-123"
     assert sandbox.status == SandboxStatus.RUNNING
 
     payload = json.loads(create_route.calls[0].request.content)
@@ -81,7 +81,7 @@ def test_list_sandboxes(sandbox_summary_response: dict[str, object]) -> None:
     with Isola(base_url="http://localhost:8080") as client:
         sandboxes = client.sandboxes.list()
 
-    assert [s.sandbox_id for s in sandboxes] == ["sandbox-123", "sandbox-456"]
+    assert [s.id for s in sandboxes] == ["sandbox-123", "sandbox-456"]
 
 
 @respx.mock
@@ -95,7 +95,7 @@ def test_get_and_delete_sandbox(sandbox_response_copy: dict[str, object]) -> Non
         sandbox = client.sandboxes.get("sandbox-123")
         sandbox.delete()
 
-    assert sandbox.sandbox_id == "sandbox-123"
+    assert sandbox.id == "sandbox-123"
     assert delete_route.called
 
 
@@ -145,7 +145,7 @@ def test_sandbox_context_manager_deletes_on_exit(sandbox_response_copy: dict[str
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with sandbox:
-            assert sandbox.sandbox_id == "sandbox-123"
+            assert sandbox.id == "sandbox-123"
 
     assert delete_route.called
 
@@ -161,7 +161,7 @@ async def test_async_sandbox_context_manager_deletes_on_exit(sandbox_response_co
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         async with sandbox:
-            assert sandbox.sandbox_id == "sandbox-123"
+            assert sandbox.id == "sandbox-123"
 
     assert delete_route.called
 
@@ -175,7 +175,7 @@ async def test_async_create_properties_and_delete(sandbox_response_copy: dict[st
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.create(image="python:3.12", timeout_seconds=3600)
 
-        assert sandbox.sandbox_id == "sandbox-123"
+        assert sandbox.id == "sandbox-123"
         assert sandbox.status == SandboxStatus.RUNNING
         assert sandbox.creation_timestamp == datetime(2026, 2, 18, tzinfo=timezone.utc)
         assert sandbox.network is not None
@@ -246,7 +246,7 @@ def test_rootfs_snapshot_sources_response_deserialization(
 
 def _make_sandbox_response(status: str, sandbox_id: str = "sandbox-123") -> dict[str, object]:
     return {
-        "sandboxId": sandbox_id,
+        "id": sandbox_id,
         "status": status,
         "creationTimestamp": "2026-02-18T00:00:00Z",
         "podTemplate": {"container": {"image": "python:3.12"}},

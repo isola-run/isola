@@ -155,7 +155,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 		})
 	})
 
-	Describe("GET /sandboxes/{sandboxId}", func() {
+	Describe("GET /sandboxes/{id}", func() {
 		It("returns 429 with Retry-After when k8s Get returns TooManyRequests", func() {
 			api := newErrorTestAPI(interceptor.Funcs{
 				Get: func(_ context.Context, _ client.WithWatch, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
@@ -243,7 +243,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 		})
 	})
 
-	Describe("DELETE /sandboxes/{sandboxId}", func() {
+	Describe("DELETE /sandboxes/{id}", func() {
 		It("returns 403 when k8s Delete returns Forbidden", func() {
 			api := newErrorTestAPI(interceptor.Funcs{
 				Delete: func(_ context.Context, _ client.WithWatch, _ client.Object, _ ...client.DeleteOption) error {

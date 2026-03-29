@@ -34,7 +34,7 @@ def test_default_no_internet(
 ) -> None:
     """A sandbox with no network spec has deny-all egress; outbound connections fail."""
     sb = sandbox_factory(image="alpine:3.21")
-    running = wait_for_running(isola_client, sb.sandbox_id)
+    running = wait_for_running(isola_client, sb.id)
 
     exit_code, _ = _run_and_collect_stdout(
         running,
@@ -55,7 +55,7 @@ def test_internet_egress_enabled(
         image="alpine:3.21",
         network=NetworkSpec(allow_internet_egress=True, nameservers=["8.8.8.8", "1.1.1.1"]),
     )
-    running = wait_for_running(isola_client, sb.sandbox_id)
+    running = wait_for_running(isola_client, sb.id)
 
     exit_code, output = _run_and_collect_stdout(
         running,
@@ -80,7 +80,7 @@ def test_custom_nameservers(
             nameservers=["8.8.8.8"],
         ),
     )
-    running = wait_for_running(isola_client, sb.sandbox_id)
+    running = wait_for_running(isola_client, sb.id)
 
     exit_code, output = _run_and_collect_stdout(
         running,
@@ -104,7 +104,7 @@ def test_allowed_egress_cidrs(
             nameservers=["1.1.1.1"],
         ),
     )
-    running = wait_for_running(isola_client, sb.sandbox_id)
+    running = wait_for_running(isola_client, sb.id)
 
     # Raw TCP check to the allowed CIDR. We avoid HTTP because Cloudflare redirects
     # http://1.1.1.1 -> https://one.one.one.one/ whose DNS resolves to both 1.1.1.1
@@ -128,7 +128,7 @@ def test_dns_sink_default(
 ) -> None:
     """A sandbox with no network spec uses the DNS sink (127.0.0.1) so DNS queries fail fast."""
     sb = sandbox_factory(image="alpine:3.21")
-    running = wait_for_running(isola_client, sb.sandbox_id)
+    running = wait_for_running(isola_client, sb.id)
 
     exit_code, output = _run_and_collect_stdout(
         running,
@@ -154,9 +154,9 @@ def test_network_spec_reflected_in_get(
             nameservers=["8.8.8.8", "1.1.1.1"],
         ),
     )
-    wait_for_running(isola_client, sb.sandbox_id)
+    wait_for_running(isola_client, sb.id)
 
-    fetched = isola_client.sandboxes.get(sb.sandbox_id)
+    fetched = isola_client.sandboxes.get(sb.id)
 
     assert fetched.network is not None, "Expected network spec to be present on fetched sandbox"
     assert fetched.network.allow_internet_egress is True
@@ -175,7 +175,7 @@ def test_allow_cluster_dns(
         image="alpine:3.21",
         network=NetworkSpec(allow_cluster_dns=True),
     )
-    running = wait_for_running(isola_client, sb.sandbox_id)
+    running = wait_for_running(isola_client, sb.id)
 
     exit_code, output = _run_and_collect_stdout(
         running,

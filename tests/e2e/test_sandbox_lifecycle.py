@@ -28,10 +28,10 @@ def test_create_minimal_sandbox_reaches_running(
 ) -> None:
     """Creating a sandbox with only an image should eventually reach running status."""
     sb = sandbox_factory(image="alpine:3.21")
-    assert sb.sandbox_id
+    assert sb.id
     assert sb.status in (SandboxStatus.CREATING, SandboxStatus.RUNNING, SandboxStatus.UNKNOWN)
 
-    running = wait_for_running(isola_client, sb.sandbox_id)
+    running = wait_for_running(isola_client, sb.id)
     assert running.status == SandboxStatus.RUNNING
 
 
@@ -51,10 +51,10 @@ def test_create_sandbox_with_full_config(
         timeout_seconds=300,
         network=NetworkSpec(allow_internet_egress=True),
     )
-    assert sb.sandbox_id
+    assert sb.id
     assert sb.timeout_seconds == 300
 
-    running = wait_for_running(isola_client, sb.sandbox_id)
+    running = wait_for_running(isola_client, sb.id)
     assert running.status == SandboxStatus.RUNNING
     assert running.timeout_seconds == 300
     assert running.network is not None
@@ -66,9 +66,9 @@ def test_get_sandbox_returns_correct_fields(
     session_sandbox: Sandbox,
 ) -> None:
     """Getting a sandbox by ID returns all expected fields."""
-    sb = isola_client.sandboxes.get(session_sandbox.sandbox_id)
+    sb = isola_client.sandboxes.get(session_sandbox.id)
 
-    assert sb.sandbox_id == session_sandbox.sandbox_id
+    assert sb.id == session_sandbox.id
     assert sb.status == SandboxStatus.RUNNING
     assert sb.creation_timestamp is not None
     # The response includes the pod template with container image info
@@ -86,10 +86,10 @@ def test_list_sandboxes_includes_created_sandbox(
     assert isinstance(summaries, list)
     assert len(summaries) > 0
 
-    sandbox_ids = [s.sandbox_id for s in summaries]
-    assert session_sandbox.sandbox_id in sandbox_ids
+    sandbox_ids = [s.id for s in summaries]
+    assert session_sandbox.id in sandbox_ids
 
-    matching = next(s for s in summaries if s.sandbox_id == session_sandbox.sandbox_id)
+    matching = next(s for s in summaries if s.id == session_sandbox.id)
     assert isinstance(matching, SandboxSummary)
     assert matching.status == SandboxStatus.RUNNING
     assert matching.creation_timestamp is not None
@@ -109,9 +109,9 @@ def test_env_vars_are_write_only(
         image="alpine:3.21",
         env={"SECRET_KEY": "super_secret_value", "API_TOKEN": "abc123"},
     )
-    wait_for_running(isola_client, sb.sandbox_id)
+    wait_for_running(isola_client, sb.id)
 
-    fetched = isola_client.sandboxes.get(sb.sandbox_id)
+    fetched = isola_client.sandboxes.get(sb.id)
 
     # ContainerInfo does not have an env attribute -- verify it is absent
     container = fetched._data.pod_template.container
@@ -130,7 +130,7 @@ def test_default_command_keeps_sandbox_alive(
     The sandbox should stay running and accept commands.
     """
     sb = sandbox_factory(image="alpine:3.21")
-    running = wait_for_running(isola_client, sb.sandbox_id)
+    running = wait_for_running(isola_client, sb.id)
     assert running.status == SandboxStatus.RUNNING
 
     # Prove the sandbox is alive by executing a command inside it
@@ -151,7 +151,7 @@ def test_custom_command_sandbox(
         image="alpine:3.21",
         command=["sh", "-c", "sleep 10"],
     )
-    running = wait_for_running(isola_client, sb.sandbox_id)
+    running = wait_for_running(isola_client, sb.id)
     assert running.status == SandboxStatus.RUNNING
 
     # Verify the command was set on the container
@@ -175,7 +175,7 @@ def test_resource_limits_round_trip(
         memory="256Mi",
         ephemeral_storage="1Gi",
     )
-    running = wait_for_running(isola_client, sb.sandbox_id)
+    running = wait_for_running(isola_client, sb.id)
 
     container = running._data.pod_template.container
     assert container.resources is not None, "Expected resources in response"
@@ -197,9 +197,9 @@ def test_list_status_matches_get_status(
     K8s conditions and produce consistent results.
     """
     summaries = isola_client.sandboxes.list()
-    summary = next((s for s in summaries if s.sandbox_id == session_sandbox.sandbox_id), None)
-    assert summary is not None, f"Session sandbox {session_sandbox.sandbox_id} not found in list"
+    summary = next((s for s in summaries if s.id == session_sandbox.id), None)
+    assert summary is not None, f"Session sandbox {session_sandbox.id} not found in list"
 
-    details = isola_client.sandboxes.get(session_sandbox.sandbox_id)
+    details = isola_client.sandboxes.get(session_sandbox.id)
 
     assert summary.status == details.status

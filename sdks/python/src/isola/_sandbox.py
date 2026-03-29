@@ -154,9 +154,9 @@ class Sandboxes:
             SandboxData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        _check_terminal(data.sandbox_id, data.status)
+        _check_terminal(data.id, data.status)
         if data.status != SandboxStatus.RUNNING and max_wait_seconds != 0:
-            data = _wait_until_running(data.sandbox_id, self._api, max_wait_seconds)
+            data = _wait_until_running(data.id, self._api, max_wait_seconds)
         return Sandbox(self._api, data)
 
     def list(self) -> list[SandboxSummary]:
@@ -209,9 +209,9 @@ class AsyncSandboxes:
             SandboxData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        _check_terminal(data.sandbox_id, data.status)
+        _check_terminal(data.id, data.status)
         if data.status != SandboxStatus.RUNNING and max_wait_seconds != 0:
-            data = await _async_wait_until_running(data.sandbox_id, self._api, max_wait_seconds)
+            data = await _async_wait_until_running(data.id, self._api, max_wait_seconds)
         return AsyncSandbox(self._api, data)
 
     async def list(self) -> list[SandboxSummary]:
@@ -227,12 +227,12 @@ class Sandbox:
     def __init__(self, api: _SyncAPI, data: SandboxData) -> None:
         self._api = api
         self._data = data
-        self.commands = Commands(api, data.sandbox_id)
-        self.filesystem = Filesystem(api, data.sandbox_id)
+        self.commands = Commands(api, data.id)
+        self.filesystem = Filesystem(api, data.id)
 
     @property
-    def sandbox_id(self) -> str:
-        return self._data.sandbox_id
+    def id(self) -> str:
+        return self._data.id
 
     @property
     def status(self) -> SandboxStatus:
@@ -265,19 +265,19 @@ class Sandbox:
         self.delete()
 
     def delete(self) -> None:
-        self._api.request_no_content("DELETE", _sandbox_path(self._data.sandbox_id))
+        self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
 
 
 class AsyncSandbox:
     def __init__(self, api: _AsyncAPI, data: SandboxData) -> None:
         self._api = api
         self._data = data
-        self.commands = AsyncCommands(api, data.sandbox_id)
-        self.filesystem = AsyncFilesystem(api, data.sandbox_id)
+        self.commands = AsyncCommands(api, data.id)
+        self.filesystem = AsyncFilesystem(api, data.id)
 
     @property
-    def sandbox_id(self) -> str:
-        return self._data.sandbox_id
+    def id(self) -> str:
+        return self._data.id
 
     @property
     def status(self) -> SandboxStatus:
@@ -310,4 +310,4 @@ class AsyncSandbox:
         await self.delete()
 
     async def delete(self) -> None:
-        await self._api.request_no_content("DELETE", _sandbox_path(self._data.sandbox_id))
+        await self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
