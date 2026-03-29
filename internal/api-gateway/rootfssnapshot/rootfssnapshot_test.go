@@ -36,8 +36,8 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 
 			var body RootfsSnapshotResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body.ID).To(HaveLen(22))
-			Expect(body.ID).To(MatchRegexp(`^[a-z][a-z0-9]{21}$`))
+			Expect(body.SnapshotID).To(HaveLen(22))
+			Expect(body.SnapshotID).To(MatchRegexp(`^[a-z][a-z0-9]{21}$`))
 			Expect(body.SandboxID).To(Equal("test-sb"))
 			Expect(body.SnapshotName).To(Equal("snap1"))
 			Expect(body.ContainerName).To(BeEmpty())
@@ -92,7 +92,7 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 
 			rs := &sandboxv1alpha1.RootfsSnapshot{}
 			Eventually(func() error {
-				return k8sClient.Get(ctx, keyFor(body.ID), rs)
+				return k8sClient.Get(ctx, keyFor(body.SnapshotID), rs)
 			}).Should(Succeed())
 			Expect(rs.Spec.SandboxName).To(Equal("test-sb-verify"))
 			Expect(rs.Spec.SnapshotName).To(Equal("snap-verify"))
@@ -139,7 +139,7 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 		})
 	})
 
-	Describe("GET /rootfs-snapshots/{id}", func() {
+	Describe("GET /rootfs-snapshots/{snapshotId}", func() {
 		It("returns rootfs snapshot details", func() {
 			createResp := testAPI.Post("/v1/rootfs-snapshots", strings.NewReader(`{"sandboxId":"test-sb-get","snapshotName":"snap-get"}`))
 			Expect(createResp.Code).To(Equal(201))
@@ -148,13 +148,13 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 			Expect(json.NewDecoder(createResp.Body).Decode(&created)).To(Succeed())
 
 			Eventually(func() int {
-				return testAPI.Get(fmt.Sprintf("/v1/rootfs-snapshots/%s", created.ID)).Code
+				return testAPI.Get(fmt.Sprintf("/v1/rootfs-snapshots/%s", created.SnapshotID)).Code
 			}).Should(Equal(200))
 
-			getResp := testAPI.Get(fmt.Sprintf("/v1/rootfs-snapshots/%s", created.ID))
+			getResp := testAPI.Get(fmt.Sprintf("/v1/rootfs-snapshots/%s", created.SnapshotID))
 			var got RootfsSnapshotResponse
 			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
-			Expect(got.ID).To(Equal(created.ID))
+			Expect(got.SnapshotID).To(Equal(created.SnapshotID))
 			Expect(got.SandboxID).To(Equal("test-sb-get"))
 			Expect(got.SnapshotName).To(Equal("snap-get"))
 		})

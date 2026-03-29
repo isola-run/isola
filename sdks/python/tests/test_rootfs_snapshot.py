@@ -39,7 +39,7 @@ def test_create_rootfs_snapshot_with_all_fields(rootfs_snapshot_response_copy: d
             ttl_seconds_after_finished=600,
         )
 
-    assert snapshot.id == "snapshot-123"
+    assert snapshot.snapshot_id == "snapshot-123"
     assert snapshot.sandbox_id == "sandbox-123"
     assert snapshot.snapshot_name == "my-snapshot"
     assert snapshot.container_name == "worker"
@@ -95,7 +95,7 @@ def test_get_rootfs_snapshot(rootfs_snapshot_response_copy: dict[str, object]) -
     with Isola(base_url="http://localhost:8080") as client:
         snapshot = client.rootfs_snapshots.get("snapshot-123")
 
-    assert snapshot.id == "snapshot-123"
+    assert snapshot.snapshot_id == "snapshot-123"
     assert snapshot.sandbox_id == "sandbox-123"
     assert snapshot.snapshot_name == "my-snapshot"
     assert snapshot.container_name == "worker"
@@ -107,7 +107,7 @@ def test_get_rootfs_snapshot(rootfs_snapshot_response_copy: dict[str, object]) -
 
 def _make_rootfs_snapshot_response(status: str, snapshot_id: str = "snapshot-123") -> dict[str, object]:
     return {
-        "id": snapshot_id,
+        "snapshotId": snapshot_id,
         "sandboxId": "sandbox-123",
         "snapshotName": "my-snapshot",
         "creationTimestamp": "2026-02-18T00:00:00Z",
@@ -342,7 +342,7 @@ async def test_async_create_rootfs_snapshot_with_all_fields(rootfs_snapshot_resp
             ttl_seconds_after_finished=600,
         )
 
-    assert snapshot.id == "snapshot-123"
+    assert snapshot.snapshot_id == "snapshot-123"
     assert snapshot.sandbox_id == "sandbox-123"
     assert snapshot.snapshot_name == "my-snapshot"
     assert snapshot.container_name == "worker"
@@ -400,7 +400,7 @@ async def test_async_get_rootfs_snapshot(rootfs_snapshot_response_copy: dict[str
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         snapshot = await client.rootfs_snapshots.get("snapshot-123")
 
-    assert snapshot.id == "snapshot-123"
+    assert snapshot.snapshot_id == "snapshot-123"
     assert snapshot.sandbox_id == "sandbox-123"
     assert snapshot.snapshot_name == "my-snapshot"
     assert snapshot.container_name == "worker"

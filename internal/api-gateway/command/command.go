@@ -44,7 +44,7 @@ type CreateCommandRequest struct {
 }
 
 type CreateCommandResponse struct {
-	CommandID string `json:"commandId" doc:"Unique command identifier"`
+	CmdID string `json:"cmdId" doc:"Unique command identifier"`
 }
 
 type CommandStatusResponse struct {
@@ -52,7 +52,7 @@ type CommandStatusResponse struct {
 }
 
 type CreateSandboxCommandInput struct {
-	ID        string `path:"id" doc:"Sandbox identifier"`
+	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 	Body      CreateCommandRequest
 }
@@ -62,8 +62,8 @@ type CreateSandboxCommandOutput struct {
 }
 
 type GetSandboxCommandStatusInput struct {
-	ID    string `path:"id" doc:"Sandbox identifier"`
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
+	CmdID     string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	// Lower than the sandbox-sidecar's max (30 seconds) so the gateway always terminates first
 	// also aligns with the safe (assuming possible proxies etc) long polling value according to https://datatracker.ietf.org/doc/html/rfc6202
 	// and of course it must be lower than the server's WriteTimeout.
@@ -75,25 +75,25 @@ type GetSandboxCommandStatusOutput struct {
 }
 
 type GetSandboxCommandStreamInput struct {
-	ID          string `path:"id" doc:"Sandbox identifier"`
+	SandboxID   string `path:"sandboxId" doc:"Sandbox identifier"`
 	CmdID       string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	LastEventID string `header:"Last-Event-ID" doc:"Byte offset to resume from (SSE Last-Event-ID)"`
 }
 
 type PostSandboxCommandStdinInput struct {
-	ID    string `path:"id" doc:"Sandbox identifier"`
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
+	CmdID     string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	apigateway.BodyStream
 }
 
 type CloseSandboxCommandStdinInput struct {
-	ID    string `path:"id" doc:"Sandbox identifier"`
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
+	CmdID     string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
 
 type DeleteSandboxCommandInput struct {
-	ID    string `path:"id" doc:"Sandbox identifier"`
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
+	CmdID     string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
 
 type Handlers struct {
@@ -115,7 +115,7 @@ func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client, 
 }
 
 func (h *Handlers) PostCommand(ctx context.Context, input *CreateSandboxCommandInput) (*CreateSandboxCommandOutput, error) {
-	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.SandboxID, h.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -142,29 +142,29 @@ func (h *Handlers) PostCommand(ctx context.Context, input *CreateSandboxCommandI
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
+		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return nil, apigateway.HandleSidecarError(resp, input.ID, h.logger)
+		return nil, apigateway.HandleSidecarError(resp, input.SandboxID, h.logger)
 	}
 
 	_ = sidecarapi.CreateCommandResponse(CreateCommandResponse{}) // assert field compatibility
 	var sidecarResp sidecarapi.CreateCommandResponse
 	if err := json.NewDecoder(resp.Body).Decode(&sidecarResp); err != nil {
-		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.ID)
+		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("invalid sidecar response")
 	}
 
 	return &CreateSandboxCommandOutput{
-		Body: CreateCommandResponse{CommandID: sidecarResp.CommandID},
+		Body: CreateCommandResponse{CmdID: sidecarResp.CmdID},
 	}, nil
 }
 
 func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetSandboxCommandStatusInput) (*GetSandboxCommandStatusOutput, error) {
-	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.SandboxID, h.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -182,19 +182,19 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetSandboxComman
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
+		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return nil, apigateway.HandleSidecarError(resp, input.ID, h.logger)
+		return nil, apigateway.HandleSidecarError(resp, input.SandboxID, h.logger)
 	}
 
 	_ = sidecarapi.CommandStatusResponse(CommandStatusResponse{}) // assert field compatibility
 	var sidecarResp sidecarapi.CommandStatusResponse
 	if err := json.NewDecoder(resp.Body).Decode(&sidecarResp); err != nil {
-		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.ID)
+		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("invalid sidecar response")
 	}
 
@@ -204,11 +204,11 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetSandboxComman
 }
 
 func (h *Handlers) GetCommandStdout(ctx context.Context, input *GetSandboxCommandStreamInput) (*huma.StreamResponse, error) {
-	return h.proxyStream(ctx, input.ID, input.CmdID, "stdout", input.LastEventID)
+	return h.proxyStream(ctx, input.SandboxID, input.CmdID, "stdout", input.LastEventID)
 }
 
 func (h *Handlers) GetCommandStderr(ctx context.Context, input *GetSandboxCommandStreamInput) (*huma.StreamResponse, error) {
-	return h.proxyStream(ctx, input.ID, input.CmdID, "stderr", input.LastEventID)
+	return h.proxyStream(ctx, input.SandboxID, input.CmdID, "stderr", input.LastEventID)
 }
 
 func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream, lastEventID string) (*huma.StreamResponse, error) {
@@ -267,7 +267,7 @@ func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream, la
 }
 
 func (h *Handlers) PostCommandStdin(ctx context.Context, input *PostSandboxCommandStdinInput) (*struct{}, error) {
-	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.SandboxID, h.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -285,20 +285,20 @@ func (h *Handlers) PostCommandStdin(ctx context.Context, input *PostSandboxComma
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
+		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return nil, apigateway.HandleSidecarError(resp, input.ID, h.logger)
+		return nil, apigateway.HandleSidecarError(resp, input.SandboxID, h.logger)
 	}
 
 	return nil, nil
 }
 
 func (h *Handlers) CloseCommandStdin(ctx context.Context, input *CloseSandboxCommandStdinInput) (*struct{}, error) {
-	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.SandboxID, h.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -313,20 +313,20 @@ func (h *Handlers) CloseCommandStdin(ctx context.Context, input *CloseSandboxCom
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
+		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return nil, apigateway.HandleSidecarError(resp, input.ID, h.logger)
+		return nil, apigateway.HandleSidecarError(resp, input.SandboxID, h.logger)
 	}
 
 	return nil, nil
 }
 
 func (h *Handlers) DeleteCommand(ctx context.Context, input *DeleteSandboxCommandInput) (*struct{}, error) {
-	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.SandboxID, h.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -341,13 +341,13 @@ func (h *Handlers) DeleteCommand(ctx context.Context, input *DeleteSandboxComman
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
+		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return nil, apigateway.HandleSidecarError(resp, input.ID, h.logger)
+		return nil, apigateway.HandleSidecarError(resp, input.SandboxID, h.logger)
 	}
 
 	return nil, nil
@@ -357,7 +357,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "createSandboxCommand",
 		Method:        http.MethodPost,
-		Path:          "/sandboxes/{id}/commands",
+		Path:          "/sandboxes/{sandboxId}/commands",
 		Summary:       "Start a command in a sandbox",
 		Description:   "Starts a new command in the sandbox container and returns a command ID for tracking. Commands always run as root (UID 0, GID 0).",
 		Tags:          []string{"sandboxes", "commands"},
@@ -368,7 +368,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getSandboxCommandStatus",
 		Method:      http.MethodGet,
-		Path:        "/sandboxes/{id}/commands/{cmdId}/status",
+		Path:        "/sandboxes/{sandboxId}/commands/{cmdId}/status",
 		Summary:     "Get command status",
 		Description: "Returns the exit code of the command, or null if still running. Supports long-polling via ?waitSeconds=N to block until the command exits or the wait expires.",
 		Tags:        []string{"sandboxes", "commands"},
@@ -378,7 +378,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getSandboxCommandStdout",
 		Method:      http.MethodGet,
-		Path:        "/sandboxes/{id}/commands/{cmdId}/stdout",
+		Path:        "/sandboxes/{sandboxId}/commands/{cmdId}/stdout",
 		Summary:     "Stream command stdout",
 		Description: "Streams the command's stdout as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.",
 		Tags:        []string{"sandboxes", "commands"},
@@ -398,7 +398,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getSandboxCommandStderr",
 		Method:      http.MethodGet,
-		Path:        "/sandboxes/{id}/commands/{cmdId}/stderr",
+		Path:        "/sandboxes/{sandboxId}/commands/{cmdId}/stderr",
 		Summary:     "Stream command stderr",
 		Description: "Streams the command's stderr as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.",
 		Tags:        []string{"sandboxes", "commands"},
@@ -418,7 +418,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "postSandboxCommandStdin",
 		Method:      http.MethodPost,
-		Path:        "/sandboxes/{id}/commands/{cmdId}/stdin",
+		Path:        "/sandboxes/{sandboxId}/commands/{cmdId}/stdin",
 		Summary:     "Write to command stdin",
 		Description: "Writes raw bytes to the command's stdin",
 		Tags:        []string{"sandboxes", "commands"},
@@ -437,7 +437,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "closeSandboxCommandStdin",
 		Method:        http.MethodPost,
-		Path:          "/sandboxes/{id}/commands/{cmdId}/stdin/close",
+		Path:          "/sandboxes/{sandboxId}/commands/{cmdId}/stdin/close",
 		Summary:       "Close command stdin",
 		Description:   "Closes the command's stdin pipe",
 		Tags:          []string{"sandboxes", "commands"},
@@ -448,7 +448,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "deleteSandboxCommand",
 		Method:        http.MethodDelete,
-		Path:          "/sandboxes/{id}/commands/{cmdId}",
+		Path:          "/sandboxes/{sandboxId}/commands/{cmdId}",
 		Summary:       "Kill a command",
 		Description:   "Kills the command process. Idempotent for already-exited commands.",
 		Tags:          []string{"sandboxes", "commands"},

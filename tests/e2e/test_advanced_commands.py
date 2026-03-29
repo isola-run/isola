@@ -36,7 +36,7 @@ def test_container_env_accessible_in_command(
         image="alpine:3.21",
         env={"E2E_SECRET": "expected_value"},
     )
-    running = wait_for_running(isola_client, sb.id)
+    running = wait_for_running(isola_client, sb.sandbox_id)
 
     result = running.commands.run("sh", "-c", "echo $E2E_SECRET")
 
@@ -56,7 +56,7 @@ def test_command_env_overrides_container_env(
         image="alpine:3.21",
         env={"MY_VAR": "original"},
     )
-    running = wait_for_running(isola_client, sb.id)
+    running = wait_for_running(isola_client, sb.sandbox_id)
 
     result = running.commands.run(
         "sh", "-c", "echo $MY_VAR",

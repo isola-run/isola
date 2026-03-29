@@ -193,7 +193,7 @@ func (h *Handlers) PostCommand(_ context.Context, input *CreateCommandInput) (*C
 
 	go h.waitForExit(entry)
 
-	return &CreateCommandOutput{Body: sidecarapi.CreateCommandResponse{CommandID: entry.cmdID}}, nil
+	return &CreateCommandOutput{Body: sidecarapi.CreateCommandResponse{CmdID: entry.cmdID}}, nil
 }
 
 // startCommand sets up output files, builds and starts the command.

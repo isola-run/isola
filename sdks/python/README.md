@@ -118,7 +118,7 @@ data = sandbox.filesystem.read("/tmp/hello.txt")  # bytes
 # List all sandboxes
 summaries = client.sandboxes.list()
 for s in summaries:
-    print(s.id, s.status)
+    print(s.sandbox_id, s.status)
 
 # Get a sandbox by ID
 sandbox = client.sandboxes.get("sandbox-id")
@@ -135,7 +135,7 @@ sandbox.delete()
 from isola import IsolaError, RootfsSnapshotStatus
 
 snapshot = client.rootfs_snapshots.create(
-    sandbox_id=sandbox.id,
+    sandbox_id=sandbox.sandbox_id,
     snapshot_name="my-snapshot",
     max_wait_seconds=300,
 )
@@ -143,7 +143,7 @@ snapshot = client.rootfs_snapshots.create(
 print(snapshot.status)  # RootfsSnapshotStatus.COMPLETE
 
 # Fetch the latest snapshot state by ID
-snapshot = client.rootfs_snapshots.get(snapshot.id)
+snapshot = client.rootfs_snapshots.get(snapshot.snapshot_id)
 
 # Restore a new sandbox from the snapshot name
 restored = client.sandboxes.create(

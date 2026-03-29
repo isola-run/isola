@@ -114,9 +114,9 @@ class RootfsSnapshots:
             RootfsSnapshotData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        _check_failed(data.id, data.status)
+        _check_failed(data.snapshot_id, data.status)
         if data.status != RootfsSnapshotStatus.COMPLETE and max_wait_seconds != 0:
-            data = _wait_until_complete(data.id, self._api, max_wait_seconds)
+            data = _wait_until_complete(data.snapshot_id, self._api, max_wait_seconds)
         return RootfsSnapshot(self._api, data)
 
     def get(self, snapshot_id: str) -> RootfsSnapshot:
@@ -151,9 +151,9 @@ class AsyncRootfsSnapshots:
             RootfsSnapshotData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        _check_failed(data.id, data.status)
+        _check_failed(data.snapshot_id, data.status)
         if data.status != RootfsSnapshotStatus.COMPLETE and max_wait_seconds != 0:
-            data = await _async_wait_until_complete(data.id, self._api, max_wait_seconds)
+            data = await _async_wait_until_complete(data.snapshot_id, self._api, max_wait_seconds)
         return AsyncRootfsSnapshot(self._api, data)
 
     async def get(self, snapshot_id: str) -> AsyncRootfsSnapshot:
@@ -167,8 +167,8 @@ class RootfsSnapshot:
         self._data = data
 
     @property
-    def id(self) -> str:
-        return self._data.id
+    def snapshot_id(self) -> str:
+        return self._data.snapshot_id
 
     @property
     def sandbox_id(self) -> str:
@@ -205,8 +205,8 @@ class AsyncRootfsSnapshot:
         self._data = data
 
     @property
-    def id(self) -> str:
-        return self._data.id
+    def snapshot_id(self) -> str:
+        return self._data.snapshot_id
 
     @property
     def sandbox_id(self) -> str:

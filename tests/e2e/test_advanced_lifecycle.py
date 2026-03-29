@@ -44,13 +44,13 @@ def test_multiple_sandboxes_coexist(
 
     # Wait for all to reach running
     for sb in sandboxes:
-        wait_for_running(isola_client, sb.id)
+        wait_for_running(isola_client, sb.sandbox_id)
 
     summaries = isola_client.sandboxes.list()
-    listed_ids = {s.id for s in summaries}
+    listed_ids = {s.sandbox_id for s in summaries}
 
     for sb in sandboxes:
-        assert sb.id in listed_ids, f"Sandbox {sb.id} not found in list"
+        assert sb.sandbox_id in listed_ids, f"Sandbox {sb.sandbox_id} not found in list"
 
 
 @pytest.mark.timeout(120)
@@ -63,7 +63,7 @@ def test_delete_sandbox_with_running_command(
     The finalizer cleans up the pod; the running command is lost.
     """
     sb = sandbox_factory(image="alpine:3.21")
-    running = wait_for_running(isola_client, sb.id)
+    running = wait_for_running(isola_client, sb.sandbox_id)
 
     # Start a long-running command
     running.commands.spawn("sleep", "300")
@@ -75,12 +75,12 @@ def test_delete_sandbox_with_running_command(
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         try:
-            isola_client.sandboxes.get(sb.id)
+            isola_client.sandboxes.get(sb.sandbox_id)
         except NotFoundError:
             return
         time.sleep(POLL_INTERVAL)
 
-    pytest.fail(f"Sandbox {sb.id} was not deleted within 30s after delete call")
+    pytest.fail(f"Sandbox {sb.sandbox_id} was not deleted within 30s after delete call")
 
 
 @pytest.mark.timeout(180)
@@ -99,7 +99,7 @@ def test_short_lived_command_sandbox_stops(
     last_status = None
     while time.monotonic() < deadline:
         try:
-            current = isola_client.sandboxes.get(sb.id)
+            current = isola_client.sandboxes.get(sb.sandbox_id)
             last_status = current.status
             if last_status in (SandboxStatus.STOPPED, SandboxStatus.FAILED):
                 return
@@ -108,7 +108,7 @@ def test_short_lived_command_sandbox_stops(
         time.sleep(POLL_INTERVAL)
 
     pytest.fail(
-        f"Sandbox {sb.id} with command=['true'] did not reach terminal state "
+        f"Sandbox {sb.sandbox_id} with command=['true'] did not reach terminal state "
         f"within 120s (last: {last_status})"
     )
 
@@ -134,13 +134,13 @@ def test_crashed_container_sandbox_fails(
     last_status = None
     while time.monotonic() < deadline:
         try:
-            current = isola_client.sandboxes.get(sb.id)
+            current = isola_client.sandboxes.get(sb.sandbox_id)
             last_status = current.status
             if last_status == SandboxStatus.FAILED:
                 return
             if last_status == SandboxStatus.STOPPED:
                 pytest.fail(
-                    f"Sandbox {sb.id} reached 'stopped' but expected 'failed' "
+                    f"Sandbox {sb.sandbox_id} reached 'stopped' but expected 'failed' "
                     f"(container exited non-zero)"
                 )
         except NotFoundError:
@@ -148,7 +148,7 @@ def test_crashed_container_sandbox_fails(
         time.sleep(POLL_INTERVAL)
 
     pytest.fail(
-        f"Sandbox {sb.id} with exit 1 did not reach 'failed' state "
+        f"Sandbox {sb.sandbox_id} with exit 1 did not reach 'failed' state "
         f"within 120s (last: {last_status})"
     )
 
