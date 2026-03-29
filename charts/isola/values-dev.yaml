@@ -17,6 +17,11 @@ operator:
     level: debug
     devMode: true
 
+  metrics:
+    service:
+      type: NodePort
+      nodePort: 30082
+
   sandboxRuntime:
     type: gvisor # alternatively, if gvisor not installed, use clusterDefault
 
