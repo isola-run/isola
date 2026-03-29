@@ -63,11 +63,11 @@ components:
           format: uri
           readOnly: true
           type: string
-        cmdId:
+        id:
           description: Unique command identifier
           type: string
       required:
-        - cmdId
+        - id
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -263,14 +263,14 @@ paths:
       summary: Start a command in the sandbox
       tags:
         - commands
-  /v1/commands/{cmdId}:
+  /v1/commands/{id}:
     delete:
       description: Kills the command process. Idempotent for already-exited commands.
       operationId: deleteCommand
       parameters:
         - description: Command identifier
           in: path
-          name: cmdId
+          name: id
           required: true
           schema:
             description: Command identifier
@@ -300,14 +300,14 @@ paths:
       summary: Kill a command
       tags:
         - commands
-  /v1/commands/{cmdId}/status:
+  /v1/commands/{id}/status:
     get:
       description: Returns the exit code of the command, or null if still running. Supports long-polling via ?waitSeconds=N to block until the command exits or the wait expires.
       operationId: getCommandStatus
       parameters:
         - description: Command identifier
           in: path
-          name: cmdId
+          name: id
           required: true
           schema:
             description: Command identifier
@@ -351,14 +351,14 @@ paths:
       summary: Get command status
       tags:
         - commands
-  /v1/commands/{cmdId}/stderr:
+  /v1/commands/{id}/stderr:
     get:
       description: Streams the command's stderr as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.
       operationId: getCommandStderr
       parameters:
         - description: Command identifier
           in: path
-          name: cmdId
+          name: id
           required: true
           schema:
             description: Command identifier
@@ -398,14 +398,14 @@ paths:
       summary: Stream command stderr
       tags:
         - commands
-  /v1/commands/{cmdId}/stdin:
+  /v1/commands/{id}/stdin:
     post:
       description: Writes raw bytes to the command's stdin
       operationId: postCommandStdin
       parameters:
         - description: Command identifier
           in: path
-          name: cmdId
+          name: id
           required: true
           schema:
             description: Command identifier
@@ -449,14 +449,14 @@ paths:
       summary: Write to command stdin
       tags:
         - commands
-  /v1/commands/{cmdId}/stdin/close:
+  /v1/commands/{id}/stdin/close:
     post:
       description: Closes the command's stdin pipe
       operationId: closeCommandStdin
       parameters:
         - description: Command identifier
           in: path
-          name: cmdId
+          name: id
           required: true
           schema:
             description: Command identifier
@@ -492,14 +492,14 @@ paths:
       summary: Close command stdin
       tags:
         - commands
-  /v1/commands/{cmdId}/stdout:
+  /v1/commands/{id}/stdout:
     get:
       description: Streams the command's stdout as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.
       operationId: getCommandStdout
       parameters:
         - description: Command identifier
           in: path
-          name: cmdId
+          name: id
           required: true
           schema:
             description: Command identifier

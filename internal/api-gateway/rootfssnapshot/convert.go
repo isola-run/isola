@@ -41,7 +41,7 @@ func requestToRootfsSnapshotCR(req CreateRootfsSnapshotRequest, name, namespace 
 
 func rootfsSnapshotToResponse(rs *sandboxv1alpha1.RootfsSnapshot) RootfsSnapshotResponse {
 	return RootfsSnapshotResponse{
-		SnapshotID:              rs.Name,
+		ID:                      rs.Name,
 		SandboxID:               rs.Spec.SandboxName,
 		SnapshotName:            rs.Spec.SnapshotName,
 		ContainerName:           rs.Spec.ContainerName,

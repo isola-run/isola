@@ -44,7 +44,7 @@ type CreateCommandRequest struct {
 }
 
 type CreateCommandResponse struct {
-	CmdID string `json:"cmdId" doc:"Unique command identifier"`
+	ID string `json:"id" doc:"Unique command identifier"`
 }
 
 type CommandStatusResponse struct {
@@ -63,7 +63,7 @@ type CreateSandboxCommandOutput struct {
 
 type GetSandboxCommandStatusInput struct {
 	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
-	CmdID     string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	ID        string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	// Lower than the sandbox-sidecar's max (30 seconds) so the gateway always terminates first
 	// also aligns with the safe (assuming possible proxies etc) long polling value according to https://datatracker.ietf.org/doc/html/rfc6202
 	// and of course it must be lower than the server's WriteTimeout.
@@ -76,24 +76,24 @@ type GetSandboxCommandStatusOutput struct {
 
 type GetSandboxCommandStreamInput struct {
 	SandboxID   string `path:"sandboxId" doc:"Sandbox identifier"`
-	CmdID       string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	ID          string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	LastEventID string `header:"Last-Event-ID" doc:"Byte offset to resume from (SSE Last-Event-ID)"`
 }
 
 type PostSandboxCommandStdinInput struct {
 	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
-	CmdID     string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	ID        string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	apigateway.BodyStream
 }
 
 type CloseSandboxCommandStdinInput struct {
 	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
-	CmdID     string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	ID        string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
 
 type DeleteSandboxCommandInput struct {
 	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
-	CmdID     string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	ID        string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
 
 type Handlers struct {
@@ -159,7 +159,7 @@ func (h *Handlers) PostCommand(ctx context.Context, input *CreateSandboxCommandI
 	}
 
 	return &CreateSandboxCommandOutput{
-		Body: CreateCommandResponse{CmdID: sidecarResp.CmdID},
+		Body: CreateCommandResponse{ID: sidecarResp.ID},
 	}, nil
 }
 
@@ -169,7 +169,7 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetSandboxComman
 		return nil, err
 	}
 
-	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s/status", sb.Status.PodIP, h.sidecarPort, input.CmdID)
+	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s/status", sb.Status.PodIP, h.sidecarPort, input.ID)
 	if input.WaitSeconds > 0 {
 		sidecarURL += fmt.Sprintf("?waitSeconds=%d", input.WaitSeconds)
 	}
@@ -204,11 +204,11 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetSandboxComman
 }
 
 func (h *Handlers) GetCommandStdout(ctx context.Context, input *GetSandboxCommandStreamInput) (*huma.StreamResponse, error) {
-	return h.proxyStream(ctx, input.SandboxID, input.CmdID, "stdout", input.LastEventID)
+	return h.proxyStream(ctx, input.SandboxID, input.ID, "stdout", input.LastEventID)
 }
 
 func (h *Handlers) GetCommandStderr(ctx context.Context, input *GetSandboxCommandStreamInput) (*huma.StreamResponse, error) {
-	return h.proxyStream(ctx, input.SandboxID, input.CmdID, "stderr", input.LastEventID)
+	return h.proxyStream(ctx, input.SandboxID, input.ID, "stderr", input.LastEventID)
 }
 
 func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream, lastEventID string) (*huma.StreamResponse, error) {
@@ -272,7 +272,7 @@ func (h *Handlers) PostCommandStdin(ctx context.Context, input *PostSandboxComma
 		return nil, err
 	}
 
-	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s/stdin", sb.Status.PodIP, h.sidecarPort, input.CmdID)
+	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s/stdin", sb.Status.PodIP, h.sidecarPort, input.ID)
 
 	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
 
@@ -303,7 +303,7 @@ func (h *Handlers) CloseCommandStdin(ctx context.Context, input *CloseSandboxCom
 		return nil, err
 	}
 
-	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s/stdin/close", sb.Status.PodIP, h.sidecarPort, input.CmdID)
+	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s/stdin/close", sb.Status.PodIP, h.sidecarPort, input.ID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, nil)
 	if err != nil {
@@ -331,7 +331,7 @@ func (h *Handlers) DeleteCommand(ctx context.Context, input *DeleteSandboxComman
 		return nil, err
 	}
 
-	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s", sb.Status.PodIP, h.sidecarPort, input.CmdID)
+	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s", sb.Status.PodIP, h.sidecarPort, input.ID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, sidecarURL, nil)
 	if err != nil {
@@ -368,7 +368,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getSandboxCommandStatus",
 		Method:      http.MethodGet,
-		Path:        "/sandboxes/{sandboxId}/commands/{cmdId}/status",
+		Path:        "/sandboxes/{sandboxId}/commands/{id}/status",
 		Summary:     "Get command status",
 		Description: "Returns the exit code of the command, or null if still running. Supports long-polling via ?waitSeconds=N to block until the command exits or the wait expires.",
 		Tags:        []string{"sandboxes", "commands"},
@@ -378,7 +378,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getSandboxCommandStdout",
 		Method:      http.MethodGet,
-		Path:        "/sandboxes/{sandboxId}/commands/{cmdId}/stdout",
+		Path:        "/sandboxes/{sandboxId}/commands/{id}/stdout",
 		Summary:     "Stream command stdout",
 		Description: "Streams the command's stdout as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.",
 		Tags:        []string{"sandboxes", "commands"},
@@ -398,7 +398,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getSandboxCommandStderr",
 		Method:      http.MethodGet,
-		Path:        "/sandboxes/{sandboxId}/commands/{cmdId}/stderr",
+		Path:        "/sandboxes/{sandboxId}/commands/{id}/stderr",
 		Summary:     "Stream command stderr",
 		Description: "Streams the command's stderr as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.",
 		Tags:        []string{"sandboxes", "commands"},
@@ -418,7 +418,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "postSandboxCommandStdin",
 		Method:      http.MethodPost,
-		Path:        "/sandboxes/{sandboxId}/commands/{cmdId}/stdin",
+		Path:        "/sandboxes/{sandboxId}/commands/{id}/stdin",
 		Summary:     "Write to command stdin",
 		Description: "Writes raw bytes to the command's stdin",
 		Tags:        []string{"sandboxes", "commands"},
@@ -437,7 +437,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "closeSandboxCommandStdin",
 		Method:        http.MethodPost,
-		Path:          "/sandboxes/{sandboxId}/commands/{cmdId}/stdin/close",
+		Path:          "/sandboxes/{sandboxId}/commands/{id}/stdin/close",
 		Summary:       "Close command stdin",
 		Description:   "Closes the command's stdin pipe",
 		Tags:          []string{"sandboxes", "commands"},
@@ -448,7 +448,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "deleteSandboxCommand",
 		Method:        http.MethodDelete,
-		Path:          "/sandboxes/{sandboxId}/commands/{cmdId}",
+		Path:          "/sandboxes/{sandboxId}/commands/{id}",
 		Summary:       "Kill a command",
 		Description:   "Kills the command process. Idempotent for already-exited commands.",
 		Tags:          []string{"sandboxes", "commands"},

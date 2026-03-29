@@ -110,7 +110,7 @@ type CreateCommandOutput struct {
 }
 
 type GetCommandStatusInput struct {
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	ID string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	// Higher than the api-gateway's max (25s) so the gateway always terminates first
 	// also aligns with the safe (assuming possible proxies etc) long polling value according to https://datatracker.ietf.org/doc/html/rfc6202
 	// and of course it must be lower than the server's WriteTimeout.
@@ -122,21 +122,21 @@ type GetCommandStatusOutput struct {
 }
 
 type GetCommandStreamInput struct {
-	CmdID       string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	ID          string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	LastEventID string `header:"Last-Event-ID" doc:"Byte offset to resume from (SSE Last-Event-ID)"`
 }
 
 type PostCommandStdinInput struct {
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	ID string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	sandboxsidecar.BodyStream
 }
 
 type CloseCommandStdinInput struct {
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	ID string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
 
 type DeleteCommandInput struct {
-	CmdID string `path:"cmdId" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
+	ID string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
 
 // --- Handlers ---
@@ -193,7 +193,7 @@ func (h *Handlers) PostCommand(_ context.Context, input *CreateCommandInput) (*C
 
 	go h.waitForExit(entry)
 
-	return &CreateCommandOutput{Body: sidecarapi.CreateCommandResponse{CmdID: entry.cmdID}}, nil
+	return &CreateCommandOutput{Body: sidecarapi.CreateCommandResponse{ID: entry.cmdID}}, nil
 }
 
 // startCommand sets up output files, builds and starts the command.
@@ -318,7 +318,7 @@ func (h *Handlers) getCommandEntry(cmdID string) (*commandEntry, error) {
 }
 
 func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetCommandStatusInput) (*GetCommandStatusOutput, error) {
-	entry, err := h.getCommandEntry(input.CmdID)
+	entry, err := h.getCommandEntry(input.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +350,7 @@ func (h *Handlers) GetCommandStdout(_ context.Context, input *GetCommandStreamIn
 	if err != nil {
 		return nil, err
 	}
-	return h.streamOutput(input.CmdID, offset, "stdout")
+	return h.streamOutput(input.ID, offset, "stdout")
 }
 
 func (h *Handlers) GetCommandStderr(_ context.Context, input *GetCommandStreamInput) (*huma.StreamResponse, error) {
@@ -358,7 +358,7 @@ func (h *Handlers) GetCommandStderr(_ context.Context, input *GetCommandStreamIn
 	if err != nil {
 		return nil, err
 	}
-	return h.streamOutput(input.CmdID, offset, "stderr")
+	return h.streamOutput(input.ID, offset, "stderr")
 }
 
 func parseLastEventID(id string) (int64, error) {
@@ -473,7 +473,7 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 }
 
 func (h *Handlers) PostCommandStdin(_ context.Context, input *PostCommandStdinInput) (*struct{}, error) {
-	entry, err := h.getCommandEntry(input.CmdID)
+	entry, err := h.getCommandEntry(input.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -503,16 +503,16 @@ func (h *Handlers) PostCommandStdin(_ context.Context, input *PostCommandStdinIn
 		if errors.Is(err, os.ErrClosed) {
 			return nil, huma.Error409Conflict("stdin has been closed")
 		}
-		h.logger.Error("failed to write to stdin", "error", err, "cmdID", input.CmdID)
+		h.logger.Error("failed to write to stdin", "error", err, "cmdID", input.ID)
 		return nil, huma.Error500InternalServerError("failed to write to stdin")
 	}
 
-	h.logger.Debug("stdin write", "cmdID", input.CmdID, "bytes", written)
+	h.logger.Debug("stdin write", "cmdID", input.ID, "bytes", written)
 	return nil, nil
 }
 
 func (h *Handlers) CloseCommandStdin(_ context.Context, input *CloseCommandStdinInput) (*struct{}, error) {
-	entry, err := h.getCommandEntry(input.CmdID)
+	entry, err := h.getCommandEntry(input.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -533,17 +533,17 @@ func (h *Handlers) CloseCommandStdin(_ context.Context, input *CloseCommandStdin
 	if err := entry.stdinPipe.Close(); err != nil {
 		// Only realistic failure for a pipe fd: cmd.Wait() already closed it via
 		// closeDescriptors (race between process exit and explicit stdin close).
-		h.logger.Warn("failed to close stdin", "error", err, "cmdID", input.CmdID)
+		h.logger.Warn("failed to close stdin", "error", err, "cmdID", input.ID)
 	}
 	entry.stdinClosed = true
 
-	h.logger.Debug("stdin closed", "cmdID", input.CmdID)
+	h.logger.Debug("stdin closed", "cmdID", input.ID)
 	return nil, nil
 }
 
 // todo benl: delete from commands map (eventually?) to constraint memory?
 func (h *Handlers) DeleteCommand(_ context.Context, input *DeleteCommandInput) (*struct{}, error) {
-	entry, err := h.getCommandEntry(input.CmdID)
+	entry, err := h.getCommandEntry(input.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -596,7 +596,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getCommandStatus",
 		Method:      http.MethodGet,
-		Path:        "/commands/{cmdId}/status",
+		Path:        "/commands/{id}/status",
 		Summary:     "Get command status",
 		Description: "Returns the exit code of the command, or null if still running. Supports long-polling via ?waitSeconds=N to block until the command exits or the wait expires.",
 		Tags:        []string{"commands"},
@@ -606,7 +606,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getCommandStdout",
 		Method:      http.MethodGet,
-		Path:        "/commands/{cmdId}/stdout",
+		Path:        "/commands/{id}/stdout",
 		Summary:     "Stream command stdout",
 		Description: "Streams the command's stdout as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.",
 		Tags:        []string{"commands"},
@@ -626,7 +626,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getCommandStderr",
 		Method:      http.MethodGet,
-		Path:        "/commands/{cmdId}/stderr",
+		Path:        "/commands/{id}/stderr",
 		Summary:     "Stream command stderr",
 		Description: "Streams the command's stderr as Server-Sent Events. The connection remains open until the command exits. Supports resuming via Last-Event-ID header.",
 		Tags:        []string{"commands"},
@@ -646,7 +646,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "postCommandStdin",
 		Method:      http.MethodPost,
-		Path:        "/commands/{cmdId}/stdin",
+		Path:        "/commands/{id}/stdin",
 		Summary:     "Write to command stdin",
 		Description: "Writes raw bytes to the command's stdin",
 		Tags:        []string{"commands"},
@@ -665,7 +665,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "closeCommandStdin",
 		Method:        http.MethodPost,
-		Path:          "/commands/{cmdId}/stdin/close",
+		Path:          "/commands/{id}/stdin/close",
 		Summary:       "Close command stdin",
 		Description:   "Closes the command's stdin pipe",
 		Tags:          []string{"commands"},
@@ -676,7 +676,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "deleteCommand",
 		Method:        http.MethodDelete,
-		Path:          "/commands/{cmdId}",
+		Path:          "/commands/{id}",
 		Summary:       "Kill a command",
 		Description:   "Kills the command process. Idempotent for already-exited commands.",
 		Tags:          []string{"commands"},

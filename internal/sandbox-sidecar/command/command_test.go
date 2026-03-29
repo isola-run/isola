@@ -90,10 +90,10 @@ var _ = Describe("Command Handlers", func() {
 	}
 
 	Describe("POST /commands", func() {
-		It("returns 202 with cmdId", func() {
+		It("returns 202 with id", func() {
 			code, result := postCommand(`{"args": ["echo", "hello"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
-			Expect(result.CmdID).NotTo(BeEmpty())
+			Expect(result.ID).NotTo(BeEmpty())
 		})
 
 		It("returns 422 on missing args", func() {
@@ -103,12 +103,12 @@ var _ = Describe("Command Handlers", func() {
 
 	})
 
-	Describe("GET /commands/{cmdId}/status", func() {
+	Describe("GET /commands/{id}/status", func() {
 		It("returns null exitCode while running", func() {
 			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
-			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 
 			var status sidecarapi.CommandStatusResponse
@@ -121,7 +121,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
@@ -133,7 +133,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
@@ -145,7 +145,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 
-		It("returns 422 for invalid cmdId format", func() {
+		It("returns 422 for invalid id format", func() {
 			resp := commandAPI.Get("/v1/commands/not-a-uuid/status")
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
@@ -155,7 +155,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			start := time.Now()
-			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status?waitSeconds=5", result.CmdID))
+			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status?waitSeconds=5", result.ID))
 			elapsed := time.Since(start)
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
@@ -170,14 +170,14 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
 			}).ShouldNot(BeNil())
 
 			start := time.Now()
-			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status?waitSeconds=5", result.CmdID))
+			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status?waitSeconds=5", result.ID))
 			elapsed := time.Since(start)
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
@@ -191,11 +191,11 @@ var _ = Describe("Command Handlers", func() {
 			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			DeferCleanup(func() {
-				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.CmdID))
+				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.ID))
 			})
 
 			start := time.Now()
-			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status?waitSeconds=1", result.CmdID))
+			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status?waitSeconds=1", result.ID))
 			elapsed := time.Since(start)
 
 			Expect(resp.Code).To(Equal(http.StatusOK))
@@ -209,11 +209,11 @@ var _ = Describe("Command Handlers", func() {
 			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			DeferCleanup(func() {
-				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.CmdID))
+				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.ID))
 			})
 
 			ctx, cancel := context.WithCancel(context.Background())
-			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/status?waitSeconds=60", result.CmdID), nil).WithContext(ctx)
+			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/status?waitSeconds=60", result.ID), nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 
 			done := make(chan struct{})
@@ -230,13 +230,13 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
-	Describe("GET /commands/{cmdId}/stdout", func() {
+	Describe("GET /commands/{id}/stdout", func() {
 		It("streams stdout output", func() {
 			code, result := postCommand(`{"args": ["echo", "-n", "hello world"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello world"))
 		})
@@ -246,11 +246,11 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).ShouldNot(BeEmpty())
 
-			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 			Expect(resp.Header().Get("Content-Type")).To(Equal("text/event-stream"))
 			Expect(resp.Header().Get("X-Accel-Buffering")).To(Equal("no"))
 			Expect(resp.Header().Get("Cache-Control")).To(Equal("no-cache"))
@@ -261,11 +261,11 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello world"))
 
-			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID), nil)
+			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.ID), nil)
 			req.Header.Set("Last-Event-ID", "6")
 			w := httptest.NewRecorder()
 			commandHandler.ServeHTTP(w, req)
@@ -277,7 +277,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("a\uFFFDb"))
 		})
@@ -293,7 +293,7 @@ var _ = Describe("Command Handlers", func() {
 
 			var body string
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				body = resp.Body.String()
 				return extractSSEData(body)
 			}).Should(Equal("hello"))
@@ -306,7 +306,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("line1\nline2"))
 		})
@@ -316,41 +316,41 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello\n"))
 		})
 	})
 
-	Describe("GET /commands/{cmdId}/stderr", func() {
+	Describe("GET /commands/{id}/stderr", func() {
 		It("routes stderr separately from stdout", func() {
 			code, result := postCommand(`{"args": ["/bin/sh", "-c", "echo -n err >&2; echo -n out"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stderr", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stderr", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("err"))
 
-			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 			Expect(extractSSEData(resp.Body.String())).To(Equal("out"))
 		})
 	})
 
-	Describe("POST /commands/{cmdId}/stdin", func() {
+	Describe("POST /commands/{id}/stdin", func() {
 		It("writes to process stdin", func() {
 			code, result := postCommand(`{"args": ["/bin/sh", "-c", "head -c 5"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			resp := commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin", result.ID),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("hello world"),
 			)
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello"))
 		})
@@ -366,14 +366,14 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
 			}).ShouldNot(BeNil())
 
 			resp := commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin", result.ID),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -381,7 +381,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
-	Describe("POST /commands/{cmdId}/stdin error paths", func() {
+	Describe("POST /commands/{id}/stdin error paths", func() {
 		It("returns 409 when process closes its stdin while still running (EPIPE)", func() {
 			// "exec 0<&-" closes fd 0 (stdin) in the shell process, which closes the
 			// pipe's read end. The process stays alive (sleep 60) so <-entry.done and
@@ -390,16 +390,16 @@ var _ = Describe("Command Handlers", func() {
 			code, result := postCommand(`{"args": ["/bin/sh", "-c", "exec 0<&-; echo -n ready >&2; sleep 60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			DeferCleanup(func() {
-				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.CmdID))
+				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.ID))
 			})
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stderr", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stderr", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("ready"))
 
 			resp := commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin", result.ID),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -410,19 +410,19 @@ var _ = Describe("Command Handlers", func() {
 			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			DeferCleanup(func() {
-				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.CmdID))
+				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.ID))
 			})
 
 			// Directly close the write end of the pipe without setting stdinClosed.
 			// This simulates the race where cmd.Wait() closes the pipe handle
 			// (via closeDescriptors) before PostCommandStdin checks stdinClosed.
 			commandHandlers.cmdMu.RLock()
-			entry := commandHandlers.commands[result.CmdID]
+			entry := commandHandlers.commands[result.ID]
 			commandHandlers.cmdMu.RUnlock()
 			Expect(entry.stdinPipe.Close()).To(Succeed())
 
 			resp := commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin", result.ID),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -430,14 +430,14 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
-	Describe("POST /commands/{cmdId}/stdin/close", func() {
+	Describe("POST /commands/{id}/stdin/close", func() {
 		It("closes stdin and sends EOF", func() {
 			code, result := postCommand(`{"args": ["cat"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			// Write some data to stdin
 			resp := commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin", result.ID),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("hello"),
 			)
@@ -445,21 +445,21 @@ var _ = Describe("Command Handlers", func() {
 
 			// Close stdin — cat should see EOF and exit
 			resp = commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin/close", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin/close", result.ID),
 				"",
 			)
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
 			// cat should exit with 0 after receiving EOF
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
 			}).Should(HaveValue(Equal(0)))
 
 			// Verify the data was echoed
-			resp = commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+			resp = commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 			Expect(extractSSEData(resp.Body.String())).To(Equal("hello"))
 		})
 
@@ -468,14 +468,14 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			resp := commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin/close", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin/close", result.ID),
 				"",
 			)
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
 			// Second close should return 409
 			resp = commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin/close", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin/close", result.ID),
 				"",
 			)
 			Expect(resp.Code).To(Equal(http.StatusConflict))
@@ -486,14 +486,14 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
 			}).ShouldNot(BeNil())
 
 			resp := commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin/close", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin/close", result.ID),
 				"",
 			)
 			Expect(resp.Code).To(Equal(http.StatusConflict))
@@ -504,13 +504,13 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			resp := commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin/close", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin/close", result.ID),
 				"",
 			)
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
 			resp = commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin", result.ID),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
@@ -523,16 +523,16 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
-	Describe("DELETE /commands/{cmdId}", func() {
+	Describe("DELETE /commands/{id}", func() {
 		It("kills a running process", func() {
 			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
-			resp := commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.CmdID))
+			resp := commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.ID))
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
@@ -544,13 +544,13 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
 			}).ShouldNot(BeNil())
 
-			resp := commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.CmdID))
+			resp := commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.ID))
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 		})
 
@@ -566,7 +566,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
@@ -582,7 +582,7 @@ var _ = Describe("Command Handlers", func() {
 
 			var exitCode *int
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				exitCode = status.ExitCode
@@ -593,7 +593,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(*exitCode).To(Equal(-1))
 
 			// Output written before the kill should be preserved
-			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 			Expect(extractSSEData(resp.Body.String())).To(Equal("before-timeout"))
 		})
 	})
@@ -605,14 +605,14 @@ var _ = Describe("Command Handlers", func() {
 
 			// Wait for it to fully exit
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
 			}).ShouldNot(BeNil())
 
 			// Output should still be available
-			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 			Expect(resp.Code).To(Equal(http.StatusOK))
 			Expect(extractSSEData(resp.Body.String())).To(Equal("fast"))
 		})
@@ -624,7 +624,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			// Start streaming stdout via ServeHTTP directly (like client disconnect test)
-			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID), nil)
+			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.ID), nil)
 			w := httptest.NewRecorder()
 
 			done := make(chan struct{})
@@ -644,7 +644,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			// Start streaming immediately while the process is still sleeping
-			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID), nil)
+			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.ID), nil)
 			w := httptest.NewRecorder()
 
 			done := make(chan struct{})
@@ -662,10 +662,10 @@ var _ = Describe("Command Handlers", func() {
 			code, result := postCommand(`{"args": ["/bin/sh", "-c", "echo -n out; echo -n err >&2"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
-			stdoutReq := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID), nil)
+			stdoutReq := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.ID), nil)
 			stdoutW := httptest.NewRecorder()
 
-			stderrReq := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stderr", result.CmdID), nil)
+			stderrReq := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stderr", result.ID), nil)
 			stderrW := httptest.NewRecorder()
 
 			stdoutDone := make(chan struct{})
@@ -717,12 +717,12 @@ var _ = Describe("Command Handlers", func() {
 			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			DeferCleanup(func() {
-				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.CmdID))
+				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.ID))
 			})
 
 			// Get the stdout path from the command entry
 			commandHandlers.cmdMu.RLock()
-			entry := commandHandlers.commands[result.CmdID]
+			entry := commandHandlers.commands[result.ID]
 			commandHandlers.cmdMu.RUnlock()
 
 			// Replace the stdout file with a directory.
@@ -737,7 +737,7 @@ var _ = Describe("Command Handlers", func() {
 			done := make(chan struct{})
 			go func() {
 				defer GinkgoRecover()
-				commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				close(done)
 			}()
 
@@ -756,7 +756,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
@@ -770,13 +770,13 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
 			}).ShouldNot(BeNil())
 
-			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID), nil)
+			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.ID), nil)
 			req.Header.Set("Last-Event-ID", "9999")
 			w := httptest.NewRecorder()
 			commandHandler.ServeHTTP(w, req)
@@ -791,21 +791,21 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			resp := commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin", result.ID),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("hello"),
 			)
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
 			resp = commandAPI.Post(
-				fmt.Sprintf("/v1/commands/%s/stdin", result.CmdID),
+				fmt.Sprintf("/v1/commands/%s/stdin", result.ID),
 				"Content-Type: application/octet-stream",
 				strings.NewReader("world"),
 			)
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("helloworld"))
 		})
@@ -816,13 +816,13 @@ var _ = Describe("Command Handlers", func() {
 			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			DeferCleanup(func() {
-				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.CmdID))
+				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.ID))
 			})
 
 			// humatest.TestAPI.Get() doesn't let us control the request context,
 			// so we call ServeHTTP directly with a cancellable context
 			ctx, cancel := context.WithCancel(context.Background())
-			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID), nil).WithContext(ctx)
+			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.ID), nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 
 			done := make(chan struct{})
@@ -848,7 +848,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello world\nfoo  bar\na*b\n"))
 		})
@@ -861,7 +861,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("via-path"))
 		})
@@ -873,13 +873,13 @@ var _ = Describe("Command Handlers", func() {
 			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 
-			resp := commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.CmdID))
+			resp := commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.ID))
 			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
 			// Exit code -1 means the process was killed by a signal (SIGKILL).
 			// If exec didn't replace the shell, we might get the shell's exit code instead.
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
@@ -893,7 +893,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return strings.TrimSpace(extractSSEData(resp.Body.String()))
 			}).Should(Equal("/tmp"))
 		})
@@ -905,7 +905,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello"))
 		})
@@ -916,7 +916,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("/root"))
 		})
@@ -935,7 +935,7 @@ var _ = Describe("Command Handlers", func() {
 				body := fmt.Sprintf(`{"args": ["echo", "-n", "cmd-%d"]}`, i)
 				code, result := postCommand(body)
 				Expect(code).To(Equal(http.StatusAccepted))
-				cmds[i] = cmdResult{id: result.CmdID, want: fmt.Sprintf("cmd-%d", i)}
+				cmds[i] = cmdResult{id: result.ID, want: fmt.Sprintf("cmd-%d", i)}
 			}
 
 			for _, c := range cmds {
@@ -971,11 +971,11 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() string {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stderr", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stderr", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("hello world"))
 
-			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stderr", result.CmdID), nil)
+			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stderr", result.ID), nil)
 			req.Header.Set("Last-Event-ID", "6")
 			w := httptest.NewRecorder()
 			commandHandler.ServeHTTP(w, req)
@@ -990,13 +990,13 @@ var _ = Describe("Command Handlers", func() {
 			Expect(code).To(Equal(http.StatusAccepted))
 
 			Eventually(func() *int {
-				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.CmdID))
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
 				var status sidecarapi.CommandStatusResponse
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
 			}, "5s").ShouldNot(BeNil())
 
-			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 			Expect(extractSSEData(resp.Body.String())).To(HaveLen(1024 * 1024))
 		})
 	})
@@ -1050,7 +1050,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(json.NewDecoder(resp.Body).Decode(&result)).To(Succeed())
 
 			Eventually(func() string {
-				resp := envFailAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.CmdID))
+				resp := envFailAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("ok"))
 		})
