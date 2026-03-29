@@ -184,8 +184,8 @@ h1 {
   display: grid;
   gap: 20px;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  padding-top: 80px;
   margin-top: 80px;
+  padding-top: 80px;
 }
 
 .card {
