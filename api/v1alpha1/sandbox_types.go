@@ -34,7 +34,6 @@ const (
 // +kubebuilder:validation:XValidation:rule="!(!has(self.snapshotRootfs) && self.strategy == 'SnapshotRootfs')",message="snapshotRootfs must be specified for SnapshotRootfs strategy"
 type ShutdownPolicy struct {
 	// Strategy determines the action taken when the sandbox shuts down.
-	// +unionDiscriminator
 	// +optional
 	// +kubebuilder:default=Delete
 	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs

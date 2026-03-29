@@ -93,7 +93,6 @@ The upstream doc recommends a `+unionDiscriminator` tag for documentation, thoug
 
 ```go
 type ShutdownPolicy struct {
-    // +unionDiscriminator
     Strategy             SandboxShutdownStrategy     `json:"strategy"`
     SnapshotRootfs       *SnapshotRootfsConfig       `json:"snapshotRootfs,omitempty"`
 }
@@ -368,7 +367,6 @@ type ShutdownPolicy struct {
 ```go
 // +kubebuilder:validation:XValidation:rule="self.strategy == 'SnapshotRootfs' ? has(self.snapshotRootfs) : !has(self.snapshotRootfs)",message="snapshotRootfs config must be set when strategy is SnapshotRootfs"
 type ShutdownPolicy struct {
-    // +unionDiscriminator
     Strategy       SandboxShutdownStrategy `json:"strategy,omitempty"`
     SnapshotRootfs *SnapshotRootfsConfig   `json:"snapshotRootfs,omitempty"`
 }
