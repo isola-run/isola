@@ -84,6 +84,24 @@ client = Isola()
 ) <span class="kw">as</span> restored:
     restored.commands.run(<span class="str">"cat"</span>, <span class="str">"/data/results.json"</span>)</code></pre>
         </section>
+
+        <section class="steps">
+          <div class="step">
+            <span class="step-num" style="color: var(--purple)">01</span>
+            <h3 class="step-title">Create</h3>
+            <p class="step-desc">Spin up a gVisor-isolated sandbox from any container image</p>
+          </div>
+          <div class="step">
+            <span class="step-num" style="color: var(--indigo)">02</span>
+            <h3 class="step-title">Execute</h3>
+            <p class="step-desc">Run commands, read and write files via the Python SDK</p>
+          </div>
+          <div class="step">
+            <span class="step-num" style="color: var(--cyan)">03</span>
+            <h3 class="step-title">Snapshot &amp; Restore</h3>
+            <p class="step-desc">Capture rootfs changes, restore instantly on any node</p>
+          </div>
+        </section>
       </main>
     </div>
   </body>
