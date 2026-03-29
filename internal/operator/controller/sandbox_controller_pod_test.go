@@ -149,6 +149,8 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/component", "sandbox"))
 			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/part-of", "isola"))
 			Expect(pod.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "isola-operator"))
+			// Trust boundary label for NetworkPolicy selection
+			Expect(pod.Labels).To(HaveKeyWithValue("isola.run/sandbox", "true"))
 		})
 
 		It("should add gvisor overlay2 annotation when RuntimeClassName is set", func() {

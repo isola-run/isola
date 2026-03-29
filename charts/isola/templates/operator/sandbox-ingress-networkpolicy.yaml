@@ -10,8 +10,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: isola-sandbox
-      app.kubernetes.io/managed-by: isola-operator
+      isola.run/sandbox: "true"
   policyTypes:
     - Ingress
   ingress:

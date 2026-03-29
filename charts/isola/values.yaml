@@ -37,6 +37,9 @@ operator:
   metrics:
     # The container port for the Prometheus metrics endpoint.
     port: 8080
+    service:
+      type: ClusterIP
+      nodePort: null
 
   resources:
     requests:
