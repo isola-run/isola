@@ -27,7 +27,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 )
 
 var _ = Describe("Sandbox Controller", func() {

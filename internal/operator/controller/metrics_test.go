@@ -25,7 +25,7 @@ import (
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	snapshotpkg "github.com/isola-ai/isola/internal/snapshot"
+	snapshotpkg "github.com/isola-run/isola/internal/snapshot"
 )
 
 var _ = Describe("Metrics", func() {

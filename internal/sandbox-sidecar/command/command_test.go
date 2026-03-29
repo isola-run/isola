@@ -32,9 +32,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/isola-ai/isola/internal/constants"
-	sandboxsidecar "github.com/isola-ai/isola/internal/sandbox-sidecar"
-	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
+	"github.com/isola-run/isola/internal/constants"
+	sandboxsidecar "github.com/isola-run/isola/internal/sandbox-sidecar"
+	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
 
 // extractSSEData parses SSE events from a response body and returns the concatenated data.

@@ -28,10 +28,10 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	apigateway "github.com/isola-ai/isola/internal/api-gateway"
-	"github.com/isola-ai/isola/internal/constants"
-	"github.com/isola-ai/isola/internal/httputil"
-	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
+	apigateway "github.com/isola-run/isola/internal/api-gateway"
+	"github.com/isola-run/isola/internal/constants"
+	"github.com/isola-run/isola/internal/httputil"
+	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
 
 type FilesystemWriteInput struct {

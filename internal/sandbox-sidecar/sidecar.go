@@ -21,8 +21,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/isola-ai/isola/internal/httputil"
-	"github.com/isola-ai/isola/internal/sandbox-sidecar/proc"
+	"github.com/isola-run/isola/internal/httputil"
+	"github.com/isola-run/isola/internal/sandbox-sidecar/proc"
 )
 
 // BodyStream provides streaming access to request body via Huma's Resolver pattern.

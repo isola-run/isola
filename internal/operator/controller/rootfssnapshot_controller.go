@@ -36,10 +36,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
-	"github.com/isola-ai/isola/internal/operator/controller/podutil"
-	"github.com/isola-ai/isola/internal/operator/controller/snapshot"
-	snapshotpkg "github.com/isola-ai/isola/internal/snapshot"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	"github.com/isola-run/isola/internal/operator/controller/podutil"
+	"github.com/isola-run/isola/internal/operator/controller/snapshot"
+	snapshotpkg "github.com/isola-run/isola/internal/snapshot"
 )
 
 const (

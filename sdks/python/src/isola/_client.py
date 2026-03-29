@@ -278,9 +278,11 @@ class Isola:
                 "base_url must be provided either as argument or via the ISOLA_BASE_URL environment variable"
             )
         self._api = _SyncAPI(base_url)
+        from ._rootfs_snapshot import RootfsSnapshots
         from ._sandbox import Sandboxes
 
         self.sandboxes = Sandboxes(self._api)
+        self.rootfs_snapshots = RootfsSnapshots(self._api)
 
     def close(self) -> None:
         self._api.close()
@@ -300,9 +302,11 @@ class AsyncIsola:
                 "base_url must be provided either as argument or via the ISOLA_BASE_URL environment variable"
             )
         self._api = _AsyncAPI(base_url)
+        from ._rootfs_snapshot import AsyncRootfsSnapshots
         from ._sandbox import AsyncSandboxes
 
         self.sandboxes = AsyncSandboxes(self._api)
+        self.rootfs_snapshots = AsyncRootfsSnapshots(self._api)
 
     async def close(self) -> None:
         await self._api.close()

@@ -28,14 +28,14 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 
-	"github.com/isola-ai/isola/internal/api-gateway/command"
-	"github.com/isola-ai/isola/internal/api-gateway/filesystem"
-	"github.com/isola-ai/isola/internal/api-gateway/health"
-	"github.com/isola-ai/isola/internal/api-gateway/rootfssnapshot"
-	"github.com/isola-ai/isola/internal/api-gateway/sandbox"
-	sidecarCmd "github.com/isola-ai/isola/internal/sandbox-sidecar/command"
-	sidecarFs "github.com/isola-ai/isola/internal/sandbox-sidecar/filesystem"
-	sidecarHealth "github.com/isola-ai/isola/internal/sandbox-sidecar/health"
+	"github.com/isola-run/isola/internal/api-gateway/command"
+	"github.com/isola-run/isola/internal/api-gateway/filesystem"
+	"github.com/isola-run/isola/internal/api-gateway/health"
+	"github.com/isola-run/isola/internal/api-gateway/rootfssnapshot"
+	"github.com/isola-run/isola/internal/api-gateway/sandbox"
+	sidecarCmd "github.com/isola-run/isola/internal/sandbox-sidecar/command"
+	sidecarFs "github.com/isola-run/isola/internal/sandbox-sidecar/filesystem"
+	sidecarHealth "github.com/isola-run/isola/internal/sandbox-sidecar/health"
 )
 
 func main() {

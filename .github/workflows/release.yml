@@ -4,11 +4,11 @@
 #   - Tags matching v* (e.g., v0.1.0, v1.0.0)
 #
 # Published images:
-#   - ghcr.io/isola-ai/isola-operator:<tag>
-#   - ghcr.io/isola-ai/sandbox-sidecar:<tag>
-#   - ghcr.io/isola-ai/isola-uploader:<tag>
-#   - ghcr.io/isola-ai/api-gateway:<tag>
-#   - ghcr.io/isola-ai/snapshot-mounter:<tag>
+#   - ghcr.io/isola-run/isola-operator:<tag>
+#   - ghcr.io/isola-run/sandbox-sidecar:<tag>
+#   - ghcr.io/isola-run/isola-uploader:<tag>
+#   - ghcr.io/isola-run/api-gateway:<tag>
+#   - ghcr.io/isola-run/snapshot-mounter:<tag>
 
 name: Release
 
@@ -19,7 +19,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/isola-ai
+  IMAGE_PREFIX: ghcr.io/isola-run
 
 jobs:
   release-images:

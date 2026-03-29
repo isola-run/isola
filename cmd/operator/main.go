@@ -33,9 +33,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
-	"github.com/isola-ai/isola/internal/logging"
-	"github.com/isola-ai/isola/internal/operator/controller"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	"github.com/isola-run/isola/internal/logging"
+	"github.com/isola-run/isola/internal/operator/controller"
 	// +kubebuilder:scaffold:imports
 )
 

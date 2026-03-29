@@ -356,9 +356,7 @@ async def test_async_exhausts_retries_raises(monkeypatch: pytest.MonkeyPatch) ->
 
 @respx.mock
 def test_sync_context_manager_closes_client() -> None:
-    respx.get("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(200, json={"sandboxes": []})
-    )
+    respx.get("http://localhost:8080/v1/sandboxes").mock(return_value=httpx.Response(200, json={"sandboxes": []}))
 
     with Isola(base_url="http://localhost:8080") as client:
         client.sandboxes.list()
@@ -369,9 +367,7 @@ def test_sync_context_manager_closes_client() -> None:
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_context_manager_closes_client() -> None:
-    respx.get("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(200, json={"sandboxes": []})
-    )
+    respx.get("http://localhost:8080/v1/sandboxes").mock(return_value=httpx.Response(200, json={"sandboxes": []}))
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         await client.sandboxes.list()
@@ -418,5 +414,3 @@ async def test_async_close_is_idempotent() -> None:
     await client.close()
     await client.close()
     assert client._api._client.is_closed
-
-
