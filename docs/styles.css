@@ -254,7 +254,6 @@ h1 {
 
 .steps {
   display: grid;
-  gap: 0;
   grid-template-columns: repeat(3, 1fr);
   margin-top: 80px;
 }
