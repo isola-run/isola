@@ -102,8 +102,8 @@ const (
 
 	// Network labels for pod selection by Helm-installed NetworkPolicies
 	LabelAllowIPv4Internet = "isola.run/allow-ipv4-internet-egress"
-	LabelAllowClusterDNS   = "isola.run/allow-cluster-dns"
 	LabelAllowIPv6Internet = "isola.run/allow-ipv6-internet-egress"
+	LabelAllowClusterDNS   = "isola.run/allow-cluster-dns"
 )
 
 func (r *SandboxReconciler) clock() Clock {

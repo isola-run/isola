@@ -209,82 +209,49 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(np).NotTo(BeNil())
 		})
 
-		It("should add network labels to pod for allowInternetEgress", func() {
-			sandboxName := "sandbox-internet-labels"
+		DescribeTable("internet egress labels",
+			func(sandboxName string, network *sandboxv1alpha1.NetworkSpec, expectLabels map[string]string, dontExpectLabels []string) {
+				createSandboxWithNetwork(ctx, sandboxName, network)
+				defer deleteSandbox(ctx, sandboxName)
+				defer deletePod(ctx, sandboxName+"-pod")
 
-			network := &sandboxv1alpha1.NetworkSpec{
-				AllowInternetEgress: ptr.To(true),
-			}
-			createSandboxWithNetwork(ctx, sandboxName, network)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+				_, err := doReconcile(ctx, reconciler, sandboxName)
+				Expect(err).NotTo(HaveOccurred())
 
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, sandboxName+"-pod")
-			Expect(pod).NotTo(BeNil())
-			Expect(pod.Labels).To(HaveKeyWithValue(LabelAllowIPv4Internet, "true"))
-			Expect(pod.Labels).NotTo(HaveKey(LabelAllowIPv6Internet))
-		})
-
-		It("should add IPv6 internet label when both allowIPv6Egress and allowInternetEgress are true", func() {
-			sandboxName := "sandbox-ipv6-internet-labels"
-
-			network := &sandboxv1alpha1.NetworkSpec{
-				AllowInternetEgress: ptr.To(true),
-				AllowIPv6Egress:     ptr.To(true),
-			}
-			createSandboxWithNetwork(ctx, sandboxName, network)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, sandboxName+"-pod")
-			Expect(pod).NotTo(BeNil())
-			Expect(pod.Labels).To(HaveKeyWithValue(LabelAllowIPv4Internet, "true"))
-			Expect(pod.Labels).To(HaveKeyWithValue(LabelAllowIPv6Internet, "true"))
-		})
-
-		It("should not add IPv6 internet label when allowIPv6Egress is true but allowInternetEgress is false", func() {
-			sandboxName := "sandbox-ipv6-no-internet"
-
-			network := &sandboxv1alpha1.NetworkSpec{
-				AllowIPv6Egress: ptr.To(true),
-			}
-			createSandboxWithNetwork(ctx, sandboxName, network)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, sandboxName+"-pod")
-			Expect(pod).NotTo(BeNil())
-			Expect(pod.Labels).NotTo(HaveKey(LabelAllowIPv6Internet))
-		})
-
-		It("should not add IPv6 internet label when allowInternetEgress is true but allowIPv6Egress is false", func() {
-			sandboxName := "sandbox-internet-no-ipv6"
-
-			network := &sandboxv1alpha1.NetworkSpec{
-				AllowInternetEgress: ptr.To(true),
-				AllowIPv6Egress:     ptr.To(false),
-			}
-			createSandboxWithNetwork(ctx, sandboxName, network)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, sandboxName+"-pod")
-			Expect(pod).NotTo(BeNil())
-			Expect(pod.Labels).To(HaveKeyWithValue(LabelAllowIPv4Internet, "true"))
-			Expect(pod.Labels).NotTo(HaveKey(LabelAllowIPv6Internet))
-		})
+				pod := getPod(ctx, sandboxName+"-pod")
+				Expect(pod).NotTo(BeNil())
+				for k, v := range expectLabels {
+					Expect(pod.Labels).To(HaveKeyWithValue(k, v))
+				}
+				for _, k := range dontExpectLabels {
+					Expect(pod.Labels).NotTo(HaveKey(k))
+				}
+			},
+			Entry("allowInternetEgress only",
+				"sb-inet-only",
+				&sandboxv1alpha1.NetworkSpec{AllowInternetEgress: ptr.To(true)},
+				map[string]string{LabelAllowIPv4Internet: "true"},
+				[]string{LabelAllowIPv6Internet},
+			),
+			Entry("allowInternetEgress + allowIPv6Egress",
+				"sb-inet-ipv6",
+				&sandboxv1alpha1.NetworkSpec{AllowInternetEgress: ptr.To(true), AllowIPv6Egress: ptr.To(true)},
+				map[string]string{LabelAllowIPv4Internet: "true", LabelAllowIPv6Internet: "true"},
+				nil,
+			),
+			Entry("allowIPv6Egress without internet",
+				"sb-ipv6-no-inet",
+				&sandboxv1alpha1.NetworkSpec{AllowIPv6Egress: ptr.To(true)},
+				nil,
+				[]string{LabelAllowIPv6Internet},
+			),
+			Entry("allowInternetEgress + allowIPv6Egress=false",
+				"sb-inet-no-ipv6",
+				&sandboxv1alpha1.NetworkSpec{AllowInternetEgress: ptr.To(true), AllowIPv6Egress: ptr.To(false)},
+				map[string]string{LabelAllowIPv4Internet: "true"},
+				[]string{LabelAllowIPv6Internet},
+			),
+		)
 
 		It("should add network labels to pod for allowClusterDNS", func() {
 			sandboxName := "sandbox-dns-labels"
