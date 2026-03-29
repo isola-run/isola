@@ -70,10 +70,9 @@ img {
 
 .page {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto;
   margin: 0 auto;
   max-width: 1200px;
-  min-height: 100vh;
   padding: 28px 24px 44px;
   position: relative;
   z-index: 1;
@@ -132,7 +131,6 @@ img {
   display: grid;
   gap: 56px;
   grid-template-columns: minmax(0, 0.82fr) minmax(360px, 1fr);
-  min-height: calc(100vh - 108px);
   padding-top: 30px;
 }
 
