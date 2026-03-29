@@ -148,8 +148,8 @@ spec:
                   rule: self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName
                     != j.containerName))
               shutdownPolicy:
-                description: ShutdownPolicy controls how the sandbox is handled when
-                  it ends.
+                description: ShutdownPolicy defines what to do when the sandbox ends
+                  (defaults to Delete if unspecified)
                 properties:
                   snapshotRootfs:
                     description: |-
@@ -167,9 +167,9 @@ spec:
                         type: string
                       timeoutSeconds:
                         default: 300
-                        description: TimeoutSeconds specifies the duration in seconds
-                          relative to the startTime that the snapshot job may be active
-                          before the system tries to terminate it.
+                        description: |-
+                          TimeoutSeconds specifies the duration in seconds relative to the startTime
+                          that the snapshot job may be active before the system tries to terminate it.
                         format: int64
                         minimum: 1
                         type: integer
