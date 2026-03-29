@@ -60,6 +60,30 @@
             <p class="card-desc">Apache 2.0 licensed, built on Kubernetes primitives, no vendor lock-in</p>
           </div>
         </section>
+
+        <section class="code-example">
+          <span class="code-label">Python</span>
+          <pre class="code-block"><code><span class="kw">from</span> isola <span class="kw">import</span> Isola
+
+client = Isola()
+
+<span class="kw">with</span> client.sandboxes.create(image=<span class="str">"alpine:3.21"</span>) <span class="kw">as</span> sandbox:
+    result = sandbox.commands.run(<span class="str">"echo"</span>, <span class="str">"hello world"</span>)
+    <span class="kw">print</span>(result.stdout)  <span class="comment"># "hello world\n"</span>
+
+    <span class="comment"># Snapshot the filesystem changes</span>
+    client.rootfs_snapshots.create(
+        sandbox_id=sandbox.id,
+        snapshot_name=<span class="str">"my-snapshot"</span>,
+    )
+
+<span class="comment"># Restore from snapshot on any node</span>
+<span class="kw">with</span> client.sandboxes.create(
+    image=<span class="str">"alpine:3.21"</span>,
+    rootfs_snapshot_source=<span class="str">"my-snapshot"</span>,
+) <span class="kw">as</span> restored:
+    restored.commands.run(<span class="str">"cat"</span>, <span class="str">"/data/results.json"</span>)</code></pre>
+        </section>
       </main>
     </div>
   </body>

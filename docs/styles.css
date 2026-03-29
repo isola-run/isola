@@ -212,6 +212,46 @@ h1 {
   margin: 10px 0 0;
 }
 
+.code-example {
+  margin-top: 80px;
+}
+
+.code-label {
+  color: var(--muted-soft);
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+}
+
+.code-block {
+  backdrop-filter: blur(16px);
+  background: rgba(14, 20, 37, 0.74);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 0.88rem;
+  line-height: 1.7;
+  margin: 0;
+  overflow-x: auto;
+  padding: 24px 28px;
+}
+
+.code-block .kw {
+  color: #a87ee6;
+}
+
+.code-block .str {
+  color: var(--cyan);
+}
+
+.code-block .comment {
+  color: var(--muted-soft);
+}
+
 @media (max-width: 980px) {
   .hero {
     gap: 36px;
@@ -265,5 +305,15 @@ h1 {
 
   .hero-logo {
     border-radius: 26px;
+  }
+
+  .code-example {
+    margin-top: 48px;
+  }
+
+  .code-block {
+    border-radius: 12px;
+    font-size: 0.82rem;
+    padding: 18px 20px;
   }
 }
