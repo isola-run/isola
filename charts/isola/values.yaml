@@ -26,7 +26,7 @@ sandboxNamespace:
 
 operator:
   image:
-    registry: ghcr.io/isola-ai
+    registry: ghcr.io/isola-run
     repository: isola-operator
     tag: ""  # Defaults to Chart.appVersion
     digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
@@ -62,7 +62,7 @@ operator:
   # from api-gateway to the sandbox (e.g. exec commands, copy files)
   sandboxSidecar:
     image:
-      registry: ghcr.io/isola-ai
+      registry: ghcr.io/isola-run
       repository: sandbox-sidecar
       tag: ""  # Defaults to Chart.appVersion
       digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
@@ -144,7 +144,7 @@ operator:
         # Uploader job configuration (runs in sandbox namespace, needs write access)
         uploader:
           image:
-            registry: ghcr.io/isola-ai
+            registry: ghcr.io/isola-run
             repository: isola-uploader
             tag: ""  # Defaults to Chart.appVersion
             digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
@@ -214,7 +214,7 @@ operator:
           # propagation). Purpose-built image with nfs-utils for mount.nfs.
           mounter:
             image:
-              registry: ghcr.io/isola-ai
+              registry: ghcr.io/isola-run
               repository: snapshot-mounter
               tag: ""  # Defaults to Chart.appVersion
               digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
@@ -248,7 +248,7 @@ apiGateway:
   enabled: true
 
   image:
-    registry: ghcr.io/isola-ai
+    registry: ghcr.io/isola-run
     repository: api-gateway
     tag: ""  # Defaults to Chart.appVersion
     digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)

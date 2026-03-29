@@ -44,7 +44,7 @@ After modifying handler input/output types or route registrations, run `make ope
 
 **REST/CRD validation alignment:** Huma struct tags on REST types (e.g., `maxItems:"16"`, `pattern:"..."`) must match the kubebuilder markers on the corresponding CRD type fields. Adding a validation to one layer without the other causes confusing errors.
 
-**Identifier vocabulary:** REST API uses `id` for system-generated opaque identifiers and `name` for user-chosen ones. Cross-resource references use `{resource}Id` (e.g., `sandboxId`). The conversion layer maps REST vocabulary to CRD vocabulary (e.g., `sandboxId` -> CRD `sandboxName`).
+**Identifier vocabulary:** REST API uses `{resource}Id` for system-generated opaque identifiers (`sandboxId`, `snapshotId`, `cmdId`) and `name` for user-chosen ones (`snapshotName`). Cross-resource references use the same `{resource}Id` pattern (e.g., `sandboxId` in rootfs snapshot requests). The conversion layer maps REST vocabulary to CRD vocabulary (e.g., `sandboxId` -> CRD `sandboxName`).
 
 **Env vars are write-only:** Request types accept env vars; response types intentionally omit them to avoid leaking secrets. Do not add `Env` to response types.
 
@@ -60,7 +60,7 @@ After modifying handler input/output types or route registrations, run `make ope
 
 **Two-client pattern in operator tests:** `suite_test.go` uses `k8sClient` (direct, no cache delay) for test writes/assertions and `k8sCache` (cached, for field index queries). Use the direct client for new test assertions.
 
-**Python SDK:** `sdks/python/`, managed with uv. `NetworkSpec` has manual `Field(alias=...)` overrides for acronyms (`allowClusterDNS`, `allowedEgressCIDRs`) that `to_camel` cannot handle -- new fields with acronyms need the same treatment.
+**Python SDK:** `sdks/python/`, managed with uv. `NetworkSpec` has manual `Field(alias=...)` overrides for acronyms (`allowClusterDNS`, `allowedEgressCIDRs`) that `to_camel` cannot handle -- new fields with acronyms need the same treatment. For SDK polling on eventually consistent resources, finite deadlines must still be enforced on `NotFoundError` branches; otherwise cache lag can turn bounded waits into unbounded ones.
 
 ## Tooling Versions
 

@@ -32,9 +32,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
-	apigateway "github.com/isola-ai/isola/internal/api-gateway"
-	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	apigateway "github.com/isola-run/isola/internal/api-gateway"
+	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
 
 func createSandboxCR() string {
@@ -130,7 +130,7 @@ func newFilesystemTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humat
 }
 
 var _ = Describe("Filesystem Proxy", func() {
-	Describe("GET /sandboxes/{id}/filesystem", func() {
+	Describe("GET /sandboxes/{sandboxId}/filesystem", func() {
 		It("proxies file read and returns body", func() {
 			fileContent := []byte{0xDE, 0xAD, 0xBE, 0xEF}
 			var capturedPath, capturedContainer string
@@ -261,7 +261,7 @@ var _ = Describe("Filesystem Proxy", func() {
 		})
 	})
 
-	Describe("POST /sandboxes/{id}/filesystem", func() {
+	Describe("POST /sandboxes/{sandboxId}/filesystem", func() {
 		It("proxies file write to sidecar and returns response", func() {
 			var capturedBody []byte
 			var capturedPath, capturedContainer, capturedContentType string

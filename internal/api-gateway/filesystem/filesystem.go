@@ -28,14 +28,14 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	apigateway "github.com/isola-ai/isola/internal/api-gateway"
-	"github.com/isola-ai/isola/internal/constants"
-	"github.com/isola-ai/isola/internal/httputil"
-	sidecarapi "github.com/isola-ai/isola/internal/sidecar-api"
+	apigateway "github.com/isola-run/isola/internal/api-gateway"
+	"github.com/isola-run/isola/internal/constants"
+	"github.com/isola-run/isola/internal/httputil"
+	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
 
 type FilesystemWriteInput struct {
-	ID        string `path:"id" doc:"Sandbox identifier"`
+	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
 	Path      string `query:"path" required:"true" minLength:"1" doc:"Destination path (absolute or relative to container cwd)"`
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 	apigateway.BodyStream
@@ -51,7 +51,7 @@ type FilesystemWriteOutput struct {
 }
 
 type FilesystemReadInput struct {
-	ID        string `path:"id" doc:"Sandbox identifier"`
+	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
 	Path      string `query:"path" required:"true" minLength:"1" doc:"Source path (absolute or relative to container cwd)"`
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 }
@@ -75,7 +75,7 @@ func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client, 
 }
 
 func (h *Handlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
-	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.SandboxID, h.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -98,19 +98,19 @@ func (h *Handlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInp
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
+		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return nil, apigateway.HandleSidecarError(resp, input.ID, h.logger)
+		return nil, apigateway.HandleSidecarError(resp, input.SandboxID, h.logger)
 	}
 
 	_ = sidecarapi.FilesystemWriteResponse(FilesystemWriteResponse{}) // assert field compatibility
 	var sidecarResp sidecarapi.FilesystemWriteResponse
 	if err := json.NewDecoder(resp.Body).Decode(&sidecarResp); err != nil {
-		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.ID, "status", resp.StatusCode)
+		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.SandboxID, "status", resp.StatusCode)
 		return nil, huma.Error502BadGateway("invalid sidecar response")
 	}
 
@@ -123,7 +123,7 @@ func (h *Handlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInp
 }
 
 func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {
-	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.ID, h.logger)
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, input.SandboxID, h.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -143,13 +143,13 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 
 	resp, err := h.httpClient.Do(req) //nolint:bodyclose // closed in both error and streaming paths below
 	if err != nil {
-		h.logger.Error("sidecar request failed", "error", err, "id", input.ID)
+		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
 	}
 
 	if resp.StatusCode >= 400 {
 		defer func() { _ = resp.Body.Close() }()
-		return nil, apigateway.HandleSidecarError(resp, input.ID, h.logger)
+		return nil, apigateway.HandleSidecarError(resp, input.SandboxID, h.logger)
 	}
 
 	return &huma.StreamResponse{
@@ -177,9 +177,9 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 
 			if _, err := io.Copy(dw, resp.Body); err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) {
-					h.logger.Warn("client disconnected during file stream", "error", err, "id", input.ID)
+					h.logger.Warn("client disconnected during file stream", "error", err, "id", input.SandboxID)
 				} else {
-					h.logger.Error("sidecar error streaming file", "error", err, "id", input.ID)
+					h.logger.Error("sidecar error streaming file", "error", err, "id", input.SandboxID)
 				}
 			}
 		},
@@ -190,7 +190,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "writeSandboxFilesystem",
 		Method:      http.MethodPost,
-		Path:        "/sandboxes/{id}/filesystem",
+		Path:        "/sandboxes/{sandboxId}/filesystem",
 		Summary:     "Write a file to sandbox filesystem",
 		Description: "Streams a file upload to the specified path in the sandbox container",
 		Tags:        []string{"sandboxes", "filesystem"},
@@ -211,7 +211,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "readSandboxFilesystem",
 		Method:      http.MethodGet,
-		Path:        "/sandboxes/{id}/filesystem",
+		Path:        "/sandboxes/{sandboxId}/filesystem",
 		Summary:     "Read a file from sandbox filesystem",
 		Description: "Streams a file download from the specified path in the sandbox container",
 		Tags:        []string{"sandboxes", "filesystem"},

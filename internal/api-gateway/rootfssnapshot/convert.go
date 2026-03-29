@@ -20,7 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 )
 
 func requestToRootfsSnapshotCR(req CreateRootfsSnapshotRequest, name, namespace string) *sandboxv1alpha1.RootfsSnapshot {
@@ -41,7 +41,7 @@ func requestToRootfsSnapshotCR(req CreateRootfsSnapshotRequest, name, namespace 
 
 func rootfsSnapshotToResponse(rs *sandboxv1alpha1.RootfsSnapshot) RootfsSnapshotResponse {
 	return RootfsSnapshotResponse{
-		ID:                      rs.Name,
+		SnapshotID:              rs.Name,
 		SandboxID:               rs.Spec.SandboxName,
 		SnapshotName:            rs.Spec.SnapshotName,
 		ContainerName:           rs.Spec.ContainerName,

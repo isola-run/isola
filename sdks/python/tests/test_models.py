@@ -66,34 +66,42 @@ class TestValidateByNameAndAlias:
         assert spec.image == "ubuntu:22.04"
 
     def test_construct_with_camel_case(self) -> None:
-        payload = CreateSandboxPayload.model_validate({
-            "podTemplate": {"container": {"image": "node:20"}},
-            "timeoutSeconds": 300,
-        })
+        payload = CreateSandboxPayload.model_validate(
+            {
+                "podTemplate": {"container": {"image": "node:20"}},
+                "timeoutSeconds": 300,
+            }
+        )
         assert payload.pod_template.container.image == "node:20"
         assert payload.timeout_seconds == 300
 
     def test_construct_with_snake_case_dict(self) -> None:
-        payload = CreateSandboxPayload.model_validate({
-            "pod_template": {"container": {"image": "node:20"}},
-            "timeout_seconds": 300,
-        })
+        payload = CreateSandboxPayload.model_validate(
+            {
+                "pod_template": {"container": {"image": "node:20"}},
+                "timeout_seconds": 300,
+            }
+        )
         assert payload.pod_template.container.image == "node:20"
         assert payload.timeout_seconds == 300
 
     def test_network_spec_by_alias(self) -> None:
-        net = NetworkSpec.model_validate({
-            "allowClusterDNS": True,
-            "allowedEgressCIDRs": ["10.0.0.0/8"],
-        })
+        net = NetworkSpec.model_validate(
+            {
+                "allowClusterDNS": True,
+                "allowedEgressCIDRs": ["10.0.0.0/8"],
+            }
+        )
         assert net.allow_cluster_dns is True
         assert net.allowed_egress_cidrs == ["10.0.0.0/8"]
 
     def test_network_spec_by_name(self) -> None:
-        net = NetworkSpec.model_validate({
-            "allow_cluster_dns": False,
-            "allowed_egress_cidrs": ["192.168.0.0/16"],
-        })
+        net = NetworkSpec.model_validate(
+            {
+                "allow_cluster_dns": False,
+                "allowed_egress_cidrs": ["192.168.0.0/16"],
+            }
+        )
         assert net.allow_cluster_dns is False
         assert net.allowed_egress_cidrs == ["192.168.0.0/16"]
 
@@ -104,7 +112,7 @@ class TestValidateByNameAndAlias:
 class TestRoundTrip:
     def test_sandbox_data_round_trip(self) -> None:
         camel_json = {
-            "id": "sb-42",
+            "sandboxId": "sb-42",
             "status": "running",
             "creationTimestamp": "2026-03-15T12:30:00Z",
             "podTemplate": {
@@ -132,7 +140,7 @@ class TestRoundTrip:
         model = SandboxData.model_validate(camel_json)
 
         # Verify parsing
-        assert model.id == "sb-42"
+        assert model.sandbox_id == "sb-42"
         assert model.status is SandboxStatus.RUNNING
         assert model.timeout_seconds == 3600
         assert model.network is not None
@@ -147,7 +155,7 @@ class TestRoundTrip:
         dumped = model.model_dump(by_alias=True, mode="json")
         reparsed = SandboxData.model_validate(dumped)
 
-        assert reparsed.id == model.id
+        assert reparsed.sandbox_id == model.sandbox_id
         assert reparsed.status == model.status
         assert reparsed.timeout_seconds == model.timeout_seconds
         assert reparsed.network is not None
@@ -195,12 +203,12 @@ class TestRoundTrip:
         data = {
             "sandboxes": [
                 {
-                    "id": "sb-1",
+                    "sandboxId": "sb-1",
                     "status": "running",
                     "creationTimestamp": "2026-01-01T00:00:00Z",
                 },
                 {
-                    "id": "sb-2",
+                    "sandboxId": "sb-2",
                     "status": "stopped",
                     "creationTimestamp": "2026-01-02T00:00:00Z",
                 },
@@ -214,4 +222,4 @@ class TestRoundTrip:
         reparsed = ListSandboxesResponse.model_validate(dumped)
         assert reparsed.sandboxes is not None
         assert len(reparsed.sandboxes) == 2
-        assert reparsed.sandboxes[0].id == "sb-1"
+        assert reparsed.sandboxes[0].sandbox_id == "sb-1"

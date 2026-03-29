@@ -26,7 +26,7 @@ from pydantic.alias_generators import to_camel
 class CommandResult:
     """Result of a completed command execution."""
 
-    command_id: str
+    cmd_id: str
     stdout: str
     stderr: str
     exit_code: int
@@ -88,6 +88,32 @@ class RootfsSnapshotSource(IsolaModel):
     container_name: str | None = None
 
 
+class RootfsSnapshotStatus(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "inProgress"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class CreateRootfsSnapshotPayload(IsolaModel):
+    sandbox_id: str
+    snapshot_name: str
+    container_name: str | None = None
+    timeout_seconds: int | None = None
+    ttl_seconds_after_finished: int | None = None
+
+
+class RootfsSnapshotData(IsolaModel):
+    snapshot_id: str
+    sandbox_id: str
+    snapshot_name: str
+    container_name: str | None = None
+    timeout_seconds: int | None = None
+    ttl_seconds_after_finished: int | None = None
+    status: RootfsSnapshotStatus
+    creation_timestamp: datetime
+
+
 class PodTemplate(IsolaModel):
     container: ContainerSpec
 
@@ -105,7 +131,7 @@ class CreateSandboxPayload(IsolaModel):
 
 
 class SandboxSummary(IsolaModel):
-    id: str
+    sandbox_id: str
     status: SandboxStatus
     creation_timestamp: datetime
 
@@ -115,7 +141,7 @@ class ListSandboxesResponse(IsolaModel):
 
 
 class SandboxData(IsolaModel):
-    id: str
+    sandbox_id: str
     pod_template: PodTemplateInfo
     status: SandboxStatus
     creation_timestamp: datetime
@@ -133,7 +159,7 @@ class CreateCommandPayload(IsolaModel):
 
 
 class CreateCommandResponse(IsolaModel):
-    command_id: str
+    cmd_id: str
 
 
 class CommandStatusResponse(IsolaModel):

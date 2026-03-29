@@ -21,7 +21,7 @@ from urllib.parse import quote
 
 from ._client import _AsyncAPI, _SyncAPI
 from ._commands import AsyncCommands, Commands
-from ._exceptions import IsolaError, NotFoundError
+from ._exceptions import IsolaError, IsolaTimeoutError, NotFoundError
 from ._filesystem import AsyncFilesystem, Filesystem
 from ._models import (
     ContainerSpec,
@@ -38,7 +38,6 @@ from ._models import (
 )
 
 _POLL_INTERVAL = 1.0
-_MAX_CONSECUTIVE_POLL_ERRORS = 15
 
 _TERMINAL_STATUSES = frozenset({SandboxStatus.FAILED, SandboxStatus.STOPPED})
 
@@ -61,6 +60,59 @@ def _build_resources(cpu: str | None, memory: str | None, ephemeral_storage: str
     return ResourcesSpec(limits=resource_list, requests=resource_list)
 
 
+def _check_terminal(sandbox_id: str, status: SandboxStatus) -> None:
+    if status in _TERMINAL_STATUSES:
+        raise IsolaError(f"sandbox {sandbox_id} reached terminal state: {status.value}")
+
+
+def _wait_until_running(
+    sandbox_id: str,
+    api: _SyncAPI,
+    max_wait_seconds: int | None,
+) -> SandboxData:
+    deadline = time.monotonic() + max_wait_seconds if max_wait_seconds is not None else None
+    while True:
+        try:
+            data = api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
+        except NotFoundError as err:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise IsolaTimeoutError(
+                    f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s"
+                ) from err
+            time.sleep(_POLL_INTERVAL)
+            continue
+        if data.status == SandboxStatus.RUNNING:
+            return data
+        _check_terminal(sandbox_id, data.status)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise IsolaTimeoutError(f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s")
+        time.sleep(_POLL_INTERVAL)
+
+
+async def _async_wait_until_running(
+    sandbox_id: str,
+    api: _AsyncAPI,
+    max_wait_seconds: int | None,
+) -> SandboxData:
+    deadline = time.monotonic() + max_wait_seconds if max_wait_seconds is not None else None
+    while True:
+        try:
+            data = await api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
+        except NotFoundError as err:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise IsolaTimeoutError(
+                    f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s"
+                ) from err
+            await asyncio.sleep(_POLL_INTERVAL)
+            continue
+        if data.status == SandboxStatus.RUNNING:
+            return data
+        _check_terminal(sandbox_id, data.status)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise IsolaTimeoutError(f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s")
+        await asyncio.sleep(_POLL_INTERVAL)
+
+
 class Sandboxes:
     def __init__(self, api: _SyncAPI) -> None:
         self._api = api
@@ -78,7 +130,7 @@ class Sandboxes:
         startup_timeout_seconds: int | None = 60,
         network: NetworkSpec | None = None,
         rootfs_snapshot_source: str | None = None,
-        wait: bool = True,
+        max_wait_seconds: int | None = 60,
     ) -> Sandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -102,10 +154,10 @@ class Sandboxes:
             SandboxData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        sandbox = Sandbox(self._api, data)
-        if wait:
-            sandbox.wait()
-        return sandbox
+        _check_terminal(data.sandbox_id, data.status)
+        if data.status != SandboxStatus.RUNNING and max_wait_seconds != 0:
+            data = _wait_until_running(data.sandbox_id, self._api, max_wait_seconds)
+        return Sandbox(self._api, data)
 
     def list(self) -> list[SandboxSummary]:
         response = self._api.request_model("GET", "/v1/sandboxes", ListSandboxesResponse)
@@ -133,7 +185,7 @@ class AsyncSandboxes:
         startup_timeout_seconds: int | None = 60,
         network: NetworkSpec | None = None,
         rootfs_snapshot_source: str | None = None,
-        wait: bool = True,
+        max_wait_seconds: int | None = 60,
     ) -> AsyncSandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -157,10 +209,10 @@ class AsyncSandboxes:
             SandboxData,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        sandbox = AsyncSandbox(self._api, data)
-        if wait:
-            await sandbox.wait()
-        return sandbox
+        _check_terminal(data.sandbox_id, data.status)
+        if data.status != SandboxStatus.RUNNING and max_wait_seconds != 0:
+            data = await _async_wait_until_running(data.sandbox_id, self._api, max_wait_seconds)
+        return AsyncSandbox(self._api, data)
 
     async def list(self) -> list[SandboxSummary]:
         response = await self._api.request_model("GET", "/v1/sandboxes", ListSandboxesResponse)
@@ -175,12 +227,12 @@ class Sandbox:
     def __init__(self, api: _SyncAPI, data: SandboxData) -> None:
         self._api = api
         self._data = data
-        self.commands = Commands(api, data.id)
-        self.filesystem = Filesystem(api, data.id)
+        self.commands = Commands(api, data.sandbox_id)
+        self.filesystem = Filesystem(api, data.sandbox_id)
 
     @property
-    def id(self) -> str:
-        return self._data.id
+    def sandbox_id(self) -> str:
+        return self._data.sandbox_id
 
     @property
     def status(self) -> SandboxStatus:
@@ -212,36 +264,20 @@ class Sandbox:
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         self.delete()
 
-    def wait(self) -> None:
-        consecutive_poll_errors = 0
-        while self._data.status != SandboxStatus.RUNNING:
-            if self._data.status in _TERMINAL_STATUSES:
-                raise IsolaError(
-                    f"sandbox {self._data.id} reached terminal state: {self._data.status.value}",
-                )
-            time.sleep(_POLL_INTERVAL)
-            try:
-                self._data = self._api.request_model("GET", _sandbox_path(self._data.id), SandboxData)
-                consecutive_poll_errors = 0
-            except NotFoundError:
-                consecutive_poll_errors += 1
-                if consecutive_poll_errors >= _MAX_CONSECUTIVE_POLL_ERRORS:
-                    raise
-
     def delete(self) -> None:
-        self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
+        self._api.request_no_content("DELETE", _sandbox_path(self._data.sandbox_id))
 
 
 class AsyncSandbox:
     def __init__(self, api: _AsyncAPI, data: SandboxData) -> None:
         self._api = api
         self._data = data
-        self.commands = AsyncCommands(api, data.id)
-        self.filesystem = AsyncFilesystem(api, data.id)
+        self.commands = AsyncCommands(api, data.sandbox_id)
+        self.filesystem = AsyncFilesystem(api, data.sandbox_id)
 
     @property
-    def id(self) -> str:
-        return self._data.id
+    def sandbox_id(self) -> str:
+        return self._data.sandbox_id
 
     @property
     def status(self) -> SandboxStatus:
@@ -273,21 +309,5 @@ class AsyncSandbox:
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         await self.delete()
 
-    async def wait(self) -> None:
-        consecutive_poll_errors = 0
-        while self._data.status != SandboxStatus.RUNNING:
-            if self._data.status in _TERMINAL_STATUSES:
-                raise IsolaError(
-                    f"sandbox {self._data.id} reached terminal state: {self._data.status.value}",
-                )
-            await asyncio.sleep(_POLL_INTERVAL)
-            try:
-                self._data = await self._api.request_model("GET", _sandbox_path(self._data.id), SandboxData)
-                consecutive_poll_errors = 0
-            except NotFoundError:
-                consecutive_poll_errors += 1
-                if consecutive_poll_errors >= _MAX_CONSECUTIVE_POLL_ERRORS:
-                    raise
-
     async def delete(self) -> None:
-        await self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
+        await self._api.request_no_content("DELETE", _sandbox_path(self._data.sandbox_id))

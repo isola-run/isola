@@ -84,19 +84,19 @@ def test_invalid_image_sandbox_fails(
     the image and the sandbox transitions to a terminal failure state.
     """
     sb = sandbox_factory(image="invalid-image-that-does-not-exist:99.99")
-    assert sb.id
+    assert sb.sandbox_id
 
     deadline = time.monotonic() + POLL_TIMEOUT
     last_status = sb.status
     while time.monotonic() < deadline:
-        sb_fresh = isola_client.sandboxes.get(sb.id)
+        sb_fresh = isola_client.sandboxes.get(sb.sandbox_id)
         last_status = sb_fresh.status
         if last_status in (SandboxStatus.FAILED, SandboxStatus.STOPPED):
             return
         time.sleep(POLL_INTERVAL)
 
     pytest.fail(
-        f"Sandbox {sb.id} with invalid image did not reach failed/stopped "
+        f"Sandbox {sb.sandbox_id} with invalid image did not reach failed/stopped "
         f"within {POLL_TIMEOUT}s (last status: {last_status.value})"
     )
 
@@ -108,9 +108,9 @@ def test_delete_already_deleted(
 ) -> None:
     """Deleting a sandbox twice should not raise -- the DELETE endpoint is idempotent."""
     sb = sandbox_factory(image="alpine:3.21")
-    wait_for_running(isola_client, sb.id)
+    wait_for_running(isola_client, sb.sandbox_id)
 
-    sb_fresh = isola_client.sandboxes.get(sb.id)
+    sb_fresh = isola_client.sandboxes.get(sb.sandbox_id)
 
     # First delete
     sb_fresh.delete()
@@ -141,10 +141,10 @@ def test_commands_on_deleted_sandbox(
     (NotFoundError) or the sidecar may be unreachable (BadGatewayError).
     """
     sb = sandbox_factory(image="alpine:3.21")
-    running = wait_for_running(isola_client, sb.id)
+    running = wait_for_running(isola_client, sb.sandbox_id)
 
     # Grab a reference to commands before deleting
-    commands = Commands(isola_client._api, running.id)
+    commands = Commands(isola_client._api, running.sandbox_id)
 
     # Delete the sandbox
     running.delete()
@@ -153,7 +153,7 @@ def test_commands_on_deleted_sandbox(
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         try:
-            current = isola_client.sandboxes.get(running.id)
+            current = isola_client.sandboxes.get(running.sandbox_id)
             if current.status != SandboxStatus.RUNNING:
                 break
         except NotFoundError:

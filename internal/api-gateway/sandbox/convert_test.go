@@ -27,8 +27,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
-	apigateway "github.com/isola-ai/isola/internal/api-gateway"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	apigateway "github.com/isola-run/isola/internal/api-gateway"
 )
 
 var _ = Describe("Conversion functions", func() {

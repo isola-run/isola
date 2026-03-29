@@ -26,8 +26,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
-	apigateway "github.com/isola-ai/isola/internal/api-gateway"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	apigateway "github.com/isola-run/isola/internal/api-gateway"
 )
 
 type CreateSandboxInput struct {
@@ -80,11 +80,11 @@ type RootfsSnapshotSource struct {
 }
 
 type GetSandboxInput struct {
-	ID string `path:"id" doc:"Sandbox identifier"`
+	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
 }
 
 type DeleteSandboxInput struct {
-	ID string `path:"id" doc:"Sandbox identifier"`
+	SandboxID string `path:"sandboxId" doc:"Sandbox identifier"`
 }
 
 // Response types omit env vars (write-only) to avoid leaking secrets.
@@ -112,7 +112,7 @@ type ListSandboxesOutput struct {
 }
 
 type SandboxResponse struct {
-	ID                    string                 `json:"id" doc:"Sandbox identifier"`
+	SandboxID             string                 `json:"sandboxId" doc:"Sandbox identifier"`
 	PodTemplate           PodTemplateInfo        `json:"podTemplate" doc:"Pod template"`
 	TimeoutSeconds        *int64                 `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
 	StartupTimeoutSeconds *int64                 `json:"startupTimeoutSeconds,omitempty" doc:"Max seconds for the sandbox to become Ready"`
@@ -123,7 +123,7 @@ type SandboxResponse struct {
 }
 
 type SandboxSummary struct {
-	ID                string `json:"id" doc:"Sandbox identifier"`
+	SandboxID         string `json:"sandboxId" doc:"Sandbox identifier"`
 	Status            string `json:"status" doc:"Sandbox status"`
 	CreationTimestamp string `json:"creationTimestamp" doc:"Creation timestamp"`
 }
@@ -195,13 +195,13 @@ func (h *Handlers) PostSandbox(ctx context.Context, input *CreateSandboxInput) (
 
 func (h *Handlers) GetSandbox(ctx context.Context, input *GetSandboxInput) (*GetSandboxOutput, error) {
 	sb := &sandboxv1alpha1.Sandbox{}
-	key := client.ObjectKey{Name: input.ID, Namespace: h.sandboxNamespace}
+	key := client.ObjectKey{Name: input.SandboxID, Namespace: h.sandboxNamespace}
 
 	if err := h.k8sClient.Get(ctx, key, sb); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.ID))
+			return nil, huma.Error404NotFound(fmt.Sprintf("sandbox %q not found", input.SandboxID))
 		}
-		h.logger.Error("failed to get sandbox", "error", err, "id", input.ID)
+		h.logger.Error("failed to get sandbox", "error", err, "id", input.SandboxID)
 		return nil, apigateway.K8sErrorToHuma(err, "failed to get sandbox")
 	}
 
@@ -231,13 +231,13 @@ func (h *Handlers) ListSandboxes(ctx context.Context, _ *struct{}) (*ListSandbox
 func (h *Handlers) DeleteSandbox(ctx context.Context, input *DeleteSandboxInput) (*struct{}, error) {
 	sb := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      input.ID,
+			Name:      input.SandboxID,
 			Namespace: h.sandboxNamespace,
 		},
 	}
 
 	if err := client.IgnoreNotFound(h.k8sClient.Delete(ctx, sb)); err != nil {
-		h.logger.Error("failed to delete sandbox", "error", err, "id", input.ID)
+		h.logger.Error("failed to delete sandbox", "error", err, "id", input.SandboxID)
 		return nil, apigateway.K8sErrorToHuma(err, "failed to delete sandbox")
 	}
 
@@ -267,7 +267,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getSandbox",
 		Method:      http.MethodGet,
-		Path:        "/sandboxes/{id}",
+		Path:        "/sandboxes/{sandboxId}",
 		Summary:     "Get sandbox details",
 		Description: "Eventually consistent: a sandbox returned by POST may briefly return 404 on GET. Clients should retry if polling a recently-created sandbox.",
 		Tags:        []string{"sandboxes"},
@@ -277,7 +277,7 @@ func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "deleteSandbox",
 		Method:      http.MethodDelete,
-		Path:        "/sandboxes/{id}",
+		Path:        "/sandboxes/{sandboxId}",
 		Summary:     "Delete a sandbox",
 		Tags:        []string{"sandboxes"},
 	}, h.DeleteSandbox)

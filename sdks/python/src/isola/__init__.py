@@ -22,11 +22,21 @@ from ._exceptions import (
     ConflictError,
     InternalError,
     IsolaError,
+    IsolaTimeoutError,
     NotFoundError,
     ValidationError,
 )
 from ._filesystem import AsyncFilesystem, Filesystem
-from ._models import CommandResult, FileWriteResult, NetworkSpec, RootfsSnapshotSource, SandboxStatus, SandboxSummary
+from ._models import (
+    CommandResult,
+    FileWriteResult,
+    NetworkSpec,
+    RootfsSnapshotSource,
+    RootfsSnapshotStatus,
+    SandboxStatus,
+    SandboxSummary,
+)
+from ._rootfs_snapshot import AsyncRootfsSnapshot, AsyncRootfsSnapshots, RootfsSnapshot, RootfsSnapshots
 from ._sandbox import AsyncSandbox, AsyncSandboxes, Sandbox, Sandboxes
 from ._streaming import AsyncStreamReader, StreamReader
 
@@ -37,6 +47,10 @@ __all__ = [
     "AsyncSandbox",
     "Sandboxes",
     "AsyncSandboxes",
+    "RootfsSnapshot",
+    "AsyncRootfsSnapshot",
+    "RootfsSnapshots",
+    "AsyncRootfsSnapshots",
     "Command",
     "AsyncCommand",
     "CommandResult",
@@ -44,6 +58,7 @@ __all__ = [
     "AsyncCommands",
     "Filesystem",
     "AsyncFilesystem",
+    "RootfsSnapshotStatus",
     "SandboxStatus",
     "SandboxSummary",
     "NetworkSpec",
@@ -60,4 +75,5 @@ __all__ = [
     "InternalError",
     "BadGatewayError",
     "APIConnectionError",
+    "IsolaTimeoutError",
 ]

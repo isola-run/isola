@@ -32,8 +32,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
-	apigateway "github.com/isola-ai/isola/internal/api-gateway"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	apigateway "github.com/isola-run/isola/internal/api-gateway"
 )
 
 func createSandboxCR() string {
@@ -129,7 +129,7 @@ func newCommandTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humatest
 }
 
 var _ = Describe("Command Proxy", func() {
-	Describe("POST /sandboxes/{id}/commands", func() {
+	Describe("POST /sandboxes/{sandboxId}/commands", func() {
 		It("proxies to sidecar and returns 202", func() {
 			var capturedBody []byte
 			var capturedContentType string
@@ -142,7 +142,7 @@ var _ = Describe("Command Proxy", func() {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusAccepted)
 				_ = json.NewEncoder(w).Encode(CreateCommandResponse{
-					CommandID: "test-cmd-id",
+					CmdID: "test-cmd-id",
 				})
 			}))
 			defer mockSidecar.Close()
@@ -160,7 +160,7 @@ var _ = Describe("Command Proxy", func() {
 
 			var body CreateCommandResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body.CommandID).To(Equal("test-cmd-id"))
+			Expect(body.CmdID).To(Equal("test-cmd-id"))
 
 			Expect(capturedContentType).To(Equal("application/json"))
 
@@ -175,7 +175,7 @@ var _ = Describe("Command Proxy", func() {
 				capturedContainer = r.URL.Query().Get("container")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusAccepted)
-				_ = json.NewEncoder(w).Encode(CreateCommandResponse{CommandID: "id"})
+				_ = json.NewEncoder(w).Encode(CreateCommandResponse{CmdID: "id"})
 			}))
 			defer mockSidecar.Close()
 
@@ -227,7 +227,7 @@ var _ = Describe("Command Proxy", func() {
 		})
 	})
 
-	Describe("GET /sandboxes/{id}/commands/{cmdId}/status", func() {
+	Describe("GET /sandboxes/{sandboxId}/commands/{cmdId}/status", func() {
 		It("proxies status response", func() {
 			exitCode := 0
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -302,7 +302,7 @@ var _ = Describe("Command Proxy", func() {
 		})
 	})
 
-	Describe("GET /sandboxes/{id}/commands/{cmdId}/stdout", func() {
+	Describe("GET /sandboxes/{sandboxId}/commands/{cmdId}/stdout", func() {
 		It("proxies chunked byte stream", func() {
 			content := []byte("data: hello from command\nid: 17\n\n")
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -359,7 +359,7 @@ var _ = Describe("Command Proxy", func() {
 		})
 	})
 
-	Describe("POST /sandboxes/{id}/commands/{cmdId}/stdin", func() {
+	Describe("POST /sandboxes/{sandboxId}/commands/{cmdId}/stdin", func() {
 		It("proxies raw bytes to sidecar", func() {
 			var capturedBody []byte
 			var capturedContentType string
@@ -387,7 +387,7 @@ var _ = Describe("Command Proxy", func() {
 		})
 	})
 
-	Describe("POST /sandboxes/{id}/commands/{cmdId}/stdin/close", func() {
+	Describe("POST /sandboxes/{sandboxId}/commands/{cmdId}/stdin/close", func() {
 		It("proxies close to sidecar", func() {
 			var capturedMethod string
 			var capturedPath string
@@ -448,7 +448,7 @@ var _ = Describe("Command Proxy", func() {
 		})
 	})
 
-	Describe("DELETE /sandboxes/{id}/commands/{cmdId}", func() {
+	Describe("DELETE /sandboxes/{sandboxId}/commands/{cmdId}", func() {
 		It("proxies kill request", func() {
 			var capturedMethod string
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -509,7 +509,7 @@ var _ = Describe("Command Proxy", func() {
 		})
 	})
 
-	Describe("GET /sandboxes/{id}/commands/{cmdId}/stderr", func() {
+	Describe("GET /sandboxes/{sandboxId}/commands/{cmdId}/stderr", func() {
 		It("proxies stderr byte stream", func() {
 			content := []byte("data: error output here\nid: 5\n\n")
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

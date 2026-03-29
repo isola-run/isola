@@ -23,15 +23,15 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
-	apigateway "github.com/isola-ai/isola/internal/api-gateway"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	apigateway "github.com/isola-run/isola/internal/api-gateway"
 )
 
 const containerName = "sandbox"
 
 func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 	resp := SandboxResponse{
-		ID:                sb.Name,
+		SandboxID:         sb.Name,
 		Status:            apigateway.ConditionsToStatus(sb.Status.Conditions),
 		CreationTimestamp: sb.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
@@ -53,7 +53,7 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 
 func sandboxToSummary(sb *sandboxv1alpha1.Sandbox) SandboxSummary {
 	return SandboxSummary{
-		ID:                sb.Name,
+		SandboxID:         sb.Name,
 		Status:            apigateway.ConditionsToStatus(sb.Status.Conditions),
 		CreationTimestamp: sb.CreationTimestamp.UTC().Format(time.RFC3339),
 	}

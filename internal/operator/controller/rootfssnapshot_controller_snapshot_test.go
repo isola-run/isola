@@ -27,8 +27,8 @@ import (
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	sandboxv1alpha1 "github.com/isola-ai/isola/api/v1alpha1"
-	snapshotpkg "github.com/isola-ai/isola/internal/snapshot"
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	snapshotpkg "github.com/isola-run/isola/internal/snapshot"
 )
 
 var _ = Describe("RootfsSnapshot Controller", func() {

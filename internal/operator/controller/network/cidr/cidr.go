@@ -63,7 +63,6 @@ var BlockedV6 = []netip.Prefix{
 	netip.MustParsePrefix("fe80::/10"),          // RFC 4291: Link-local - auto-configured addresses for local network
 	netip.MustParsePrefix("2600:2d00:0:4::/64"), // GKE-managed Service IPv6 range (dual-stack clusters)
 	netip.MustParsePrefix("ff00::/8"),           // Multicast
-	netip.MustParsePrefix("::ffff:0:0/96"),      // RFC 4291: IPv4-mapped address (not globally routable)
 	netip.MustParsePrefix("64:ff9b:1::/48"),     // RFC 8215: NAT64 local-use prefix
 	netip.MustParsePrefix("100::/64"),           // RFC 6666: Discard-Only prefix
 	netip.MustParsePrefix("100:0:0:1::/64"),     // RFC 9780: Dummy IPv6 Prefix

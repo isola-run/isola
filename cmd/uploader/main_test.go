@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/isola-ai/isola/internal/snapshot"
+	"github.com/isola-run/isola/internal/snapshot"
 )
 
 // fakeUploader records calls and can return a configurable error.
@@ -326,4 +326,3 @@ func TestUploadSnapshotEmptyFile(t *testing.T) {
 		t.Errorf("termination log bytesWritten = %d, want 0", result.BytesWritten)
 	}
 }
-
