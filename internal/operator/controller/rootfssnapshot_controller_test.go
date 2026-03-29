@@ -159,7 +159,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			// Verify standard labels on Job metadata
 			expectedLabels := map[string]string{
-				"app.kubernetes.io/name":       "isola-sandbox",
+				"app.kubernetes.io/name":       "isola-uploader",
 				"app.kubernetes.io/instance":   snapName,
 				"app.kubernetes.io/component":  "rootfssnapshot",
 				"app.kubernetes.io/part-of":    "isola",
