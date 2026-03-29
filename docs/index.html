@@ -29,16 +29,85 @@
         <a class="repo-link" href="https://github.com/isola-run/isola">GitHub</a>
       </header>
 
-      <main class="hero">
-        <section class="hero-copy">
-          <h1>Secure Sandboxing for Kubernetes</h1>
-          <p class="hero-meta">gVisor · Snapshotting · Open source · Developer-first SDKs</p>
+      <main>
+        <section class="hero">
+          <div class="hero-copy">
+            <h1>Secure Sandboxing for Kubernetes</h1>
+            <p class="hero-meta">gVisor · Snapshotting · Open source · Developer-first SDKs</p>
+            <p class="hero-text">Run untrusted code in gVisor-isolated containers with instant snapshot and restore. Kubernetes-native, open source, Python SDK.</p>
+          </div>
+
+          <div class="hero-visual">
+            <img class="hero-logo" src="./isola-logo.svg" alt="Isola logo" />
+          </div>
         </section>
 
-        <section class="hero-visual" aria-label="Isola logo">
-          <img class="hero-logo" src="./isola-logo.svg" alt="Isola logo" />
+        <section class="features">
+          <div class="card">
+            <h2 class="card-title">gVisor Isolation</h2>
+            <p class="card-desc">Hardware-virtualized sandboxing via gVisor with Kubernetes-native pod scheduling</p>
+          </div>
+          <div class="card">
+            <h2 class="card-title">Rootfs Snapshots</h2>
+            <p class="card-desc">Snapshot filesystem changes and restore instantly. Snapshots are stored in a shared bucket, accessible on demand from any node.</p>
+          </div>
+          <div class="card">
+            <h2 class="card-title">Python SDK</h2>
+            <p class="card-desc">Create sandboxes, run commands, and manage snapshots in a few lines of code</p>
+          </div>
+          <div class="card">
+            <h2 class="card-title">Open Source</h2>
+            <p class="card-desc">Apache 2.0 licensed, built on Kubernetes primitives, no vendor lock-in</p>
+          </div>
+        </section>
+
+        <section class="code-example">
+          <span class="code-label">Python</span>
+          <pre class="code-block"><code><span class="kw">from</span> isola <span class="kw">import</span> Isola
+
+client = Isola()
+
+<span class="kw">with</span> client.sandboxes.create(image=<span class="str">"alpine:3.21"</span>) <span class="kw">as</span> sandbox:
+    result = sandbox.commands.run(<span class="str">"echo"</span>, <span class="str">"hello world"</span>)
+    <span class="kw">print</span>(result.stdout)  <span class="comment"># "hello world\n"</span>
+
+    <span class="comment"># Snapshot the filesystem changes</span>
+    client.rootfs_snapshots.create(
+        sandbox_id=sandbox.id,
+        snapshot_name=<span class="str">"my-snapshot"</span>,
+    )
+
+<span class="comment"># Restore from snapshot on any node</span>
+<span class="kw">with</span> client.sandboxes.create(
+    image=<span class="str">"alpine:3.21"</span>,
+    rootfs_snapshot_source=<span class="str">"my-snapshot"</span>,
+) <span class="kw">as</span> restored:
+    restored.commands.run(<span class="str">"cat"</span>, <span class="str">"/data/results.json"</span>)</code></pre>
+        </section>
+
+        <section class="steps">
+          <div class="step">
+            <span class="step-num" style="color: var(--purple)">01</span>
+            <h3 class="step-title">Create</h2>
+            <p class="step-desc">Spin up a gVisor-isolated sandbox from any container image</p>
+          </div>
+          <div class="step">
+            <span class="step-num" style="color: var(--indigo)">02</span>
+            <h3 class="step-title">Execute</h2>
+            <p class="step-desc">Run commands, read and write files via the Python SDK</p>
+          </div>
+          <div class="step">
+            <span class="step-num" style="color: var(--cyan)">03</span>
+            <h3 class="step-title">Snapshot &amp; Restore</h2>
+            <p class="step-desc">Capture rootfs changes, restore instantly on any node</p>
+          </div>
         </section>
       </main>
+
+      <footer class="site-footer">
+        <span class="footer-brand">Isola</span>
+        <a class="footer-link" href="https://github.com/isola-run/isola">GitHub</a>
+      </footer>
     </div>
   </body>
 </html>
