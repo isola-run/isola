@@ -407,9 +407,9 @@ func shutdownSnapshotCRName(sandbox *sandboxv1alpha1.Sandbox) string {
 	return podutil.GetShutdownSnapshotName(sandbox.Name)
 }
 
-// shutdownSnapshotStorageName returns the storage key name for the snapshot.
+// shutdownSnapshotName returns the snapshotName for the RootfsSnapshot spec.
 // Uses the user-provided snapshotName if set, otherwise falls back to the sandbox name.
-func shutdownSnapshotStorageName(sandbox *sandboxv1alpha1.Sandbox) string {
+func shutdownSnapshotName(sandbox *sandboxv1alpha1.Sandbox) string {
 	if sandbox.Spec.ShutdownPolicy != nil &&
 		sandbox.Spec.ShutdownPolicy.SnapshotRootfs != nil &&
 		sandbox.Spec.ShutdownPolicy.SnapshotRootfs.SnapshotName != nil {
@@ -1144,7 +1144,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 	log := logf.FromContext(ctx)
 
 	crName := shutdownSnapshotCRName(sandbox)
-	storageName := shutdownSnapshotStorageName(sandbox)
+	snapshotName := shutdownSnapshotName(sandbox)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      crName,
@@ -1152,7 +1152,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 			SandboxName:    sandbox.Name,
-			SnapshotName:   storageName,
+			SnapshotName:   snapshotName,
 			TimeoutSeconds: &timeoutSeconds,
 		},
 	}
