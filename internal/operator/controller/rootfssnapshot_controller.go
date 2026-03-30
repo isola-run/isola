@@ -364,7 +364,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 	}
 
 	jobLabels := map[string]string{
-		"app.kubernetes.io/name":       "isola-sandbox",
+		"app.kubernetes.io/name":       "isola-uploader",
 		"app.kubernetes.io/instance":   snap.Name,
 		"app.kubernetes.io/component":  "rootfssnapshot",
 		"app.kubernetes.io/part-of":    "isola",

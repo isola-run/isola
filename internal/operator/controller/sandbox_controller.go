@@ -100,6 +100,9 @@ type SandboxReconciler struct {
 const (
 	sandboxSidecarContainerName = "sandbox-sidecar"
 
+	// Trust boundary label: identifies untrusted sandbox pods for NetworkPolicy selection
+	LabelSandbox = "isola.run/sandbox"
+
 	// Network labels for pod selection by Helm-installed NetworkPolicies
 	LabelAllowIPv4Internet = "isola.run/allow-ipv4-internet-egress"
 	LabelAllowIPv6Internet = "isola.run/allow-ipv6-internet-egress"
@@ -197,6 +200,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	labels["app.kubernetes.io/component"] = "sandbox"
 	labels["app.kubernetes.io/part-of"] = "isola"
 	labels["app.kubernetes.io/managed-by"] = "isola-operator"
+	labels[LabelSandbox] = "true"
 
 	labels["cluster-autoscaler.kubernetes.io/safe-to-evict"] = "false"
 

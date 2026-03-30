@@ -48,7 +48,7 @@ class Command:
         self._stderr: StreamReader | None = None
 
     @property
-    def cmd_id(self) -> str:
+    def id(self) -> str:
         return self._command_id
 
     @property
@@ -116,7 +116,7 @@ class AsyncCommand:
         self._stderr: AsyncStreamReader | None = None
 
     @property
-    def cmd_id(self) -> str:
+    def id(self) -> str:
         return self._command_id
 
     @property
@@ -192,7 +192,7 @@ class Commands:
             params=params,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        return Command(self._api, self._sandbox_id, data.cmd_id)
+        return Command(self._api, self._sandbox_id, data.id)
 
     def run(
         self,
@@ -210,7 +210,7 @@ class Commands:
         exit_code = cmd.wait()
         stdout = cmd.stdout.read()
         stderr = cmd.stderr.read()
-        return CommandResult(cmd_id=cmd.cmd_id, stdout=stdout, stderr=stderr, exit_code=exit_code)
+        return CommandResult(id=cmd.id, stdout=stdout, stderr=stderr, exit_code=exit_code)
 
 
 class AsyncCommands:
@@ -237,7 +237,7 @@ class AsyncCommands:
             params=params,
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
-        return AsyncCommand(self._api, self._sandbox_id, data.cmd_id)
+        return AsyncCommand(self._api, self._sandbox_id, data.id)
 
     async def run(
         self,
@@ -257,4 +257,4 @@ class AsyncCommands:
             cmd.stderr.read(),
             cmd.wait(),
         )
-        return CommandResult(cmd_id=cmd.cmd_id, stdout=stdout, stderr=stderr, exit_code=exit_code)
+        return CommandResult(id=cmd.id, stdout=stdout, stderr=stderr, exit_code=exit_code)

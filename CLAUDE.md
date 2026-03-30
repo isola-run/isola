@@ -44,7 +44,7 @@ After modifying handler input/output types or route registrations, run `make ope
 
 **REST/CRD validation alignment:** Huma struct tags on REST types (e.g., `maxItems:"16"`, `pattern:"..."`) must match the kubebuilder markers on the corresponding CRD type fields. Adding a validation to one layer without the other causes confusing errors.
 
-**Identifier vocabulary:** REST API uses `{resource}Id` for system-generated opaque identifiers (`sandboxId`, `snapshotId`, `cmdId`) and `name` for user-chosen ones (`snapshotName`). Cross-resource references use the same `{resource}Id` pattern (e.g., `sandboxId` in rootfs snapshot requests). The conversion layer maps REST vocabulary to CRD vocabulary (e.g., `sandboxId` -> CRD `sandboxName`).
+**Identifier vocabulary:** REST API uses `id` for a resource's own system-generated identifier and `{resource}Id` for cross-resource references (e.g., `sandboxId` in rootfs snapshot requests/responses). User-chosen identifiers use `name` (e.g., `snapshotName`). The conversion layer maps REST vocabulary to CRD vocabulary (e.g., `sandboxId` → CRD `sandboxName`).
 
 **Env vars are write-only:** Request types accept env vars; response types intentionally omit them to avoid leaking secrets. Do not add `Env` to response types.
 

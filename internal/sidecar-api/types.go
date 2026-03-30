@@ -29,7 +29,7 @@ type CreateCommandRequest struct {
 }
 
 type CreateCommandResponse struct {
-	CmdID string `json:"cmdId" doc:"Unique command identifier"`
+	ID string `json:"id" doc:"Unique command identifier"`
 }
 
 type CommandStatusResponse struct {
