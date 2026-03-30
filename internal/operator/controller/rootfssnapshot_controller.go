@@ -148,7 +148,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "RootfsSnapshot storage not configured: --rootfssnapshot-bucket-url is required")
 	}
 
-	sandboxPodName := podutil.GetSandboxPodName(snap.Spec.SandboxName)
+	sandboxPodName := podutil.SandboxPodName(snap.Spec.SandboxName)
 	sandboxPod := &corev1.Pod{}
 	if err := r.Get(ctx, types.NamespacedName{Name: sandboxPodName, Namespace: snap.Namespace}, sandboxPod); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -201,7 +201,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithValues("container", containerName)
 
-	jobName := podutil.GetSnapshotJobName(snap.Name)
+	jobName := podutil.RootfsSnapshotJobName(snap.Name)
 	job := &batchv1.Job{}
 	err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: snap.Namespace}, job)
 
@@ -330,7 +330,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 ) error {
 	log := logf.FromContext(ctx)
 
-	jobName := podutil.GetSnapshotJobName(snap.Name)
+	jobName := podutil.RootfsSnapshotJobName(snap.Name)
 	localSnapshotPath := "/snapshot/rootfs.tar"
 
 	timeoutSeconds := defaultTimeoutSecondsSnapshot

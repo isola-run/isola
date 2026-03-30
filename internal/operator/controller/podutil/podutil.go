@@ -56,20 +56,20 @@ func IsPodTerminated(pod *corev1.Pod) bool {
 	return pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed
 }
 
-func GetSandboxPodName(sandboxName string) string {
+func SandboxPodName(sandboxName string) string {
 	return sandboxName + "-pod"
 }
 
-func GetCustomNetworkPolicyName(sandboxName string) string {
+func SandboxCustomNetworkPolicyName(sandboxName string) string {
 	return sandboxName + "-custom-netpol"
 }
 
-func GetShutdownSnapshotName(sandboxName string) string {
+func SandboxShutdownRootfsSnapshotName(sandboxName string) string {
 	return sandboxName + "-shutdown"
 }
 
-func GetSnapshotJobName(snapshotName string) string {
-	return snapshotName + "-job"
+func RootfsSnapshotJobName(rootfsSnapshotName string) string {
+	return rootfsSnapshotName + "-job"
 }
 
 // ExtractContainerID gets the container ID for a named container.

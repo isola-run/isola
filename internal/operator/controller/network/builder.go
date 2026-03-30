@@ -108,7 +108,7 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 
 	np := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      podutil.GetCustomNetworkPolicyName(sandboxName),
+			Name:      podutil.SandboxCustomNetworkPolicyName(sandboxName),
 			Namespace: namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/name":       "isola-sandbox",

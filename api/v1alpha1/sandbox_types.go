@@ -29,6 +29,9 @@ const (
 )
 
 // ShutdownPolicy controls how the sandbox is handled when it ends.
+// For the SnapshotRootfs strategy, snapshotRootfs.snapshotName sets the
+// RootfsSnapshot.spec.snapshotName of the snapshot created during shutdown.
+// If omitted, the controller uses the sandbox name.
 //
 // +kubebuilder:validation:XValidation:rule="!(has(self.snapshotRootfs) && self.strategy != 'SnapshotRootfs')",message="snapshotRootfs must be nil if strategy is not SnapshotRootfs"
 // +kubebuilder:validation:XValidation:rule="!(!has(self.snapshotRootfs) && self.strategy == 'SnapshotRootfs')",message="snapshotRootfs must be specified for SnapshotRootfs strategy"
@@ -40,6 +43,8 @@ type ShutdownPolicy struct {
 	Strategy SandboxShutdownStrategy `json:"strategy,omitempty"`
 
 	// SnapshotRootfs holds configuration for the SnapshotRootfs strategy.
+	// If SnapshotName is omitted, the created RootfsSnapshot uses the sandbox
+	// name as its spec.snapshotName.
 	// Must be set when strategy is SnapshotRootfs, must be nil otherwise.
 	// +optional
 	SnapshotRootfs *SnapshotRootfsConfig `json:"snapshotRootfs,omitempty"`
@@ -47,8 +52,10 @@ type ShutdownPolicy struct {
 
 // SnapshotRootfsConfig holds parameters specific to the SnapshotRootfs shutdown strategy.
 type SnapshotRootfsConfig struct {
-	// SnapshotName is the user-chosen name for the resulting rootfs snapshot storage key.
-	// If omitted, the controller generates a name derived from the sandbox name.
+	// SnapshotName is written to the created RootfsSnapshot.spec.snapshotName.
+	// Later restores refer to this snapshot by passing the same value as
+	// rootfsSnapshotSources[].snapshotName.
+	// If omitted, the controller uses the sandbox name.
 	// Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
 	// +optional
 	// +kubebuilder:validation:MinLength=1

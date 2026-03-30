@@ -206,7 +206,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      podutil.GetSandboxPodName(sandbox.Name),
+			Name:      podutil.SandboxPodName(sandbox.Name),
 			Namespace: sandbox.Namespace,
 			Labels:    labels,
 			// There's a security gate in runsc/config/flags.go
@@ -386,7 +386,7 @@ func configureDNS(sandboxPod *corev1.Pod, network *sandboxv1alpha1.NetworkSpec) 
 }
 
 func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*corev1.Pod, error) {
-	podName := podutil.GetSandboxPodName(sandbox.Name)
+	podName := podutil.SandboxPodName(sandbox.Name)
 	podNamespace := sandbox.Namespace
 
 	sandboxPod := &corev1.Pod{}
@@ -400,16 +400,16 @@ func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv
 	return sandboxPod, nil
 }
 
-// shutdownSnapshotCRName returns the K8s object name for the shutdown RootfsSnapshot CR.
+// shutdownRootfsSnapshotCRName returns the metadata.name for the shutdown RootfsSnapshot CR.
 // This is always derived from the sandbox name (not the user-chosen snapshotName)
 // because K8s object names must be unique per namespace and deterministic for idempotent reconciles.
-func shutdownSnapshotCRName(sandbox *sandboxv1alpha1.Sandbox) string {
-	return podutil.GetShutdownSnapshotName(sandbox.Name)
+func shutdownRootfsSnapshotCRName(sandbox *sandboxv1alpha1.Sandbox) string {
+	return podutil.SandboxShutdownRootfsSnapshotName(sandbox.Name)
 }
 
-// shutdownSnapshotName returns the snapshotName for the RootfsSnapshot spec.
+// shutdownRootfsSnapshotSpecName returns the spec.snapshotName for the shutdown RootfsSnapshot.
 // Uses the user-provided snapshotName if set, otherwise falls back to the sandbox name.
-func shutdownSnapshotName(sandbox *sandboxv1alpha1.Sandbox) string {
+func shutdownRootfsSnapshotSpecName(sandbox *sandboxv1alpha1.Sandbox) string {
 	if sandbox.Spec.ShutdownPolicy != nil &&
 		sandbox.Spec.ShutdownPolicy.SnapshotRootfs != nil &&
 		sandbox.Spec.ShutdownPolicy.SnapshotRootfs.SnapshotName != nil {
@@ -421,7 +421,7 @@ func shutdownSnapshotName(sandbox *sandboxv1alpha1.Sandbox) string {
 func (r *SandboxReconciler) getShutdownRootfssnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      shutdownSnapshotCRName(sandbox),
+		Name:      shutdownRootfsSnapshotCRName(sandbox),
 		Namespace: sandbox.Namespace,
 	}, snap)
 	if apierrors.IsNotFound(err) {
@@ -465,7 +465,7 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	}
 
 	existingNP := &networkingv1.NetworkPolicy{}
-	policyName := podutil.GetCustomNetworkPolicyName(sandbox.Name)
+	policyName := podutil.SandboxCustomNetworkPolicyName(sandbox.Name)
 	err = r.Get(ctx, types.NamespacedName{Name: policyName, Namespace: sandbox.Namespace}, existingNP)
 
 	if err == nil {
@@ -1143,8 +1143,8 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	crName := shutdownSnapshotCRName(sandbox)
-	snapshotName := shutdownSnapshotName(sandbox)
+	crName := shutdownRootfsSnapshotCRName(sandbox)
+	snapshotName := shutdownRootfsSnapshotSpecName(sandbox)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      crName,

@@ -201,7 +201,7 @@ func TestIsPodTerminated(t *testing.T) {
 	}
 }
 
-func TestGetSandboxPodName(t *testing.T) {
+func TestSandboxPodName(t *testing.T) {
 	tests := []struct {
 		name        string
 		sandboxName string
@@ -215,7 +215,7 @@ func TestGetSandboxPodName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
-			g.Expect(GetSandboxPodName(tt.sandboxName)).To(Equal(tt.want))
+			g.Expect(SandboxPodName(tt.sandboxName)).To(Equal(tt.want))
 		})
 	}
 }
