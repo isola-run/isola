@@ -70,7 +70,7 @@ type NetworkSpec struct {
 	AllowIPv6Egress *bool `json:"allowIPv6Egress,omitempty"`
 
 	// AllowedEgressCIDRs specifies additional CIDRs the sandbox can reach.
-	// Blocked ranges (private IPs, cloud metadata, etc.) are rejected — see ComputeExcept.
+	// Blocked ranges (private IPs, cloud metadata, etc.) are rejected - see ComputeExcept.
 	// When allowInternetEgress is true, these CIDRs are already reachable via the static
 	// internet policy and do not produce additional NetworkPolicy rules.
 	// Creates a custom NetworkPolicy only when allowInternetEgress is false or unset.

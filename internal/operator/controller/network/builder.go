@@ -63,7 +63,7 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 
 	internetAllowed := network.AllowInternetEgress != nil && *network.AllowInternetEgress
 	ipv6Allowed := network.AllowIPv6Egress != nil && *network.AllowIPv6Egress
-	// Skip egress CIDRs when internet is already allowed — the static internet egress
+	// Skip egress CIDRs when internet is already allowed - the static internet egress
 	// policies (IPv4, and IPv6 when enabled) cover all valid CIDRs.
 	var egressCIDRs []egressCIDR
 	if !internetAllowed {
@@ -103,7 +103,6 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 			if err != nil {
 				return nil, err
 			}
-			// Defense-in-depth: skip IPv6 nameservers when AllowIPv6Egress is not true.
 			if addr.Is6() && !ipv6Allowed {
 				continue
 			}
