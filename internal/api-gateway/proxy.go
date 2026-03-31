@@ -62,21 +62,19 @@ func ConditionsToStatus(conditions []metav1.Condition) string {
 		return "running"
 	}
 
-	// TODO: remove snapshot-related reasons from Sandbox CRD — they should be
-	// encapsulated in the RootfsSnapshot CRD only.
 	// TODO benl: make them as constants and share them with routes.go openapi enum generation
 	switch ready.Reason {
 	case "PodPending", "PodCreating", "Reconciling", "NetworkPolicyApplied":
 		return "creating"
-	case "PodRunning", "RootfsSnapshottingInProgress":
+	case "PodRunning":
 		return "running"
 	case "Deleting":
 		return "shuttingDown"
 	case "PodFailed", "PodCreationFailed", "InvalidRuntime",
-		"NetworkPolicyFailed", "RootfsSnapshotFailed", "RootfsSnapshotTimeout",
+		"NetworkPolicyFailed",
 		"RootfsRestoreConfigurationError", "StartupTimeoutExceeded":
 		return "failed"
-	case "PodSucceeded", "RootfsSnapshotComplete":
+	case "PodSucceeded":
 		return "stopped"
 	default:
 		return "unknown"
