@@ -450,9 +450,8 @@ def test_startup_timeout_seconds_passed_to_api() -> None:
 
 
 @respx.mock
-def test_startup_timeout_seconds_default_is_60() -> None:
+def test_startup_timeout_seconds_default_omits_key() -> None:
     response = _make_sandbox_response("running")
-    response["startupTimeoutSeconds"] = 60
     create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(201, json=response)
     )
@@ -461,7 +460,7 @@ def test_startup_timeout_seconds_default_is_60() -> None:
         client.sandboxes.create(image="python:3.12")
 
     payload = json.loads(create_route.calls[0].request.content)
-    assert payload["startupTimeoutSeconds"] == 60
+    assert "startupTimeoutSeconds" not in payload
 
 
 @respx.mock

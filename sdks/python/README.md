@@ -152,7 +152,7 @@ restored = client.sandboxes.create(
 )
 ```
 
-`rootfs_snapshots.create()` waits for completion by default. Pass `max_wait_seconds=0` to return immediately, or a finite value to bound the client-side wait. If the snapshot reaches `failed` while waiting, `create()` raises `IsolaError`.
+`rootfs_snapshots.create()` waits up to 300 seconds for completion by default. Pass `max_wait_seconds=0` to return immediately, or a custom value to adjust the client-side wait. If the snapshot reaches `failed` while waiting, `create()` raises `IsolaError`.
 
 ## Async client
 

@@ -99,7 +99,7 @@ class RootfsSnapshots:
         container_name: str | None = None,
         timeout_seconds: int | None = None,
         ttl_seconds_after_finished: int | None = None,
-        max_wait_seconds: int | None = None,
+        max_wait_seconds: int | None = 300,
     ) -> RootfsSnapshot:
         payload = CreateRootfsSnapshotPayload(
             sandbox_id=sandbox_id,
@@ -136,7 +136,7 @@ class AsyncRootfsSnapshots:
         container_name: str | None = None,
         timeout_seconds: int | None = None,
         ttl_seconds_after_finished: int | None = None,
-        max_wait_seconds: int | None = None,
+        max_wait_seconds: int | None = 300,
     ) -> AsyncRootfsSnapshot:
         payload = CreateRootfsSnapshotPayload(
             sandbox_id=sandbox_id,
