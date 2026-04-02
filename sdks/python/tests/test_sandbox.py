@@ -451,27 +451,14 @@ def test_startup_timeout_seconds_passed_to_api() -> None:
 
 @respx.mock
 def test_startup_timeout_seconds_default_omits_key() -> None:
+    """Default (None) omits startupTimeoutSeconds, letting the backend apply its own default."""
     response = _make_sandbox_response("running")
     create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(201, json=response)
     )
 
     with Isola(base_url="http://localhost:8080") as client:
-        client.sandboxes.create(image="python:3.12")
-
-    payload = json.loads(create_route.calls[0].request.content)
-    assert "startupTimeoutSeconds" not in payload
-
-
-@respx.mock
-def test_startup_timeout_seconds_none_omits_key() -> None:
-    response = _make_sandbox_response("running")
-    create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=response)
-    )
-
-    with Isola(base_url="http://localhost:8080") as client:
-        sandbox = client.sandboxes.create(image="python:3.12", startup_timeout_seconds=None)
+        sandbox = client.sandboxes.create(image="python:3.12")
 
     payload = json.loads(create_route.calls[0].request.content)
     assert "startupTimeoutSeconds" not in payload
