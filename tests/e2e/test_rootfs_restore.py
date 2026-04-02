@@ -85,9 +85,9 @@ class TestRootfsSnapshotSourcesField:
 
         assert restarts > 0, "Expected pod to restart on exit code 128"
 
-        # Sandbox should stay in creating (not failed)
+        # Sandbox should stay in starting (not failed)
         current = isola_client.sandboxes.get(sb.id)
-        assert current.status == SandboxStatus.CREATING
+        assert current.status == SandboxStatus.STARTING
 
 
 @pytest.mark.timeout(180)

@@ -42,9 +42,9 @@ class IsolaModel(BaseModel):
 
 
 class SandboxStatus(str, Enum):
-    CREATING = "creating"
+    STARTING = "starting"
     RUNNING = "running"
-    SHUTTING_DOWN = "shuttingDown"
+    TERMINATING = "terminating"
     FAILED = "failed"
     STOPPED = "stopped"
     UNKNOWN = "unknown"

@@ -258,11 +258,11 @@ def test_create_waits_until_running(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._sandbox.time.sleep", lambda _: None)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     get_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         side_effect=[
-            httpx.Response(200, json=_make_sandbox_response("creating")),
+            httpx.Response(200, json=_make_sandbox_response("starting")),
             httpx.Response(200, json=_make_sandbox_response("running")),
         ]
     )
@@ -277,14 +277,14 @@ def test_create_waits_until_running(monkeypatch: pytest.MonkeyPatch) -> None:
 @respx.mock
 def test_create_wait_zero_returns_immediately() -> None:
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     get_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123")
 
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.create(image="python:3.12", max_wait_seconds=0)
 
-    assert sandbox.status == SandboxStatus.CREATING
+    assert sandbox.status == SandboxStatus.STARTING
     assert not get_route.called
 
 
@@ -303,7 +303,7 @@ def test_create_raises_on_failed_during_wait(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr("isola._sandbox.time.sleep", lambda _: None)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=_make_sandbox_response("failed"))
@@ -318,7 +318,7 @@ def test_create_raises_on_stopped_during_wait(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("isola._sandbox.time.sleep", lambda _: None)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=_make_sandbox_response("stopped"))
@@ -355,11 +355,11 @@ async def test_async_create_waits_until_running(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("isola._sandbox.asyncio.sleep", _no_sleep)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     get_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         side_effect=[
-            httpx.Response(200, json=_make_sandbox_response("creating")),
+            httpx.Response(200, json=_make_sandbox_response("starting")),
             httpx.Response(200, json=_make_sandbox_response("running")),
         ]
     )
@@ -375,14 +375,14 @@ async def test_async_create_waits_until_running(monkeypatch: pytest.MonkeyPatch)
 @respx.mock
 async def test_async_create_wait_zero_returns_immediately() -> None:
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     get_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123")
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.create(image="python:3.12", max_wait_seconds=0)
 
-    assert sandbox.status == SandboxStatus.CREATING
+    assert sandbox.status == SandboxStatus.STARTING
     assert not get_route.called
 
 
@@ -404,7 +404,7 @@ async def test_async_create_raises_on_failed_during_wait(monkeypatch: pytest.Mon
     monkeypatch.setattr("isola._sandbox.asyncio.sleep", _no_sleep)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=_make_sandbox_response("failed"))
@@ -517,13 +517,13 @@ def test_wait_tolerates_transient_not_found(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr("isola._sandbox.time.sleep", lambda _: None)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         side_effect=[
             httpx.Response(404, json={"detail": "not found"}),
             httpx.Response(404, json={"detail": "not found"}),
-            httpx.Response(200, json=_make_sandbox_response("creating")),
+            httpx.Response(200, json=_make_sandbox_response("starting")),
             httpx.Response(200, json=_make_sandbox_response("running")),
         ]
     )
@@ -540,13 +540,13 @@ async def test_async_wait_tolerates_transient_not_found(monkeypatch: pytest.Monk
     monkeypatch.setattr("isola._sandbox.asyncio.sleep", _no_sleep)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         side_effect=[
             httpx.Response(404, json={"detail": "not found"}),
             httpx.Response(404, json={"detail": "not found"}),
-            httpx.Response(200, json=_make_sandbox_response("creating")),
+            httpx.Response(200, json=_make_sandbox_response("starting")),
             httpx.Response(200, json=_make_sandbox_response("running")),
         ]
     )
@@ -574,10 +574,10 @@ def test_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._sandbox.time.monotonic", fake_monotonic)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
-        return_value=httpx.Response(200, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(200, json=_make_sandbox_response("starting"))
     )
 
     with (
@@ -601,7 +601,7 @@ def test_wait_raises_timeout_error_when_not_found_persists(monkeypatch: pytest.M
     monkeypatch.setattr("isola._sandbox.time.monotonic", fake_monotonic)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         side_effect=[
@@ -633,10 +633,10 @@ async def test_async_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr("isola._sandbox.time.monotonic", fake_monotonic)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
-        return_value=httpx.Response(200, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(200, json=_make_sandbox_response("starting"))
     )
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
@@ -661,7 +661,7 @@ async def test_async_wait_raises_timeout_error_when_not_found_persists(
     monkeypatch.setattr("isola._sandbox.time.monotonic", fake_monotonic)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         side_effect=[
@@ -682,12 +682,12 @@ def test_max_wait_seconds_none_means_indefinite(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("isola._sandbox.time.sleep", lambda _: None)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         side_effect=[
-            httpx.Response(200, json=_make_sandbox_response("creating")),
-            httpx.Response(200, json=_make_sandbox_response("creating")),
+            httpx.Response(200, json=_make_sandbox_response("starting")),
+            httpx.Response(200, json=_make_sandbox_response("starting")),
             httpx.Response(200, json=_make_sandbox_response("running")),
         ]
     )
@@ -705,12 +705,12 @@ async def test_async_max_wait_seconds_none_means_indefinite(monkeypatch: pytest.
     monkeypatch.setattr("isola._sandbox.asyncio.sleep", _no_sleep)
 
     respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=_make_sandbox_response("creating"))
+        return_value=httpx.Response(201, json=_make_sandbox_response("starting"))
     )
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         side_effect=[
-            httpx.Response(200, json=_make_sandbox_response("creating")),
-            httpx.Response(200, json=_make_sandbox_response("creating")),
+            httpx.Response(200, json=_make_sandbox_response("starting")),
+            httpx.Response(200, json=_make_sandbox_response("starting")),
             httpx.Response(200, json=_make_sandbox_response("running")),
         ]
     )

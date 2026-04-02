@@ -29,7 +29,7 @@ def test_create_minimal_sandbox_reaches_running(
     """Creating a sandbox with only an image should eventually reach running status."""
     sb = sandbox_factory(image="alpine:3.21")
     assert sb.id
-    assert sb.status in (SandboxStatus.CREATING, SandboxStatus.RUNNING, SandboxStatus.UNKNOWN)
+    assert sb.status in (SandboxStatus.STARTING, SandboxStatus.RUNNING, SandboxStatus.UNKNOWN)
 
     running = wait_for_running(isola_client, sb.id)
     assert running.status == SandboxStatus.RUNNING

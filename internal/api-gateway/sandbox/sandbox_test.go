@@ -300,11 +300,11 @@ var _ = Describe("Sandbox Endpoints", func() {
 			})).To(Equal("running"))
 		})
 
-		It("maps PodPending to creating", func() {
+		It("maps PodPending to starting", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodPending"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("creating"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("starting"))
 		})
 
 		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
@@ -316,18 +316,18 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("running"))
 		})
 
-		It("maps NetworkPolicyApplied to creating", func() {
+		It("maps NetworkPolicyApplied to starting", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "NetworkPolicyApplied"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("creating"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("starting"))
 		})
 
-		It("maps Deleting to shuttingDown", func() {
+		It("maps Deleting to terminating", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "Deleting"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("shuttingDown"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("terminating"))
 		})
 
 		It("maps PodFailed to failed", func() {
@@ -344,13 +344,11 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("stopped"))
 		})
 
-		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
-		// and encapsulated in the RootfsSnapshot CRD only (see convert.go TODO).
-		It("maps RootfsSnapshotComplete to stopped", func() {
+		It("maps RootfsSnapshotComplete to terminating", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshotComplete"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("stopped"))
+			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("terminating"))
 		})
 
 		It("maps no conditions to unknown", func() {

@@ -26,8 +26,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
@@ -50,37 +48,6 @@ func (b *BodyStream) Resolve(ctx huma.Context) []error {
 	b.Stream = ctx.BodyReader()
 	b.ResponseController = httputil.ResponseController(ctx)
 	return nil
-}
-
-func ConditionsToStatus(conditions []metav1.Condition) string {
-	ready := meta.FindStatusCondition(conditions, "Ready")
-	if ready == nil {
-		return "unknown"
-	}
-
-	if ready.Status == metav1.ConditionTrue {
-		return "running"
-	}
-
-	// TODO: remove snapshot-related reasons from Sandbox CRD — they should be
-	// encapsulated in the RootfsSnapshot CRD only.
-	// TODO benl: make them as constants and share them with routes.go openapi enum generation
-	switch ready.Reason {
-	case "PodPending", "PodCreating", "Reconciling", "NetworkPolicyApplied":
-		return "creating"
-	case "PodRunning", "RootfsSnapshottingInProgress":
-		return "running"
-	case "Deleting":
-		return "shuttingDown"
-	case "PodFailed", "PodCreationFailed", "InvalidRuntime",
-		"NetworkPolicyFailed", "RootfsSnapshotFailed", "RootfsSnapshotTimeout",
-		"RootfsRestoreConfigurationError", "StartupTimeoutExceeded":
-		return "failed"
-	case "PodSucceeded", "RootfsSnapshotComplete":
-		return "stopped"
-	default:
-		return "unknown"
-	}
 }
 
 func K8sErrorToHuma(err error, fallbackMsg string) error {
@@ -110,8 +77,7 @@ func GetReadySandbox(ctx context.Context, k8sClient client.Client, namespace, id
 		return nil, K8sErrorToHuma(err, "failed to get sandbox")
 	}
 
-	// todo benl: stop using raw strings for sandbox status
-	if ConditionsToStatus(sb.Status.Conditions) != "running" {
+	if ConditionsToStatus(sb.Status.Conditions) != StatusRunning {
 		logger.Warn("sandbox is not ready", "id", id, "status", ConditionsToStatus(sb.Status.Conditions))
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}

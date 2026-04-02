@@ -486,9 +486,9 @@ components:
         status:
           description: Sandbox status
           enum:
-            - creating
+            - starting
             - running
-            - shuttingDown
+            - terminating
             - failed
             - stopped
             - unknown

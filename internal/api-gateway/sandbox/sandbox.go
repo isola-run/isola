@@ -117,7 +117,7 @@ type SandboxResponse struct {
 	StartupTimeoutSeconds *int64                 `json:"startupTimeoutSeconds,omitempty" doc:"Max seconds for the sandbox to become Ready"`
 	Network               *NetworkSpec           `json:"network,omitempty" doc:"Network isolation config"`
 	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" doc:"Rootfs snapshot restore configuration."`
-	Status                string                 `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
+	Status                string                 `json:"status" doc:"Sandbox status" enum:"starting,running,terminating,failed,stopped,unknown"`
 	CreationTimestamp     string                 `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
 

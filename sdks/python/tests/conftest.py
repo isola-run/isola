@@ -61,7 +61,7 @@ def sandbox_summary_response() -> dict[str, object]:
             },
             {
                 "id": "sandbox-456",
-                "status": "creating",
+                "status": "starting",
                 "creationTimestamp": "2026-02-18T00:01:00Z",
             },
         ]
