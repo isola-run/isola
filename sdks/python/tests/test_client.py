@@ -478,13 +478,15 @@ def test_no_retry_for_non_seekable_stream_on_connection_error(monkeypatch: pytes
     route = respx.get("http://localhost:8080/v1/sandboxes")
     route.mock(side_effect=httpx.ConnectError("connect failed"))
 
-    # A pipe-like object: has read() but no seek()/tell()
+    # A pipe-like object: has read() but is not seekable
     r, w = os.pipe()
     os.write(w, b"data")
     os.close(w)
-    stream = os.fdopen(r, "rb")
-
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(APIConnectionError):
+    with (
+        os.fdopen(r, "rb") as stream,
+        Isola(base_url="http://localhost:8080") as client,
+        pytest.raises(APIConnectionError),
+    ):
         client._api.request("GET", "/v1/sandboxes", content=stream)
 
     assert route.call_count == 1
