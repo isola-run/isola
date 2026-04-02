@@ -634,6 +634,8 @@ func isTerminalPodCondition(cond *metav1.Condition) bool {
 }
 
 // getRestartCountAtBoot parses the snapshot annotation from the sandbox.
+// If the annotation contains invalid JSON, it is deleted so that
+// setRestartCountAtBoot can re-snapshot on the next reconcile.
 func getRestartCountAtBoot(sandbox *sandboxv1alpha1.Sandbox) map[string]int32 {
 	raw, ok := sandbox.Annotations[restartCountAtBootAnnotation]
 	if !ok {
@@ -641,6 +643,7 @@ func getRestartCountAtBoot(sandbox *sandboxv1alpha1.Sandbox) map[string]int32 {
 	}
 	var m map[string]int32
 	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		delete(sandbox.Annotations, restartCountAtBootAnnotation)
 		return nil
 	}
 	return m
