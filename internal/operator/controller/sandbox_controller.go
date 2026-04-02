@@ -514,6 +514,24 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	sandboxPod *corev1.Pod,
 ) error {
+	log := logf.FromContext(ctx)
+
+	// If the sandbox previously reached Running and a restored container has
+	// restarted, the restart was triggered by an application exit (not a boot
+	// failure). Delete the pod so the exit is terminal.
+	if sandboxPod != nil && hasRestoredContainerRestarted(sandboxPod) {
+		prevPodCond := meta.FindStatusCondition(baseSandbox.Status.Conditions, SandboxPodReadyCondition)
+		if prevPodCond != nil && prevPodCond.Reason == CondReasonPodRunning {
+			log.Info("Restored container restarted after sandbox was running; deleting pod to make exit terminal")
+			r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "RestoredContainerRestarted", "Cleanup",
+				"Deleting pod: restored container restarted after reaching Running state (application exit, not boot failure)")
+			if err := r.Delete(ctx, sandboxPod); err != nil {
+				return client.IgnoreNotFound(err)
+			}
+			return nil
+		}
+	}
+
 	var conditions []metav1.Condition
 
 	podCondition := r.determinePodCondition(sandbox, sandboxPod)
@@ -575,6 +593,21 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 		Message:            "Pod is not ready yet",
 		ObservedGeneration: sandbox.Generation,
 	}
+}
+
+// hasRestoredContainerRestarted reports whether any container with a gVisor
+// rootfs restore annotation has been restarted by kubelet (restartCount > 0).
+func hasRestoredContainerRestarted(pod *corev1.Pod) bool {
+	if pod == nil {
+		return false
+	}
+	for _, cs := range pod.Status.ContainerStatuses {
+		key := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", cs.Name)
+		if _, ok := pod.Annotations[key]; ok && cs.RestartCount > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snap *sandboxv1alpha1.RootfsSnapshot) metav1.Condition {

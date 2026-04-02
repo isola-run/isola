@@ -466,5 +466,205 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(cond.Message).To(ContainSubstring("2 containers"))
 		})
 
+		It("should delete pod when restored container restarts after sandbox was running", func() {
+			runtimeClassName := "gvisor-restore"
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			reconciler := newTestReconcilerWithRestore(fakeClock, runtimeClassName, "/mnt/isola-snapshots")
+
+			sandboxName := "sb-restore-post-boot-restart"
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
+					{SnapshotName: "my-snapshot"},
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile: create the pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// Simulate pod reaching Running state
+			pod = bindPodToNode(ctx, podName)
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
+
+			// Reconcile so sandbox records PodRunning condition
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionTrue, CondReasonPodRunning)).To(BeTrue())
+
+			// Simulate container restart (application exited with 128, kubelet restarted it)
+			pod = getPod(ctx, podName)
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "sandbox", ContainerID: "containerd://abc123", RestartCount: 1, Ready: true,
+					State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			// Reconcile: should detect the unwanted restart and delete the pod
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Pod should be deleted
+			deletedPod := getPod(ctx, podName)
+			if deletedPod != nil {
+				Expect(deletedPod.DeletionTimestamp).NotTo(BeNil())
+			}
+		})
+
+		It("should not delete pod when restored container restarts before sandbox was running", func() {
+			runtimeClassName := "gvisor-restore"
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			reconciler := newTestReconcilerWithRestore(fakeClock, runtimeClassName, "/mnt/isola-snapshots")
+
+			sandboxName := "sb-restore-boot-retry"
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
+					{SnapshotName: "my-snapshot"},
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile: create the pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// Simulate boot failure retry: container restarted but pod never reached Running
+			pod = bindPodToNode(ctx, podName)
+			pod.Status.Phase = corev1.PodPending
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "sandbox", RestartCount: 1, Ready: false,
+					State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff"}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			// Reconcile: should NOT delete the pod (sandbox was never Running)
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod = getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.DeletionTimestamp).To(BeNil())
+		})
+
+		It("should not delete pod when non-restored container restarts after running", func() {
+			runtimeClassName := "gvisor-restore"
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			reconciler := newTestReconcilerWithRestore(fakeClock, runtimeClassName, "/mnt/isola-snapshots")
+
+			sandboxName := "sb-non-restored-restart"
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.PodTemplate.Spec.Containers = []corev1.Container{
+					{Name: "app1", Image: "busybox:latest", Command: []string{"sleep", "infinity"}},
+					{Name: "app2", Image: "busybox:latest", Command: []string{"sleep", "infinity"}},
+				}
+				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
+					{SnapshotName: "snap-a", ContainerName: "app1"},
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Simulate Running state
+			pod := bindPodToNode(ctx, podName)
+			pod.Status.Phase = corev1.PodRunning
+			pod.Status.Conditions = []corev1.PodCondition{
+				{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+			}
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "app1", ContainerID: "containerd://a", RestartCount: 0, Ready: true,
+					State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+				{Name: "app2", ContainerID: "containerd://b", RestartCount: 0, Ready: true,
+					State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			// Reconcile to reach PodRunning
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Simulate restart on app2 (NOT a restored container)
+			pod = getPod(ctx, podName)
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "app1", ContainerID: "containerd://a", RestartCount: 0, Ready: true,
+					State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+				{Name: "app2", ContainerID: "containerd://b", RestartCount: 1, Ready: true,
+					State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			// Reconcile: should NOT delete the pod (only app2 restarted, which is not restored)
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod = getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.DeletionTimestamp).To(BeNil())
+		})
+
+		It("hasRestoredContainerRestarted returns correct results", func() {
+			// Pod with restore annotation, no restart
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						"dev.gvisor.tar.rootfs.upper.app": "/mnt/snapshots/ns/snap.tar",
+					},
+				},
+				Status: corev1.PodStatus{
+					ContainerStatuses: []corev1.ContainerStatus{
+						{Name: "app", RestartCount: 0},
+					},
+				},
+			}
+			Expect(hasRestoredContainerRestarted(pod)).To(BeFalse())
+
+			// Same pod, container restarted
+			pod.Status.ContainerStatuses[0].RestartCount = 1
+			Expect(hasRestoredContainerRestarted(pod)).To(BeTrue())
+
+			// Non-annotated container with restarts
+			pod2 := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+				Status: corev1.PodStatus{
+					ContainerStatuses: []corev1.ContainerStatus{
+						{Name: "app", RestartCount: 1},
+					},
+				},
+			}
+			Expect(hasRestoredContainerRestarted(pod2)).To(BeFalse())
+
+			// Nil pod
+			Expect(hasRestoredContainerRestarted(nil)).To(BeFalse())
+		})
+
 	})
 })
