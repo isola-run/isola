@@ -38,12 +38,8 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 def _stream_pos(content: bytes | BinaryIO | None) -> int | None:
     """Return the current position of a seekable stream, or None."""
-    if isinstance(content, io.IOBase):
-        try:
-            if content.seekable():
-                return content.tell()
-        except ValueError:  # closed file
-            pass
+    if isinstance(content, io.IOBase) and content.seekable():
+        return content.tell()
     return None
 
 
