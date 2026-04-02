@@ -38,9 +38,12 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 def _make_rewind(content: bytes | BinaryIO | None) -> Callable[[], bool] | None:
     """If *content* is a seekable stream, return a closure that rewinds it."""
-    if not (hasattr(content, "seekable") and content.seekable()):
+    try:
+        if not (hasattr(content, "seekable") and content.seekable()):
+            return None
+        pos = content.tell()
+    except (ValueError, OSError):
         return None
-    pos = content.tell()
 
     def rewind() -> bool:
         try:

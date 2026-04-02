@@ -449,18 +449,17 @@ def test_retries_rewind_seekable_stream_on_connection_error(monkeypatch: pytest.
     monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
     payload = b"file content here"
     bodies_received: list[bytes] = []
+    call_count = 0
 
-    def capture_body(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise httpx.ConnectError("connect failed")
         bodies_received.append(request.content)
         return httpx.Response(200, json={"sandboxes": []})
 
-    route = respx.get("http://localhost:8080/v1/sandboxes")
-    route.mock(
-        side_effect=[
-            httpx.ConnectError("connect failed"),
-            capture_body,
-        ]
-    )
+    respx.get("http://localhost:8080/v1/sandboxes").mock(side_effect=handler)
 
     stream = io.BytesIO(payload)
     with Isola(base_url="http://localhost:8080") as client:
