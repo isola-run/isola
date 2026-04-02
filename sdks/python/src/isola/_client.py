@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 import time
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
@@ -37,11 +38,12 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 def _stream_pos(content: bytes | BinaryIO | None) -> int | None:
     """Return the current position of a seekable stream, or None."""
-    try:
-        if hasattr(content, "seekable") and content.seekable():
-            return content.tell()
-    except (ValueError, OSError):
-        pass
+    if isinstance(content, io.IOBase):
+        try:
+            if content.seekable():
+                return content.tell()
+        except ValueError:  # closed file
+            pass
     return None
 
 
