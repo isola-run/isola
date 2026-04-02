@@ -492,19 +492,23 @@ var _ = Describe("Sandbox Controller", func() {
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
 
-			// Simulate pod reaching Running state
+			// Simulate pod reaching Running state (RestartCount=0 — no boot retries)
 			pod = bindPodToNode(ctx, podName)
 			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
 
-			// Reconcile so sandbox records PodRunning condition
+			// Reconcile: sandbox reaches PodRunning, operator snapshots RestartCount=0
 			_, err = doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionTrue, CondReasonPodRunning)).To(BeTrue())
 
-			// Simulate container restart (application exited with 128, kubelet restarted it)
+			// Verify snapshot annotation was written
 			pod = getPod(ctx, podName)
+			Expect(pod.Annotations).To(HaveKeyWithValue(
+				"sandbox.isola.run/restore-restart-count.sandbox", "0"))
+
+			// Simulate container restart (application exited with 128, kubelet restarted it)
 			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
 				{Name: "sandbox", ContainerID: "containerd://abc123", RestartCount: 1, Ready: true,
 					State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
@@ -524,6 +528,65 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox = getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
 			Expect(hasConditionWithReason(sandbox, SandboxReadyCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
+		})
+
+		It("should not delete pod when boot retries preceded successful running", func() {
+			runtimeClassName := "gvisor-restore"
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
+
+			reconciler := newTestReconcilerWithRestore(fakeClock, runtimeClassName, "/mnt/isola-snapshots")
+
+			sandboxName := "sb-restore-boot-then-run"
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
+					{SnapshotName: "my-snapshot"},
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile: create the pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Simulate: container failed to start twice (tar not ready), then succeeded.
+			// Pod reaches Running with RestartCount=2 from boot retries.
+			pod := bindPodToNode(ctx, podName)
+			pod.Status.Phase = corev1.PodRunning
+			pod.Status.StartTime = &metav1.Time{Time: fakeClock.Now()}
+			pod.Status.Conditions = []corev1.PodCondition{
+				{Type: corev1.PodReady, Status: corev1.ConditionTrue, LastTransitionTime: metav1.Time{Time: fakeClock.Now()}},
+			}
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "sandbox", ContainerID: "containerd://abc123", RestartCount: 2, Ready: true,
+					State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			// Reconcile: sandbox reaches PodRunning, operator snapshots RestartCount=2
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionTrue, CondReasonPodRunning)).To(BeTrue())
+
+			// Verify snapshot recorded the boot-time restart count
+			pod = getPod(ctx, podName)
+			Expect(pod.Annotations).To(HaveKeyWithValue(
+				"sandbox.isola.run/restore-restart-count.sandbox", "2"))
+
+			// Next reconcile (e.g. from a watch event) should NOT delete the pod
+			// even though RestartCount=2 > 0, because it matches the snapshot.
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod = getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.DeletionTimestamp).To(BeNil())
 		})
 
 		It("should not delete pod when restored container restarts before sandbox was running", func() {
@@ -633,8 +696,8 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.DeletionTimestamp).To(BeNil())
 		})
 
-		It("hasRestoredContainerRestarted returns correct results", func() {
-			// Pod with restore annotation, no restart
+		It("hasRestoredContainerRestartedSinceBoot returns correct results", func() {
+			// No snapshot annotation yet — still in boot phase, always false
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
@@ -643,20 +706,28 @@ var _ = Describe("Sandbox Controller", func() {
 				},
 				Status: corev1.PodStatus{
 					ContainerStatuses: []corev1.ContainerStatus{
-						{Name: "app", RestartCount: 0},
+						{Name: "app", RestartCount: 3},
 					},
 				},
 			}
-			Expect(hasRestoredContainerRestarted(pod)).To(BeFalse())
+			Expect(hasRestoredContainerRestartedSinceBoot(pod)).To(BeFalse())
 
-			// Same pod, container restarted
-			pod.Status.ContainerStatuses[0].RestartCount = 1
-			Expect(hasRestoredContainerRestarted(pod)).To(BeTrue())
+			// Add snapshot: boot completed with RestartCount=2
+			pod.Annotations["sandbox.isola.run/restore-restart-count.app"] = "2"
 
-			// Non-annotated container with restarts
+			// RestartCount=3 > snapshot=2 — post-boot restart detected
+			Expect(hasRestoredContainerRestartedSinceBoot(pod)).To(BeTrue())
+
+			// RestartCount matches snapshot — no post-boot restart
+			pod.Status.ContainerStatuses[0].RestartCount = 2
+			Expect(hasRestoredContainerRestartedSinceBoot(pod)).To(BeFalse())
+
+			// Non-annotated container with restarts and snapshot — not restored
 			pod2 := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{},
+					Annotations: map[string]string{
+						"sandbox.isola.run/restore-restart-count.app": "0",
+					},
 				},
 				Status: corev1.PodStatus{
 					ContainerStatuses: []corev1.ContainerStatus{
@@ -664,10 +735,10 @@ var _ = Describe("Sandbox Controller", func() {
 					},
 				},
 			}
-			Expect(hasRestoredContainerRestarted(pod2)).To(BeFalse())
+			Expect(hasRestoredContainerRestartedSinceBoot(pod2)).To(BeFalse())
 
 			// Nil pod
-			Expect(hasRestoredContainerRestarted(nil)).To(BeFalse())
+			Expect(hasRestoredContainerRestartedSinceBoot(nil)).To(BeFalse())
 		})
 
 	})
