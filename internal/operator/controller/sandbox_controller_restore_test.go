@@ -503,10 +503,10 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionTrue, CondReasonPodRunning)).To(BeTrue())
 
-			// Verify snapshot annotation was written
+			// Verify restart count snapshot was recorded in sandbox status
 			pod = getPod(ctx, podName)
-			Expect(pod.Annotations).To(HaveKeyWithValue(
-				"sandbox.isola.run/restore-restart-count.sandbox", "0"))
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(sandbox.Status.RestartCountAtBoot).To(HaveKeyWithValue("sandbox", int32(0)))
 
 			// Simulate container restart (application exited with 128, kubelet restarted it)
 			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
@@ -574,10 +574,10 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionTrue, CondReasonPodRunning)).To(BeTrue())
 
-			// Verify snapshot recorded the boot-time restart count
+			// Verify snapshot recorded the boot-time restart count in sandbox status
 			pod = getPod(ctx, podName)
-			Expect(pod.Annotations).To(HaveKeyWithValue(
-				"sandbox.isola.run/restore-restart-count.sandbox", "2"))
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox.Status.RestartCountAtBoot).To(HaveKeyWithValue("sandbox", int32(2)))
 
 			// Next reconcile (e.g. from a watch event) should NOT delete the pod
 			// even though RestartCount=2 > 0, because it matches the snapshot.
@@ -697,7 +697,6 @@ var _ = Describe("Sandbox Controller", func() {
 		})
 
 		It("hasRestoredContainerRestartedSinceBoot returns correct results", func() {
-			// No snapshot annotation yet — still in boot phase, always false
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
@@ -710,35 +709,34 @@ var _ = Describe("Sandbox Controller", func() {
 					},
 				},
 			}
-			Expect(hasRestoredContainerRestartedSinceBoot(pod)).To(BeFalse())
+
+			// No snapshot in sandbox status yet — still in boot phase, always false
+			sb := &sandboxv1alpha1.Sandbox{}
+			Expect(hasRestoredContainerRestartedSinceBoot(sb, pod)).To(BeFalse())
 
 			// Add snapshot: boot completed with RestartCount=2
-			pod.Annotations["sandbox.isola.run/restore-restart-count.app"] = "2"
+			sb.Status.RestartCountAtBoot = map[string]int32{"app": 2}
 
 			// RestartCount=3 > snapshot=2 — post-boot restart detected
-			Expect(hasRestoredContainerRestartedSinceBoot(pod)).To(BeTrue())
+			Expect(hasRestoredContainerRestartedSinceBoot(sb, pod)).To(BeTrue())
 
 			// RestartCount matches snapshot — no post-boot restart
 			pod.Status.ContainerStatuses[0].RestartCount = 2
-			Expect(hasRestoredContainerRestartedSinceBoot(pod)).To(BeFalse())
+			Expect(hasRestoredContainerRestartedSinceBoot(sb, pod)).To(BeFalse())
 
-			// Non-annotated container with restarts and snapshot — not restored
+			// Non-restored container (no gVisor annotation) — ignored even with snapshot
 			pod2 := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						"sandbox.isola.run/restore-restart-count.app": "0",
-					},
-				},
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}},
 				Status: corev1.PodStatus{
 					ContainerStatuses: []corev1.ContainerStatus{
-						{Name: "app", RestartCount: 1},
+						{Name: "app", RestartCount: 5},
 					},
 				},
 			}
-			Expect(hasRestoredContainerRestartedSinceBoot(pod2)).To(BeFalse())
+			Expect(hasRestoredContainerRestartedSinceBoot(sb, pod2)).To(BeFalse())
 
 			// Nil pod
-			Expect(hasRestoredContainerRestartedSinceBoot(nil)).To(BeFalse())
+			Expect(hasRestoredContainerRestartedSinceBoot(sb, nil)).To(BeFalse())
 		})
 
 	})

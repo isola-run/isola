@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"maps"
 	"path/filepath"
-	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -520,7 +519,7 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	// If the sandbox previously reached Running and a restored container has
 	// restarted since boot, the restart was triggered by an application exit
 	// (not a boot failure). Delete the pod and mark the sandbox as failed.
-	if sandboxPod != nil && hasRestoredContainerRestartedSinceBoot(sandboxPod) {
+	if sandboxPod != nil && hasRestoredContainerRestartedSinceBoot(baseSandbox, sandboxPod) {
 		prevPodCond := meta.FindStatusCondition(baseSandbox.Status.Conditions, SandboxPodReadyCondition)
 		if prevPodCond != nil && prevPodCond.Reason == CondReasonPodRunning {
 			log.Info("Restored container restarted after sandbox was running; deleting pod to make exit terminal")
@@ -555,21 +554,9 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 
 	// When the sandbox first transitions to Running, snapshot the RestartCount
 	// of restored containers so we can later detect post-boot restarts.
-	if sandboxPod != nil && podCondition.Reason == CondReasonPodRunning && len(sandbox.Spec.RootfsSnapshotSources) > 0 {
-		hasSnapshot := false
-		for k := range sandboxPod.Annotations {
-			if strings.HasPrefix(k, restoreRestartCountAnnotation) {
-				hasSnapshot = true
-				break
-			}
-		}
-		if !hasSnapshot {
-			snapshotRestoredRestartCounts(sandboxPod)
-			if err := r.Update(ctx, sandboxPod); err != nil {
-				log.Error(err, "Failed to snapshot restored container restart counts")
-				return err
-			}
-		}
+	if sandboxPod != nil && podCondition.Reason == CondReasonPodRunning &&
+		len(sandbox.Spec.RootfsSnapshotSources) > 0 && len(sandbox.Status.RestartCountAtBoot) == 0 {
+		snapshotRestoredRestartCounts(sandbox, sandboxPod)
 	}
 
 	if sandboxPod != nil {
@@ -630,31 +617,11 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 	}
 }
 
-// restoreRestartCountAnnotation is the prefix for pod annotations that record
-// the RestartCount of each restored container at the time the sandbox first
-// reached the Running state. A post-boot restart is detected by comparing the
-// current RestartCount against this snapshot.
-const restoreRestartCountAnnotation = "sandbox.isola.run/restore-restart-count."
-
-// snapshotRestoredRestartCounts records the current RestartCount of every
-// restored container as a pod annotation. This must be called exactly once,
-// when the sandbox first transitions to PodRunning.
-func snapshotRestoredRestartCounts(pod *corev1.Pod) {
-	for _, cs := range pod.Status.ContainerStatuses {
-		restoreKey := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", cs.Name)
-		if _, ok := pod.Annotations[restoreKey]; ok {
-			snapKey := restoreRestartCountAnnotation + cs.Name
-			pod.Annotations[snapKey] = fmt.Sprintf("%d", cs.RestartCount)
-		}
-	}
-}
-
 // hasRestoredContainerRestartedSinceBoot reports whether any restored container
-// has a RestartCount higher than the value recorded when the sandbox first
-// reached Running. Returns false if no snapshot has been taken yet (the
-// annotation is absent).
-func hasRestoredContainerRestartedSinceBoot(pod *corev1.Pod) bool {
-	if pod == nil {
+// has a RestartCount higher than the value recorded in the sandbox status when
+// it first reached Running. Returns false if no snapshot has been taken yet.
+func hasRestoredContainerRestartedSinceBoot(sandbox *sandboxv1alpha1.Sandbox, pod *corev1.Pod) bool {
+	if pod == nil || len(sandbox.Status.RestartCountAtBoot) == 0 {
 		return false
 	}
 	for _, cs := range pod.Status.ContainerStatuses {
@@ -662,13 +629,8 @@ func hasRestoredContainerRestartedSinceBoot(pod *corev1.Pod) bool {
 		if _, ok := pod.Annotations[restoreKey]; !ok {
 			continue
 		}
-		snapKey := restoreRestartCountAnnotation + cs.Name
-		snapVal, ok := pod.Annotations[snapKey]
+		snapCount, ok := sandbox.Status.RestartCountAtBoot[cs.Name]
 		if !ok {
-			continue // snapshot not taken yet — still in boot phase
-		}
-		var snapCount int32
-		if _, err := fmt.Sscanf(snapVal, "%d", &snapCount); err != nil {
 			continue
 		}
 		if cs.RestartCount > snapCount {
@@ -676,6 +638,19 @@ func hasRestoredContainerRestartedSinceBoot(pod *corev1.Pod) bool {
 		}
 	}
 	return false
+}
+
+// snapshotRestoredRestartCounts records the current RestartCount of every
+// restored container into the sandbox status. Called once when the sandbox
+// first transitions to PodRunning.
+func snapshotRestoredRestartCounts(sandbox *sandboxv1alpha1.Sandbox, pod *corev1.Pod) {
+	sandbox.Status.RestartCountAtBoot = make(map[string]int32)
+	for _, cs := range pod.Status.ContainerStatuses {
+		restoreKey := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", cs.Name)
+		if _, ok := pod.Annotations[restoreKey]; ok {
+			sandbox.Status.RestartCountAtBoot[cs.Name] = cs.RestartCount
+		}
+	}
 }
 
 func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1alpha1.Sandbox, snap *sandboxv1alpha1.RootfsSnapshot) metav1.Condition {

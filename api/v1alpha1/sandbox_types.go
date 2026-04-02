@@ -174,6 +174,12 @@ type SandboxStatus struct {
 	// PodIP is the IP address of the sandbox pod.
 	// +optional
 	PodIP string `json:"podIP,omitempty"`
+
+	// RestartCountAtBoot records the RestartCount of each restored container
+	// when the sandbox first reached Running. Used to distinguish boot retries
+	// (exit code 128 from missing rootfs tar) from post-boot application exits.
+	// +optional
+	RestartCountAtBoot map[string]int32 `json:"restartCountAtBoot,omitempty"`
 }
 
 // +kubebuilder:object:root=true
