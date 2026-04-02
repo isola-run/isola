@@ -521,38 +521,38 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	// reconciles (e.g. from the pod deletion event while the pod is still
 	// terminating) overwrite it back to PodRunning/PodPending.
 	prevPodCond := meta.FindStatusCondition(baseSandbox.Status.Conditions, SandboxPodReadyCondition)
-	if prevPodCond != nil && (prevPodCond.Reason == CondReasonPodFailed || prevPodCond.Reason == CondReasonPodSucceeded) {
+	if isTerminalPodCondition(prevPodCond) {
 		return nil
 	}
 
-	// If the sandbox previously reached Running and a restored container has
-	// restarted since boot, the restart was triggered by an application exit
-	// (not a boot failure). Delete the pod and mark the sandbox as failed.
+	// If a restored container has restarted since boot, the restart was
+	// triggered by an application exit (not a boot failure). Delete the pod
+	// and mark the sandbox as failed. The snapshot's existence already proves
+	// the sandbox reached Running at least once.
 	if sandboxPod != nil && hasRestoredContainerRestartedSinceBoot(sandbox, sandboxPod) {
-		if prevPodCond != nil && prevPodCond.Reason == CondReasonPodRunning {
-			log.Info("Restored container restarted after sandbox was running; deleting pod to make exit terminal")
-			r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "RestoredContainerRestarted", "Cleanup",
-				"Deleting pod: restored container restarted after reaching Running state (application exit, not boot failure)")
-			if err := client.IgnoreNotFound(r.Delete(ctx, sandboxPod)); err != nil {
-				return err
-			}
-			return r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-				{
-					Type:               SandboxPodReadyCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonPodFailed,
-					Message:            "Pod deleted: restored container restarted after boot (application exit)",
-					ObservedGeneration: sandbox.Generation,
-				},
-				{
-					Type:               SandboxReadyCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonPodFailed,
-					Message:            "Pod deleted: restored container restarted after boot (application exit)",
-					ObservedGeneration: sandbox.Generation,
-				},
-			})
+		log.Info("Restored container restarted after sandbox was running; deleting pod to make exit terminal")
+		r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "RestoredContainerRestarted", "Cleanup",
+			"Deleting pod: restored container restarted after reaching Running state (application exit, not boot failure)")
+		if err := client.IgnoreNotFound(r.Delete(ctx, sandboxPod)); err != nil {
+			return err
 		}
+		msg := "Pod deleted: restored container restarted after boot (application exit)"
+		return r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxPodReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonPodFailed,
+				Message:            msg,
+				ObservedGeneration: sandbox.Generation,
+			},
+			{
+				Type:               SandboxReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonPodFailed,
+				Message:            msg,
+				ObservedGeneration: sandbox.Generation,
+			},
+		})
 	}
 
 	var conditions []metav1.Condition
@@ -618,10 +618,20 @@ func (r *SandboxReconciler) determinePodCondition(sandbox *sandboxv1alpha1.Sandb
 	}
 }
 
+// gvisorRestoreAnnotationPrefix is the annotation key prefix gVisor uses to
+// locate a rootfs tar for overlay restore.
+const gvisorRestoreAnnotationPrefix = "dev.gvisor.tar.rootfs.upper."
+
 // restartCountAtBootAnnotation stores a JSON map of container name → RestartCount
 // at the time the sandbox first reached Running. Used to distinguish boot retries
 // (exit code 128 from missing rootfs tar) from post-boot application exits.
 const restartCountAtBootAnnotation = "sandbox.isola.run/restart-count-at-boot"
+
+// isTerminalPodCondition reports whether the PodReady condition indicates a
+// terminal state (failed or succeeded) from which the sandbox should not recover.
+func isTerminalPodCondition(cond *metav1.Condition) bool {
+	return cond != nil && (cond.Reason == CondReasonPodFailed || cond.Reason == CondReasonPodSucceeded)
+}
 
 // getRestartCountAtBoot parses the snapshot annotation from the sandbox.
 func getRestartCountAtBoot(sandbox *sandboxv1alpha1.Sandbox) map[string]int32 {
@@ -642,7 +652,7 @@ func getRestartCountAtBoot(sandbox *sandboxv1alpha1.Sandbox) map[string]int32 {
 func setRestartCountAtBoot(sandbox *sandboxv1alpha1.Sandbox, pod *corev1.Pod) {
 	m := make(map[string]int32)
 	for _, cs := range pod.Status.ContainerStatuses {
-		restoreKey := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", cs.Name)
+		restoreKey := gvisorRestoreAnnotationPrefix + cs.Name
 		if _, ok := pod.Annotations[restoreKey]; ok {
 			m[cs.Name] = cs.RestartCount
 		}
@@ -672,7 +682,7 @@ func hasRestoredContainerRestartedSinceBoot(sandbox *sandboxv1alpha1.Sandbox, po
 		return false
 	}
 	for _, cs := range pod.Status.ContainerStatuses {
-		restoreKey := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", cs.Name)
+		restoreKey := gvisorRestoreAnnotationPrefix + cs.Name
 		if _, ok := pod.Annotations[restoreKey]; !ok {
 			continue
 		}
@@ -1365,7 +1375,7 @@ func (r *SandboxReconciler) injectRootfsRestore(sources []sandboxv1alpha1.Rootfs
 				"invalid snapshot name %q: must be a safe local path component", src.SnapshotName))
 		}
 
-		key := fmt.Sprintf("dev.gvisor.tar.rootfs.upper.%s", name)
+		key := gvisorRestoreAnnotationPrefix + name
 		if _, dup := pod.Annotations[key]; dup {
 			return reconcile.TerminalError(fmt.Errorf(
 				"duplicate restore target: container %q", name))
