@@ -59,12 +59,10 @@ def test_create_rootfs_snapshot_with_all_fields(rootfs_snapshot_response_copy: d
 
 
 @respx.mock
-def test_create_rootfs_snapshot_with_minimal_fields_omits_optionals(
+def test_create_rootfs_snapshot_with_minimal_fields_sends_defaults(
     rootfs_snapshot_response_copy: dict[str, object],
 ) -> None:
     rootfs_snapshot_response_copy.pop("containerName")
-    rootfs_snapshot_response_copy.pop("timeoutSeconds")
-    rootfs_snapshot_response_copy.pop("ttlSecondsAfterFinished")
     create_route = respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
         return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
     )
@@ -76,13 +74,15 @@ def test_create_rootfs_snapshot_with_minimal_fields_omits_optionals(
         )
 
     assert snapshot.container_name is None
-    assert snapshot.timeout_seconds is None
-    assert snapshot.ttl_seconds_after_finished is None
+    assert snapshot.timeout_seconds == 300
+    assert snapshot.ttl_seconds_after_finished == 600
 
     payload = json.loads(create_route.calls[0].request.content)
     assert payload == {
         "sandboxId": "sandbox-123",
         "snapshotName": "my-snapshot",
+        "timeoutSeconds": 300,
+        "ttlSecondsAfterFinished": 300,
     }
 
 
@@ -297,31 +297,6 @@ def test_wait_raises_timeout_error_when_not_found_persists(monkeypatch: pytest.M
         )
 
 
-@respx.mock
-def test_max_wait_seconds_none_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("isola._rootfs_snapshot.time.sleep", lambda _: None)
-
-    respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
-        return_value=httpx.Response(201, json=_make_rootfs_snapshot_response("pending"))
-    )
-    respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123").mock(
-        side_effect=[
-            httpx.Response(200, json=_make_rootfs_snapshot_response("pending")),
-            httpx.Response(200, json=_make_rootfs_snapshot_response("inProgress")),
-            httpx.Response(200, json=_make_rootfs_snapshot_response("complete")),
-        ]
-    )
-
-    with Isola(base_url="http://localhost:8080") as client:
-        snapshot = client.rootfs_snapshots.create(
-            sandbox_id="sandbox-123",
-            snapshot_name="my-snapshot",
-            max_wait_seconds=None,
-        )
-
-    assert snapshot.status == RootfsSnapshotStatus.COMPLETE
-
-
 async def _no_sleep(_: float) -> None:
     pass
 
@@ -363,12 +338,10 @@ async def test_async_create_rootfs_snapshot_with_all_fields(rootfs_snapshot_resp
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_async_create_rootfs_snapshot_with_minimal_fields_omits_optionals(
+async def test_async_create_rootfs_snapshot_with_minimal_fields_sends_defaults(
     rootfs_snapshot_response_copy: dict[str, object],
 ) -> None:
     rootfs_snapshot_response_copy.pop("containerName")
-    rootfs_snapshot_response_copy.pop("timeoutSeconds")
-    rootfs_snapshot_response_copy.pop("ttlSecondsAfterFinished")
     create_route = respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
         return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
     )
@@ -380,13 +353,15 @@ async def test_async_create_rootfs_snapshot_with_minimal_fields_omits_optionals(
         )
 
     assert snapshot.container_name is None
-    assert snapshot.timeout_seconds is None
-    assert snapshot.ttl_seconds_after_finished is None
+    assert snapshot.timeout_seconds == 300
+    assert snapshot.ttl_seconds_after_finished == 600
 
     payload = json.loads(create_route.calls[0].request.content)
     assert payload == {
         "sandboxId": "sandbox-123",
         "snapshotName": "my-snapshot",
+        "timeoutSeconds": 300,
+        "ttlSecondsAfterFinished": 300,
     }
 
 
@@ -600,27 +575,3 @@ async def test_async_wait_raises_timeout_error_when_not_found_persists(
             )
 
 
-@pytest.mark.asyncio
-@respx.mock
-async def test_async_max_wait_seconds_none_means_indefinite(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("isola._rootfs_snapshot.asyncio.sleep", _no_sleep)
-
-    respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
-        return_value=httpx.Response(201, json=_make_rootfs_snapshot_response("pending"))
-    )
-    respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123").mock(
-        side_effect=[
-            httpx.Response(200, json=_make_rootfs_snapshot_response("pending")),
-            httpx.Response(200, json=_make_rootfs_snapshot_response("inProgress")),
-            httpx.Response(200, json=_make_rootfs_snapshot_response("complete")),
-        ]
-    )
-
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
-        snapshot = await client.rootfs_snapshots.create(
-            sandbox_id="sandbox-123",
-            snapshot_name="my-snapshot",
-            max_wait_seconds=None,
-        )
-
-    assert snapshot.status == RootfsSnapshotStatus.COMPLETE

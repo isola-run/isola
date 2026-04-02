@@ -38,14 +38,14 @@ def _check_failed(snapshot_id: str, status: RootfsSnapshotStatus) -> None:
 def _wait_until_complete(
     snapshot_id: str,
     api: _SyncAPI,
-    max_wait_seconds: int | None,
+    max_wait_seconds: int,
 ) -> RootfsSnapshotData:
-    deadline = time.monotonic() + max_wait_seconds if max_wait_seconds is not None else None
+    deadline = time.monotonic() + max_wait_seconds
     while True:
         try:
             data = api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
         except NotFoundError as err:
-            if deadline is not None and time.monotonic() >= deadline:
+            if time.monotonic() >= deadline:
                 raise IsolaTimeoutError(
                     f"rootfs snapshot {snapshot_id} did not reach complete state within {max_wait_seconds}s"
                 ) from err
@@ -54,7 +54,7 @@ def _wait_until_complete(
         if data.status == RootfsSnapshotStatus.COMPLETE:
             return data
         _check_failed(snapshot_id, data.status)
-        if deadline is not None and time.monotonic() >= deadline:
+        if time.monotonic() >= deadline:
             raise IsolaTimeoutError(
                 f"rootfs snapshot {snapshot_id} did not reach complete state within {max_wait_seconds}s"
             )
@@ -64,14 +64,14 @@ def _wait_until_complete(
 async def _async_wait_until_complete(
     snapshot_id: str,
     api: _AsyncAPI,
-    max_wait_seconds: int | None,
+    max_wait_seconds: int,
 ) -> RootfsSnapshotData:
-    deadline = time.monotonic() + max_wait_seconds if max_wait_seconds is not None else None
+    deadline = time.monotonic() + max_wait_seconds
     while True:
         try:
             data = await api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
         except NotFoundError as err:
-            if deadline is not None and time.monotonic() >= deadline:
+            if time.monotonic() >= deadline:
                 raise IsolaTimeoutError(
                     f"rootfs snapshot {snapshot_id} did not reach complete state within {max_wait_seconds}s"
                 ) from err
@@ -80,7 +80,7 @@ async def _async_wait_until_complete(
         if data.status == RootfsSnapshotStatus.COMPLETE:
             return data
         _check_failed(snapshot_id, data.status)
-        if deadline is not None and time.monotonic() >= deadline:
+        if time.monotonic() >= deadline:
             raise IsolaTimeoutError(
                 f"rootfs snapshot {snapshot_id} did not reach complete state within {max_wait_seconds}s"
             )
@@ -97,9 +97,9 @@ class RootfsSnapshots:
         sandbox_id: str,
         snapshot_name: str,
         container_name: str | None = None,
-        timeout_seconds: int | None = None,
-        ttl_seconds_after_finished: int | None = None,
-        max_wait_seconds: int | None = 300,
+        timeout_seconds: int = 300,
+        ttl_seconds_after_finished: int = 300,
+        max_wait_seconds: int = 300,
     ) -> RootfsSnapshot:
         payload = CreateRootfsSnapshotPayload(
             sandbox_id=sandbox_id,
@@ -134,9 +134,9 @@ class AsyncRootfsSnapshots:
         sandbox_id: str,
         snapshot_name: str,
         container_name: str | None = None,
-        timeout_seconds: int | None = None,
-        ttl_seconds_after_finished: int | None = None,
-        max_wait_seconds: int | None = 300,
+        timeout_seconds: int = 300,
+        ttl_seconds_after_finished: int = 300,
+        max_wait_seconds: int = 300,
     ) -> AsyncRootfsSnapshot:
         payload = CreateRootfsSnapshotPayload(
             sandbox_id=sandbox_id,

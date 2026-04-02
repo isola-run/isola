@@ -98,8 +98,8 @@ class CreateRootfsSnapshotPayload(IsolaModel):
     sandbox_id: str
     snapshot_name: str
     container_name: str | None = None
-    timeout_seconds: int | None = None
-    ttl_seconds_after_finished: int | None = None
+    timeout_seconds: int
+    ttl_seconds_after_finished: int
 
 
 class RootfsSnapshotData(IsolaModel):
@@ -124,7 +124,7 @@ class PodTemplateInfo(IsolaModel):
 class CreateSandboxPayload(IsolaModel):
     pod_template: PodTemplate
     timeout_seconds: int | None = None
-    startup_timeout_seconds: int | None = None
+    startup_timeout_seconds: int
     network: NetworkSpec | None = None
     rootfs_snapshot_sources: list[RootfsSnapshotSource] | None = None
 

@@ -70,20 +70,24 @@ class TestValidateByNameAndAlias:
             {
                 "podTemplate": {"container": {"image": "node:20"}},
                 "timeoutSeconds": 300,
+                "startupTimeoutSeconds": 60,
             }
         )
         assert payload.pod_template.container.image == "node:20"
         assert payload.timeout_seconds == 300
+        assert payload.startup_timeout_seconds == 60
 
     def test_construct_with_snake_case_dict(self) -> None:
         payload = CreateSandboxPayload.model_validate(
             {
                 "pod_template": {"container": {"image": "node:20"}},
                 "timeout_seconds": 300,
+                "startup_timeout_seconds": 60,
             }
         )
         assert payload.pod_template.container.image == "node:20"
         assert payload.timeout_seconds == 300
+        assert payload.startup_timeout_seconds == 60
 
     def test_network_spec_by_alias(self) -> None:
         net = NetworkSpec.model_validate(
@@ -175,6 +179,7 @@ class TestRoundTrip:
                 )
             ),
             timeout_seconds=1800,
+            startup_timeout_seconds=60,
             network=NetworkSpec(allow_internet_egress=True, nameservers=["1.1.1.1"]),
         )
         dumped = payload.model_dump(by_alias=True, mode="json", exclude_none=True)
