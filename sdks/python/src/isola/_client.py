@@ -76,7 +76,7 @@ class _SyncAPI:
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
         rewind = _make_rewind(content)
-        can_retry = rewind is not None or not hasattr(content, "read")
+        can_retry = rewind is not None or content is None or isinstance(content, bytes)
 
         for attempt in range(1 + MAX_RETRIES):
             try:
@@ -192,7 +192,7 @@ class _AsyncAPI:
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
         rewind = _make_rewind(content)
-        can_retry = rewind is not None or not hasattr(content, "read")
+        can_retry = rewind is not None or content is None or isinstance(content, bytes)
 
         for attempt in range(1 + MAX_RETRIES):
             try:
