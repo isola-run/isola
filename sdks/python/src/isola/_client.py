@@ -17,7 +17,6 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from typing import Any, BinaryIO, TypeVar
 
@@ -36,23 +35,14 @@ RETRY_DELAY = 1.0
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
-def _make_rewind(content: bytes | BinaryIO | None) -> Callable[[], bool] | None:
-    """If *content* is a seekable stream, return a closure that rewinds it."""
+def _stream_pos(content: bytes | BinaryIO | None) -> int | None:
+    """Return the current position of a seekable stream, or None."""
     try:
-        if not (hasattr(content, "seekable") and content.seekable()):
-            return None
-        pos = content.tell()
+        if hasattr(content, "seekable") and content.seekable():
+            return content.tell()
     except (ValueError, OSError):
-        return None
-
-    def rewind() -> bool:
-        try:
-            content.seek(pos)
-            return True
-        except OSError:
-            return False
-
-    return rewind
+        pass
+    return None
 
 
 class _SyncAPI:
@@ -75,8 +65,8 @@ class _SyncAPI:
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
-        rewind = _make_rewind(content)
-        can_retry = rewind is not None or content is None or isinstance(content, bytes)
+        pos = _stream_pos(content)
+        can_retry = pos is not None or content is None or isinstance(content, bytes)
 
         for attempt in range(1 + MAX_RETRIES):
             try:
@@ -90,7 +80,9 @@ class _SyncAPI:
                     timeout=timeout,
                 )
             except httpx.RequestError as exc:
-                if can_retry and attempt < MAX_RETRIES and (rewind is None or rewind()):
+                if can_retry and attempt < MAX_RETRIES:
+                    if pos is not None:
+                        content.seek(pos)  # type: ignore[union-attr]
                     time.sleep(RETRY_DELAY)
                     continue
                 raise connection_error_from_request(exc, method=method, path=path) from exc
@@ -100,7 +92,9 @@ class _SyncAPI:
             if response.status_code >= 400:
                 body = response.read()
                 api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
-                if is_transient(api_err) and can_retry and attempt < MAX_RETRIES and (rewind is None or rewind()):
+                if is_transient(api_err) and can_retry and attempt < MAX_RETRIES:
+                    if pos is not None:
+                        content.seek(pos)  # type: ignore[union-attr]
                     time.sleep(RETRY_DELAY)
                     continue
                 raise api_err
@@ -191,8 +185,8 @@ class _AsyncAPI:
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
-        rewind = _make_rewind(content)
-        can_retry = rewind is not None or content is None or isinstance(content, bytes)
+        pos = _stream_pos(content)
+        can_retry = pos is not None or content is None or isinstance(content, bytes)
 
         for attempt in range(1 + MAX_RETRIES):
             try:
@@ -206,7 +200,9 @@ class _AsyncAPI:
                     timeout=timeout,
                 )
             except httpx.RequestError as exc:
-                if can_retry and attempt < MAX_RETRIES and (rewind is None or rewind()):
+                if can_retry and attempt < MAX_RETRIES:
+                    if pos is not None:
+                        content.seek(pos)  # type: ignore[union-attr]
                     await asyncio.sleep(RETRY_DELAY)
                     continue
                 raise connection_error_from_request(exc, method=method, path=path) from exc
@@ -216,7 +212,9 @@ class _AsyncAPI:
             if response.status_code >= 400:
                 body = await response.aread()
                 api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
-                if is_transient(api_err) and can_retry and attempt < MAX_RETRIES and (rewind is None or rewind()):
+                if is_transient(api_err) and can_retry and attempt < MAX_RETRIES:
+                    if pos is not None:
+                        content.seek(pos)  # type: ignore[union-attr]
                     await asyncio.sleep(RETRY_DELAY)
                     continue
                 raise api_err
