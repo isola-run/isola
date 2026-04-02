@@ -42,6 +42,17 @@ def _stream_position(content: bytes | BinaryIO | None) -> int | None:
     return None
 
 
+def _try_rewind(content: bytes | BinaryIO | None, pos: int | None) -> bool:
+    """Rewind stream to *pos* before a retry. No-op (returns True) for bytes/None."""
+    if pos is None:
+        return True
+    try:
+        content.seek(pos)  # type: ignore[union-attr]
+        return True
+    except OSError:
+        return False
+
+
 class _SyncAPI:
     def __init__(self, base_url: str) -> None:
         self.base_url = _normalize_base_url(base_url)
@@ -63,8 +74,8 @@ class _SyncAPI:
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
         rewind_to = _stream_position(content)
-        # Non-seekable streams cannot be retried (body would be empty).
-        can_retry = rewind_to is not None or not hasattr(content, "read")
+        is_stream = hasattr(content, "read")
+        can_retry = not is_stream or rewind_to is not None
 
         for attempt in range(1 + MAX_RETRIES):
             try:
@@ -78,9 +89,7 @@ class _SyncAPI:
                     timeout=timeout,
                 )
             except httpx.RequestError as exc:
-                if can_retry and attempt < MAX_RETRIES:
-                    if rewind_to is not None:
-                        content.seek(rewind_to)
+                if can_retry and attempt < MAX_RETRIES and _try_rewind(content, rewind_to):
                     time.sleep(RETRY_DELAY)
                     continue
                 raise connection_error_from_request(exc, method=method, path=path) from exc
@@ -90,9 +99,7 @@ class _SyncAPI:
             if response.status_code >= 400:
                 body = response.read()
                 api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
-                if is_transient(api_err) and can_retry and attempt < MAX_RETRIES:
-                    if rewind_to is not None:
-                        content.seek(rewind_to)
+                if is_transient(api_err) and can_retry and attempt < MAX_RETRIES and _try_rewind(content, rewind_to):
                     time.sleep(RETRY_DELAY)
                     continue
                 raise api_err
@@ -184,7 +191,8 @@ class _AsyncAPI:
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
         rewind_to = _stream_position(content)
-        can_retry = rewind_to is not None or not hasattr(content, "read")
+        is_stream = hasattr(content, "read")
+        can_retry = not is_stream or rewind_to is not None
 
         for attempt in range(1 + MAX_RETRIES):
             try:
@@ -198,9 +206,7 @@ class _AsyncAPI:
                     timeout=timeout,
                 )
             except httpx.RequestError as exc:
-                if can_retry and attempt < MAX_RETRIES:
-                    if rewind_to is not None:
-                        content.seek(rewind_to)
+                if can_retry and attempt < MAX_RETRIES and _try_rewind(content, rewind_to):
                     await asyncio.sleep(RETRY_DELAY)
                     continue
                 raise connection_error_from_request(exc, method=method, path=path) from exc
@@ -210,9 +216,7 @@ class _AsyncAPI:
             if response.status_code >= 400:
                 body = await response.aread()
                 api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
-                if is_transient(api_err) and can_retry and attempt < MAX_RETRIES:
-                    if rewind_to is not None:
-                        content.seek(rewind_to)
+                if is_transient(api_err) and can_retry and attempt < MAX_RETRIES and _try_rewind(content, rewind_to):
                     await asyncio.sleep(RETRY_DELAY)
                     continue
                 raise api_err

@@ -445,6 +445,32 @@ def test_retries_rewind_seekable_stream_on_transient_error(monkeypatch: pytest.M
 
 
 @respx.mock
+def test_retries_rewind_seekable_stream_on_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    payload = b"file content here"
+    bodies_received: list[bytes] = []
+
+    def capture_body(request: httpx.Request) -> httpx.Response:
+        bodies_received.append(request.content)
+        return httpx.Response(200, json={"sandboxes": []})
+
+    route = respx.get("http://localhost:8080/v1/sandboxes")
+    route.mock(
+        side_effect=[
+            httpx.ConnectError("connect failed"),
+            capture_body,
+        ]
+    )
+
+    stream = io.BytesIO(payload)
+    with Isola(base_url="http://localhost:8080") as client:
+        client._api.request("GET", "/v1/sandboxes", content=stream)
+
+    assert len(bodies_received) == 1
+    assert bodies_received[0] == payload
+
+
+@respx.mock
 def test_no_retry_for_non_seekable_stream_on_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """Non-seekable streams cannot be retried — the body would be empty."""
     monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
