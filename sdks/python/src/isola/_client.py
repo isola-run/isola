@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 import time
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
@@ -55,6 +56,7 @@ class _SyncAPI:
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
+        initial_pos = _stream_initial_position(content)
 
         for attempt in range(1 + MAX_RETRIES):
             try:
@@ -68,7 +70,7 @@ class _SyncAPI:
                     timeout=timeout,
                 )
             except httpx.RequestError as exc:
-                if attempt < MAX_RETRIES:
+                if attempt < MAX_RETRIES and _try_rewind(content, initial_pos):
                     time.sleep(RETRY_DELAY)
                     continue
                 raise connection_error_from_request(exc, method=method, path=path) from exc
@@ -78,7 +80,7 @@ class _SyncAPI:
             if response.status_code >= 400:
                 body = response.read()
                 api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
-                if is_transient(api_err) and attempt < MAX_RETRIES:
+                if is_transient(api_err) and attempt < MAX_RETRIES and _try_rewind(content, initial_pos):
                     time.sleep(RETRY_DELAY)
                     continue
                 raise api_err
@@ -169,6 +171,7 @@ class _AsyncAPI:
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
+        initial_pos = _stream_initial_position(content)
 
         for attempt in range(1 + MAX_RETRIES):
             try:
@@ -182,7 +185,7 @@ class _AsyncAPI:
                     timeout=timeout,
                 )
             except httpx.RequestError as exc:
-                if attempt < MAX_RETRIES:
+                if attempt < MAX_RETRIES and _try_rewind(content, initial_pos):
                     await asyncio.sleep(RETRY_DELAY)
                     continue
                 raise connection_error_from_request(exc, method=method, path=path) from exc
@@ -192,7 +195,7 @@ class _AsyncAPI:
             if response.status_code >= 400:
                 body = await response.aread()
                 api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
-                if is_transient(api_err) and attempt < MAX_RETRIES:
+                if is_transient(api_err) and attempt < MAX_RETRIES and _try_rewind(content, initial_pos):
                     await asyncio.sleep(RETRY_DELAY)
                     continue
                 raise api_err
@@ -261,6 +264,44 @@ class _AsyncAPI:
             headers=headers,
             timeout=timeout,
         )
+
+
+_NOT_SEEKABLE = -1
+
+
+def _stream_initial_position(content: bytes | BinaryIO | None) -> int | None:
+    """Record the initial stream position so we can rewind on retry.
+
+    Returns None for non-stream content (bytes/None), the stream position
+    for seekable streams, or _NOT_SEEKABLE for streams that cannot be rewound.
+    """
+    if content is None or isinstance(content, bytes):
+        return None
+    if hasattr(content, "tell"):
+        try:
+            return content.tell()
+        except (OSError, io.UnsupportedOperation):
+            pass
+    return _NOT_SEEKABLE
+
+
+def _try_rewind(content: bytes | BinaryIO | None, initial_pos: int | None) -> bool:
+    """Rewind a stream to its initial position before retrying.
+
+    Returns True if the content can be safely retried (bytes, None, or
+    a seekable stream that was successfully rewound). Returns False if
+    the stream is not seekable — the caller must not retry because the
+    body would be empty or incomplete.
+    """
+    if initial_pos is None:
+        return True
+    if initial_pos == _NOT_SEEKABLE:
+        return False
+    try:
+        content.seek(initial_pos)  # type: ignore[union-attr]
+        return True
+    except (OSError, io.UnsupportedOperation):
+        return False
 
 
 def _normalize_base_url(base_url: str) -> str:
