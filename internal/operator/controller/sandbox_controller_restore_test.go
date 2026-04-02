@@ -503,10 +503,10 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionTrue, CondReasonPodRunning)).To(BeTrue())
 
-			// Verify restart count snapshot was recorded in sandbox status
-			pod = getPod(ctx, podName)
+			// Verify restart count snapshot was recorded as sandbox annotation
 			sandbox = getSandbox(ctx, sandboxName)
-			Expect(sandbox.Status.RestartCountAtBoot).To(HaveKeyWithValue("sandbox", int32(0)))
+			Expect(sandbox.Annotations).To(HaveKeyWithValue(
+				"sandbox.isola.run/restart-count-at-boot", `{"sandbox":0}`))
 
 			// Simulate container restart (application exited with 128, kubelet restarted it)
 			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
@@ -574,10 +574,9 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionTrue, CondReasonPodRunning)).To(BeTrue())
 
-			// Verify snapshot recorded the boot-time restart count in sandbox status
-			pod = getPod(ctx, podName)
-			sandbox := getSandbox(ctx, sandboxName)
-			Expect(sandbox.Status.RestartCountAtBoot).To(HaveKeyWithValue("sandbox", int32(2)))
+			// Verify snapshot recorded the boot-time restart count as sandbox annotation
+			Expect(sandbox.Annotations).To(HaveKeyWithValue(
+				"sandbox.isola.run/restart-count-at-boot", `{"sandbox":2}`))
 
 			// Next reconcile (e.g. from a watch event) should NOT delete the pod
 			// even though RestartCount=2 > 0, because it matches the snapshot.
@@ -710,12 +709,14 @@ var _ = Describe("Sandbox Controller", func() {
 				},
 			}
 
-			// No snapshot in sandbox status yet — still in boot phase, always false
+			// No snapshot annotation yet — still in boot phase, always false
 			sb := &sandboxv1alpha1.Sandbox{}
 			Expect(hasRestoredContainerRestartedSinceBoot(sb, pod)).To(BeFalse())
 
-			// Add snapshot: boot completed with RestartCount=2
-			sb.Status.RestartCountAtBoot = map[string]int32{"app": 2}
+			// Add snapshot annotation: boot completed with RestartCount=2
+			sb.Annotations = map[string]string{
+				"sandbox.isola.run/restart-count-at-boot": `{"app":2}`,
+			}
 
 			// RestartCount=3 > snapshot=2 — post-boot restart detected
 			Expect(hasRestoredContainerRestartedSinceBoot(sb, pod)).To(BeTrue())

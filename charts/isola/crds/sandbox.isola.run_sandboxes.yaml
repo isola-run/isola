@@ -267,15 +267,6 @@ spec:
               podIP:
                 description: PodIP is the IP address of the sandbox pod.
                 type: string
-              restartCountAtBoot:
-                additionalProperties:
-                  format: int32
-                  type: integer
-                description: |-
-                  RestartCountAtBoot records the RestartCount of each restored container
-                  when the sandbox first reached Running. Used to distinguish boot retries
-                  (exit code 128 from missing rootfs tar) from post-boot application exits.
-                type: object
               shutdownDeadlineAt:
                 description: |-
                   ShutdownDeadlineAt is the absolute time by which the shutdown policy must complete.
