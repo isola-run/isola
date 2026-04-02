@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import io
+import os
 from unittest.mock import patch
 
 import httpx
@@ -33,7 +34,7 @@ from isola import (
     NotFoundError,
     ValidationError,
 )
-from isola._client import _NOT_SEEKABLE, MAX_RETRIES, _stream_initial_position, _try_rewind
+from isola._client import MAX_RETRIES
 
 
 @respx.mock
@@ -417,71 +418,11 @@ async def test_async_close_is_idempotent() -> None:
     assert client._api._client.is_closed
 
 
-# --- Stream rewind helpers ---
-
-
-def test_stream_initial_position_returns_none_for_bytes() -> None:
-    assert _stream_initial_position(b"hello") is None
-    assert _stream_initial_position(None) is None
-
-
-def test_stream_initial_position_returns_tell_for_seekable() -> None:
-    stream = io.BytesIO(b"hello")
-    stream.read(2)
-    assert _stream_initial_position(stream) == 2
-
-
-def test_try_rewind_returns_true_for_bytes() -> None:
-    assert _try_rewind(b"hello", None) is True
-    assert _try_rewind(None, None) is True
-
-
-def test_try_rewind_seeks_stream_to_initial_position() -> None:
-    stream = io.BytesIO(b"hello world")
-    stream.read(5)
-    initial = stream.tell()
-    stream.read()  # consume the rest
-    assert _try_rewind(stream, initial) is True
-    assert stream.tell() == initial
-
-
-def test_try_rewind_returns_false_for_non_seekable() -> None:
-    class NonSeekable(io.RawIOBase):
-        def read(self, _n: int = -1) -> bytes:
-            return b""
-
-        def seek(self, _offset: int, _whence: int = 0) -> int:
-            raise OSError("not seekable")
-
-    stream = NonSeekable()
-    assert _try_rewind(stream, 0) is False
-
-
-def test_try_rewind_returns_false_for_not_seekable_sentinel() -> None:
-    assert _try_rewind(io.BytesIO(b"x"), _NOT_SEEKABLE) is False
-
-
-def test_stream_initial_position_returns_not_seekable_when_tell_raises() -> None:
-    class TellRaises(io.RawIOBase):
-        def tell(self) -> int:
-            raise io.UnsupportedOperation("tell")
-
-    assert _stream_initial_position(TellRaises()) == _NOT_SEEKABLE
-
-
-def test_stream_initial_position_returns_not_seekable_for_stream_without_tell() -> None:
-    class NoTell:
-        def read(self, _n: int = -1) -> bytes:
-            return b""
-
-    assert _stream_initial_position(NoTell()) == _NOT_SEEKABLE  # type: ignore[arg-type]
-
-
-# --- Stream rewind retry integration tests ---
+# --- Stream rewind on retry ---
 
 
 @respx.mock
-def test_retries_rewind_stream_on_transient_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_retries_rewind_seekable_stream_on_transient_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
     payload = b"file content here"
     bodies_received: list[bytes] = []
@@ -504,77 +445,19 @@ def test_retries_rewind_stream_on_transient_error(monkeypatch: pytest.MonkeyPatc
 
 
 @respx.mock
-def test_no_retry_for_non_seekable_stream_on_transient_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
-
-    class NonSeekableStream(io.RawIOBase):
-        def __init__(self, data: bytes) -> None:
-            self._data = data
-            self._pos = 0
-
-        def read(self, n: int = -1) -> bytes:
-            if n == -1:
-                result = self._data[self._pos :]
-                self._pos = len(self._data)
-            else:
-                result = self._data[self._pos : self._pos + n]
-                self._pos += len(result)
-            return result
-
-        def readinto(self, _b: bytearray | memoryview) -> int:
-            data = self.read(len(_b))
-            n = len(data)
-            _b[:n] = data
-            return n
-
-        def readable(self) -> bool:
-            return True
-
-        def seekable(self) -> bool:
-            return False
-
-        def seek(self, _offset: int, _whence: int = 0) -> int:
-            raise OSError("not seekable")
-
-        def tell(self) -> int:
-            return self._pos
-
-    respx.get("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(502, json={"detail": "bad gateway"})
-    )
-
-    stream = NonSeekableStream(b"data")
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(BadGatewayError):
-        client._api.request("GET", "/v1/sandboxes", content=stream)
-
-
-@respx.mock
 def test_no_retry_for_non_seekable_stream_on_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-seekable streams cannot be retried — the body would be empty."""
     monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
-
-    class NonSeekableStream(io.RawIOBase):
-        def read(self, _n: int = -1) -> bytes:
-            return b""
-
-        def readinto(self, _b: bytearray | memoryview) -> int:
-            return 0
-
-        def readable(self) -> bool:
-            return True
-
-        def seekable(self) -> bool:
-            return False
-
-        def seek(self, _offset: int, _whence: int = 0) -> int:
-            raise OSError("not seekable")
-
-        def tell(self) -> int:
-            return 0
 
     route = respx.get("http://localhost:8080/v1/sandboxes")
     route.mock(side_effect=httpx.ConnectError("connect failed"))
 
-    stream = NonSeekableStream()
+    # A pipe-like object: has read() but no seek()/tell()
+    r, w = os.pipe()
+    os.write(w, b"data")
+    os.close(w)
+    stream = os.fdopen(r, "rb")
+
     with Isola(base_url="http://localhost:8080") as client, pytest.raises(APIConnectionError):
         client._api.request("GET", "/v1/sandboxes", content=stream)
 
