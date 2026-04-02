@@ -518,17 +518,32 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 
 	// If the sandbox previously reached Running and a restored container has
 	// restarted, the restart was triggered by an application exit (not a boot
-	// failure). Delete the pod so the exit is terminal.
+	// failure). Delete the pod and mark the sandbox as failed.
 	if sandboxPod != nil && hasRestoredContainerRestarted(sandboxPod) {
 		prevPodCond := meta.FindStatusCondition(baseSandbox.Status.Conditions, SandboxPodReadyCondition)
 		if prevPodCond != nil && prevPodCond.Reason == CondReasonPodRunning {
 			log.Info("Restored container restarted after sandbox was running; deleting pod to make exit terminal")
 			r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "RestoredContainerRestarted", "Cleanup",
 				"Deleting pod: restored container restarted after reaching Running state (application exit, not boot failure)")
-			if err := r.Delete(ctx, sandboxPod); err != nil {
-				return client.IgnoreNotFound(err)
+			if err := client.IgnoreNotFound(r.Delete(ctx, sandboxPod)); err != nil {
+				return err
 			}
-			return nil
+			return r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+				{
+					Type:               SandboxPodReadyCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonPodFailed,
+					Message:            "Pod deleted: restored container restarted after boot (application exit)",
+					ObservedGeneration: sandbox.Generation,
+				},
+				{
+					Type:               SandboxReadyCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonPodFailed,
+					Message:            "Pod deleted: restored container restarted after boot (application exit)",
+					ObservedGeneration: sandbox.Generation,
+				},
+			})
 		}
 	}
 
@@ -849,6 +864,12 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	if sandboxPod == nil {
+		// Don't recreate the pod if the sandbox is already in a terminal state
+		// (e.g., pod was deleted because a restored container restarted after boot).
+		prevPodCond := meta.FindStatusCondition(baseSandbox.Status.Conditions, SandboxPodReadyCondition)
+		if prevPodCond != nil && (prevPodCond.Reason == CondReasonPodFailed || prevPodCond.Reason == CondReasonPodSucceeded) {
+			return ctrl.Result{}, nil
+		}
 		if err := r.CreateSandboxPod(ctx, sandbox, baseSandbox); err != nil {
 			return ctrl.Result{}, err
 		}

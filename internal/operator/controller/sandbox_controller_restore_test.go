@@ -515,11 +515,15 @@ var _ = Describe("Sandbox Controller", func() {
 			_, err = doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Pod should be deleted
+			// Pod should be deleted (DeletionTimestamp set in envtest)
 			deletedPod := getPod(ctx, podName)
-			if deletedPod != nil {
-				Expect(deletedPod.DeletionTimestamp).NotTo(BeNil())
-			}
+			Expect(deletedPod).NotTo(BeNil())
+			Expect(deletedPod.DeletionTimestamp).NotTo(BeNil())
+
+			// Sandbox should be marked as failed
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
+			Expect(hasConditionWithReason(sandbox, SandboxReadyCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
 		})
 
 		It("should not delete pod when restored container restarts before sandbox was running", func() {
