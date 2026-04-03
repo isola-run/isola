@@ -24,7 +24,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const toast = useCallback((message: string, type: Toast["type"] = "info") => {
     const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => {
+      const next = [...prev, { id, message, type }];
+      // Cap at 10 toasts to prevent accumulation under rapid error bursts
+      return next.length > 10 ? next.slice(-10) : next;
+    });
   }, []);
 
   const dismiss = useCallback((id: string) => {

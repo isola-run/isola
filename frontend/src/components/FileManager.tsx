@@ -32,6 +32,11 @@ export default function FileManager({ sandboxId }: FileManagerProps) {
     setReadError(null);
     try {
       const blob = await api.readFile(sandboxId, readPath.trim());
+      const MAX_DISPLAY_SIZE = 5 * 1024 * 1024; // 5 MB
+      if (blob.size > MAX_DISPLAY_SIZE) {
+        setReadError(`File too large to display (${(blob.size / 1024 / 1024).toFixed(1)} MB, max ${MAX_DISPLAY_SIZE / 1024 / 1024} MB)`);
+        return;
+      }
       const text = await blob.text();
       setReadContent(text);
     } catch (err: unknown) {
