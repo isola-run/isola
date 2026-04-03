@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const isSandboxes = location.pathname === "/sandboxes";
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -15,14 +16,15 @@ export default function Layout({ children }: { children: ReactNode }) {
               </div>
               <span className="text-lg font-semibold">Isola</span>
             </Link>
-            <nav className="flex items-center gap-1">
+            <nav className="flex items-center gap-1" aria-label="Main navigation">
               <Link
                 to="/sandboxes"
                 className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
-                  location.pathname === "/sandboxes"
+                  isSandboxes
                     ? "bg-gray-800 text-white"
                     : "text-gray-400 hover:text-white hover:bg-gray-800/50"
                 }`}
+                {...(isSandboxes ? { "aria-current": "page" as const } : {})}
               >
                 Sandboxes
               </Link>

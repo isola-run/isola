@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { usePolling } from "../hooks/usePolling";
 import StatusBadge from "../components/StatusBadge";
+import Spinner from "../components/Spinner";
 
 export default function SandboxListPage() {
   const fetcher = useCallback(() => api.listSandboxes(), []);
@@ -19,20 +20,12 @@ export default function SandboxListPage() {
             Manage your isolated execution environments
           </p>
         </div>
-        <Link
-          to="/sandboxes/new"
-          className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium transition-colors"
-        >
+        <Link to="/sandboxes/new" className="btn-primary">
           Create Sandbox
         </Link>
       </div>
 
-      {loading && !data && (
-        <div className="text-center py-20 text-gray-500">
-          <div className="inline-block w-6 h-6 border-2 border-gray-600 border-t-indigo-500 rounded-full animate-spin" />
-          <p className="mt-3">Loading sandboxes...</p>
-        </div>
-      )}
+      {loading && !data && <Spinner label="Loading sandboxes..." />}
 
       {error && (
         <div className="rounded-lg border border-red-800 bg-red-950/50 p-4 text-red-300 text-sm">
@@ -42,8 +35,21 @@ export default function SandboxListPage() {
 
       {!loading && sandboxes.length === 0 && !error && (
         <div className="text-center py-20">
-          <div className="text-4xl mb-3 text-gray-600">&#9634;</div>
-          <h2 className="text-lg font-medium text-gray-300">
+          <svg
+            className="mx-auto h-12 w-12 text-gray-600"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+            />
+          </svg>
+          <h2 className="mt-3 text-lg font-medium text-gray-300">
             No sandboxes yet
           </h2>
           <p className="text-sm text-gray-500 mt-1">
@@ -51,7 +57,7 @@ export default function SandboxListPage() {
           </p>
           <Link
             to="/sandboxes/new"
-            className="inline-block mt-4 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium transition-colors"
+            className="inline-block mt-4 btn-primary"
           >
             Create Sandbox
           </Link>
@@ -59,7 +65,7 @@ export default function SandboxListPage() {
       )}
 
       {sandboxes.length > 0 && (
-        <div className="rounded-lg border border-gray-800 overflow-hidden">
+        <div className="rounded-lg border border-gray-800 overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-800 bg-gray-900/50">

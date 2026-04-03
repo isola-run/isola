@@ -11,6 +11,10 @@ import type {
   ApiError,
 } from "../types";
 
+function enc(id: string): string {
+  return encodeURIComponent(id);
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -22,9 +26,10 @@ class ApiClient {
     path: string,
     options: RequestInit = {}
   ): Promise<T> {
+    const { headers: customHeaders, ...rest } = options;
     const res = await fetch(`${this.baseUrl}${path}`, {
-      headers: { "Content-Type": "application/json", ...options.headers },
-      ...options,
+      ...rest,
+      headers: { "Content-Type": "application/json", ...customHeaders },
     });
     if (!res.ok) {
       const err: ApiError = await res.json().catch(() => ({
@@ -43,7 +48,7 @@ class ApiClient {
   }
 
   getSandbox(id: string): Promise<SandboxResponse> {
-    return this.request(`/v1/sandboxes/${id}`);
+    return this.request(`/v1/sandboxes/${enc(id)}`);
   }
 
   createSandbox(req: CreateSandboxRequest): Promise<SandboxResponse> {
@@ -54,15 +59,17 @@ class ApiClient {
   }
 
   deleteSandbox(id: string): Promise<void> {
-    return this.request(`/v1/sandboxes/${id}`, { method: "DELETE" });
+    return this.request(`/v1/sandboxes/${enc(id)}`, { method: "DELETE" });
   }
 
   // Commands
   createCommand(
     sandboxId: string,
-    req: CreateCommandRequest
+    req: CreateCommandRequest,
+    container?: string
   ): Promise<CreateCommandResponse> {
-    return this.request(`/v1/sandboxes/${sandboxId}/commands`, {
+    const qs = container ? `?container=${enc(container)}` : "";
+    return this.request(`/v1/sandboxes/${enc(sandboxId)}/commands${qs}`, {
       method: "POST",
       body: JSON.stringify(req),
     });
@@ -75,13 +82,13 @@ class ApiClient {
   ): Promise<CommandStatusResponse> {
     const qs = waitSeconds > 0 ? `?waitSeconds=${waitSeconds}` : "";
     return this.request(
-      `/v1/sandboxes/${sandboxId}/commands/${commandId}/status${qs}`
+      `/v1/sandboxes/${enc(sandboxId)}/commands/${enc(commandId)}/status${qs}`
     );
   }
 
   deleteCommand(sandboxId: string, commandId: string): Promise<void> {
     return this.request(
-      `/v1/sandboxes/${sandboxId}/commands/${commandId}`,
+      `/v1/sandboxes/${enc(sandboxId)}/commands/${enc(commandId)}`,
       { method: "DELETE" }
     );
   }
@@ -93,7 +100,7 @@ class ApiClient {
     onDone: () => void
   ): () => void {
     return this.streamSSE(
-      `/v1/sandboxes/${sandboxId}/commands/${commandId}/stdout`,
+      `/v1/sandboxes/${enc(sandboxId)}/commands/${enc(commandId)}/stdout`,
       onData,
       onDone
     );
@@ -106,7 +113,7 @@ class ApiClient {
     onDone: () => void
   ): () => void {
     return this.streamSSE(
-      `/v1/sandboxes/${sandboxId}/commands/${commandId}/stderr`,
+      `/v1/sandboxes/${enc(sandboxId)}/commands/${enc(commandId)}/stderr`,
       onData,
       onDone
     );
@@ -139,7 +146,7 @@ class ApiClient {
     data: string
   ): Promise<void> {
     return this.request(
-      `/v1/sandboxes/${sandboxId}/commands/${commandId}/stdin`,
+      `/v1/sandboxes/${enc(sandboxId)}/commands/${enc(commandId)}/stdin`,
       {
         method: "POST",
         headers: { "Content-Type": "application/octet-stream" },
@@ -150,15 +157,17 @@ class ApiClient {
 
   closeStdin(sandboxId: string, commandId: string): Promise<void> {
     return this.request(
-      `/v1/sandboxes/${sandboxId}/commands/${commandId}/stdin/close`,
+      `/v1/sandboxes/${enc(sandboxId)}/commands/${enc(commandId)}/stdin/close`,
       { method: "POST" }
     );
   }
 
   // Filesystem
-  async readFile(sandboxId: string, path: string): Promise<Blob> {
+  async readFile(sandboxId: string, path: string, container?: string): Promise<Blob> {
+    const params = new URLSearchParams({ path });
+    if (container) params.set("container", container);
     const res = await fetch(
-      `${this.baseUrl}/v1/sandboxes/${sandboxId}/filesystem?path=${encodeURIComponent(path)}`
+      `${this.baseUrl}/v1/sandboxes/${enc(sandboxId)}/filesystem?${params}`
     );
     if (!res.ok) {
       const err: ApiError = await res.json().catch(() => ({
@@ -173,10 +182,13 @@ class ApiClient {
   async writeFile(
     sandboxId: string,
     path: string,
-    data: Blob | ArrayBuffer | string
+    data: Blob | ArrayBuffer | string,
+    container?: string
   ): Promise<FilesystemWriteResponse> {
+    const params = new URLSearchParams({ path });
+    if (container) params.set("container", container);
     const res = await fetch(
-      `${this.baseUrl}/v1/sandboxes/${sandboxId}/filesystem?path=${encodeURIComponent(path)}`,
+      `${this.baseUrl}/v1/sandboxes/${enc(sandboxId)}/filesystem?${params}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/octet-stream" },
@@ -204,7 +216,7 @@ class ApiClient {
   }
 
   getSnapshot(id: string): Promise<RootfsSnapshotResponse> {
-    return this.request(`/v1/rootfs-snapshots/${id}`);
+    return this.request(`/v1/rootfs-snapshots/${enc(id)}`);
   }
 }
 

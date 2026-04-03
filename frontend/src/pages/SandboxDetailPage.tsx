@@ -1,12 +1,15 @@
 import { useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { api } from "../api/client";
 import { usePolling } from "../hooks/usePolling";
 import StatusBadge from "../components/StatusBadge";
 import Terminal from "../components/Terminal";
 import FileManager from "../components/FileManager";
 import SnapshotPanel from "../components/SnapshotPanel";
-import type { ApiError } from "../types";
+import ConfirmDialog from "../components/ConfirmDialog";
+import Spinner from "../components/Spinner";
+import { useToast } from "../components/Toast";
+import { getErrorMessage } from "../types";
 
 type Tab = "terminal" | "files" | "snapshots";
 
@@ -15,30 +18,29 @@ export default function SandboxDetailPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("terminal");
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const { toast } = useToast();
 
-  const fetcher = useCallback(() => api.getSandbox(id!), [id]);
+  if (!id) throw new Error("Missing sandbox id");
+
+  const fetcher = useCallback(() => api.getSandbox(id), [id]);
   const { data: sandbox, error, loading } = usePolling(fetcher, 5000);
 
   const handleDelete = async () => {
-    if (!confirm("Delete this sandbox? This cannot be undone.")) return;
+    setShowDeleteDialog(false);
     setDeleting(true);
     try {
-      await api.deleteSandbox(id!);
+      await api.deleteSandbox(id);
+      toast("Sandbox deleted", "success");
       navigate("/sandboxes");
     } catch (err: unknown) {
-      const apiErr = err as ApiError;
-      alert(apiErr.detail || apiErr.title || "Failed to delete");
+      toast(getErrorMessage(err, "Failed to delete"), "error");
       setDeleting(false);
     }
   };
 
   if (loading && !sandbox) {
-    return (
-      <div className="text-center py-20 text-gray-500">
-        <div className="inline-block w-6 h-6 border-2 border-gray-600 border-t-indigo-500 rounded-full animate-spin" />
-        <p className="mt-3">Loading sandbox...</p>
-      </div>
-    );
+    return <Spinner label="Loading sandbox..." />;
   }
 
   if (error && !sandbox) {
@@ -60,11 +62,33 @@ export default function SandboxDetailPage() {
 
   return (
     <div>
+      {/* Breadcrumb */}
+      <nav className="mb-4 text-sm" aria-label="Breadcrumb">
+        <ol className="flex items-center gap-1.5 text-gray-400">
+          <li>
+            <Link to="/sandboxes" className="hover:text-gray-200 transition-colors">
+              Sandboxes
+            </Link>
+          </li>
+          <li aria-hidden="true">/</li>
+          <li className="text-gray-200 font-mono truncate max-w-[200px] sm:max-w-none">
+            {sandbox.id}
+          </li>
+        </ol>
+      </nav>
+
+      {/* Stale data warning */}
+      {error && sandbox && (
+        <div className="mb-4 rounded-lg border border-yellow-800 bg-yellow-950/50 p-3 text-yellow-300 text-sm">
+          Failed to refresh: {error}
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+        <div className="min-w-0">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold font-mono">{sandbox.id}</h1>
+            <h1 className="text-xl font-bold font-mono truncate">{sandbox.id}</h1>
             <StatusBadge status={sandbox.status} />
           </div>
           <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-400">
@@ -132,20 +156,23 @@ export default function SandboxDetailPage() {
           )}
         </div>
         <button
-          onClick={handleDelete}
+          onClick={() => setShowDeleteDialog(true)}
           disabled={deleting}
-          className="px-3 py-1.5 rounded-md text-sm border border-red-800 text-red-400 hover:bg-red-950 disabled:opacity-50 transition-colors"
+          className="btn-danger self-start"
         >
           {deleting ? "Deleting..." : "Delete"}
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-800 mb-4">
+      <div className="border-b border-gray-800 mb-4" role="tablist" aria-label="Sandbox sections">
         <div className="flex gap-0">
           {tabs.map((t) => (
             <button
               key={t.key}
+              role="tab"
+              aria-selected={tab === t.key}
+              aria-controls={`tabpanel-${t.key}`}
               onClick={() => setTab(t.key)}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 tab === t.key
@@ -160,25 +187,45 @@ export default function SandboxDetailPage() {
       </div>
 
       {/* Tab content */}
-      {tab === "terminal" && (
-        isRunning ? (
-          <Terminal sandboxId={sandbox.id} />
-        ) : (
-          <div className="text-center py-10 text-gray-500 text-sm">
-            Terminal is only available for running sandboxes.
-          </div>
-        )
-      )}
-      {tab === "files" && (
-        isRunning ? (
-          <FileManager sandboxId={sandbox.id} />
-        ) : (
-          <div className="text-center py-10 text-gray-500 text-sm">
-            File manager is only available for running sandboxes.
-          </div>
-        )
-      )}
-      {tab === "snapshots" && <SnapshotPanel sandboxId={sandbox.id} />}
+      <div role="tabpanel" id={`tabpanel-${tab}`}>
+        {tab === "terminal" && (
+          isRunning ? (
+            <Terminal sandboxId={sandbox.id} />
+          ) : (
+            <div className="text-center py-10 text-gray-500 text-sm">
+              Terminal is only available for running sandboxes.
+              <br />
+              <span className="text-xs text-gray-600">
+                Current status: {sandbox.status}
+              </span>
+            </div>
+          )
+        )}
+        {tab === "files" && (
+          isRunning ? (
+            <FileManager sandboxId={sandbox.id} />
+          ) : (
+            <div className="text-center py-10 text-gray-500 text-sm">
+              File manager is only available for running sandboxes.
+              <br />
+              <span className="text-xs text-gray-600">
+                Current status: {sandbox.status}
+              </span>
+            </div>
+          )
+        )}
+        {tab === "snapshots" && <SnapshotPanel sandboxId={sandbox.id} />}
+      </div>
+
+      <ConfirmDialog
+        open={showDeleteDialog}
+        title="Delete Sandbox"
+        message={`Are you sure you want to delete sandbox ${sandbox.id}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteDialog(false)}
+      />
     </div>
   );
 }

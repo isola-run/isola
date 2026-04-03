@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { getErrorMessage } from "../types";
 
 export function usePolling<T>(
   fetcher: () => Promise<T>,
@@ -8,37 +9,26 @@ export function usePolling<T>(
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const mountedRef = useRef(true);
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
 
   const refresh = useCallback(async () => {
     try {
-      const result = await fetcher();
-      if (mountedRef.current) {
-        setData(result);
-        setError(null);
-      }
+      const result = await fetcherRef.current();
+      setData(result);
+      setError(null);
     } catch (err: unknown) {
-      if (mountedRef.current) {
-        const msg =
-          err && typeof err === "object" && "detail" in err
-            ? String((err as { detail: string }).detail)
-            : "Request failed";
-        setError(msg);
-      }
+      setError(getErrorMessage(err));
     } finally {
-      if (mountedRef.current) setLoading(false);
+      setLoading(false);
     }
-  }, [fetcher]);
+  }, []);
 
   useEffect(() => {
-    mountedRef.current = true;
     if (!enabled) return;
     refresh();
     const id = setInterval(refresh, intervalMs);
-    return () => {
-      mountedRef.current = false;
-      clearInterval(id);
-    };
+    return () => clearInterval(id);
   }, [refresh, intervalMs, enabled]);
 
   return { data, error, loading, refresh };

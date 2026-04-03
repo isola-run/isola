@@ -1,8 +1,18 @@
 // API types matching the OpenAPI spec
 
+export type SandboxStatus =
+  | "creating"
+  | "running"
+  | "shuttingDown"
+  | "failed"
+  | "stopped"
+  | "unknown";
+
+export type SnapshotStatus = "pending" | "inProgress" | "complete" | "failed";
+
 export interface SandboxSummary {
   id: string;
-  status: string;
+  status: SandboxStatus;
   creationTimestamp: string;
 }
 
@@ -62,14 +72,6 @@ export interface CreateSandboxRequest {
   rootfsSnapshotSources?: RootfsSnapshotSource[] | null;
 }
 
-export type SandboxStatus =
-  | "creating"
-  | "running"
-  | "shuttingDown"
-  | "failed"
-  | "stopped"
-  | "unknown";
-
 export interface SandboxResponse {
   id: string;
   podTemplate: PodTemplateInfo;
@@ -104,8 +106,6 @@ export interface CreateRootfsSnapshotRequest {
   ttlSecondsAfterFinished?: number;
 }
 
-export type SnapshotStatus = "pending" | "inProgress" | "complete" | "failed";
-
 export interface RootfsSnapshotResponse {
   id: string;
   sandboxId: string;
@@ -126,4 +126,18 @@ export interface ApiError {
   status: number;
   title: string;
   detail?: string;
+}
+
+export function isApiError(err: unknown): err is ApiError {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "status" in err &&
+    "title" in err
+  );
+}
+
+export function getErrorMessage(err: unknown, fallback = "Request failed"): string {
+  if (isApiError(err)) return err.detail ?? err.title;
+  return fallback;
 }

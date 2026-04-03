@@ -1,3 +1,5 @@
+import type { SandboxStatus, SnapshotStatus } from "../types";
+
 const statusStyles: Record<string, string> = {
   creating: "bg-yellow-900/50 text-yellow-300 border-yellow-700",
   running: "bg-green-900/50 text-green-300 border-green-700",
@@ -22,7 +24,11 @@ const statusDots: Record<string, string> = {
   complete: "bg-green-400",
 };
 
-export default function StatusBadge({ status }: { status: string }) {
+export default function StatusBadge({
+  status,
+}: {
+  status: SandboxStatus | SnapshotStatus;
+}) {
   const style = statusStyles[status] ?? statusStyles.unknown;
   const dot = statusDots[status] ?? statusDots.unknown;
 
@@ -30,7 +36,7 @@ export default function StatusBadge({ status }: { status: string }) {
     <span
       className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${style}`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} aria-hidden="true" />
       {status}
     </span>
   );

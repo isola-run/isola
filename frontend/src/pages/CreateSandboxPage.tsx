@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import type { CreateSandboxRequest, ApiError } from "../types";
+import { useToast } from "../components/Toast";
+import { getErrorMessage } from "../types";
+import type { CreateSandboxRequest } from "../types";
 
 export default function CreateSandboxPage() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [image, setImage] = useState("alpine:3.21");
   const [command, setCommand] = useState("");
   const [envText, setEnvText] = useState("");
@@ -31,6 +34,13 @@ export default function CreateSandboxPage() {
       }
     }
 
+    const parsedTimeout = timeoutSeconds ? Number(timeoutSeconds) : undefined;
+    if (parsedTimeout !== undefined && (!Number.isFinite(parsedTimeout) || parsedTimeout < 1)) {
+      setError("Timeout must be a positive number");
+      setSubmitting(false);
+      return;
+    }
+
     const req: CreateSandboxRequest = {
       podTemplate: {
         container: {
@@ -42,28 +52,20 @@ export default function CreateSandboxPage() {
           ...(cpu || memory
             ? {
                 resources: {
-                  ...(cpu || memory
-                    ? {
-                        requests: {
-                          ...(cpu ? { cpu } : {}),
-                          ...(memory ? { memory } : {}),
-                        },
-                      }
-                    : {}),
-                  ...(cpu || memory
-                    ? {
-                        limits: {
-                          ...(cpu ? { cpu } : {}),
-                          ...(memory ? { memory } : {}),
-                        },
-                      }
-                    : {}),
+                  requests: {
+                    ...(cpu ? { cpu } : {}),
+                    ...(memory ? { memory } : {}),
+                  },
+                  limits: {
+                    ...(cpu ? { cpu } : {}),
+                    ...(memory ? { memory } : {}),
+                  },
                 },
               }
             : {}),
         },
       },
-      ...(timeoutSeconds ? { timeoutSeconds: parseInt(timeoutSeconds) } : {}),
+      ...(parsedTimeout !== undefined ? { timeoutSeconds: parsedTimeout } : {}),
       ...(allowInternet || allowDNS
         ? {
             network: {
@@ -76,16 +78,16 @@ export default function CreateSandboxPage() {
 
     try {
       const sandbox = await api.createSandbox(req);
+      toast("Sandbox created", "success");
       navigate(`/sandboxes/${sandbox.id}`);
     } catch (err: unknown) {
-      const apiErr = err as ApiError;
-      setError(apiErr.detail || apiErr.title || "Failed to create sandbox");
+      setError(getErrorMessage(err, "Failed to create sandbox"));
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Create Sandbox</h1>
 
       {error && (
@@ -101,7 +103,7 @@ export default function CreateSandboxPage() {
               type="text"
               value={image}
               onChange={(e) => setImage(e.target.value)}
-              className="input"
+              className="input w-full"
               placeholder="alpine:3.21"
               required
             />
@@ -111,7 +113,7 @@ export default function CreateSandboxPage() {
               type="text"
               value={command}
               onChange={(e) => setCommand(e.target.value)}
-              className="input"
+              className="input w-full"
               placeholder="sleep infinity"
             />
           </Field>
@@ -122,7 +124,7 @@ export default function CreateSandboxPage() {
             <textarea
               value={envText}
               onChange={(e) => setEnvText(e.target.value)}
-              className="input"
+              className="input w-full"
               rows={3}
               placeholder={"FOO=bar\nDEBUG=true"}
             />
@@ -130,13 +132,13 @@ export default function CreateSandboxPage() {
         </Section>
 
         <Section title="Resources">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="CPU">
               <input
                 type="text"
                 value={cpu}
                 onChange={(e) => setCpu(e.target.value)}
-                className="input"
+                className="input w-full"
                 placeholder="250m"
               />
             </Field>
@@ -145,7 +147,7 @@ export default function CreateSandboxPage() {
                 type="text"
                 value={memory}
                 onChange={(e) => setMemory(e.target.value)}
-                className="input"
+                className="input w-full"
                 placeholder="512Mi"
               />
             </Field>
@@ -158,7 +160,7 @@ export default function CreateSandboxPage() {
               type="number"
               value={timeoutSeconds}
               onChange={(e) => setTimeoutSeconds(e.target.value)}
-              className="input"
+              className="input w-full"
               placeholder="No timeout"
               min={1}
             />
@@ -171,7 +173,7 @@ export default function CreateSandboxPage() {
               type="checkbox"
               checked={allowInternet}
               onChange={(e) => setAllowInternet(e.target.checked)}
-              className="rounded border-gray-600 bg-gray-800 text-indigo-600 focus:ring-indigo-500"
+              className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0"
             />
             <span className="text-sm">Allow internet egress</span>
           </label>
@@ -180,7 +182,7 @@ export default function CreateSandboxPage() {
               type="checkbox"
               checked={allowDNS}
               onChange={(e) => setAllowDNS(e.target.checked)}
-              className="rounded border-gray-600 bg-gray-800 text-indigo-600 focus:ring-indigo-500"
+              className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0"
             />
             <span className="text-sm">Allow cluster DNS</span>
           </label>
@@ -190,14 +192,14 @@ export default function CreateSandboxPage() {
           <button
             type="submit"
             disabled={submitting || !image.trim()}
-            className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+            className="btn-primary"
           >
             {submitting ? "Creating..." : "Create Sandbox"}
           </button>
           <button
             type="button"
             onClick={() => navigate("/sandboxes")}
-            className="px-5 py-2 rounded-lg border border-gray-700 hover:bg-gray-800 text-sm transition-colors"
+            className="btn-secondary"
           >
             Cancel
           </button>

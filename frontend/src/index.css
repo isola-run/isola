@@ -4,10 +4,16 @@
 
 @layer components {
   .input {
-    @apply bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500;
+    @apply bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500;
+  }
+  .btn-primary {
+    @apply px-4 py-2 rounded-md text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
   .btn-secondary {
     @apply px-4 py-2 rounded-md text-sm font-medium border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+  .btn-danger {
+    @apply px-3 py-1.5 rounded-md text-sm border border-red-800 text-red-400 hover:bg-red-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
 }
 
@@ -25,5 +31,10 @@
   }
   ::-webkit-scrollbar-thumb:hover {
     background: #4b5563;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #374151 transparent;
   }
 }

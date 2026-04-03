@@ -1,8 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { api } from "../api/client";
 import { usePolling } from "../hooks/usePolling";
 import StatusBadge from "./StatusBadge";
-import type { RootfsSnapshotResponse, ApiError } from "../types";
+import { useToast } from "./Toast";
+import { getErrorMessage } from "../types";
+import type { RootfsSnapshotResponse } from "../types";
 
 interface SnapshotPanelProps {
   sandboxId: string;
@@ -13,16 +15,16 @@ export default function SnapshotPanel({ sandboxId }: SnapshotPanelProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<RootfsSnapshotResponse[]>([]);
+  const snapshotsRef = useRef(snapshots);
+  snapshotsRef.current = snapshots;
+  const { toast } = useToast();
 
-  // Poll active snapshots for status updates
   const pollActive = useCallback(async () => {
-    const active = snapshots.filter(
+    const active = snapshotsRef.current.filter(
       (s) => s.status === "pending" || s.status === "inProgress"
     );
     const updated = await Promise.all(
-      active.map((s) =>
-        api.getSnapshot(s.id).catch(() => s)
-      )
+      active.map((s) => api.getSnapshot(s.id).catch(() => s))
     );
     if (updated.length > 0) {
       setSnapshots((prev) =>
@@ -30,7 +32,7 @@ export default function SnapshotPanel({ sandboxId }: SnapshotPanelProps) {
       );
     }
     return updated;
-  }, [snapshots]);
+  }, []);
 
   const hasActive = snapshots.some(
     (s) => s.status === "pending" || s.status === "inProgress"
@@ -49,9 +51,9 @@ export default function SnapshotPanel({ sandboxId }: SnapshotPanelProps) {
       });
       setSnapshots((prev) => [snapshot, ...prev]);
       setSnapshotName("");
+      toast(`Snapshot "${snapshot.snapshotName}" created`, "success");
     } catch (err: unknown) {
-      const apiErr = err as ApiError;
-      setError(apiErr.detail || apiErr.title || "Failed to create snapshot");
+      setError(getErrorMessage(err, "Failed to create snapshot"));
     } finally {
       setSubmitting(false);
     }
@@ -71,6 +73,7 @@ export default function SnapshotPanel({ sandboxId }: SnapshotPanelProps) {
             className="input flex-1"
             placeholder="snapshot-name (DNS label format)"
             pattern="^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+            aria-label="Snapshot name"
           />
           <button
             type="submit"
@@ -88,7 +91,7 @@ export default function SnapshotPanel({ sandboxId }: SnapshotPanelProps) {
       </div>
 
       {snapshots.length > 0 && (
-        <div className="rounded-lg border border-gray-800 overflow-hidden">
+        <div className="rounded-lg border border-gray-800 overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-800 bg-gray-900/50">
