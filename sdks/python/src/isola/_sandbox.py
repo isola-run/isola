@@ -68,14 +68,14 @@ def _check_terminal(sandbox_id: str, status: SandboxStatus) -> None:
 def _wait_until_running(
     sandbox_id: str,
     api: _SyncAPI,
-    max_wait_seconds: int | None,
+    max_wait_seconds: int,
 ) -> SandboxData:
-    deadline = time.monotonic() + max_wait_seconds if max_wait_seconds is not None else None
+    deadline = time.monotonic() + max_wait_seconds
     while True:
         try:
             data = api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
         except NotFoundError as err:
-            if deadline is not None and time.monotonic() >= deadline:
+            if time.monotonic() >= deadline:
                 raise IsolaTimeoutError(
                     f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s"
                 ) from err
@@ -84,7 +84,7 @@ def _wait_until_running(
         if data.status == SandboxStatus.RUNNING:
             return data
         _check_terminal(sandbox_id, data.status)
-        if deadline is not None and time.monotonic() >= deadline:
+        if time.monotonic() >= deadline:
             raise IsolaTimeoutError(f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s")
         time.sleep(_POLL_INTERVAL)
 
@@ -92,14 +92,14 @@ def _wait_until_running(
 async def _async_wait_until_running(
     sandbox_id: str,
     api: _AsyncAPI,
-    max_wait_seconds: int | None,
+    max_wait_seconds: int,
 ) -> SandboxData:
-    deadline = time.monotonic() + max_wait_seconds if max_wait_seconds is not None else None
+    deadline = time.monotonic() + max_wait_seconds
     while True:
         try:
             data = await api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
         except NotFoundError as err:
-            if deadline is not None and time.monotonic() >= deadline:
+            if time.monotonic() >= deadline:
                 raise IsolaTimeoutError(
                     f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s"
                 ) from err
@@ -108,7 +108,7 @@ async def _async_wait_until_running(
         if data.status == SandboxStatus.RUNNING:
             return data
         _check_terminal(sandbox_id, data.status)
-        if deadline is not None and time.monotonic() >= deadline:
+        if time.monotonic() >= deadline:
             raise IsolaTimeoutError(f"sandbox {sandbox_id} did not reach running state within {max_wait_seconds}s")
         await asyncio.sleep(_POLL_INTERVAL)
 
@@ -127,10 +127,10 @@ class Sandboxes:
         memory: str | None = None,
         ephemeral_storage: str | None = None,
         timeout_seconds: int | None = None,
-        startup_timeout_seconds: int | None = 60,
+        startup_timeout_seconds: int = 60,
         network: NetworkSpec | None = None,
         rootfs_snapshot_source: str | None = None,
-        max_wait_seconds: int | None = 60,
+        max_wait_seconds: int = 60,
     ) -> Sandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
@@ -182,10 +182,10 @@ class AsyncSandboxes:
         memory: str | None = None,
         ephemeral_storage: str | None = None,
         timeout_seconds: int | None = None,
-        startup_timeout_seconds: int | None = 60,
+        startup_timeout_seconds: int = 60,
         network: NetworkSpec | None = None,
         rootfs_snapshot_source: str | None = None,
-        max_wait_seconds: int | None = 60,
+        max_wait_seconds: int = 60,
     ) -> AsyncSandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
