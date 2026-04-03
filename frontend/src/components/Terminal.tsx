@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import AnsiToHtml from "ansi-to-html";
 import { api } from "../api/client";
 import { getErrorMessage } from "../types";
 
@@ -16,6 +17,20 @@ interface CommandEntry {
 }
 
 const MAX_OUTPUT_BYTES = 1024 * 1024; // 1MB per stream
+
+function AnsiText({ text, className }: { text: string; className?: string }) {
+  const converter = useMemo(
+    () => new AnsiToHtml({ fg: "#d1d5db", bg: "transparent", escapeXML: true }),
+    []
+  );
+  const html = useMemo(() => converter.toHtml(text), [converter, text]);
+  return (
+    <pre
+      className={`whitespace-pre-wrap mt-0.5 ml-4 ${className ?? ""}`}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
 
 export default function Terminal({ sandboxId }: TerminalProps) {
   const [commands, setCommands] = useState<CommandEntry[]>([]);
@@ -63,6 +78,10 @@ export default function Terminal({ sandboxId }: TerminalProps) {
         setInput(history[history.length - 1 - nextIdx]);
       }
     }
+  };
+
+  const handleClear = () => {
+    setCommands([]);
   };
 
   const runCommand = async (e: React.FormEvent) => {
@@ -174,7 +193,17 @@ export default function Terminal({ sandboxId }: TerminalProps) {
   return (
     <div className="flex flex-col h-full rounded-lg border border-gray-800 overflow-hidden bg-gray-950">
       <div className="flex items-center justify-between px-3 py-2 bg-gray-900/80 border-b border-gray-800">
-        <span className="text-xs text-gray-400 font-mono">Terminal</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400 font-mono">Terminal</span>
+          {commands.length > 0 && (
+            <button
+              onClick={handleClear}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              Clear
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <label htmlFor="terminal-cwd" className="text-xs text-gray-500">cwd:</label>
           <input
@@ -212,16 +241,8 @@ export default function Terminal({ sandboxId }: TerminalProps) {
                 </span>
               )}
             </div>
-            {cmd.stdout && (
-              <pre className="text-gray-300 whitespace-pre-wrap mt-0.5 ml-4">
-                {cmd.stdout}
-              </pre>
-            )}
-            {cmd.stderr && (
-              <pre className="text-red-400 whitespace-pre-wrap mt-0.5 ml-4">
-                {cmd.stderr}
-              </pre>
-            )}
+            {cmd.stdout && <AnsiText text={cmd.stdout} className="text-gray-300" />}
+            {cmd.stderr && <AnsiText text={cmd.stderr} className="text-red-400" />}
           </div>
         ))}
       </div>
