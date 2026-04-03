@@ -133,7 +133,7 @@ func TestBuildCustomNetworkPolicy_NameserversWithInternetAccess(t *testing.T) {
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
 	g.Expect(err).ToNot(HaveOccurred())
-	// Public nameserver already reachable via static allow-ipv4-internet-egress policy — no custom NP needed
+	// Public nameserver already reachable via static allow-ipv4-internet-egress policy - no custom NP needed
 	g.Expect(np).To(BeNil())
 }
 
@@ -444,8 +444,6 @@ func TestBuildCustomNetworkPolicy_BlockedIPv6CIDRs(t *testing.T) {
 		})
 	}
 }
-
-// Defense-in-depth: IPv6 filtered when AllowIPv6Egress is not true
 
 func TestBuildCustomNetworkPolicy_IPv6CIDRsFilteredWithoutFlag(t *testing.T) {
 	g := NewWithT(t)

@@ -47,8 +47,6 @@ type ShutdownPolicy struct {
 
 // NetworkSpec defines network isolation for a sandbox.
 // If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
-// +kubebuilder:validation:XValidation:rule="!has(self.allowedEgressCIDRs) || self.allowedEgressCIDRs.size() == 0 || (has(self.allowIPv6Egress) && self.allowIPv6Egress == true) || self.allowedEgressCIDRs.all(c, !isCIDR(c) || cidr(c).ip().family() == 4)",message="IPv6 CIDRs require allowIPv6Egress: true"
-// +kubebuilder:validation:XValidation:rule="!has(self.nameservers) || self.nameservers.size() == 0 || (has(self.allowIPv6Egress) && self.allowIPv6Egress == true) || self.nameservers.all(s, !isIP(s) || ip(s).family() == 4)",message="IPv6 nameservers require allowIPv6Egress: true"
 type NetworkSpec struct {
 	// AllowInternetEgress allows egress to 0.0.0.0/0 (and ::/0 when allowIPv6Egress is true)
 	// with blocked ranges (private IPs, cloud metadata, etc.) automatically excepted.
@@ -70,7 +68,7 @@ type NetworkSpec struct {
 	AllowIPv6Egress *bool `json:"allowIPv6Egress,omitempty"`
 
 	// AllowedEgressCIDRs specifies additional CIDRs the sandbox can reach.
-	// Blocked ranges (private IPs, cloud metadata, etc.) are rejected - see ComputeExcept.
+	// Blocked ranges (private IPs, cloud metadata, etc.) are rejected.
 	// When allowInternetEgress is true, these CIDRs are already reachable via the static
 	// internet policy and do not produce additional NetworkPolicy rules.
 	// Creates a custom NetworkPolicy only when allowInternetEgress is false or unset.

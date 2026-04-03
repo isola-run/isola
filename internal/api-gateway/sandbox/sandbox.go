@@ -70,7 +70,7 @@ type NetworkSpec struct {
 	AllowInternetEgress *bool    `json:"allowInternetEgress,omitempty" doc:"Allow public internet egress"`
 	AllowClusterDNS     *bool    `json:"allowClusterDNS,omitempty" doc:"Allow cluster DNS queries"`
 	AllowIPv6Egress     *bool    `json:"allowIPv6Egress,omitempty" doc:"Enable IPv6 in egress configuration (default: IPv4 only)"`
-	AllowedEgressCIDRs  []string `json:"allowedEgressCIDRs,omitempty" maxItems:"16" doc:"Allowed egress CIDRs"`
+	AllowedEgressCIDRs  []string `json:"allowedEgressCIDRs,omitempty" maxItems:"16" maxLength:"43" doc:"Allowed egress CIDRs"`
 	Nameservers         []string `json:"nameservers,omitempty" maxItems:"3" doc:"Custom DNS servers (max 3)"`
 }
 

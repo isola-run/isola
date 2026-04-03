@@ -82,7 +82,7 @@ spec:
                   allowedEgressCIDRs:
                     description: |-
                       AllowedEgressCIDRs specifies additional CIDRs the sandbox can reach.
-                      Blocked ranges (private IPs, cloud metadata, etc.) are rejected - see ComputeExcept.
+                      Blocked ranges (private IPs, cloud metadata, etc.) are rejected.
                       When allowInternetEgress is true, these CIDRs are already reachable via the static
                       internet policy and do not produce additional NetworkPolicy rules.
                       Creates a custom NetworkPolicy only when allowInternetEgress is false or unset.
@@ -107,16 +107,6 @@ spec:
                     - message: must be valid IP addresses
                       rule: self.all(s, isIP(s))
                 type: object
-                x-kubernetes-validations:
-                - message: 'IPv6 CIDRs require allowIPv6Egress: true'
-                  rule: '!has(self.allowedEgressCIDRs) || self.allowedEgressCIDRs.size()
-                    == 0 || (has(self.allowIPv6Egress) && self.allowIPv6Egress ==
-                    true) || self.allowedEgressCIDRs.all(c, !isCIDR(c) || cidr(c).ip().family()
-                    == 4)'
-                - message: 'IPv6 nameservers require allowIPv6Egress: true'
-                  rule: '!has(self.nameservers) || self.nameservers.size() == 0 ||
-                    (has(self.allowIPv6Egress) && self.allowIPv6Egress == true) ||
-                    self.nameservers.all(s, !isIP(s) || ip(s).family() == 4)'
               podTemplate:
                 description: |-
                   PodTemplate describes the pod that will be created to run the sandbox.

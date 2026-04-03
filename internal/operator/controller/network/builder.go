@@ -74,8 +74,6 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 			if err != nil {
 				return nil, err
 			}
-			// Defense-in-depth: skip IPv6 CIDRs when AllowIPv6Egress is not true.
-			// CEL validation normally prevents this, but guards against bypass.
 			if prefix.Addr().Is6() && !ipv6Allowed {
 				continue
 			}

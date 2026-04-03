@@ -123,13 +123,12 @@ func buildNetworkLabels(network *sandboxv1alpha1.NetworkSpec) map[string]string 
 	}
 	if network.AllowInternetEgress != nil && *network.AllowInternetEgress {
 		labels[LabelAllowIPv4Internet] = "true"
+		if network.AllowIPv6Egress != nil && *network.AllowIPv6Egress {
+			labels[LabelAllowIPv6Internet] = "true"
+		}
 	}
 	if network.AllowClusterDNS != nil && *network.AllowClusterDNS {
 		labels[LabelAllowClusterDNS] = "true"
-	}
-	if network.AllowIPv6Egress != nil && *network.AllowIPv6Egress &&
-		network.AllowInternetEgress != nil && *network.AllowInternetEgress {
-		labels[LabelAllowIPv6Internet] = "true"
 	}
 	return labels
 }
