@@ -942,7 +942,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		// Don't recreate the pod if the sandbox is already in a terminal state
 		// (e.g., pod was deleted because a restored container restarted after boot).
 		prevPodCond := meta.FindStatusCondition(baseSandbox.Status.Conditions, SandboxPodReadyCondition)
-		if prevPodCond != nil && (prevPodCond.Reason == CondReasonPodFailed || prevPodCond.Reason == CondReasonPodSucceeded) {
+		if isTerminalPodCondition(prevPodCond) {
 			return ctrl.Result{}, nil
 		}
 		// Clear stale restart-count baseline from a previous pod lifecycle so the
