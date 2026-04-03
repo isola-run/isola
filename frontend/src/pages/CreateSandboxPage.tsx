@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useId, cloneElement, isValidElement } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useToast } from "../components/Toast";
 import { getErrorMessage } from "../types";
@@ -88,6 +88,17 @@ export default function CreateSandboxPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
+      <nav className="mb-4 text-sm" aria-label="Breadcrumb">
+        <ol className="flex items-center gap-1.5 text-gray-400">
+          <li>
+            <Link to="/sandboxes" className="hover:text-gray-200 transition-colors">
+              Sandboxes
+            </Link>
+          </li>
+          <li aria-hidden="true">/</li>
+          <li className="text-gray-200">New</li>
+        </ol>
+      </nav>
       <h1 className="text-2xl font-bold mb-6">Create Sandbox</h1>
 
       {error && (
@@ -235,14 +246,17 @@ function Field({
   required?: boolean;
   children: React.ReactNode;
 }) {
+  const id = useId();
   return (
     <div>
-      <label className="block text-xs text-gray-400 mb-1">
+      <label htmlFor={id} className="block text-xs text-gray-400 mb-1">
         {label}
         {required && <span className="text-red-400 ml-0.5">*</span>}
         {hint && <span className="text-gray-600 ml-1">({hint})</span>}
       </label>
-      {children}
+      {isValidElement<{ id?: string }>(children)
+        ? cloneElement(children, { id })
+        : children}
     </div>
   );
 }

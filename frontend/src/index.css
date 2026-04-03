@@ -13,7 +13,7 @@
     @apply px-4 py-2 rounded-md text-sm font-medium border border-gray-700 bg-gray-800 hover:bg-gray-700 text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
   .btn-danger {
-    @apply px-3 py-1.5 rounded-md text-sm border border-red-800 text-red-400 hover:bg-red-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+    @apply px-4 py-2 rounded-md text-sm font-medium border border-red-800 text-red-400 hover:bg-red-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
 }
 

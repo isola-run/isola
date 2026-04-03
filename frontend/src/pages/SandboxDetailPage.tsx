@@ -166,14 +166,31 @@ export default function SandboxDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-800 mb-4" role="tablist" aria-label="Sandbox sections">
+      <div
+        className="border-b border-gray-800 mb-4"
+        role="tablist"
+        aria-label="Sandbox sections"
+        onKeyDown={(e) => {
+          const keys = TABS.map((t) => t.key);
+          const idx = keys.indexOf(tab);
+          if (e.key === "ArrowRight") {
+            e.preventDefault();
+            setTab(keys[(idx + 1) % keys.length]);
+          } else if (e.key === "ArrowLeft") {
+            e.preventDefault();
+            setTab(keys[(idx - 1 + keys.length) % keys.length]);
+          }
+        }}
+      >
         <div className="flex gap-0">
           {TABS.map((t) => (
             <button
               key={t.key}
+              id={`tab-${t.key}`}
               role="tab"
               aria-selected={tab === t.key}
               aria-controls={`tabpanel-${t.key}`}
+              tabIndex={tab === t.key ? 0 : -1}
               onClick={() => setTab(t.key)}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 tab === t.key
@@ -188,7 +205,7 @@ export default function SandboxDetailPage() {
       </div>
 
       {/* Tab content */}
-      <div role="tabpanel" id={`tabpanel-${tab}`}>
+      <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "terminal" && (
           isRunning ? (
             <Terminal sandboxId={sandbox.id} />

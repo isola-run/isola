@@ -64,7 +64,7 @@ function ToastItem({
   return (
     <div
       className={`rounded-lg border px-4 py-3 text-sm backdrop-blur-sm shadow-lg animate-slide-in ${colors[toast.type]}`}
-      role="alert"
+      role={toast.type === "error" ? "alert" : "status"}
     >
       <div className="flex items-center justify-between gap-3">
         <span>{toast.message}</span>
