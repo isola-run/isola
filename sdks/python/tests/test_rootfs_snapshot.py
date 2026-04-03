@@ -26,6 +26,7 @@ from isola import AsyncIsola, Isola, IsolaError, IsolaTimeoutError, RootfsSnapsh
 
 @respx.mock
 def test_create_rootfs_snapshot_with_all_fields(rootfs_snapshot_response_copy: dict[str, object]) -> None:
+    rootfs_snapshot_response_copy["ttlSecondsAfterFinished"] = 600
     create_route = respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
         return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
     )
@@ -75,7 +76,7 @@ def test_create_rootfs_snapshot_with_minimal_fields_sends_defaults(
 
     assert snapshot.container_name is None
     assert snapshot.timeout_seconds == 300
-    assert snapshot.ttl_seconds_after_finished == 600
+    assert snapshot.ttl_seconds_after_finished == 300
 
     payload = json.loads(create_route.calls[0].request.content)
     assert payload == {
@@ -100,7 +101,7 @@ def test_get_rootfs_snapshot(rootfs_snapshot_response_copy: dict[str, object]) -
     assert snapshot.snapshot_name == "my-snapshot"
     assert snapshot.container_name == "worker"
     assert snapshot.timeout_seconds == 300
-    assert snapshot.ttl_seconds_after_finished == 600
+    assert snapshot.ttl_seconds_after_finished == 300
     assert snapshot.status == RootfsSnapshotStatus.COMPLETE
     assert snapshot.creation_timestamp == datetime(2026, 2, 18, tzinfo=timezone.utc)
 
@@ -304,6 +305,7 @@ async def _no_sleep(_: float) -> None:
 @pytest.mark.asyncio
 @respx.mock
 async def test_async_create_rootfs_snapshot_with_all_fields(rootfs_snapshot_response_copy: dict[str, object]) -> None:
+    rootfs_snapshot_response_copy["ttlSecondsAfterFinished"] = 600
     create_route = respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
         return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
     )
@@ -354,7 +356,7 @@ async def test_async_create_rootfs_snapshot_with_minimal_fields_sends_defaults(
 
     assert snapshot.container_name is None
     assert snapshot.timeout_seconds == 300
-    assert snapshot.ttl_seconds_after_finished == 600
+    assert snapshot.ttl_seconds_after_finished == 300
 
     payload = json.loads(create_route.calls[0].request.content)
     assert payload == {
@@ -380,7 +382,7 @@ async def test_async_get_rootfs_snapshot(rootfs_snapshot_response_copy: dict[str
     assert snapshot.snapshot_name == "my-snapshot"
     assert snapshot.container_name == "worker"
     assert snapshot.timeout_seconds == 300
-    assert snapshot.ttl_seconds_after_finished == 600
+    assert snapshot.ttl_seconds_after_finished == 300
     assert snapshot.status == RootfsSnapshotStatus.COMPLETE
     assert snapshot.creation_timestamp == datetime(2026, 2, 18, tzinfo=timezone.utc)
 

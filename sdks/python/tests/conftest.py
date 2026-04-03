@@ -81,7 +81,7 @@ def rootfs_snapshot_response() -> dict[str, object]:
         "snapshotName": "my-snapshot",
         "containerName": "worker",
         "timeoutSeconds": 300,
-        "ttlSecondsAfterFinished": 600,
+        "ttlSecondsAfterFinished": 300,
         "status": "complete",
         "creationTimestamp": "2026-02-18T00:00:00Z",
     }
