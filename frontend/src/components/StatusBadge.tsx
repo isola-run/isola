@@ -1,6 +1,8 @@
 import type { SandboxStatus, SnapshotStatus } from "../types";
 
-const statusStyles: Record<string, string> = {
+type AnyStatus = SandboxStatus | SnapshotStatus;
+
+const statusStyles: Record<AnyStatus, string> = {
   creating: "bg-yellow-900/50 text-yellow-300 border-yellow-700",
   running: "bg-green-900/50 text-green-300 border-green-700",
   shuttingDown: "bg-orange-900/50 text-orange-300 border-orange-700",
@@ -12,7 +14,7 @@ const statusStyles: Record<string, string> = {
   complete: "bg-green-900/50 text-green-300 border-green-700",
 };
 
-const statusDots: Record<string, string> = {
+const statusDots: Record<AnyStatus, string> = {
   creating: "bg-yellow-400",
   running: "bg-green-400",
   shuttingDown: "bg-orange-400",

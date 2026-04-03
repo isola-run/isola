@@ -26,9 +26,28 @@ export function usePolling<T>(
 
   useEffect(() => {
     if (!enabled) return;
-    refresh();
-    const id = setInterval(refresh, intervalMs);
-    return () => clearInterval(id);
+    let cancelled = false;
+
+    const doFetch = async () => {
+      try {
+        const result = await fetcherRef.current();
+        if (!cancelled) {
+          setData(result);
+          setError(null);
+        }
+      } catch (err: unknown) {
+        if (!cancelled) setError(getErrorMessage(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    doFetch();
+    const id = setInterval(doFetch, intervalMs);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [refresh, intervalMs, enabled]);
 
   return { data, error, loading, refresh };

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { api } from "../api/client";
 import { usePolling } from "../hooks/usePolling";
 import StatusBadge from "./StatusBadge";
@@ -10,33 +10,42 @@ interface SnapshotPanelProps {
   sandboxId: string;
 }
 
+function isActive(s: RootfsSnapshotResponse): boolean {
+  return s.status === "pending" || s.status === "inProgress";
+}
+
 export default function SnapshotPanel({ sandboxId }: SnapshotPanelProps) {
   const [snapshotName, setSnapshotName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<RootfsSnapshotResponse[]>([]);
-  const snapshotsRef = useRef(snapshots);
-  snapshotsRef.current = snapshots;
   const { toast } = useToast();
 
   const pollActive = useCallback(async () => {
-    const active = snapshotsRef.current.filter(
-      (s) => s.status === "pending" || s.status === "inProgress"
-    );
+    // Read active snapshots from state via the updater to avoid stale closure
+    let activeIds: string[] = [];
+    setSnapshots((prev) => {
+      activeIds = prev.filter(isActive).map((s) => s.id);
+      return prev;
+    });
+    if (activeIds.length === 0) return [];
     const updated = await Promise.all(
-      active.map((s) => api.getSnapshot(s.id).catch(() => s))
+      activeIds.map((id) =>
+        api.getSnapshot(id).catch(() => null)
+      )
     );
-    if (updated.length > 0) {
+    const results = updated.filter(
+      (r): r is RootfsSnapshotResponse => r !== null
+    );
+    if (results.length > 0) {
       setSnapshots((prev) =>
-        prev.map((s) => updated.find((u) => u.id === s.id) ?? s)
+        prev.map((s) => results.find((u) => u.id === s.id) ?? s)
       );
     }
-    return updated;
+    return results;
   }, []);
 
-  const hasActive = snapshots.some(
-    (s) => s.status === "pending" || s.status === "inProgress"
-  );
+  const hasActive = snapshots.some(isActive);
   usePolling(pollActive, 3000, hasActive);
 
   const handleCreate = async (e: React.FormEvent) => {

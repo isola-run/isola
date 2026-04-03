@@ -13,6 +13,12 @@ import { getErrorMessage } from "../types";
 
 type Tab = "terminal" | "files" | "snapshots";
 
+const TABS: { key: Tab; label: string }[] = [
+  { key: "terminal", label: "Terminal" },
+  { key: "files", label: "Files" },
+  { key: "snapshots", label: "Snapshots" },
+];
+
 export default function SandboxDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -54,11 +60,6 @@ export default function SandboxDetailPage() {
   if (!sandbox) return null;
 
   const isRunning = sandbox.status === "running";
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "terminal", label: "Terminal" },
-    { key: "files", label: "Files" },
-    { key: "snapshots", label: "Snapshots" },
-  ];
 
   return (
     <div>
@@ -167,7 +168,7 @@ export default function SandboxDetailPage() {
       {/* Tabs */}
       <div className="border-b border-gray-800 mb-4" role="tablist" aria-label="Sandbox sections">
         <div className="flex gap-0">
-          {tabs.map((t) => (
+          {TABS.map((t) => (
             <button
               key={t.key}
               role="tab"
