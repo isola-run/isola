@@ -267,6 +267,14 @@ spec:
               podIP:
                 description: PodIP is the IP address of the sandbox pod.
                 type: string
+              podName:
+                description: PodName is the name of the sandbox pod.
+                type: string
+              podUID:
+                description: |-
+                  PodUID is the UID of the sandbox pod instance.
+                  Used by the api-gateway to cryptographically verify the exact pod identity via mTLS.
+                type: string
               shutdownDeadlineAt:
                 description: |-
                   ShutdownDeadlineAt is the absolute time by which the shutdown policy must complete.

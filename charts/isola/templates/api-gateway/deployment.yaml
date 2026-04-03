@@ -38,6 +38,10 @@ spec:
           env:
             - name: ISOLA_SANDBOX_NAMESPACE
               value: {{ include "isola.sandboxNamespace" . | quote }}
+            {{- if .Values.identitySigner.enabled }}
+            - name: ISOLA_SIGNER_CA_BUNDLE_URL
+              value: "{{ include "isola.identitySigner.internalURL" . }}/v1/ca-bundle"
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080

@@ -30,6 +30,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 	apigateway "github.com/isola-run/isola/internal/api-gateway"
 	"github.com/isola-run/isola/internal/constants"
 	"github.com/isola-run/isola/internal/httputil"
@@ -97,21 +98,34 @@ type DeleteSandboxCommandInput struct {
 }
 
 type Handlers struct {
-	logger           *slog.Logger
-	k8sClient        client.Client
-	sandboxNamespace string
-	httpClient       apigateway.HTTPDoer
-	sidecarPort      int
+	logger            *slog.Logger
+	k8sClient         client.Client
+	sandboxNamespace  string
+	httpClient        apigateway.HTTPDoer
+	sidecarPort       int
+	sidecarTransport  *apigateway.SidecarTransport
 }
 
-func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client, httpClient apigateway.HTTPDoer) *Handlers {
+func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client, httpClient apigateway.HTTPDoer, transport *apigateway.SidecarTransport) *Handlers {
 	return &Handlers{
 		logger:           logger,
 		k8sClient:        k8sClient,
 		sandboxNamespace: sandboxNamespace,
 		httpClient:       httpClient,
 		sidecarPort:      constants.SidecarPort,
+		sidecarTransport: transport,
 	}
+}
+
+func (h *Handlers) sidecarClient(sb *sandboxv1alpha1.Sandbox) (apigateway.HTTPDoer, string, error) {
+	if h.sidecarTransport != nil && h.sidecarTransport.TLSEnabled() {
+		client, err := h.sidecarTransport.HTTPClient(sb)
+		if err != nil {
+			return nil, "", err
+		}
+		return client, h.sidecarTransport.SidecarBaseURL(sb), nil
+	}
+	return h.httpClient, fmt.Sprintf("http://%s:%d", sb.Status.PodIP, h.sidecarPort), nil
 }
 
 func (h *Handlers) PostCommand(ctx context.Context, input *CreateSandboxCommandInput) (*CreateSandboxCommandOutput, error) {
@@ -120,11 +134,17 @@ func (h *Handlers) PostCommand(ctx context.Context, input *CreateSandboxCommandI
 		return nil, err
 	}
 
+	httpClient, baseURL, err := h.sidecarClient(sb)
+	if err != nil {
+		h.logger.Error("failed to create sidecar client", "error", err, "id", input.SandboxID)
+		return nil, huma.Error502BadGateway("failed to create sidecar client")
+	}
+
 	params := url.Values{}
 	if input.Container != "" {
 		params.Set("container", input.Container)
 	}
-	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
+	sidecarURL := fmt.Sprintf("%s/v1/commands?%s", baseURL, params.Encode())
 
 	_ = sidecarapi.CreateCommandRequest(CreateCommandRequest{}) // assert field compatibility
 	body, err := json.Marshal(input.Body)
@@ -140,7 +160,7 @@ func (h *Handlers) PostCommand(ctx context.Context, input *CreateSandboxCommandI
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := h.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
@@ -169,7 +189,13 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetSandboxComman
 		return nil, err
 	}
 
-	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s/status", sb.Status.PodIP, h.sidecarPort, input.ID)
+	httpClient, baseURL, err := h.sidecarClient(sb)
+	if err != nil {
+		h.logger.Error("failed to create sidecar client", "error", err, "id", input.SandboxID)
+		return nil, huma.Error502BadGateway("failed to create sidecar client")
+	}
+
+	sidecarURL := fmt.Sprintf("%s/v1/commands/%s/status", baseURL, input.ID)
 	if input.WaitSeconds > 0 {
 		sidecarURL += fmt.Sprintf("?waitSeconds=%d", input.WaitSeconds)
 	}
@@ -180,7 +206,7 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetSandboxComman
 		return nil, huma.Error500InternalServerError("failed to build sidecar request")
 	}
 
-	resp, err := h.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
@@ -217,7 +243,13 @@ func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream, la
 		return nil, err
 	}
 
-	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s/%s", sb.Status.PodIP, h.sidecarPort, cmdID, stream)
+	httpClient, baseURL, err := h.sidecarClient(sb)
+	if err != nil {
+		h.logger.Error("failed to create sidecar client", "error", err, "id", sandboxID)
+		return nil, huma.Error502BadGateway("failed to create sidecar client")
+	}
+
+	sidecarURL := fmt.Sprintf("%s/v1/commands/%s/%s", baseURL, cmdID, stream)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarURL, nil)
 	if err != nil {
@@ -228,7 +260,7 @@ func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream, la
 		req.Header.Set("Last-Event-ID", lastEventID)
 	}
 
-	resp, err := h.httpClient.Do(req) //nolint:bodyclose // closed in both error and streaming paths below
+	resp, err := httpClient.Do(req) //nolint:bodyclose // closed in both error and streaming paths below
 	if err != nil {
 		h.logger.Error("sidecar request failed", "error", err, "id", sandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
@@ -272,7 +304,13 @@ func (h *Handlers) PostCommandStdin(ctx context.Context, input *PostSandboxComma
 		return nil, err
 	}
 
-	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s/stdin", sb.Status.PodIP, h.sidecarPort, input.ID)
+	httpClient, baseURL, err := h.sidecarClient(sb)
+	if err != nil {
+		h.logger.Error("failed to create sidecar client", "error", err, "id", input.SandboxID)
+		return nil, huma.Error502BadGateway("failed to create sidecar client")
+	}
+
+	sidecarURL := fmt.Sprintf("%s/v1/commands/%s/stdin", baseURL, input.ID)
 
 	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
 
@@ -283,7 +321,7 @@ func (h *Handlers) PostCommandStdin(ctx context.Context, input *PostSandboxComma
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	resp, err := h.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
@@ -303,7 +341,13 @@ func (h *Handlers) CloseCommandStdin(ctx context.Context, input *CloseSandboxCom
 		return nil, err
 	}
 
-	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s/stdin/close", sb.Status.PodIP, h.sidecarPort, input.ID)
+	httpClient, baseURL, err := h.sidecarClient(sb)
+	if err != nil {
+		h.logger.Error("failed to create sidecar client", "error", err, "id", input.SandboxID)
+		return nil, huma.Error502BadGateway("failed to create sidecar client")
+	}
+
+	sidecarURL := fmt.Sprintf("%s/v1/commands/%s/stdin/close", baseURL, input.ID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sidecarURL, nil)
 	if err != nil {
@@ -311,7 +355,7 @@ func (h *Handlers) CloseCommandStdin(ctx context.Context, input *CloseSandboxCom
 		return nil, huma.Error500InternalServerError("failed to build sidecar request")
 	}
 
-	resp, err := h.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
@@ -331,7 +375,13 @@ func (h *Handlers) DeleteCommand(ctx context.Context, input *DeleteSandboxComman
 		return nil, err
 	}
 
-	sidecarURL := fmt.Sprintf("http://%s:%d/v1/commands/%s", sb.Status.PodIP, h.sidecarPort, input.ID)
+	httpClient, baseURL, err := h.sidecarClient(sb)
+	if err != nil {
+		h.logger.Error("failed to create sidecar client", "error", err, "id", input.SandboxID)
+		return nil, huma.Error502BadGateway("failed to create sidecar client")
+	}
+
+	sidecarURL := fmt.Sprintf("%s/v1/commands/%s", baseURL, input.ID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, sidecarURL, nil)
 	if err != nil {
@@ -339,7 +389,7 @@ func (h *Handlers) DeleteCommand(ctx context.Context, input *DeleteSandboxComman
 		return nil, huma.Error500InternalServerError("failed to build sidecar request")
 	}
 
-	resp, err := h.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")

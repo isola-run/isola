@@ -37,6 +37,7 @@ import (
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 	"github.com/isola-run/isola/internal/constants"
+	"github.com/isola-run/isola/internal/identity"
 	netbuilder "github.com/isola-run/isola/internal/operator/controller/network"
 	"github.com/isola-run/isola/internal/operator/controller/podutil"
 	"github.com/isola-run/isola/internal/operator/controller/snapshot"
@@ -95,10 +96,20 @@ type SandboxReconciler struct {
 	ImagePullSecrets              []corev1.LocalObjectReference // ImagePullSecrets for pulling sandbox-sidecar images from private registries.
 	Clock                         Clock                         // Clock interface for time operations, allows mocking in tests
 	RootfsSnapshotHostMountPath   string                        // Host path where rootfs snapshot tars are NFS-mounted (e.g., /mnt/isola-snapshots)
+	IdentitySignerURL             string                        // URL of the identity signer service. Empty disables mTLS identity.
+	SandboxServiceAccount         string                        // ServiceAccount name enforced on sandbox pods for identity bootstrap.
 }
 
 const (
-	sandboxSidecarContainerName = "sandbox-sidecar"
+	sandboxSidecarContainerName     = "sandbox-sidecar"
+	identityBootstrapContainerName  = "identity-bootstrap"
+	identityTLSVolumeName           = "identity-tls"
+	identityTokenVolumeName         = "identity-token"
+	identityPodMetaVolumeName       = "identity-pod-meta"
+	identityTLSMountPath            = "/etc/isola/tls"
+	identityTokenMountPath          = "/var/run/secrets/isola/token"
+	identityPodMetaMountPath        = "/etc/isola/pod-meta"
+	identityTokenExpirationSeconds  = int64(600) // 10 minutes, enough for bootstrap
 
 	// Trust boundary label: identifies untrusted sandbox pods for NetworkPolicy selection
 	LabelSandbox = "isola.run/sandbox"
@@ -106,6 +117,9 @@ const (
 	// Network labels for pod selection by Helm-installed NetworkPolicies
 	LabelAllowInternet   = "isola.run/allow-internet-egress"
 	LabelAllowClusterDNS = "isola.run/allow-cluster-dns"
+
+	// LabelSandboxName labels the pod with its sandbox name for identity bootstrap.
+	LabelSandboxName = "isola.run/sandbox-name"
 )
 
 func (r *SandboxReconciler) clock() Clock {
@@ -131,7 +145,7 @@ func buildNetworkLabels(network *sandboxv1alpha1.NetworkSpec) map[string]string 
 
 func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 	rp := corev1.ContainerRestartPolicyAlways
-	return corev1.Container{
+	c := corev1.Container{
 		Name:            sandboxSidecarContainerName,
 		Image:           r.SandboxSidecarImage,
 		ImagePullPolicy: r.SandboxSidecarImagePullPolicy,
@@ -150,6 +164,122 @@ func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 			},
 		},
 	}
+	if r.identityEnabled() {
+		c.VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{
+			Name:      identityTLSVolumeName,
+			MountPath: identityTLSMountPath,
+			ReadOnly:  true,
+		})
+		c.Env = append(c.Env, corev1.EnvVar{
+			Name:  "ISOLA_TLS_DIR",
+			Value: identityTLSMountPath,
+		})
+	}
+	return c
+}
+
+func (r *SandboxReconciler) identityEnabled() bool {
+	return r.IdentitySignerURL != ""
+}
+
+// injectIdentityBootstrap adds the volumes and bootstrap init container needed
+// for one-shot mTLS certificate issuance.
+func (r *SandboxReconciler) injectIdentityBootstrap(sandboxPod *corev1.Pod, sandboxName string) {
+	if !r.identityEnabled() {
+		return
+	}
+
+	// Enforce dedicated ServiceAccount
+	if r.SandboxServiceAccount != "" {
+		sandboxPod.Spec.ServiceAccountName = r.SandboxServiceAccount
+	}
+
+	// 1. TLS material volume (memory-backed emptyDir)
+	sandboxPod.Spec.Volumes = append(sandboxPod.Spec.Volumes, corev1.Volume{
+		Name: identityTLSVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{
+				Medium: corev1.StorageMediumMemory,
+			},
+		},
+	})
+
+	// 2. Projected ServiceAccount token volume (audience-scoped, short-lived)
+	sandboxPod.Spec.Volumes = append(sandboxPod.Spec.Volumes, corev1.Volume{
+		Name: identityTokenVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			Projected: &corev1.ProjectedVolumeSource{
+				Sources: []corev1.VolumeProjection{
+					{
+						ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+							Audience:          identity.TokenAudience,
+							ExpirationSeconds: ptr.To(identityTokenExpirationSeconds),
+							Path:              "token",
+						},
+					},
+				},
+			},
+		},
+	})
+
+	// 3. Downward API volume for pod metadata
+	sandboxPod.Spec.Volumes = append(sandboxPod.Spec.Volumes, corev1.Volume{
+		Name: identityPodMetaVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			DownwardAPI: &corev1.DownwardAPIVolumeSource{
+				Items: []corev1.DownwardAPIVolumeFile{
+					{Path: "pod-name", FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}},
+					{Path: "pod-uid", FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.uid"}},
+					{Path: "namespace", FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
+				},
+			},
+		},
+	})
+
+	// 4. Bootstrap init container - runs before the sidecar
+	bootstrapContainer := corev1.Container{
+		Name:            identityBootstrapContainerName,
+		Image:           r.SandboxSidecarImage,
+		ImagePullPolicy: r.SandboxSidecarImagePullPolicy,
+		Args:            []string{"--bootstrap-cert-only"},
+		Env: []corev1.EnvVar{
+			{Name: "ISOLA_SIGNER_URL", Value: r.IdentitySignerURL},
+			{Name: "ISOLA_TOKEN_PATH", Value: identityTokenMountPath + "/token"},
+			{Name: "ISOLA_TLS_DIR", Value: identityTLSMountPath},
+			{Name: "ISOLA_SANDBOX_NAME", Value: sandboxName},
+			{
+				Name: "ISOLA_POD_NAME",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"},
+				},
+			},
+			{
+				Name: "ISOLA_POD_UID",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.uid"},
+				},
+			},
+			{
+				Name: "ISOLA_NAMESPACE",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
+				},
+			},
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: identityTLSVolumeName, MountPath: identityTLSMountPath},
+			{Name: identityTokenVolumeName, MountPath: identityTokenMountPath, ReadOnly: true},
+			{Name: identityPodMetaVolumeName, MountPath: identityPodMetaMountPath, ReadOnly: true},
+		},
+		SecurityContext: &corev1.SecurityContext{
+			RunAsUser:                ptr.To(int64(0)),
+			AllowPrivilegeEscalation: ptr.To(false),
+			ReadOnlyRootFilesystem:   ptr.To(true),
+		},
+	}
+
+	// Prepend so it runs before the sidecar init container
+	sandboxPod.Spec.InitContainers = append([]corev1.Container{bootstrapContainer}, sandboxPod.Spec.InitContainers...)
 }
 
 // Mark each container with its name so the sidecar can discover it via /proc/<pid>/environ.
@@ -196,6 +326,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	labels["app.kubernetes.io/part-of"] = "isola"
 	labels["app.kubernetes.io/managed-by"] = "isola-operator"
 	labels[LabelSandbox] = "true"
+	labels[LabelSandboxName] = sandbox.Name
 
 	labels["cluster-autoscaler.kubernetes.io/safe-to-evict"] = "false"
 
@@ -285,6 +416,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	markContainers(sandboxPod)
 
+	r.injectIdentityBootstrap(sandboxPod, sandbox.Name)
 	r.injectSandboxSidecar(sandboxPod)
 
 	if err := controllerutil.SetControllerReference(sandbox, sandboxPod, r.Scheme); err != nil {
@@ -521,6 +653,8 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 
 	if sandboxPod != nil {
 		sandbox.Status.PodIP = sandboxPod.Status.PodIP
+		sandbox.Status.PodName = sandboxPod.Name
+		sandbox.Status.PodUID = string(sandboxPod.UID)
 	}
 
 	networkCondition := r.determineNetworkCondition(sandbox)

@@ -69,6 +69,8 @@ func main() {
 	var rootfssnapshotHostMountPath string
 	var sandboxSidecarImagePullPolicy string
 	var rootfssnapshotUploaderImagePullPolicy string
+	var identitySignerURL string
+	var sandboxServiceAccount string
 	var logLevel string
 	var devMode bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to. Set to 0 to disable.")
@@ -90,6 +92,8 @@ func main() {
 	flag.StringVar(&rootfssnapshotHostMountPath, "rootfssnapshot-host-mount-path", "", "Host path where snapshot-mounter NFS-mounts snapshot tars (readable by runsc on the node)")
 	flag.StringVar(&sandboxSidecarImagePullPolicy, "sidecar-image-pull-policy", "", "ImagePullPolicy for the sandbox-sidecar container (Always, IfNotPresent, Never)")
 	flag.StringVar(&rootfssnapshotUploaderImagePullPolicy, "rootfssnapshot-uploader-image-pull-policy", "", "ImagePullPolicy for the rootfs snapshot uploader container (Always, IfNotPresent, Never)")
+	flag.StringVar(&identitySignerURL, "identity-signer-url", os.Getenv("ISOLA_IDENTITY_SIGNER_URL"), "URL of the identity signer service (enables mTLS identity for sandbox pods)")
+	flag.StringVar(&sandboxServiceAccount, "sandbox-service-account", os.Getenv("ISOLA_SANDBOX_SERVICE_ACCOUNT"), "ServiceAccount name enforced on sandbox pods for identity bootstrap")
 	flag.StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode (text logging)")
 	flag.Parse()
@@ -172,6 +176,8 @@ func main() {
 		ImagePullSecrets:              imagePullSecrets,
 		Clock:                         controller.RealClock{},
 		RootfsSnapshotHostMountPath:   rootfssnapshotHostMountPath,
+		IdentitySignerURL:             identitySignerURL,
+		SandboxServiceAccount:         sandboxServiceAccount,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
 		os.Exit(1)

@@ -179,6 +179,7 @@ build: ## Build all binaries
 	go build -o bin/sandbox-sidecar ./cmd/sandbox-sidecar
 	go build -o bin/uploader ./cmd/uploader
 	go build -o bin/api-gateway ./cmd/api-gateway
+	go build -o bin/identity-signer ./cmd/identity-signer
 
 .PHONY: run-operator
 run-operator: ## Run operator from your host

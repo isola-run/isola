@@ -1,0 +1,13 @@
+{{- if .Values.identitySigner.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "isola.identitySigner.fullname" . }}
+  labels:
+    {{- include "isola.identitySigner.labels" . | nindent 4 }}
+rules:
+  # TokenReview for validating projected ServiceAccount tokens
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+{{- end }}

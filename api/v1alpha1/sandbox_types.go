@@ -174,6 +174,15 @@ type SandboxStatus struct {
 	// PodIP is the IP address of the sandbox pod.
 	// +optional
 	PodIP string `json:"podIP,omitempty"`
+
+	// PodName is the name of the sandbox pod.
+	// +optional
+	PodName string `json:"podName,omitempty"`
+
+	// PodUID is the UID of the sandbox pod instance.
+	// Used by the api-gateway to cryptographically verify the exact pod identity via mTLS.
+	// +optional
+	PodUID string `json:"podUID,omitempty"`
 }
 
 // +kubebuilder:object:root=true

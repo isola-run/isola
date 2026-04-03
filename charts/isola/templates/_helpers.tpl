@@ -515,3 +515,67 @@ API Gateway image
 {{- define "isola.apiGateway.image" -}}
 {{- include "isola.image" (dict "imageConfig" .Values.apiGateway.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
+
+{{/* ==========================================================================
+   Identity Signer Helpers
+   ========================================================================== */}}
+
+{{/*
+Identity Signer fullname
+*/}}
+{{- define "isola.identitySigner.fullname" -}}
+{{- printf "%s-identity-signer" (include "isola.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Identity Signer labels
+*/}}
+{{- define "isola.identitySigner.labels" -}}
+{{ include "isola.labels" . }}
+app.kubernetes.io/name: {{ include "isola.name" . }}-identity-signer
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: identity-signer
+{{- end }}
+
+{{/*
+Identity Signer selector labels
+*/}}
+{{- define "isola.identitySigner.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "isola.name" . }}-identity-signer
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: identity-signer
+{{- end }}
+
+{{/*
+Identity Signer service account name
+*/}}
+{{- define "isola.identitySigner.serviceAccountName" -}}
+{{- if .Values.identitySigner.serviceAccount.create }}
+{{- default (include "isola.identitySigner.fullname" .) .Values.identitySigner.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.identitySigner.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Identity Signer image
+*/}}
+{{- define "isola.identitySigner.image" -}}
+{{- include "isola.image" (dict "imageConfig" .Values.identitySigner.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- end }}
+
+{{/*
+Identity Signer internal URL (used by operator to tell bootstrap containers where to call)
+*/}}
+{{- define "isola.identitySigner.internalURL" -}}
+{{- printf "http://%s.%s.svc.cluster.local:%d" (include "isola.identitySigner.fullname" .) .Release.Namespace (int .Values.identitySigner.service.port) -}}
+{{- end }}
+
+{{/*
+Sandbox ServiceAccount name
+*/}}
+{{- define "isola.sandbox.serviceAccountName" -}}
+{{- if .Values.identitySigner.enabled -}}
+{{- .Values.identitySigner.sandboxServiceAccount.name | default (printf "%s-sandbox" (include "isola.fullname" .)) -}}
+{{- end -}}
+{{- end }}

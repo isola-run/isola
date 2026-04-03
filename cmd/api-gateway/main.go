@@ -19,6 +19,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -41,6 +42,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	apigateway "github.com/isola-run/isola/internal/api-gateway"
 	"github.com/isola-run/isola/internal/api-gateway/command"
 	"github.com/isola-run/isola/internal/api-gateway/filesystem"
 	"github.com/isola-run/isola/internal/api-gateway/health"
@@ -73,10 +75,11 @@ func init() {
 }
 
 type config struct {
-	httpPort         int
-	logLevel         string
-	devMode          bool
-	sandboxNamespace string
+	httpPort          int
+	logLevel          string
+	devMode           bool
+	sandboxNamespace  string
+	signerCABundleURL string
 }
 
 func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config) (ctrl.Manager, error) {
@@ -131,6 +134,35 @@ func initSandboxClient() *http.Client {
 	}
 }
 
+func initSidecarTransport(logger *slog.Logger, cfg config) *apigateway.SidecarTransport {
+	if cfg.signerCABundleURL == "" {
+		logger.Info("signer CA bundle URL not configured, sidecar mTLS disabled")
+		return apigateway.NewSidecarTransport(nil)
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(cfg.signerCABundleURL)
+	if err != nil {
+		logger.Error("failed to fetch signer CA bundle", "error", err, "url", cfg.signerCABundleURL)
+		os.Exit(1)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("signer CA bundle endpoint returned non-200", "status", resp.StatusCode)
+		os.Exit(1)
+	}
+
+	caBundlePEM, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		logger.Error("failed to read signer CA bundle", "error", err)
+		os.Exit(1)
+	}
+
+	logger.Info("loaded signer CA bundle", "url", cfg.signerCABundleURL, "size", len(caBundlePEM))
+	return apigateway.NewSidecarTransport(caBundlePEM)
+}
+
 func main() {
 	cfg := config{}
 
@@ -138,6 +170,7 @@ func main() {
 	flag.StringVar(&cfg.logLevel, "log-level", env.GetOrDefault("ISOLA_LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
 	flag.BoolVar(&cfg.devMode, "dev-mode", env.GetOrDefault("ISOLA_DEV_MODE", "") != "", "Enable development mode (text logging)")
 	flag.StringVar(&cfg.sandboxNamespace, "sandbox-namespace", os.Getenv("ISOLA_SANDBOX_NAMESPACE"), "Namespace where sandboxes are created (required)")
+	flag.StringVar(&cfg.signerCABundleURL, "signer-ca-bundle-url", os.Getenv("ISOLA_SIGNER_CA_BUNDLE_URL"), "URL to fetch the identity signer CA bundle (e.g. http://isola-identity-signer:8443/v1/ca-bundle)")
 	flag.Parse()
 
 	logger := logging.New(logging.Config{
@@ -177,9 +210,10 @@ func main() {
 	rootfssnapshot.Register(v1, rootfssnapshot.New(logger, cfg.sandboxNamespace, mgr.GetClient()))
 
 	sandboxClient := initSandboxClient()
+	transport := initSidecarTransport(logger, cfg)
 
-	filesystem.Register(v1, filesystem.New(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient))
-	command.Register(v1, command.New(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient))
+	filesystem.Register(v1, filesystem.New(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient, transport))
+	command.Register(v1, command.New(logger, cfg.sandboxNamespace, mgr.GetClient(), sandboxClient, transport))
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.httpPort),

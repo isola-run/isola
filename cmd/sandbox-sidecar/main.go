@@ -15,6 +15,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -30,8 +31,10 @@ import (
 
 	"github.com/isola-run/isola/internal/constants"
 	"github.com/isola-run/isola/internal/env"
+	"github.com/isola-run/isola/internal/identity"
 	"github.com/isola-run/isola/internal/logging"
 	sandboxsidecar "github.com/isola-run/isola/internal/sandbox-sidecar"
+	"github.com/isola-run/isola/internal/sandbox-sidecar/bootstrap"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/command"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/filesystem"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/health"
@@ -47,8 +50,16 @@ const (
 )
 
 type config struct {
-	logLevel string
-	devMode  bool
+	logLevel          string
+	devMode           bool
+	bootstrapCertOnly bool
+	signerURL         string
+	tokenPath         string
+	podName           string
+	podUID            string
+	namespace         string
+	sandboxName       string
+	tlsDir            string
 }
 
 func main() {
@@ -56,6 +67,14 @@ func main() {
 
 	flag.StringVar(&cfg.logLevel, "log-level", env.GetOrDefault("ISOLA_LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
 	flag.BoolVar(&cfg.devMode, "dev-mode", env.GetOrDefault("ISOLA_DEV_MODE", "") != "", "Enable development mode (text logging)")
+	flag.BoolVar(&cfg.bootstrapCertOnly, "bootstrap-cert-only", false, "Run in bootstrap mode: obtain a certificate and exit")
+	flag.StringVar(&cfg.signerURL, "signer-url", os.Getenv("ISOLA_SIGNER_URL"), "URL of the identity signer service")
+	flag.StringVar(&cfg.tokenPath, "token-path", os.Getenv("ISOLA_TOKEN_PATH"), "Path to projected ServiceAccount token")
+	flag.StringVar(&cfg.podName, "pod-name", os.Getenv("ISOLA_POD_NAME"), "Pod name (from downward API)")
+	flag.StringVar(&cfg.podUID, "pod-uid", os.Getenv("ISOLA_POD_UID"), "Pod UID (from downward API)")
+	flag.StringVar(&cfg.namespace, "namespace", os.Getenv("ISOLA_NAMESPACE"), "Pod namespace (from downward API)")
+	flag.StringVar(&cfg.sandboxName, "sandbox-name", os.Getenv("ISOLA_SANDBOX_NAME"), "Sandbox name")
+	flag.StringVar(&cfg.tlsDir, "tls-dir", env.GetOrDefault("ISOLA_TLS_DIR", "/etc/isola/tls"), "Directory for TLS material")
 	flag.Parse()
 
 	logger := logging.New(logging.Config{
@@ -63,6 +82,32 @@ func main() {
 		DevMode: cfg.devMode,
 	})
 
+	if cfg.bootstrapCertOnly {
+		runBootstrap(cfg, logger)
+		return
+	}
+
+	runServer(cfg, logger)
+}
+
+func runBootstrap(cfg config, logger *slog.Logger) {
+	if err := bootstrap.Run(bootstrap.Config{
+		SignerURL:   cfg.signerURL,
+		TokenPath:   cfg.tokenPath,
+		PodName:     cfg.podName,
+		PodUID:      cfg.podUID,
+		Namespace:   cfg.namespace,
+		SandboxName: cfg.sandboxName,
+		TLSDir:      cfg.tlsDir,
+		Logger:      logger,
+	}); err != nil {
+		logger.Error("bootstrap failed", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("bootstrap complete")
+}
+
+func runServer(cfg config, logger *slog.Logger) {
 	r := chi.NewRouter()
 	// httplog.RequestLogger automatically includes chi's RequestID and Recoverer middleware
 	r.Use(httplog.RequestLogger(&httplog.Logger{
@@ -101,11 +146,23 @@ func main() {
 		IdleTimeout:       serverIdleTimeout,
 	}
 
-	// currently no graceful shutdown, but it might make sense to have a short grace period
-	// to allow completing retrieval of sandbox app stdout for example (if in progress)
-	logger.Info("starting sandbox-sidecar server", "port", constants.SidecarPort)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logger.Error("server error", "error", err)
-		os.Exit(1)
+	certFile := cfg.tlsDir + "/" + identity.TLSCertFile
+	keyFile := cfg.tlsDir + "/" + identity.TLSKeyFile
+
+	if _, err := os.Stat(certFile); err == nil {
+		logger.Info("TLS material found, starting HTTPS server", "port", constants.SidecarPort)
+		srv.TLSConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
+		if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server error", "error", err)
+			os.Exit(1)
+		}
+	} else {
+		logger.Info("no TLS material found, starting HTTP server", "port", constants.SidecarPort)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server error", "error", err)
+			os.Exit(1)
+		}
 	}
 }

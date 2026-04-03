@@ -88,8 +88,8 @@ func setupAPIGateway() huma.API {
 	v1 := huma.NewGroup(api, "/v1")
 	sandbox.Register(v1, sandbox.New(nil, "", nil))
 	rootfssnapshot.Register(v1, rootfssnapshot.New(nil, "", nil))
-	filesystem.Register(v1, filesystem.New(nil, "", nil, nil))
-	command.Register(v1, command.New(nil, "", nil, nil))
+	filesystem.Register(v1, filesystem.New(nil, "", nil, nil, nil))
+	command.Register(v1, command.New(nil, "", nil, nil, nil))
 
 	return api
 }

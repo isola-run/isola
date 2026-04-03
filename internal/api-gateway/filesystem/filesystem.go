@@ -28,6 +28,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 	apigateway "github.com/isola-run/isola/internal/api-gateway"
 	"github.com/isola-run/isola/internal/constants"
 	"github.com/isola-run/isola/internal/httputil"
@@ -57,21 +58,34 @@ type FilesystemReadInput struct {
 }
 
 type Handlers struct {
-	logger           *slog.Logger
-	k8sClient        client.Client
-	sandboxNamespace string
-	httpClient       apigateway.HTTPDoer
-	sidecarPort      int
+	logger            *slog.Logger
+	k8sClient         client.Client
+	sandboxNamespace  string
+	httpClient        apigateway.HTTPDoer
+	sidecarPort       int
+	sidecarTransport  *apigateway.SidecarTransport
 }
 
-func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client, httpClient apigateway.HTTPDoer) *Handlers {
+func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client, httpClient apigateway.HTTPDoer, transport *apigateway.SidecarTransport) *Handlers {
 	return &Handlers{
 		logger:           logger,
 		k8sClient:        k8sClient,
 		sandboxNamespace: sandboxNamespace,
 		httpClient:       httpClient,
 		sidecarPort:      constants.SidecarPort,
+		sidecarTransport: transport,
 	}
+}
+
+func (h *Handlers) sidecarClient(sb *sandboxv1alpha1.Sandbox) (apigateway.HTTPDoer, string, error) {
+	if h.sidecarTransport != nil && h.sidecarTransport.TLSEnabled() {
+		client, err := h.sidecarTransport.HTTPClient(sb)
+		if err != nil {
+			return nil, "", err
+		}
+		return client, h.sidecarTransport.SidecarBaseURL(sb), nil
+	}
+	return h.httpClient, fmt.Sprintf("http://%s:%d", sb.Status.PodIP, h.sidecarPort), nil
 }
 
 func (h *Handlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
@@ -80,12 +94,18 @@ func (h *Handlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInp
 		return nil, err
 	}
 
+	httpClient, baseURL, err := h.sidecarClient(sb)
+	if err != nil {
+		h.logger.Error("failed to create sidecar client", "error", err, "id", input.SandboxID)
+		return nil, huma.Error502BadGateway("failed to create sidecar client")
+	}
+
 	params := url.Values{}
 	params.Set("path", input.Path)
 	if input.Container != "" {
 		params.Set("container", input.Container)
 	}
-	sidecarURL := fmt.Sprintf("http://%s:%d/v1/filesystem?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
+	sidecarURL := fmt.Sprintf("%s/v1/filesystem?%s", baseURL, params.Encode())
 
 	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
 
@@ -96,7 +116,7 @@ func (h *Handlers) PostFilesystem(ctx context.Context, input *FilesystemWriteInp
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	resp, err := h.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")
@@ -128,12 +148,18 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 		return nil, err
 	}
 
+	httpClient, baseURL, err := h.sidecarClient(sb)
+	if err != nil {
+		h.logger.Error("failed to create sidecar client", "error", err, "id", input.SandboxID)
+		return nil, huma.Error502BadGateway("failed to create sidecar client")
+	}
+
 	params := url.Values{}
 	params.Set("path", input.Path)
 	if input.Container != "" {
 		params.Set("container", input.Container)
 	}
-	sidecarURL := fmt.Sprintf("http://%s:%d/v1/filesystem?%s", sb.Status.PodIP, h.sidecarPort, params.Encode())
+	sidecarURL := fmt.Sprintf("%s/v1/filesystem?%s", baseURL, params.Encode())
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sidecarURL, nil)
 	if err != nil {
@@ -141,7 +167,7 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 		return nil, huma.Error500InternalServerError("failed to build sidecar request")
 	}
 
-	resp, err := h.httpClient.Do(req) //nolint:bodyclose // closed in both error and streaming paths below
+	resp, err := httpClient.Do(req) //nolint:bodyclose // closed in both error and streaming paths below
 	if err != nil {
 		h.logger.Error("sidecar request failed", "error", err, "id", input.SandboxID)
 		return nil, huma.Error502BadGateway("failed to reach sidecar")

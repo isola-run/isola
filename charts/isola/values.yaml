@@ -244,6 +244,49 @@ serviceMonitor:
   additionalLabels: {}
 
 
+identitySigner:
+  # Enable the identity signer for sandbox mTLS.
+  # When enabled, each sandbox pod gets a short-lived certificate so the api-gateway
+  # can cryptographically verify it is talking to the expected sandbox pod instance.
+  enabled: false
+
+  image:
+    registry: ghcr.io/isola-run
+    repository: identity-signer
+    tag: ""  # Defaults to Chart.appVersion
+    digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+
+  # ServiceAccount created in the sandbox namespace for identity-bootstrapped pods.
+  sandboxServiceAccount:
+    create: true
+    name: ""
+
+  service:
+    port: 8443
+
+  logging:
+    level: info
+    devMode: false
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+
 apiGateway:
   # The apiGateway installation could be skipped,
   # though it is not recommended as it provides control

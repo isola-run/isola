@@ -123,6 +123,7 @@ func newFilesystemTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humat
 		testNamespace,
 		k8sClient,
 		httpClient,
+		nil,
 	)
 	h.sidecarPort = sidecarPort
 	Register(v1, h)

@@ -76,6 +76,10 @@ spec:
             {{- if $imagePullSecretNames }}
             - "--image-pull-secrets={{ $imagePullSecretNames }}"
             {{- end }}
+            {{- if .Values.identitySigner.enabled }}
+            - "--identity-signer-url={{ include "isola.identitySigner.internalURL" . }}"
+            - "--sandbox-service-account={{ include "isola.sandbox.serviceAccountName" . }}"
+            {{- end }}
           env:
             - name: ISOLA_SANDBOX_SIDECAR_IMAGE
               value: "{{ include "isola.operator.sandboxSidecarImage" . }}"

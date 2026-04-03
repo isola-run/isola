@@ -122,6 +122,7 @@ func newCommandTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humatest
 		testNamespace,
 		k8sClient,
 		httpClient,
+		nil,
 	)
 	h.sidecarPort = sidecarPort
 	Register(v1, h)
@@ -345,6 +346,7 @@ var _ = Describe("Command Proxy", func() {
 				testNamespace,
 				k8sClient,
 				&http.Client{},
+				nil,
 			)
 			h.sidecarPort = port
 			Register(v1, h)
@@ -549,6 +551,7 @@ var _ = Describe("Command Proxy", func() {
 				testNamespace,
 				k8sClient,
 				&http.Client{},
+				nil,
 			)
 			h.sidecarPort = port
 			Register(v1, h)
