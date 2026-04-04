@@ -1190,7 +1190,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	// Completed but failed (Succeeded=False) - proceed with deletion anyway
+	// Completed but failed - proceed with deletion anyway
 	message := "Snapshot failed"
 	if succeededCond != nil && succeededCond.Message != "" {
 		message = succeededCond.Message

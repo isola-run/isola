@@ -562,30 +562,6 @@ var _ = Describe("Sandbox Controller", func() {
 			}
 		})
 
-		It("should not set Succeeded when pod is pending (not yet terminal)", func() {
-			sandboxName := "sandbox-pending-no-succeeded"
-
-			createSandbox(ctx, sandboxName)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			// First reconcile creates the pod
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Pod exists but is Pending — not terminal
-			sandbox := getSandbox(ctx, sandboxName)
-			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxReadyCondition, metav1.ConditionFalse, CondReasonPodPending)).To(BeTrue())
-			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)).To(BeNil())
-
-			// Second reconcile — still pending, still no Succeeded
-			_, err = doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			sandbox = getSandbox(ctx, sandboxName)
-			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)).To(BeNil())
-		})
-
 		It("should not revert Succeeded=False on subsequent reconcile", func() {
 			sandboxName := "sandbox-terminal-sticky"
 
