@@ -666,7 +666,6 @@ async def test_async_wait_raises_timeout_error_when_not_found_persists(
             await client.sandboxes.create(image="python:3.12", max_wait_seconds=5)
 
 
-
 def test_timeout_exception_is_isola_error() -> None:
     err = IsolaTimeoutError("timed out")
     assert isinstance(err, IsolaError)
