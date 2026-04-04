@@ -575,5 +575,3 @@ async def test_async_wait_raises_timeout_error_when_not_found_persists(
                 snapshot_name="my-snapshot",
                 max_wait_seconds=5,
             )
-
-
