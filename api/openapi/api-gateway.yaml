@@ -518,6 +518,12 @@ components:
           type: string
         status:
           description: Sandbox status
+          enum:
+            - Pending
+            - Running
+            - Terminating
+            - Succeeded
+            - Failed
           type: string
       required:
         - id

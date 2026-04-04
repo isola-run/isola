@@ -88,9 +88,9 @@ def test_short_lived_command_sandbox_stops(
     isola_client: Isola,
     sandbox_factory,
 ) -> None:
-    """A sandbox with command=["true"] should transition to stopped after the process exits.
+    """A sandbox with command=["true"] should transition to Succeeded after the process exits.
 
-    Tests the pod-terminated path (PodSucceeded phase -> stopped status).
+    Tests the pod-terminated path (PodSucceeded phase -> Succeeded status).
     """
     sb = sandbox_factory(image="alpine:3.21", command=["true"], max_wait_seconds=0)
 

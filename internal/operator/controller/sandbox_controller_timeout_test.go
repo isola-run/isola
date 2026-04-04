@@ -481,14 +481,12 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(readyCond.Reason).To(Equal(CondReasonPodRunning))
 		})
 
-		It("should not check startup timeout when StartupTimeoutSeconds is nil", func() {
+		It("should not fire startup timeout when deadline is far in the future", func() {
 			sandboxName := "sandbox-startup-nil-timeout"
 
 			// The CRD has +kubebuilder:default=60 so the API server always sets
-			// StartupTimeoutSeconds. To test the nil code path, set a very large value
-			// and verify that the sandbox survives well past a typical startup window.
-			// This exercises the "deadline not exceeded" branch of the startup timeout
-			// check, which is functionally equivalent to nil (no timeout enforcement).
+			// StartupTimeoutSeconds. Use a very large value to verify that the sandbox
+			// survives well past a typical startup window without being timed out.
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.StartupTimeoutSeconds = ptr.To(int64(86400))
 			})

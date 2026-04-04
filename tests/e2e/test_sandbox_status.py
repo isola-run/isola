@@ -28,8 +28,7 @@ import pytest
 
 from isola import Isola, NotFoundError, SandboxStatus
 
-from conftest import wait_for_running
-from utils import POLL_INTERVAL, wait_for_status
+from utils import POLL_INTERVAL, wait_for_running, wait_for_status
 
 
 class TestSandboxStatus:

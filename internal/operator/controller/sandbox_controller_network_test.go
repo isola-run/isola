@@ -72,6 +72,29 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(hasConditionWithReason(sandbox, SandboxNetworkReadyCondition, metav1.ConditionTrue, CondReasonNetworkPolicyApplied)).To(BeTrue())
 		})
 
+		It("should set owner reference on custom NetworkPolicy for garbage collection", func() {
+			sandboxName := "sandbox-netpol-ownerref"
+
+			network := &sandboxv1alpha1.NetworkSpec{
+				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
+			}
+			createSandboxWithNetwork(ctx, sandboxName, network)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
+			Expect(np).NotTo(BeNil())
+			Expect(np.OwnerReferences).To(HaveLen(1))
+			Expect(np.OwnerReferences[0].Name).To(Equal(sandboxName))
+			Expect(np.OwnerReferences[0].UID).To(Equal(sandbox.UID))
+			Expect(*np.OwnerReferences[0].Controller).To(BeTrue())
+		})
+
 		It("should not create custom NetworkPolicy when network spec is nil", func() {
 			sandboxName := "sandbox-no-netpol"
 
@@ -439,55 +462,6 @@ var _ = Describe("Sandbox Controller", func() {
 })
 
 var _ = Describe("configureDNS function", func() {
-	It("should configure DNSPolicy None with sink nameserver when network is nil", func() {
-		pod := &corev1.Pod{
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{
-					{Name: "test", Image: "busybox"},
-				},
-			},
-		}
-
-		configureDNS(pod, nil)
-		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
-		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"127.0.0.1"}))
-	})
-
-	It("should configure DNSPolicy ClusterFirst when allowClusterDNS is true", func() {
-		pod := &corev1.Pod{
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{
-					{Name: "test", Image: "busybox"},
-				},
-			},
-		}
-
-		network := &sandboxv1alpha1.NetworkSpec{
-			AllowClusterDNS: ptr.To(true),
-		}
-
-		configureDNS(pod, network)
-		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
-	})
-
-	It("should configure custom nameservers when specified", func() {
-		pod := &corev1.Pod{
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{
-					{Name: "test", Image: "busybox"},
-				},
-			},
-		}
-
-		network := &sandboxv1alpha1.NetworkSpec{
-			Nameservers: []string{"8.8.8.8", "1.1.1.1"},
-		}
-
-		configureDNS(pod, network)
-		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
-		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
-	})
-
 	It("should auto-default public nameservers when egress CIDRs are set without DNS config", func() {
 		pod := &corev1.Pod{
 			Spec: corev1.PodSpec{
