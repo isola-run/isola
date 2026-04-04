@@ -91,7 +91,7 @@ def test_invalid_image_sandbox_fails(
     while time.monotonic() < deadline:
         sb_fresh = isola_client.sandboxes.get(sb.id)
         last_status = sb_fresh.status
-        if last_status in (SandboxStatus.FAILED, SandboxStatus.STOPPED):
+        if last_status in (SandboxStatus.FAILED, SandboxStatus.SUCCEEDED):
             return
         time.sleep(POLL_INTERVAL)
 

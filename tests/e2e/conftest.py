@@ -62,7 +62,7 @@ def wait_for_running(client: Isola, sandbox_id: str, timeout: float = POLL_TIMEO
         last_status = sb.status
         if sb.status == SandboxStatus.RUNNING:
             return sb
-        if sb.status in (SandboxStatus.FAILED, SandboxStatus.STOPPED):
+        if sb.status in (SandboxStatus.FAILED, SandboxStatus.SUCCEEDED):
             pytest.fail(f"Sandbox {sandbox_id} reached terminal status: {sb.status.value}")
         time.sleep(POLL_INTERVAL)
     pytest.fail(f"Sandbox {sandbox_id} did not reach running within {timeout}s (last status: {last_status})")
@@ -116,7 +116,7 @@ async def wait_for_running_async(
         last_status = sb.status
         if sb.status == SandboxStatus.RUNNING:
             return sb
-        if sb.status in (SandboxStatus.FAILED, SandboxStatus.STOPPED):
+        if sb.status in (SandboxStatus.FAILED, SandboxStatus.SUCCEEDED):
             pytest.fail(f"Sandbox {sandbox_id} reached terminal status: {sb.status.value}")
         await asyncio.sleep(POLL_INTERVAL)
     pytest.fail(f"Sandbox {sandbox_id} did not reach running within {timeout}s (last status: {last_status})")
