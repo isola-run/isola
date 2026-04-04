@@ -35,16 +35,16 @@ type CreateSandboxInput struct {
 }
 
 type ContainerSpec struct {
+	Name    string            `json:"name,omitempty" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to sandbox{i} if omitted."`
 	Image   string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
 	Command []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
 	Env     map[string]string `json:"env,omitempty" doc:"Environment variables"`
 	// todo benl: those are enforced in gvisor only on the sandbox container, consider moving this to podtemplate and setting pod limits (though they don't support ephemeral storage limits)
-	Resources *ResourcesSpec `json:"resources,omitempty" doc:"Resource requests and limits"`
+	Resources *ResourceRequirements `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
 
 type PodTemplate struct {
-	// todo benl: list of containers?
-	Container ContainerSpec `json:"container" required:"true" doc:"Primary sandbox container"`
+	Containers []ContainerSpec `json:"containers" required:"true" minItems:"1" doc:"Sandbox containers"`
 }
 
 type CreateSandboxRequest struct {
@@ -55,7 +55,7 @@ type CreateSandboxRequest struct {
 	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" maxItems:"16" doc:"Rootfs snapshots to restore into containers at creation time. Files on separately-mounted filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included."`
 }
 
-type ResourcesSpec struct {
+type ResourceRequirements struct {
 	Limits   *ResourceList `json:"limits,omitempty" doc:"Resource limits"`
 	Requests *ResourceList `json:"requests,omitempty" doc:"Resource requests"`
 }
@@ -90,13 +90,14 @@ type DeleteSandboxInput struct {
 // Response types omit env vars (write-only) to avoid leaking secrets.
 
 type ContainerInfo struct {
+	Name      string         `json:"name" doc:"Container name"`
 	Image     string         `json:"image" doc:"Container image"`
 	Command   []string       `json:"command,omitempty" doc:"Container entrypoint override"`
-	Resources *ResourcesSpec `json:"resources,omitempty" doc:"Resource requests and limits"`
+	Resources *ResourceRequirements `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
 
 type PodTemplateInfo struct {
-	Container ContainerInfo `json:"container" doc:"Primary sandbox container"`
+	Containers []ContainerInfo `json:"containers" doc:"Sandbox containers"`
 }
 
 type CreateSandboxOutput struct {

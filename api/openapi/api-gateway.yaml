@@ -32,10 +32,14 @@ components:
         image:
           description: Container image
           type: string
+        name:
+          description: Container name
+          type: string
         resources:
-          $ref: "#/components/schemas/ResourcesSpec"
+          $ref: "#/components/schemas/ResourceRequirements"
           description: Resource requests and limits
       required:
+        - name
         - image
       type: object
     ContainerSpec:
@@ -57,8 +61,13 @@ components:
           description: Container image
           minLength: 1
           type: string
+        name:
+          description: Container name. Defaults to sandbox{i} if omitted.
+          maxLength: 63
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          type: string
         resources:
-          $ref: "#/components/schemas/ResourcesSpec"
+          $ref: "#/components/schemas/ResourceRequirements"
           description: Resource requests and limits
       required:
         - image
@@ -345,20 +354,29 @@ components:
     PodTemplate:
       additionalProperties: false
       properties:
-        container:
-          $ref: "#/components/schemas/ContainerSpec"
-          description: Primary sandbox container
+        containers:
+          description: Sandbox containers
+          items:
+            $ref: "#/components/schemas/ContainerSpec"
+          minItems: 1
+          type:
+            - array
+            - "null"
       required:
-        - container
+        - containers
       type: object
     PodTemplateInfo:
       additionalProperties: false
       properties:
-        container:
-          $ref: "#/components/schemas/ContainerInfo"
-          description: Primary sandbox container
+        containers:
+          description: Sandbox containers
+          items:
+            $ref: "#/components/schemas/ContainerInfo"
+          type:
+            - array
+            - "null"
       required:
-        - container
+        - containers
       type: object
     ResourceList:
       additionalProperties: false
@@ -379,7 +397,7 @@ components:
             - 512Mi
           type: string
       type: object
-    ResourcesSpec:
+    ResourceRequirements:
       additionalProperties: false
       properties:
         limits:

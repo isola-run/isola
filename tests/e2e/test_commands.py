@@ -192,7 +192,7 @@ def test_isola_container_name_stripped(session_sandbox: Sandbox) -> None:
 
 def test_container_param_on_command(session_sandbox: Sandbox) -> None:
     """Explicitly targeting the primary container by name should work."""
-    result = session_sandbox.commands.run("echo", "hello", container="sandbox")
+    result = session_sandbox.commands.run("echo", "hello", container="sandbox0")
 
     assert result.exit_code == 0
     assert "hello" in result.stdout

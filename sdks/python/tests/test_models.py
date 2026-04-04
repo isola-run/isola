@@ -21,7 +21,7 @@ from isola._models import (
     NetworkSpec,
     PodTemplate,
     ResourceList,
-    ResourcesSpec,
+    ResourceRequirements,
     SandboxData,
     SandboxStatus,
 )
@@ -68,24 +68,24 @@ class TestValidateByNameAndAlias:
     def test_construct_with_camel_case(self) -> None:
         payload = CreateSandboxPayload.model_validate(
             {
-                "podTemplate": {"container": {"image": "node:20"}},
+                "podTemplate": {"containers": [{"image": "node:20"}]},
                 "timeoutSeconds": 300,
                 "startupTimeoutSeconds": 60,
             }
         )
-        assert payload.pod_template.container.image == "node:20"
+        assert payload.pod_template.containers[0].image == "node:20"
         assert payload.timeout_seconds == 300
         assert payload.startup_timeout_seconds == 60
 
     def test_construct_with_snake_case_dict(self) -> None:
         payload = CreateSandboxPayload.model_validate(
             {
-                "pod_template": {"container": {"image": "node:20"}},
+                "pod_template": {"containers": [{"image": "node:20"}]},
                 "timeout_seconds": 300,
                 "startup_timeout_seconds": 60,
             }
         )
-        assert payload.pod_template.container.image == "node:20"
+        assert payload.pod_template.containers[0].image == "node:20"
         assert payload.timeout_seconds == 300
         assert payload.startup_timeout_seconds == 60
 
@@ -120,14 +120,14 @@ class TestRoundTrip:
             "status": "running",
             "creationTimestamp": "2026-03-15T12:30:00Z",
             "podTemplate": {
-                "container": {
+                "containers": [{
                     "image": "python:3.12",
                     "command": ["sleep", "infinity"],
                     "resources": {
                         "limits": {"cpu": "1", "memory": "2Gi", "ephemeralStorage": "5Gi"},
                         "requests": {"cpu": "500m", "memory": "1Gi"},
                     },
-                }
+                }]
             },
             "timeoutSeconds": 3600,
             "network": {
@@ -169,14 +169,14 @@ class TestRoundTrip:
     def test_create_sandbox_payload_round_trip(self) -> None:
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(
-                container=ContainerSpec(
+                containers=[ContainerSpec(
                     image="node:20",
                     command=["node", "app.js"],
                     env={"NODE_ENV": "production"},
-                    resources=ResourcesSpec(
+                    resources=ResourceRequirements(
                         limits=ResourceList(cpu="2", memory="4Gi"),
                     ),
-                )
+                )]
             ),
             timeout_seconds=1800,
             startup_timeout_seconds=60,
@@ -185,8 +185,8 @@ class TestRoundTrip:
         dumped = payload.model_dump(by_alias=True, mode="json", exclude_none=True)
         reparsed = CreateSandboxPayload.model_validate(dumped)
 
-        assert reparsed.pod_template.container.image == "node:20"
-        assert reparsed.pod_template.container.env == {"NODE_ENV": "production"}
+        assert reparsed.pod_template.containers[0].image == "node:20"
+        assert reparsed.pod_template.containers[0].env == {"NODE_ENV": "production"}
         assert reparsed.timeout_seconds == 1800
         assert reparsed.network is not None
         assert reparsed.network.nameservers == ["1.1.1.1"]

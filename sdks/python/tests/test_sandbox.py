@@ -53,7 +53,7 @@ def test_create_sandbox_maps_flat_resources(sandbox_response_copy: dict[str, obj
     assert sandbox.status == SandboxStatus.RUNNING
 
     payload = json.loads(create_route.calls[0].request.content)
-    assert payload["podTemplate"]["container"]["resources"] == {
+    assert payload["podTemplate"]["containers"][0]["resources"] == {
         "limits": {"cpu": "500m", "memory": "1024Mi", "ephemeralStorage": "2048Mi"},
         "requests": {"cpu": "500m", "memory": "1024Mi", "ephemeralStorage": "2048Mi"},
     }
@@ -69,7 +69,7 @@ def test_create_sandbox_without_resources_omits_key(sandbox_response_copy: dict[
         client.sandboxes.create(image="python:3.12")
 
     payload = json.loads(create_route.calls[0].request.content)
-    assert "resources" not in payload["podTemplate"]["container"]
+    assert "resources" not in payload["podTemplate"]["containers"][0]
 
 
 @respx.mock
@@ -253,7 +253,7 @@ def _make_sandbox_response(status: str, sandbox_id: str = "sandbox-123") -> dict
         "id": sandbox_id,
         "status": status,
         "creationTimestamp": "2026-02-18T00:00:00Z",
-        "podTemplate": {"container": {"image": "python:3.12"}},
+        "podTemplate": {"containers": [{"image": "python:3.12"}]},
     }
 
 

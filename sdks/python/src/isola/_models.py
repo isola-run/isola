@@ -64,22 +64,24 @@ class ResourceList(IsolaModel):
     ephemeral_storage: str | None = None
 
 
-class ResourcesSpec(IsolaModel):
+class ResourceRequirements(IsolaModel):
     limits: ResourceList | None = None
     requests: ResourceList | None = None
 
 
 class ContainerSpec(IsolaModel):
+    name: str | None = None
     image: str
     command: list[str] | None = None
     env: dict[str, str] | None = None
-    resources: ResourcesSpec | None = None
+    resources: ResourceRequirements | None = None
 
 
 class ContainerInfo(IsolaModel):
+    name: str | None = None
     image: str
     command: list[str] | None = None
-    resources: ResourcesSpec | None = None
+    resources: ResourceRequirements | None = None
 
 
 class RootfsSnapshotSource(IsolaModel):
@@ -114,11 +116,11 @@ class RootfsSnapshotData(IsolaModel):
 
 
 class PodTemplate(IsolaModel):
-    container: ContainerSpec
+    containers: list[ContainerSpec]
 
 
 class PodTemplateInfo(IsolaModel):
-    container: ContainerInfo
+    containers: list[ContainerInfo]
 
 
 class CreateSandboxPayload(IsolaModel):

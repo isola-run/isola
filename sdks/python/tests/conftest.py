@@ -26,7 +26,7 @@ def sandbox_response() -> dict[str, object]:
         "status": "running",
         "creationTimestamp": "2026-02-18T00:00:00Z",
         "podTemplate": {
-            "container": {
+            "containers": [{
                 "image": "python:3.12",
                 "command": ["sleep", "infinity"],
                 "resources": {
@@ -41,7 +41,7 @@ def sandbox_response() -> dict[str, object]:
                         "ephemeralStorage": "2Gi",
                     },
                 },
-            }
+            }]
         },
         "network": {
             "allowInternetEgress": True,

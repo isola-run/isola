@@ -73,8 +73,8 @@ def test_get_sandbox_returns_correct_fields(
     assert sb.creation_timestamp is not None
     # The response includes the pod template with container image info
     assert sb._data.pod_template is not None
-    assert sb._data.pod_template.container is not None
-    assert sb._data.pod_template.container.image == "alpine:3.21"
+    assert sb._data.pod_template.containers[0] is not None
+    assert sb._data.pod_template.containers[0].image == "alpine:3.21"
 
 
 def test_list_sandboxes_includes_created_sandbox(
@@ -114,7 +114,7 @@ def test_env_vars_are_write_only(
     fetched = isola_client.sandboxes.get(sb.id)
 
     # ContainerInfo does not have an env attribute -- verify it is absent
-    container = fetched._data.pod_template.container
+    container = fetched._data.pod_template.containers[0]
     assert not hasattr(container, "env"), (
         "ContainerInfo should not expose env vars in the response"
     )
@@ -155,7 +155,7 @@ def test_custom_command_sandbox(
     assert running.status == SandboxStatus.RUNNING
 
     # Verify the command was set on the container
-    container = running._data.pod_template.container
+    container = running._data.pod_template.containers[0]
     assert container.command is not None
     assert "sh" in container.command
 
@@ -174,14 +174,14 @@ def test_resource_limits_round_trip(
     )
     running = wait_for_running(isola_client, sb.id)
 
-    container = running._data.pod_template.container
+    container = running._data.pod_template.containers[0]
     assert container.resources is not None, "Expected resources in response"
     assert container.resources.limits is not None, "Expected limits in response"
 
     # K8s may normalize quantities, so check semantic equivalence
     assert container.resources.limits.cpu == "250m"
     assert container.resources.limits.memory == "256Mi"
-    assert container.resources.limits.ephemeral_storage == "1024Mi"
+    assert container.resources.limits.ephemeral_storage == "1Gi"
 
 
 def test_list_status_matches_get_status(

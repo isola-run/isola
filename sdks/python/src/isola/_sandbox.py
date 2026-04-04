@@ -30,7 +30,7 @@ from ._models import (
     NetworkSpec,
     PodTemplate,
     ResourceList,
-    ResourcesSpec,
+    ResourceRequirements,
     RootfsSnapshotSource,
     SandboxData,
     SandboxStatus,
@@ -52,7 +52,7 @@ def _build_rootfs_snapshot_sources(rootfs_snapshot_source: str | None) -> list[R
     return [RootfsSnapshotSource(snapshot_name=rootfs_snapshot_source)]
 
 
-def _build_resources(cpu: float | None, memory: int | None, ephemeral_storage: int | None) -> ResourcesSpec | None:
+def _build_resources(cpu: float | None, memory: int | None, ephemeral_storage: int | None) -> ResourceRequirements | None:
     if cpu is None and memory is None and ephemeral_storage is None:
         return None
 
@@ -61,7 +61,7 @@ def _build_resources(cpu: float | None, memory: int | None, ephemeral_storage: i
         memory=f"{memory}Mi" if memory is not None else None,
         ephemeral_storage=f"{ephemeral_storage}Mi" if ephemeral_storage is not None else None,
     )
-    return ResourcesSpec(limits=resource_list, requests=resource_list)
+    return ResourceRequirements(limits=resource_list, requests=resource_list)
 
 
 def _check_terminal(sandbox_id: str, status: SandboxStatus) -> None:
@@ -139,12 +139,12 @@ class Sandboxes:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(
-                container=ContainerSpec(
+                containers=[ContainerSpec(
                     image=image,
                     command=command,
                     env=env,
                     resources=resources,
-                )
+                )]
             ),
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
@@ -194,12 +194,12 @@ class AsyncSandboxes:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(
-                container=ContainerSpec(
+                containers=[ContainerSpec(
                     image=image,
                     command=command,
                     env=env,
                     resources=resources,
-                )
+                )]
             ),
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
