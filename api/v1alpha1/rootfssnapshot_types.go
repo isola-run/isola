@@ -20,7 +20,6 @@ import (
 
 const (
 	// RootfsSnapshotSucceededCondition indicates whether the snapshot completed successfully.
-	// True = succeeded, False = failed, absent = in progress.
 	RootfsSnapshotSucceededCondition = "Succeeded"
 )
 

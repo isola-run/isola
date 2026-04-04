@@ -17,10 +17,6 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: Terminal success
-      jsonPath: .status.conditions[?(@.type=='Succeeded')].status
-      name: Succeeded
-      type: string
     - description: Aggregate readiness
       jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: Ready
@@ -28,8 +24,8 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    - description: Reason for Succeeded condition
-      jsonPath: .status.conditions[?(@.type=='Succeeded')].reason
+    - description: Reason for Ready condition
+      jsonPath: .status.conditions[?(@.type=='Ready')].reason
       name: Reason
       priority: 1
       type: string
