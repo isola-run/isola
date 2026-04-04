@@ -294,21 +294,27 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	if len(sandbox.Spec.RootfsSnapshotSources) > 0 {
 		if terminal, err := r.validateRootfsRestoreConfig(ctx); err != nil {
 			if terminal {
-				_ = r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonRootfsRestoreConfigError, err.Error())
+				if patchErr := r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonRootfsRestoreConfigError, err.Error()); patchErr != nil {
+					return patchErr
+				}
 				return reconcile.TerminalError(err)
 			}
-			_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{{
+			if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{{
 				Type:               sandboxv1alpha1.SandboxReadyCondition,
 				Status:             metav1.ConditionFalse,
 				Reason:             CondReasonRootfsRestoreConfigError,
 				Message:            err.Error(),
 				ObservedGeneration: sandbox.Generation,
-			}})
+			}}); patchErr != nil {
+				return patchErr
+			}
 			return err
 		}
 		if err := r.injectRootfsRestore(sandbox.Spec.RootfsSnapshotSources, sandboxPod, sandbox.Namespace); err != nil {
 			// injectRootfsRestore errors are all spec validation (permanent)
-			_ = r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonRootfsRestoreConfigError, err.Error())
+			if patchErr := r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonRootfsRestoreConfigError, err.Error()); patchErr != nil {
+				return patchErr
+			}
 			return reconcile.TerminalError(err)
 		}
 	}
