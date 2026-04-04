@@ -209,23 +209,49 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(np).NotTo(BeNil())
 		})
 
-		It("should add network labels to pod for allowInternetEgress", func() {
-			sandboxName := "sandbox-internet-labels"
+		DescribeTable("internet egress labels",
+			func(sandboxName string, network *sandboxv1alpha1.NetworkSpec, expectLabels map[string]string, dontExpectLabels []string) {
+				createSandboxWithNetwork(ctx, sandboxName, network)
+				defer deleteSandbox(ctx, sandboxName)
+				defer deletePod(ctx, sandboxName+"-pod")
 
-			network := &sandboxv1alpha1.NetworkSpec{
-				AllowInternetEgress: ptr.To(true),
-			}
-			createSandboxWithNetwork(ctx, sandboxName, network)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
+				_, err := doReconcile(ctx, reconciler, sandboxName)
+				Expect(err).NotTo(HaveOccurred())
 
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, sandboxName+"-pod")
-			Expect(pod).NotTo(BeNil())
-			Expect(pod.Labels).To(HaveKeyWithValue(LabelAllowInternet, "true"))
-		})
+				pod := getPod(ctx, sandboxName+"-pod")
+				Expect(pod).NotTo(BeNil())
+				for k, v := range expectLabels {
+					Expect(pod.Labels).To(HaveKeyWithValue(k, v))
+				}
+				for _, k := range dontExpectLabels {
+					Expect(pod.Labels).NotTo(HaveKey(k))
+				}
+			},
+			Entry("allowInternetEgress only",
+				"sb-inet-only",
+				&sandboxv1alpha1.NetworkSpec{AllowInternetEgress: ptr.To(true)},
+				map[string]string{LabelAllowIPv4Internet: "true"},
+				[]string{LabelAllowIPv6Internet},
+			),
+			Entry("allowInternetEgress + allowIPv6Egress",
+				"sb-inet-ipv6",
+				&sandboxv1alpha1.NetworkSpec{AllowInternetEgress: ptr.To(true), AllowIPv6Egress: ptr.To(true)},
+				map[string]string{LabelAllowIPv4Internet: "true", LabelAllowIPv6Internet: "true"},
+				nil,
+			),
+			Entry("allowIPv6Egress without internet",
+				"sb-ipv6-no-inet",
+				&sandboxv1alpha1.NetworkSpec{AllowIPv6Egress: ptr.To(true)},
+				nil,
+				[]string{LabelAllowIPv6Internet},
+			),
+			Entry("allowInternetEgress + allowIPv6Egress=false",
+				"sb-inet-no-ipv6",
+				&sandboxv1alpha1.NetworkSpec{AllowInternetEgress: ptr.To(true), AllowIPv6Egress: ptr.To(false)},
+				map[string]string{LabelAllowIPv4Internet: "true"},
+				[]string{LabelAllowIPv6Internet},
+			),
+		)
 
 		It("should add network labels to pod for allowClusterDNS", func() {
 			sandboxName := "sandbox-dns-labels"
@@ -344,7 +370,7 @@ var _ = Describe("Sandbox Controller", func() {
 		})
 
 		It("should not create custom NetworkPolicy for public nameservers with internet access", func() {
-			// Public nameservers (8.8.8.8) already reachable via static allow-internet-egress policy
+			// Public nameservers (8.8.8.8) already reachable via static allow-ipv4-internet-egress policy
 			sandboxName := "sandbox-internet-dns"
 
 			network := &sandboxv1alpha1.NetworkSpec{
@@ -365,7 +391,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Verify pod has correct labels and DNS config
 			pod := getPod(ctx, sandboxName+"-pod")
 			Expect(pod).NotTo(BeNil())
-			Expect(pod.Labels).To(HaveKeyWithValue(LabelAllowInternet, "true"))
+			Expect(pod.Labels).To(HaveKeyWithValue(LabelAllowIPv4Internet, "true"))
 			Expect(pod.Spec.DNSConfig.Nameservers).To(ContainElement("8.8.8.8"))
 		})
 

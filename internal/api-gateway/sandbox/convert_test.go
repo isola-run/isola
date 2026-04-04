@@ -361,6 +361,7 @@ var _ = Describe("Conversion functions", func() {
 			Entry("only nameservers", &sandboxv1alpha1.NetworkSpec{Nameservers: []string{"8.8.8.8"}}, false),
 			Entry("only allowClusterDNS", &sandboxv1alpha1.NetworkSpec{AllowClusterDNS: ptr.To(true)}, false),
 			Entry("only allowedEgressCIDRs", &sandboxv1alpha1.NetworkSpec{AllowedEgressCIDRs: []string{"10.0.0.0/8"}}, false),
+			Entry("only allowIPv6Egress", &sandboxv1alpha1.NetworkSpec{AllowIPv6Egress: ptr.To(true)}, false),
 		)
 	})
 

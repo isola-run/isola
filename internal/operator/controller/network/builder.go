@@ -20,7 +20,8 @@ network configurations (custom CIDRs or custom DNS).
 
 Most sandboxes use static Helm-installed NetworkPolicies based on pod labels:
   - sandbox-default-deny: Denies all traffic for pods with isola.run/sandbox=true
-  - sandbox-allow-internet-egress: Allows internet egress for pods with isola.run/allow-internet-egress=true
+  - sandbox-allow-ipv4-internet-egress: Allows IPv4 internet egress for pods with isola.run/allow-ipv4-internet-egress=true
+  - sandbox-allow-ipv6-internet-egress: Allows IPv6 internet egress for pods with isola.run/allow-ipv6-internet-egress=true
   - sandbox-allow-cluster-dns: Allows cluster DNS for pods with isola.run/allow-cluster-dns=true
 
 This package builds custom NetworkPolicies only when needed (and allowInternetEgress is not true):
@@ -61,8 +62,9 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 	}
 
 	internetAllowed := network.AllowInternetEgress != nil && *network.AllowInternetEgress
-	// Skip egress CIDRs when internet is already allowed, the static allow-internet-egress
-	// policy covers all valid CIDRs.
+	ipv6Allowed := network.AllowIPv6Egress != nil && *network.AllowIPv6Egress
+	// Skip egress CIDRs when internet is already allowed - the static internet egress
+	// policies (IPv4, and IPv6 when enabled) cover all valid CIDRs.
 	var egressCIDRs []egressCIDR
 	if !internetAllowed {
 		egressCIDRs = make([]egressCIDR, 0, len(network.AllowedEgressCIDRs))
@@ -71,6 +73,9 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 			prefix, err := cidr.ParsePrefix(cidrStr)
 			if err != nil {
 				return nil, err
+			}
+			if prefix.Addr().Is6() && !ipv6Allowed {
+				continue
 			}
 			key := prefix.String()
 			if seenEgress[key] {
@@ -86,7 +91,7 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 	}
 
 	// Skip nameserver rules when internet is already allowed.
-	// Public nameservers like 1.1.1.1 are reachable via the static allow-internet-egress policy.
+	// Public nameservers like 1.1.1.1 are reachable via the static allow-ipv4-internet-egress policy.
 	// ClusterDNS is handled by AllowClusterDNS.
 	// Custom static-IP nameservers could be templated in allow-dns if and when need arise.
 	var dnsAddrs []netip.Addr
@@ -95,6 +100,9 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 			addr, err := cidr.ParseDNSServerIP(ipStr)
 			if err != nil {
 				return nil, err
+			}
+			if addr.Is6() && !ipv6Allowed {
+				continue
 			}
 			dnsAddrs = append(dnsAddrs, addr)
 		}

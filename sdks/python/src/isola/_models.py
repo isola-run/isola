@@ -54,6 +54,7 @@ class SandboxStatus(str, Enum):
 class NetworkSpec(IsolaModel):
     allow_internet_egress: bool | None = None
     allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
+    allow_ipv6_egress: bool | None = Field(None, alias="allowIPv6Egress")
     allowed_egress_cidrs: list[str] | None = Field(None, alias="allowedEgressCIDRs")
     nameservers: list[str] | None = None
 

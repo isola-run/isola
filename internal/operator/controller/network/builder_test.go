@@ -133,7 +133,7 @@ func TestBuildCustomNetworkPolicy_NameserversWithInternetAccess(t *testing.T) {
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
 	g.Expect(err).ToNot(HaveOccurred())
-	// Public nameserver already reachable via static allow-internet-egress policy — no custom NP needed
+	// Public nameserver already reachable via static allow-ipv4-internet-egress policy - no custom NP needed
 	g.Expect(np).To(BeNil())
 }
 
@@ -336,7 +336,8 @@ func TestBuildCustomNetworkPolicy_DeduplicatesCIDRs(t *testing.T) {
 func TestBuildCustomNetworkPolicy_IPv6Nameservers(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		Nameservers: []string{"2001:4860:4860::8888", "2001:4860:4860::8844"},
+		AllowIPv6Egress: ptr.To(true),
+		Nameservers:     []string{"2001:4860:4860::8888", "2001:4860:4860::8844"},
 	}
 
 	np := mustBuildCustomNetworkPolicy(t, network)
@@ -356,7 +357,8 @@ func TestBuildCustomNetworkPolicy_IPv6Nameservers(t *testing.T) {
 func TestBuildCustomNetworkPolicy_MixedIPv4IPv6Nameservers(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
-		Nameservers: []string{"8.8.8.8", "2001:4860:4860::8888"},
+		AllowIPv6Egress: ptr.To(true),
+		Nameservers:     []string{"8.8.8.8", "2001:4860:4860::8888"},
 	}
 
 	np := mustBuildCustomNetworkPolicy(t, network)
@@ -373,6 +375,7 @@ func TestBuildCustomNetworkPolicy_MixedIPv4IPv6Nameservers(t *testing.T) {
 func TestBuildCustomNetworkPolicy_IPv6AllowedEgressCIDR(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
+		AllowIPv6Egress:    ptr.To(true),
 		AllowedEgressCIDRs: []string{"2607:f8b0::/32"},
 	}
 
@@ -388,6 +391,7 @@ func TestBuildCustomNetworkPolicy_IPv6AllowedEgressCIDR(t *testing.T) {
 func TestBuildCustomNetworkPolicy_IPv6AllInternet(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.NetworkSpec{
+		AllowIPv6Egress:    ptr.To(true),
 		AllowedEgressCIDRs: []string{"::/0"},
 	}
 
@@ -430,6 +434,7 @@ func TestBuildCustomNetworkPolicy_BlockedIPv6CIDRs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
 			network := &sandboxv1alpha1.NetworkSpec{
+				AllowIPv6Egress:    ptr.To(true),
 				AllowedEgressCIDRs: []string{tt.cidr},
 			}
 
@@ -438,4 +443,53 @@ func TestBuildCustomNetworkPolicy_BlockedIPv6CIDRs(t *testing.T) {
 			g.Expect(err.Error()).To(ContainSubstring(tt.errorContains))
 		})
 	}
+}
+
+func TestBuildCustomNetworkPolicy_IPv6CIDRsFilteredWithoutFlag(t *testing.T) {
+	g := NewWithT(t)
+	network := &sandboxv1alpha1.NetworkSpec{
+		AllowedEgressCIDRs: []string{"2607:f8b0::/32"},
+	}
+
+	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).To(BeNil())
+}
+
+func TestBuildCustomNetworkPolicy_IPv6NameserversFilteredWithoutFlag(t *testing.T) {
+	g := NewWithT(t)
+	network := &sandboxv1alpha1.NetworkSpec{
+		Nameservers: []string{"2001:4860:4860::8888"},
+	}
+
+	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(np).To(BeNil())
+}
+
+func TestBuildCustomNetworkPolicy_MixedCIDRsFilterIPv6WithoutFlag(t *testing.T) {
+	g := NewWithT(t)
+	network := &sandboxv1alpha1.NetworkSpec{
+		AllowedEgressCIDRs: []string{"8.8.0.0/16", "2607:f8b0::/32"},
+	}
+
+	np := mustBuildCustomNetworkPolicy(t, network)
+
+	// Only IPv4 CIDR should remain
+	g.Expect(np.Spec.Egress).To(HaveLen(1))
+	ipBlock := np.Spec.Egress[0].To[0].IPBlock
+	g.Expect(ipBlock.CIDR).To(Equal("8.8.0.0/16"))
+}
+
+func TestBuildCustomNetworkPolicy_MixedCIDRsWithIPv6Flag(t *testing.T) {
+	g := NewWithT(t)
+	network := &sandboxv1alpha1.NetworkSpec{
+		AllowIPv6Egress:    ptr.To(true),
+		AllowedEgressCIDRs: []string{"8.8.0.0/16", "2607:f8b0::/32"},
+	}
+
+	np := mustBuildCustomNetworkPolicy(t, network)
+
+	// Both CIDRs should be present
+	g.Expect(np.Spec.Egress).To(HaveLen(2))
 }

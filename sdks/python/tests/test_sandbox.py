@@ -105,6 +105,7 @@ def test_network_spec_acronym_aliases_round_trip(sandbox_response_copy: dict[str
     sandbox_response_copy["network"] = {
         "allowInternetEgress": False,
         "allowClusterDNS": True,
+        "allowIPv6Egress": True,
         "allowedEgressCIDRs": ["10.0.0.0/8"],
         "nameservers": ["8.8.8.8"],
     }
@@ -118,6 +119,7 @@ def test_network_spec_acronym_aliases_round_trip(sandbox_response_copy: dict[str
             network=NetworkSpec(
                 allow_internet_egress=False,
                 allow_cluster_dns=True,
+                allow_ipv6_egress=True,
                 allowed_egress_cidrs=["10.0.0.0/8"],
                 nameservers=["8.8.8.8"],
             ),
@@ -126,12 +128,14 @@ def test_network_spec_acronym_aliases_round_trip(sandbox_response_copy: dict[str
     # Response deserialization: server's OpenAPI casing must be parsed correctly
     assert sandbox.network is not None
     assert sandbox.network.allow_cluster_dns is True
+    assert sandbox.network.allow_ipv6_egress is True
     assert sandbox.network.allowed_egress_cidrs == ["10.0.0.0/8"]
 
     # Request serialization: SDK must send OpenAPI casing
     payload = json.loads(create_route.calls[0].request.content)
     network = payload["network"]
     assert "allowClusterDNS" in network
+    assert "allowIPv6Egress" in network
     assert "allowedEgressCIDRs" in network
 
 

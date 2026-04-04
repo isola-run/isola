@@ -36,6 +36,11 @@ func (in *NetworkSpec) DeepCopyInto(out *NetworkSpec) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.AllowIPv6Egress != nil {
+		in, out := &in.AllowIPv6Egress, &out.AllowIPv6Egress
+		*out = new(bool)
+		**out = **in
+	}
 	if in.AllowedEgressCIDRs != nil {
 		in, out := &in.AllowedEgressCIDRs, &out.AllowedEgressCIDRs
 		*out = make([]string, len(*in))

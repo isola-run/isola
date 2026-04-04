@@ -66,22 +66,31 @@ spec:
                       When true: DNSPolicy=ClusterFirst, adds label isola.run/allow-cluster-dns=true
                       When false: DNSPolicy=None, uses nameservers field or sink (127.0.0.1)
                     type: boolean
+                  allowIPv6Egress:
+                    description: |-
+                      AllowIPv6Egress enables IPv6 in egress configuration.
+                      When false (default): only IPv4 CIDRs and nameservers are accepted.
+                      When true with allowInternetEgress: also enables IPv6 internet egress.
+                      When true without allowInternetEgress: allows IPv6 in allowedEgressCIDRs and nameservers.
+                    type: boolean
                   allowInternetEgress:
                     description: |-
-                      AllowInternetEgress allows egress to 0.0.0.0/0 and ::/0 with blocked ranges
-                      (private IPs, cloud metadata, etc.) automatically excepted.
-                      Adds label isola.run/allow-internet-egress=true to the pod.
+                      AllowInternetEgress allows egress to 0.0.0.0/0 (and ::/0 when allowIPv6Egress is true)
+                      with blocked ranges (private IPs, cloud metadata, etc.) automatically excepted.
+                      Adds label isola.run/allow-ipv4-internet-egress=true to the pod.
                     type: boolean
                   allowedEgressCIDRs:
                     description: |-
                       AllowedEgressCIDRs specifies additional CIDRs the sandbox can reach.
-                      Blocked ranges (private IPs, cloud metadata, etc.) are rejected — see ComputeExcept.
+                      Blocked ranges (private IPs, cloud metadata, etc.) are rejected.
                       When allowInternetEgress is true, these CIDRs are already reachable via the static
                       internet policy and do not produce additional NetworkPolicy rules.
                       Creates a custom NetworkPolicy only when allowInternetEgress is false or unset.
                     items:
+                      maxLength: 43
                       pattern: ^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$
                       type: string
+                    maxItems: 16
                     type: array
                   nameservers:
                     description: |-
