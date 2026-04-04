@@ -88,6 +88,14 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.InitContainers).To(HaveLen(1))
 			Expect(pod.Spec.InitContainers[0].Name).To(Equal(sandboxSidecarContainerName))
 			Expect(pod.Spec.InitContainers[0].Image).To(Equal("sandbox-sidecar:test"))
+
+			sidecarResources := pod.Spec.InitContainers[0].Resources
+			Expect(sidecarResources.Requests.Cpu().String()).To(Equal("1m"))
+			Expect(sidecarResources.Requests.Memory().String()).To(Equal("1Mi"))
+			Expect(sidecarResources.Requests.StorageEphemeral().String()).To(Equal("1Mi"))
+			Expect(sidecarResources.Limits.Cpu().String()).To(Equal("1m"))
+			Expect(sidecarResources.Limits.Memory().String()).To(Equal("1Mi"))
+			Expect(sidecarResources.Limits.StorageEphemeral().String()).To(Equal("1Mi"))
 		})
 
 		It("should set sidecar ImagePullPolicy from reconciler config", func() {

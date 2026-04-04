@@ -18,7 +18,7 @@ import pytest
 
 from isola import Isola, NetworkSpec, Sandbox, SandboxStatus, SandboxSummary
 
-from conftest import wait_for_running
+from utils import parse_k8s_quantity, wait_for_running
 
 
 @pytest.mark.timeout(90)
@@ -45,9 +45,9 @@ def test_create_sandbox_with_full_config(
         image="alpine:3.21",
         command=["sleep", "infinity"],
         env={"TEST_VAR": "test_value", "ANOTHER": "123"},
-        cpu="100m",
-        memory="128Mi",
-        ephemeral_storage="512Mi",
+        cpu=0.1,
+        memory=128,
+        ephemeral_storage=512,
         timeout_seconds=300,
         network=NetworkSpec(allow_internet_egress=True),
     )
@@ -165,15 +165,12 @@ def test_resource_limits_round_trip(
     isola_client: Isola,
     sandbox_factory,
 ) -> None:
-    """Resource limits set at creation should appear in the GET response.
-
-    Tests the full quantity conversion: REST string -> K8s resource.Quantity -> REST string.
-    """
+    """Resource limits set at creation should appear in the GET response."""
     sb = sandbox_factory(
         image="alpine:3.21",
-        cpu="250m",
-        memory="256Mi",
-        ephemeral_storage="1Gi",
+        cpu=0.25,
+        memory=256,
+        ephemeral_storage=1024,
     )
     running = wait_for_running(isola_client, sb.id)
 
@@ -181,10 +178,11 @@ def test_resource_limits_round_trip(
     assert container.resources is not None, "Expected resources in response"
     assert container.resources.limits is not None, "Expected limits in response"
 
-    # K8s may normalize quantities, so check semantic equivalence
-    assert container.resources.limits.cpu == "250m"
-    assert container.resources.limits.memory == "256Mi"
-    assert container.resources.limits.ephemeral_storage == "1Gi"
+    # K8s may normalize quantity strings differently across versions,
+    # so compare parsed numeric values instead of raw strings.
+    assert parse_k8s_quantity(container.resources.limits.cpu) == parse_k8s_quantity("250m")
+    assert parse_k8s_quantity(container.resources.limits.memory) == parse_k8s_quantity("256Mi")
+    assert parse_k8s_quantity(container.resources.limits.ephemeral_storage) == parse_k8s_quantity("1024Mi")
 
 
 def test_list_status_matches_get_status(

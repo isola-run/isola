@@ -20,7 +20,7 @@ import pytest
 
 from isola import Isola, IsolaError, NotFoundError, Sandbox, SandboxStatus
 
-from conftest import wait_for_running
+from utils import wait_for_running
 
 
 @pytest.mark.timeout(60)

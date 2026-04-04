@@ -32,7 +32,7 @@ from isola import (
 from isola._commands import Commands
 from isola._filesystem import Filesystem
 
-from conftest import wait_for_running
+from utils import wait_for_running
 
 FAKE_SANDBOX_ID = "nonexistent-sandbox-xyz"
 
@@ -183,18 +183,6 @@ def test_zero_timeout_rejected(isola_client: Isola) -> None:
     """
     with pytest.raises((ValidationError, BadRequestError)) as exc_info:
         isola_client.sandboxes.create(image="alpine:3.21", timeout_seconds=0)
-
-    assert exc_info.value.status_code in (400, 422)
-
-
-def test_invalid_k8s_quantity(isola_client: Isola) -> None:
-    """Creating a sandbox with an invalid K8s resource quantity should return 400.
-
-    The api-gateway calls resource.ParseQuantity() during conversion and returns
-    a 400 Bad Request if the quantity string is malformed.
-    """
-    with pytest.raises((ValidationError, BadRequestError)) as exc_info:
-        isola_client.sandboxes.create(image="alpine:3.21", cpu="not-a-valid-quantity")
 
     assert exc_info.value.status_code in (400, 422)
 

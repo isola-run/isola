@@ -18,7 +18,7 @@ import pytest
 
 from isola import Isola, NetworkSpec, Sandbox
 
-from conftest import wait_for_running
+from utils import wait_for_running
 
 
 def _run_and_collect_stdout(sandbox: Sandbox, *args: str, timeout_seconds: int | None = None) -> tuple[int, str]:

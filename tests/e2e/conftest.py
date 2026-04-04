@@ -14,15 +14,14 @@
 
 from __future__ import annotations
 
-import asyncio
-import os
-import time
 import warnings
 
 import pytest
 import pytest_asyncio
 
-from isola import AsyncIsola, AsyncSandbox, Isola, NotFoundError, Sandbox, SandboxStatus
+from isola import AsyncIsola, AsyncSandbox, Isola, NotFoundError, Sandbox
+
+from utils import ISOLA_BASE_URL, wait_for_running, wait_for_running_async
 
 
 def pytest_addoption(parser):
@@ -36,90 +35,6 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if item.get_closest_marker("slow"):
             item.add_marker(skip_slow)
-
-
-SANDBOXES_NAMESPACE = "isola-sandboxes"
-ISOLA_BASE_URL = os.environ.get("ISOLA_BASE_URL", "http://localhost:8080")
-ISOLA_METRICS_URL = os.environ.get("ISOLA_METRICS_URL", "http://localhost:8082")
-
-POLL_INTERVAL = 1.0
-POLL_TIMEOUT = 90
-
-
-# --- Sync helpers ---
-
-
-def wait_for_running(client: Isola, sandbox_id: str, timeout: float = POLL_TIMEOUT) -> Sandbox:
-    deadline = time.monotonic() + timeout
-    last_status = None
-    while time.monotonic() < deadline:
-        try:
-            sb = client.sandboxes.get(sandbox_id)
-        except NotFoundError:
-            # Sandbox may not be visible in the api-gateway's K8s cache yet.
-            time.sleep(POLL_INTERVAL)
-            continue
-        last_status = sb.status
-        if sb.status == SandboxStatus.RUNNING:
-            return sb
-        if sb.status in (SandboxStatus.FAILED, SandboxStatus.STOPPED):
-            pytest.fail(f"Sandbox {sandbox_id} reached terminal status: {sb.status.value}")
-        time.sleep(POLL_INTERVAL)
-    pytest.fail(f"Sandbox {sandbox_id} did not reach running within {timeout}s (last status: {last_status})")
-
-
-def wait_for_status(
-    client: Isola,
-    sandbox_id: str,
-    target: SandboxStatus,
-    timeout: float = POLL_TIMEOUT,
-) -> Sandbox:
-    deadline = time.monotonic() + timeout
-    last_status = None
-    while time.monotonic() < deadline:
-        try:
-            sb = client.sandboxes.get(sandbox_id)
-        except NotFoundError:
-            time.sleep(POLL_INTERVAL)
-            continue
-        last_status = sb.status
-        if sb.status == target:
-            return sb
-        time.sleep(POLL_INTERVAL)
-    pytest.fail(f"Sandbox {sandbox_id} did not reach {target.value} within {timeout}s (last: {last_status})")
-
-
-def wait_for_visible(client: Isola, sandbox_id: str, timeout: float = POLL_TIMEOUT) -> Sandbox:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            return client.sandboxes.get(sandbox_id)
-        except NotFoundError:
-            time.sleep(POLL_INTERVAL)
-    pytest.fail(f"Sandbox {sandbox_id} did not become visible within {timeout}s")
-
-
-# --- Async helpers ---
-
-
-async def wait_for_running_async(
-    client: AsyncIsola, sandbox_id: str, timeout: float = POLL_TIMEOUT
-) -> AsyncSandbox:
-    deadline = time.monotonic() + timeout
-    last_status = None
-    while time.monotonic() < deadline:
-        try:
-            sb = await client.sandboxes.get(sandbox_id)
-        except NotFoundError:
-            await asyncio.sleep(POLL_INTERVAL)
-            continue
-        last_status = sb.status
-        if sb.status == SandboxStatus.RUNNING:
-            return sb
-        if sb.status in (SandboxStatus.FAILED, SandboxStatus.STOPPED):
-            pytest.fail(f"Sandbox {sandbox_id} reached terminal status: {sb.status.value}")
-        await asyncio.sleep(POLL_INTERVAL)
-    pytest.fail(f"Sandbox {sandbox_id} did not reach running within {timeout}s (last status: {last_status})")
 
 
 # --- Sync fixtures ---
