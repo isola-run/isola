@@ -640,7 +640,7 @@ func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1a
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonRootfsSnapshottingInProgress,
-			Message:            fmt.Sprintf("RootfsSnapshot %q is in progress", snap.Name),
+			Message:            fmt.Sprintf("RootfsSnapshot %q is running", snap.Name),
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
@@ -651,7 +651,7 @@ func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1a
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionTrue,
 			Reason:             CondReasonRootfsSnapshotComplete,
-			Message:            fmt.Sprintf("RootfsSnapshot %q completed", snap.Name),
+			Message:            fmt.Sprintf("RootfsSnapshot %q succeeded", snap.Name),
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
