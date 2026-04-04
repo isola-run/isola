@@ -318,7 +318,8 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	if err := r.Create(ctx, sandboxPod); err != nil {
 		log.Error(err, "Failed creating Pod")
 
-		// Best effort status patch - log but don't override the original create error
+		// Best effort status patch - log but don't override the original create error.
+		// Do not set Succeeded=False here: pod creation failure is recoverable (controller retries).
 		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxPodReadyCondition,
@@ -329,13 +330,6 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			},
 			{
 				Type:               SandboxReadyCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonPodCreationFailed,
-				Message:            err.Error(),
-				ObservedGeneration: sandbox.Generation,
-			},
-			{
-				Type:               SandboxSucceededCondition,
 				Status:             metav1.ConditionFalse,
 				Reason:             CondReasonPodCreationFailed,
 				Message:            err.Error(),
@@ -457,16 +451,10 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	desiredNP, err := netbuilder.BuildCustomNetworkPolicy(sandbox.Name, sandbox.Namespace, sandbox.Spec.Network)
 	if err != nil {
 		log.Error(err, "Failed to build custom NetworkPolicy")
+		// Do not set Succeeded=False here: network policy failure is recoverable (controller retries).
 		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxNetworkReadyCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonNetworkPolicyFailed,
-				Message:            err.Error(),
-				ObservedGeneration: sandbox.Generation,
-			},
-			{
-				Type:               SandboxSucceededCondition,
 				Status:             metav1.ConditionFalse,
 				Reason:             CondReasonNetworkPolicyFailed,
 				Message:            err.Error(),

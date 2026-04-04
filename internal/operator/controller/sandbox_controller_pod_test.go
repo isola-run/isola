@@ -554,6 +554,64 @@ var _ = Describe("Sandbox Controller", func() {
 			}
 		})
 
+		It("should not set Succeeded when pod is pending (not yet terminal)", func() {
+			sandboxName := "sandbox-pending-no-succeeded"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			// First reconcile creates the pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Pod exists but is Pending — not terminal
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, SandboxReadyCondition, metav1.ConditionFalse, CondReasonPodPending)).To(BeTrue())
+			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, SandboxSucceededCondition)).To(BeNil())
+
+			// Second reconcile — still pending, still no Succeeded
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, SandboxSucceededCondition)).To(BeNil())
+		})
+
+		It("should not revert Succeeded=False on subsequent reconcile", func() {
+			sandboxName := "sandbox-terminal-sticky"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Pod fails (terminal)
+			pod := getPod(ctx, podName)
+			pod.Status.Phase = corev1.PodFailed
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "sandbox", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, SandboxSucceededCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
+
+			// Simulate another reconcile — Succeeded must remain False (one-way latch)
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, SandboxSucceededCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
+		})
+
 		It("should set PodIP in sandbox status when pod has IP", func() {
 			sandboxName := "sandbox-pod-ip"
 
