@@ -35,6 +35,13 @@ RETRY_DELAY = 1.0
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
+def _stream_pos(content: bytes | BinaryIO | None) -> int | None:
+    """Return the current position of a seekable stream, or None."""
+    if hasattr(content, "seekable") and content.seekable():  # type: ignore[union-attr]
+        return content.tell()  # type: ignore[union-attr]
+    return None
+
+
 class _SyncAPI:
     def __init__(self, base_url: str) -> None:
         self.base_url = _normalize_base_url(base_url)
@@ -55,6 +62,8 @@ class _SyncAPI:
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
+        pos = _stream_pos(content)
+        can_retry = pos is not None or content is None or isinstance(content, bytes)
 
         for attempt in range(1 + MAX_RETRIES):
             try:
@@ -68,7 +77,9 @@ class _SyncAPI:
                     timeout=timeout,
                 )
             except httpx.RequestError as exc:
-                if attempt < MAX_RETRIES:
+                if can_retry and attempt < MAX_RETRIES:
+                    if pos is not None:
+                        content.seek(pos)  # type: ignore[union-attr]
                     time.sleep(RETRY_DELAY)
                     continue
                 raise connection_error_from_request(exc, method=method, path=path) from exc
@@ -78,7 +89,9 @@ class _SyncAPI:
             if response.status_code >= 400:
                 body = response.read()
                 api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
-                if is_transient(api_err) and attempt < MAX_RETRIES:
+                if is_transient(api_err) and can_retry and attempt < MAX_RETRIES:
+                    if pos is not None:
+                        content.seek(pos)  # type: ignore[union-attr]
                     time.sleep(RETRY_DELAY)
                     continue
                 raise api_err
@@ -169,6 +182,8 @@ class _AsyncAPI:
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
         url = f"{self.base_url}{path}"
+        pos = _stream_pos(content)
+        can_retry = pos is not None or content is None or isinstance(content, bytes)
 
         for attempt in range(1 + MAX_RETRIES):
             try:
@@ -182,7 +197,9 @@ class _AsyncAPI:
                     timeout=timeout,
                 )
             except httpx.RequestError as exc:
-                if attempt < MAX_RETRIES:
+                if can_retry and attempt < MAX_RETRIES:
+                    if pos is not None:
+                        content.seek(pos)  # type: ignore[union-attr]
                     await asyncio.sleep(RETRY_DELAY)
                     continue
                 raise connection_error_from_request(exc, method=method, path=path) from exc
@@ -192,7 +209,9 @@ class _AsyncAPI:
             if response.status_code >= 400:
                 body = await response.aread()
                 api_err = error_from_http(response.status_code, response.reason_phrase, body, method=method, path=path)
-                if is_transient(api_err) and attempt < MAX_RETRIES:
+                if is_transient(api_err) and can_retry and attempt < MAX_RETRIES:
+                    if pos is not None:
+                        content.seek(pos)  # type: ignore[union-attr]
                     await asyncio.sleep(RETRY_DELAY)
                     continue
                 raise api_err

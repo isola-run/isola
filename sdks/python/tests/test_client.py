@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import io
+import os
 from unittest.mock import patch
 
 import httpx
@@ -414,3 +416,76 @@ async def test_async_close_is_idempotent() -> None:
     await client.close()
     await client.close()
     assert client._api._client.is_closed
+
+
+# --- Stream rewind on retry ---
+
+
+@respx.mock
+def test_retries_rewind_seekable_stream_on_transient_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    payload = b"file content here"
+    bodies_received: list[bytes] = []
+
+    def capture_body(request: httpx.Request) -> httpx.Response:
+        bodies_received.append(request.content)
+        if len(bodies_received) == 1:
+            return httpx.Response(502, json={"detail": "bad gateway"})
+        return httpx.Response(200, json={"sandboxes": []})
+
+    respx.get("http://localhost:8080/v1/sandboxes").mock(side_effect=capture_body)
+
+    stream = io.BytesIO(payload)
+    with Isola(base_url="http://localhost:8080") as client:
+        client._api.request("GET", "/v1/sandboxes", content=stream)
+
+    assert len(bodies_received) == 2
+    assert bodies_received[0] == payload
+    assert bodies_received[1] == payload
+
+
+@respx.mock
+def test_retries_rewind_seekable_stream_on_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    payload = b"file content here"
+    bodies_received: list[bytes] = []
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise httpx.ConnectError("connect failed")
+        bodies_received.append(request.content)
+        return httpx.Response(200, json={"sandboxes": []})
+
+    respx.get("http://localhost:8080/v1/sandboxes").mock(side_effect=handler)
+
+    stream = io.BytesIO(payload)
+    with Isola(base_url="http://localhost:8080") as client:
+        client._api.request("GET", "/v1/sandboxes", content=stream)
+
+    assert len(bodies_received) == 1
+    assert bodies_received[0] == payload
+
+
+@respx.mock
+def test_no_retry_for_non_seekable_stream_on_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-seekable streams cannot be retried — the body would be empty."""
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+
+    route = respx.get("http://localhost:8080/v1/sandboxes")
+    route.mock(side_effect=httpx.ConnectError("connect failed"))
+
+    # A pipe-like object: has read() but is not seekable
+    r, w = os.pipe()
+    os.write(w, b"data")
+    os.close(w)
+    with (
+        os.fdopen(r, "rb") as stream,
+        Isola(base_url="http://localhost:8080") as client,
+        pytest.raises(APIConnectionError),
+    ):
+        client._api.request("GET", "/v1/sandboxes", content=stream)
+
+    assert route.call_count == 1
