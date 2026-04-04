@@ -436,7 +436,7 @@ var _ = Describe("Conversion functions", func() {
 			sb.Status.Conditions = []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "SomethingNew"},
 			}
-			Expect(apigateway.SandboxStatus(sb)).To(Equal("Pending"))
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusPending))
 		})
 	})
 

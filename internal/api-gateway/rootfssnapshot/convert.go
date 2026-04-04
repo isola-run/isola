@@ -21,6 +21,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	apigateway "github.com/isola-run/isola/internal/api-gateway"
 )
 
 func requestToRootfsSnapshotCR(req CreateRootfsSnapshotRequest, name, namespace string) *sandboxv1alpha1.RootfsSnapshot {
@@ -57,15 +58,15 @@ func snapshotStatus(startTime *metav1.Time, conditions []metav1.Condition) strin
 	if succeeded != nil {
 		switch succeeded.Status {
 		case metav1.ConditionTrue:
-			return "Succeeded"
+			return apigateway.StatusSucceeded
 		case metav1.ConditionFalse:
-			return "Failed"
+			return apigateway.StatusFailed
 		}
 	}
 
 	if startTime != nil {
-		return "Running"
+		return apigateway.StatusRunning
 	}
 
-	return "Pending"
+	return apigateway.StatusPending
 }

@@ -34,6 +34,15 @@ import (
 	"github.com/isola-run/isola/internal/httputil"
 )
 
+// REST API status values. Huma enum tags must duplicate these as string literals.
+const (
+	StatusPending     = "Pending"
+	StatusRunning     = "Running"
+	StatusTerminating = "Terminating"
+	StatusSucceeded   = "Succeeded"
+	StatusFailed      = "Failed"
+)
+
 // HTTPDoer abstracts HTTP request execution (satisfied by *http.Client), for faking it in tests.
 type HTTPDoer interface {
 	Do(req *http.Request) (*http.Response, error)
@@ -58,18 +67,18 @@ func SandboxStatus(sb *sandboxv1alpha1.Sandbox) string {
 	if succeeded != nil {
 		switch succeeded.Status {
 		case metav1.ConditionTrue:
-			return "Succeeded"
+			return StatusSucceeded
 		case metav1.ConditionFalse:
-			return "Failed"
+			return StatusFailed
 		}
 	}
 	if !sb.DeletionTimestamp.IsZero() {
-		return "Terminating"
+		return StatusTerminating
 	}
 	if meta.IsStatusConditionTrue(sb.Status.Conditions, sandboxv1alpha1.SandboxReadyCondition) {
-		return "Running"
+		return StatusRunning
 	}
-	return "Pending"
+	return StatusPending
 }
 
 func K8sErrorToHuma(err error, fallbackMsg string) error {
@@ -99,7 +108,7 @@ func GetReadySandbox(ctx context.Context, k8sClient client.Client, namespace, id
 		return nil, K8sErrorToHuma(err, "failed to get sandbox")
 	}
 
-	if status := SandboxStatus(sb); status != "Running" {
+	if status := SandboxStatus(sb); status != StatusRunning {
 		logger.Warn("sandbox is not ready", "id", id, "status", status)
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}

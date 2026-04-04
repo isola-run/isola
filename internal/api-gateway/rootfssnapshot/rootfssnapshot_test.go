@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	apigateway "github.com/isola-run/isola/internal/api-gateway"
 )
 
 var _ = Describe("RootfsSnapshot Endpoints", func() {
@@ -41,7 +42,7 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 			Expect(body.SandboxID).To(Equal("test-sb"))
 			Expect(body.SnapshotName).To(Equal("snap1"))
 			Expect(body.ContainerName).To(BeEmpty())
-			Expect(body.Status).To(Equal("Pending"))
+			Expect(body.Status).To(Equal(apigateway.StatusPending))
 			_, err := time.Parse(time.RFC3339, body.CreationTimestamp)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -169,33 +170,33 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 		now := &metav1.Time{Time: time.Now()}
 
 		It("maps nil startTime and no conditions to Pending", func() {
-			Expect(snapshotStatus(nil, nil)).To(Equal("Pending"))
+			Expect(snapshotStatus(nil, nil)).To(Equal(apigateway.StatusPending))
 		})
 
 		It("maps nil startTime and empty conditions to Pending", func() {
-			Expect(snapshotStatus(nil, []metav1.Condition{})).To(Equal("Pending"))
+			Expect(snapshotStatus(nil, []metav1.Condition{})).To(Equal(apigateway.StatusPending))
 		})
 
 		It("maps set startTime and no Succeeded condition to Running", func() {
-			Expect(snapshotStatus(now, nil)).To(Equal("Running"))
+			Expect(snapshotStatus(now, nil)).To(Equal(apigateway.StatusRunning))
 		})
 
 		It("maps Succeeded=True to Succeeded", func() {
 			conditions := []metav1.Condition{
 				{Type: sandboxv1alpha1.RootfsSnapshotSucceededCondition, Status: metav1.ConditionTrue, Reason: sandboxv1alpha1.ReasonRootfsSnapshotSucceeded},
 			}
-			Expect(snapshotStatus(now, conditions)).To(Equal("Succeeded"))
+			Expect(snapshotStatus(now, conditions)).To(Equal(apigateway.StatusSucceeded))
 		})
 
 		It("maps Succeeded=False to Failed", func() {
 			conditions := []metav1.Condition{
 				{Type: sandboxv1alpha1.RootfsSnapshotSucceededCondition, Status: metav1.ConditionFalse, Reason: sandboxv1alpha1.ReasonRootfsSnapshotFailed},
 			}
-			Expect(snapshotStatus(now, conditions)).To(Equal("Failed"))
+			Expect(snapshotStatus(now, conditions)).To(Equal(apigateway.StatusFailed))
 		})
 
 		It("maps startTime set with no Succeeded condition to Running", func() {
-			Expect(snapshotStatus(now, []metav1.Condition{})).To(Equal("Running"))
+			Expect(snapshotStatus(now, []metav1.Condition{})).To(Equal(apigateway.StatusRunning))
 		})
 	})
 })

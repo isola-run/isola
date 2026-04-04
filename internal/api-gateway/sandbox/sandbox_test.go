@@ -40,7 +40,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(body.ID).To(HaveLen(22))
 			Expect(body.ID).To(MatchRegexp(`^[a-z][a-z0-9]{21}$`))
 			Expect(body.PodTemplate.Container.Image).To(Equal("python:3.12"))
-			Expect(body.Status).To(Equal("Pending"))
+			Expect(body.Status).To(Equal(apigateway.StatusPending))
 			_, err := time.Parse(time.RFC3339, body.CreationTimestamp)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -305,47 +305,47 @@ var _ = Describe("Sandbox Endpoints", func() {
 			sb := makeSandbox([]metav1.Condition{
 				{Type: sandboxv1alpha1.SandboxSucceededCondition, Status: metav1.ConditionTrue},
 			}, false)
-			Expect(apigateway.SandboxStatus(sb)).To(Equal("Succeeded"))
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusSucceeded))
 		})
 
 		It("returns Failed when Succeeded=False", func() {
 			sb := makeSandbox([]metav1.Condition{
 				{Type: sandboxv1alpha1.SandboxSucceededCondition, Status: metav1.ConditionFalse},
 			}, false)
-			Expect(apigateway.SandboxStatus(sb)).To(Equal("Failed"))
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusFailed))
 		})
 
 		It("returns Succeeded even when DeletionTimestamp is set", func() {
 			sb := makeSandbox([]metav1.Condition{
 				{Type: sandboxv1alpha1.SandboxSucceededCondition, Status: metav1.ConditionTrue},
 			}, true)
-			Expect(apigateway.SandboxStatus(sb)).To(Equal("Succeeded"))
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusSucceeded))
 		})
 
 		It("returns Terminating when DeletionTimestamp is set and no Succeeded", func() {
 			sb := makeSandbox([]metav1.Condition{
 				{Type: sandboxv1alpha1.SandboxReadyCondition, Status: metav1.ConditionFalse, Reason: "Deleting"},
 			}, true)
-			Expect(apigateway.SandboxStatus(sb)).To(Equal("Terminating"))
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusTerminating))
 		})
 
 		It("returns Running when Ready=True and no Succeeded", func() {
 			sb := makeSandbox([]metav1.Condition{
 				{Type: sandboxv1alpha1.SandboxReadyCondition, Status: metav1.ConditionTrue, Reason: "PodRunning"},
 			}, false)
-			Expect(apigateway.SandboxStatus(sb)).To(Equal("Running"))
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusRunning))
 		})
 
 		It("returns Pending when Ready=False and no Succeeded", func() {
 			sb := makeSandbox([]metav1.Condition{
 				{Type: sandboxv1alpha1.SandboxReadyCondition, Status: metav1.ConditionFalse, Reason: "PodPending"},
 			}, false)
-			Expect(apigateway.SandboxStatus(sb)).To(Equal("Pending"))
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusPending))
 		})
 
 		It("returns Pending when no conditions", func() {
 			sb := makeSandbox(nil, false)
-			Expect(apigateway.SandboxStatus(sb)).To(Equal("Pending"))
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusPending))
 		})
 
 		It("falls through on Succeeded=Unknown (defensive)", func() {
@@ -353,7 +353,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 				{Type: sandboxv1alpha1.SandboxSucceededCondition, Status: metav1.ConditionUnknown},
 				{Type: sandboxv1alpha1.SandboxReadyCondition, Status: metav1.ConditionTrue},
 			}, false)
-			Expect(apigateway.SandboxStatus(sb)).To(Equal("Running"))
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusRunning))
 		})
 	})
 })
