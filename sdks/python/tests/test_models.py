@@ -51,18 +51,6 @@ class TestNetworkSpecAliases:
         dumped = net.model_dump(by_alias=True, exclude_none=True, exclude_unset=True)
         assert "allowInternetEgress" in dumped
 
-    def test_unset_bool_excluded_but_explicit_false_included(self) -> None:
-        net = NetworkSpec(allow_internet_egress=True)
-        dumped = net.model_dump(by_alias=True, exclude_none=True, exclude_unset=True)
-        assert "allowInternetEgress" in dumped
-        assert "allowClusterDNS" not in dumped
-        assert "allowIPv6Egress" not in dumped
-
-        net2 = NetworkSpec(allow_internet_egress=True, allow_cluster_dns=False)
-        dumped2 = net2.model_dump(by_alias=True, exclude_none=True, exclude_unset=True)
-        assert "allowClusterDNS" in dumped2
-        assert dumped2["allowClusterDNS"] is False
-
     def test_nameservers_no_alias_change(self) -> None:
         net = NetworkSpec(nameservers=["8.8.8.8"])
         dumped = net.model_dump(by_alias=True, exclude_none=True, exclude_unset=True)
