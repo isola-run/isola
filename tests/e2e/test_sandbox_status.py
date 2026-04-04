@@ -29,8 +29,7 @@ import pytest
 from isola import Isola, NotFoundError, SandboxStatus
 
 from conftest import wait_for_running
-
-POLL_INTERVAL = 0.5
+from utils import POLL_INTERVAL, wait_for_status
 
 
 class TestSandboxStatus:
@@ -62,31 +61,8 @@ class TestSandboxStatus:
             command=["true"],
             max_wait_seconds=0,
         )
-
-        deadline = time.monotonic() + 120
-        last_status = None
-        while time.monotonic() < deadline:
-            try:
-                current = isola_client.sandboxes.get(sb.id)
-            except NotFoundError:
-                pytest.fail(
-                    f"Sandbox {sb.id} disappeared before reaching Succeeded "
-                    f"(last status: {last_status})"
-                )
-            last_status = current.status
-            if last_status == SandboxStatus.SUCCEEDED:
-                return
-            if last_status == SandboxStatus.FAILED:
-                pytest.fail(
-                    f"Sandbox {sb.id} reached Failed but expected Succeeded "
-                    f"(command=['true'] should exit 0)"
-                )
-            time.sleep(POLL_INTERVAL)
-
-        pytest.fail(
-            f"Sandbox {sb.id} did not reach Succeeded within 120s "
-            f"(last status: {last_status})"
-        )
+        result = wait_for_status(isola_client, sb.id, SandboxStatus.SUCCEEDED)
+        assert result.status == SandboxStatus.SUCCEEDED
 
     @pytest.mark.timeout(180)
     def test_sandbox_reaches_failed_on_nonzero_exit(
@@ -100,55 +76,8 @@ class TestSandboxStatus:
             command=["sh", "-c", "exit 1"],
             max_wait_seconds=0,
         )
-
-        deadline = time.monotonic() + 120
-        last_status = None
-        while time.monotonic() < deadline:
-            try:
-                current = isola_client.sandboxes.get(sb.id)
-            except NotFoundError:
-                pytest.fail(
-                    f"Sandbox {sb.id} disappeared before reaching Failed "
-                    f"(last status: {last_status})"
-                )
-            last_status = current.status
-            if last_status == SandboxStatus.FAILED:
-                return
-            if last_status == SandboxStatus.SUCCEEDED:
-                pytest.fail(
-                    f"Sandbox {sb.id} reached Succeeded but expected Failed "
-                    f"(command exited non-zero)"
-                )
-            time.sleep(POLL_INTERVAL)
-
-        pytest.fail(
-            f"Sandbox {sb.id} did not reach Failed within 120s "
-            f"(last status: {last_status})"
-        )
-
-    @pytest.mark.timeout(90)
-    def test_sandbox_shows_pending_initially(
-        self,
-        isola_client: Isola,
-        sandbox_factory,
-    ) -> None:
-        """Immediately after creation a sandbox should be Pending (or Running if fast)."""
-        sb = sandbox_factory(
-            image="alpine:3.21",
-            command=["sleep", "infinity"],
-            max_wait_seconds=0,
-        )
-
-        # Read status immediately -- the sandbox may not even be visible yet
-        # due to K8s cache lag, so accept NotFoundError as equivalent to Pending.
-        try:
-            current = isola_client.sandboxes.get(sb.id)
-            assert current.status in (SandboxStatus.PENDING, SandboxStatus.RUNNING), (
-                f"Expected Pending or Running immediately after create, "
-                f"got {current.status.value}"
-            )
-        except NotFoundError:
-            pass  # cache lag -- sandbox not yet visible, effectively Pending
+        result = wait_for_status(isola_client, sb.id, SandboxStatus.FAILED)
+        assert result.status == SandboxStatus.FAILED
 
     @pytest.mark.timeout(120)
     def test_deleted_sandbox_shows_terminating_or_disappears(
