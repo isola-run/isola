@@ -909,7 +909,7 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 		{
 			Type:               SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
-			Reason:             CondReasonRootfsSnapshottingInProgress,
+			Reason:             CondReasonDeleting,
 			Message:            "Sandbox being deleted; executing shutdown policy",
 			ObservedGeneration: sandbox.Generation,
 		},

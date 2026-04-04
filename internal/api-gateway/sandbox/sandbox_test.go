@@ -307,15 +307,6 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("creating"))
 		})
 
-		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
-		// and encapsulated in the RootfsSnapshot CRD only (see convert.go TODO).
-		It("maps RootfsSnapshottingInProgress to running", func() {
-			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshottingInProgress"},
-			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("running"))
-		})
-
 		It("maps NetworkPolicyApplied to creating", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "NetworkPolicyApplied"},
@@ -340,15 +331,6 @@ var _ = Describe("Sandbox Endpoints", func() {
 		It("maps PodSucceeded to stopped", func() {
 			conditions := []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodSucceeded"},
-			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("stopped"))
-		})
-
-		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
-		// and encapsulated in the RootfsSnapshot CRD only (see convert.go TODO).
-		It("maps RootfsSnapshotComplete to stopped", func() {
-			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshotComplete"},
 			}
 			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("stopped"))
 		})
