@@ -219,7 +219,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			// Sandbox still exists (snapshot not yet complete) — verify Succeeded=False
 			sandbox := getSandbox(ctx, sandboxName)
-			Expect(hasConditionWithReason(sandbox, SandboxSucceededCondition, metav1.ConditionFalse, CondReasonTimeout)).To(BeTrue())
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionFalse, CondReasonTimeout)).To(BeTrue())
 		})
 
 		It("should schedule requeue before timeout", func() {
@@ -436,7 +436,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			// Sandbox still exists (finalizer holds it) — verify Succeeded=False was set
 			sandbox := getSandbox(ctx, sandboxName)
-			Expect(hasConditionWithReason(sandbox, SandboxSucceededCondition, metav1.ConditionFalse, CondReasonStartupTimeoutExceeded)).To(BeTrue())
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionFalse, CondReasonStartupTimeoutExceeded)).To(BeTrue())
 
 			// Second reconcile runs the finalizer, removes it, and the object is deleted
 			_, err = doReconcile(ctx, reconciler, sandboxName)
@@ -475,7 +475,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
-			readyCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+			readyCond := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxReadyCondition)
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(readyCond.Reason).To(Equal(CondReasonPodRunning))
@@ -514,7 +514,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
-			readyCond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+			readyCond := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxReadyCondition)
 			Expect(readyCond).NotTo(BeNil())
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(readyCond.Reason).To(Equal(CondReasonPodPending))

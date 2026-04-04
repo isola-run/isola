@@ -355,7 +355,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(cond.Message).To(ContainSubstring("blocked range"))
 
 			// Network failure is recoverable — Succeeded should not be set
-			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, SandboxSucceededCondition)).To(BeNil())
+			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)).To(BeNil())
 		})
 	})
 
