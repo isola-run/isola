@@ -46,16 +46,16 @@ def test_memory_limit_not_enforced_by_gvisor(
     triggers an OOM kill (exit code 137). With gVisor, the compat cgroup has no
     enforcement, so the write succeeds.
     """
-    memory_limit = "64Mi"
+    memory_limit = 64
 
-    sb = sandbox_factory(image="alpine:3.21", memory=memory_limit, ephemeral_storage="64Mi")
+    sb = sandbox_factory(image="alpine:3.21", memory=memory_limit, ephemeral_storage=64)
     running = wait_for_running(isola_client, sb.id)
 
     # Verify the limits are reported in the API response (set, just not enforced)
     container = running._data.pod_template.container
     assert container.resources is not None
     assert container.resources.limits is not None
-    assert container.resources.limits.memory == memory_limit
+    assert container.resources.limits.memory == "64Mi"
     assert container.resources.limits.ephemeral_storage == "64Mi"
 
     # Write 100MB to /dev/shm (tmpfs, backed by memory).
@@ -90,7 +90,7 @@ def test_ephemeral_storage_limit_not_enforced_by_gvisor(
     the sentry's internal filesystem writes are not visible to the kubelet's
     disk usage checks on the container's rootfs, so the limit is not enforced.
     """
-    storage_limit = "64Mi"
+    storage_limit = 64
 
     sb = sandbox_factory(image="alpine:3.21", ephemeral_storage=storage_limit)
     running = wait_for_running(isola_client, sb.id)
@@ -99,7 +99,7 @@ def test_ephemeral_storage_limit_not_enforced_by_gvisor(
     container = running._data.pod_template.container
     assert container.resources is not None
     assert container.resources.limits is not None
-    assert container.resources.limits.ephemeral_storage == storage_limit
+    assert container.resources.limits.ephemeral_storage == "64Mi"
 
     # Write 100MB to the container's rootfs (not /tmp or /dev/shm which may be tmpfs).
     # Under runc: kubelet eviction manager would eventually evict the pod.
