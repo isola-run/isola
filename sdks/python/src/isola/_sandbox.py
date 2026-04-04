@@ -152,7 +152,7 @@ class Sandboxes:
             "POST",
             "/v1/sandboxes",
             SandboxData,
-            json_body=payload.model_dump(by_alias=True, exclude_none=True),
+            json_body=payload.model_dump(by_alias=True, exclude_none=True, exclude_unset=True),
         )
         _check_terminal(data.id, data.status)
         if data.status != SandboxStatus.RUNNING and max_wait_seconds != 0:
@@ -207,7 +207,7 @@ class AsyncSandboxes:
             "POST",
             "/v1/sandboxes",
             SandboxData,
-            json_body=payload.model_dump(by_alias=True, exclude_none=True),
+            json_body=payload.model_dump(by_alias=True, exclude_none=True, exclude_unset=True),
         )
         _check_terminal(data.id, data.status)
         if data.status != SandboxStatus.RUNNING and max_wait_seconds != 0:

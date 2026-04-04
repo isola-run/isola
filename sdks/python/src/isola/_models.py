@@ -50,11 +50,10 @@ class SandboxStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
-# todo benl: should we default nameservers to e.g. 1.1.1.1 if allow internet is specified?
 class NetworkSpec(IsolaModel):
-    allow_internet_egress: bool | None = None
-    allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
-    allow_ipv6_egress: bool | None = Field(None, alias="allowIPv6Egress")
+    allow_internet_egress: bool = False
+    allow_cluster_dns: bool = Field(False, alias="allowClusterDNS")
+    allow_ipv6_egress: bool = Field(False, alias="allowIPv6Egress")
     allowed_egress_cidrs: list[str] | None = Field(None, alias="allowedEgressCIDRs")
     nameservers: list[str] | None = None
 

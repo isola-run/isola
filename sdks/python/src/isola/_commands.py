@@ -190,7 +190,7 @@ class Commands:
             _command_base_path(self._sandbox_id),
             CreateCommandResponse,
             params=params,
-            json_body=payload.model_dump(by_alias=True, exclude_none=True),
+            json_body=payload.model_dump(by_alias=True, exclude_none=True, exclude_unset=True),
         )
         return Command(self._api, self._sandbox_id, data.id)
 
@@ -235,7 +235,7 @@ class AsyncCommands:
             _command_base_path(self._sandbox_id),
             CreateCommandResponse,
             params=params,
-            json_body=payload.model_dump(by_alias=True, exclude_none=True),
+            json_body=payload.model_dump(by_alias=True, exclude_none=True, exclude_unset=True),
         )
         return AsyncCommand(self._api, self._sandbox_id, data.id)
 

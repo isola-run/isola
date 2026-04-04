@@ -112,7 +112,7 @@ class RootfsSnapshots:
             "POST",
             "/v1/rootfs-snapshots",
             RootfsSnapshotData,
-            json_body=payload.model_dump(by_alias=True, exclude_none=True),
+            json_body=payload.model_dump(by_alias=True, exclude_none=True, exclude_unset=True),
         )
         _check_failed(data.id, data.status)
         if data.status != RootfsSnapshotStatus.COMPLETE and max_wait_seconds != 0:
@@ -149,7 +149,7 @@ class AsyncRootfsSnapshots:
             "POST",
             "/v1/rootfs-snapshots",
             RootfsSnapshotData,
-            json_body=payload.model_dump(by_alias=True, exclude_none=True),
+            json_body=payload.model_dump(by_alias=True, exclude_none=True, exclude_unset=True),
         )
         _check_failed(data.id, data.status)
         if data.status != RootfsSnapshotStatus.COMPLETE and max_wait_seconds != 0:

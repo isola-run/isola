@@ -32,7 +32,7 @@ from isola._models import (
 class TestNetworkSpecAliases:
     def test_allow_cluster_dns_alias(self) -> None:
         net = NetworkSpec(allow_cluster_dns=True)
-        dumped = net.model_dump(by_alias=True, exclude_none=True)
+        dumped = net.model_dump(by_alias=True, exclude_none=True, exclude_unset=True)
         assert "allowClusterDNS" in dumped
         assert dumped["allowClusterDNS"] is True
         # Standard camelCase would produce "allowClusterDns" -- verify that does NOT appear
@@ -40,7 +40,7 @@ class TestNetworkSpecAliases:
 
     def test_allowed_egress_cidrs_alias(self) -> None:
         net = NetworkSpec(allowed_egress_cidrs=["10.0.0.0/8"])
-        dumped = net.model_dump(by_alias=True, exclude_none=True)
+        dumped = net.model_dump(by_alias=True, exclude_none=True, exclude_unset=True)
         assert "allowedEgressCIDRs" in dumped
         assert dumped["allowedEgressCIDRs"] == ["10.0.0.0/8"]
         # Standard camelCase would produce "allowedEgressCidrs"
@@ -48,12 +48,24 @@ class TestNetworkSpecAliases:
 
     def test_allow_internet_egress_uses_standard_camel(self) -> None:
         net = NetworkSpec(allow_internet_egress=True)
-        dumped = net.model_dump(by_alias=True, exclude_none=True)
+        dumped = net.model_dump(by_alias=True, exclude_none=True, exclude_unset=True)
         assert "allowInternetEgress" in dumped
+
+    def test_unset_bool_excluded_but_explicit_false_included(self) -> None:
+        net = NetworkSpec(allow_internet_egress=True)
+        dumped = net.model_dump(by_alias=True, exclude_none=True, exclude_unset=True)
+        assert "allowInternetEgress" in dumped
+        assert "allowClusterDNS" not in dumped
+        assert "allowIPv6Egress" not in dumped
+
+        net2 = NetworkSpec(allow_internet_egress=True, allow_cluster_dns=False)
+        dumped2 = net2.model_dump(by_alias=True, exclude_none=True, exclude_unset=True)
+        assert "allowClusterDNS" in dumped2
+        assert dumped2["allowClusterDNS"] is False
 
     def test_nameservers_no_alias_change(self) -> None:
         net = NetworkSpec(nameservers=["8.8.8.8"])
-        dumped = net.model_dump(by_alias=True, exclude_none=True)
+        dumped = net.model_dump(by_alias=True, exclude_none=True, exclude_unset=True)
         assert "nameservers" in dumped
 
 
@@ -182,7 +194,7 @@ class TestRoundTrip:
             startup_timeout_seconds=60,
             network=NetworkSpec(allow_internet_egress=True, nameservers=["1.1.1.1"]),
         )
-        dumped = payload.model_dump(by_alias=True, mode="json", exclude_none=True)
+        dumped = payload.model_dump(by_alias=True, mode="json", exclude_none=True, exclude_unset=True)
         reparsed = CreateSandboxPayload.model_validate(dumped)
 
         assert reparsed.pod_template.container.image == "node:20"
@@ -196,7 +208,7 @@ class TestRoundTrip:
             allow_cluster_dns=True,
             allowed_egress_cidrs=["172.16.0.0/12"],
         )
-        dumped = net.model_dump(by_alias=True, mode="json", exclude_none=True)
+        dumped = net.model_dump(by_alias=True, mode="json", exclude_none=True, exclude_unset=True)
         assert "allowClusterDNS" in dumped
         assert "allowedEgressCIDRs" in dumped
 
