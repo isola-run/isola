@@ -102,6 +102,10 @@ var _ = Describe("Sandbox Controller", func() {
 
 			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
 
+			// Sandbox is being deleted (DeletionTimestamp set) — Succeeded should not be set
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, SandboxSucceededCondition)).To(BeNil())
+
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})

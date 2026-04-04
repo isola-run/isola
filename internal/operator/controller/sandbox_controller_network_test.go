@@ -354,6 +354,9 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal(CondReasonNetworkPolicyFailed))
 			Expect(cond.Message).To(ContainSubstring("blocked range"))
+
+			// Network failure is recoverable — Succeeded should not be set
+			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, SandboxSucceededCondition)).To(BeNil())
 		})
 	})
 

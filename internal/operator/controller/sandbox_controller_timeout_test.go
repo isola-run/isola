@@ -174,26 +174,33 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 
-		It("should set TimedOut condition reason before deleting sandbox", func() {
+		It("should set Succeeded=False with Timeout reason before deleting sandbox", func() {
 			sandboxName := "sandbox-timeout-condition"
+			runtimeClassName := "gvisor-timeout-cond"
+
+			createRuntimeClass(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				}
+				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
 
-			sandbox := getSandbox(ctx, sandboxName)
-			originalUID := sandbox.UID
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+			defer deleteShutdownSnapshot(ctx, sandboxName)
 
 			// First reconcile creates the pod
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Make pod ready so TimeoutAt gets set
-			pod := getPod(ctx, sandboxName+"-pod")
-			Expect(pod).NotTo(BeNil())
+			pod := bindPodToNode(ctx, podName)
 			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
 
 			// Reconcile to persist TimeoutAt
@@ -203,15 +210,16 @@ var _ = Describe("Sandbox Controller", func() {
 			// Advance past timeout
 			fakeClock.Advance(2 * time.Second)
 
+			// Reconcile triggers timeout — sets Succeeded condition and begins
+			// SnapshotRootfs finalization (sandbox survives while snapshot is pending)
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Verify sandbox was deleted (confirms timeout path with Delete policy)
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(err).To(Satisfy(errors.IsNotFound))
-			_ = originalUID
+			// Sandbox still exists (snapshot not yet complete) — verify Succeeded=False
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, SandboxSucceededCondition, metav1.ConditionFalse, CondReasonTimeout)).To(BeTrue())
 		})
 
 		It("should schedule requeue before timeout", func() {
@@ -425,6 +433,10 @@ var _ = Describe("Sandbox Controller", func() {
 			// but the finalizer keeps the object around)
 			_, err = doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
+
+			// Sandbox still exists (finalizer holds it) — verify Succeeded=False was set
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, SandboxSucceededCondition, metav1.ConditionFalse, CondReasonStartupTimeoutExceeded)).To(BeTrue())
 
 			// Second reconcile runs the finalizer, removes it, and the object is deleted
 			_, err = doReconcile(ctx, reconciler, sandboxName)
