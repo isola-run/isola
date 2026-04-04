@@ -23,7 +23,7 @@ from isola import (
     BadRequestError,
     Isola,
     IsolaError,
-    NetworkSpec,
+    Network,
     NotFoundError,
     Sandbox,
     SandboxStatus,
@@ -195,7 +195,7 @@ def test_too_many_nameservers(isola_client: Isola) -> None:
     with pytest.raises((ValidationError, BadRequestError)) as exc_info:
         isola_client.sandboxes.create(
             image="alpine:3.21",
-            network=NetworkSpec(nameservers=["1.1.1.1", "8.8.8.8", "9.9.9.9", "4.4.4.4"]),
+            network=Network(nameservers=["1.1.1.1", "8.8.8.8", "9.9.9.9", "4.4.4.4"]),
         )
 
     assert exc_info.value.status_code in (400, 422)

@@ -173,7 +173,7 @@ components:
           readOnly: true
           type: string
         network:
-          $ref: "#/components/schemas/NetworkSpec"
+          $ref: "#/components/schemas/Network"
           description: Network isolation config
         podTemplate:
           $ref: "#/components/schemas/PodTemplate"
@@ -321,7 +321,7 @@ components:
       required:
         - sandboxes
       type: object
-    NetworkSpec:
+    Network:
       additionalProperties: false
       properties:
         allowClusterDNS:
@@ -490,7 +490,7 @@ components:
           description: Sandbox identifier
           type: string
         network:
-          $ref: "#/components/schemas/NetworkSpec"
+          $ref: "#/components/schemas/Network"
           description: Network isolation config
         podTemplate:
           $ref: "#/components/schemas/PodTemplateInfo"

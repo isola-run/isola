@@ -24,7 +24,7 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-func mustBuildCustomNetworkPolicy(t *testing.T, network *sandboxv1alpha1.NetworkSpec) *networkingv1.NetworkPolicy {
+func mustBuildCustomNetworkPolicy(t *testing.T, network *sandboxv1alpha1.Network) *networkingv1.NetworkPolicy {
 	t.Helper()
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
 	if err != nil {
@@ -43,12 +43,12 @@ func TestEffectiveNameservers_NilNetwork(t *testing.T) {
 
 func TestEffectiveNameservers_EmptyNetwork(t *testing.T) {
 	g := NewWithT(t)
-	g.Expect(EffectiveNameservers(&sandboxv1alpha1.NetworkSpec{})).To(BeNil())
+	g.Expect(EffectiveNameservers(&sandboxv1alpha1.Network{})).To(BeNil())
 }
 
 func TestEffectiveNameservers_UserProvided(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		Nameservers: []string{"9.9.9.9"},
 	}
 	g.Expect(EffectiveNameservers(network)).To(Equal([]string{"9.9.9.9"}))
@@ -56,7 +56,7 @@ func TestEffectiveNameservers_UserProvided(t *testing.T) {
 
 func TestEffectiveNameservers_AutoDefaultWithEgressCIDRs(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowedEgressCIDRs: []string{"203.0.113.0/24"},
 	}
 	g.Expect(EffectiveNameservers(network)).To(Equal(DefaultPublicNameservers))
@@ -64,7 +64,7 @@ func TestEffectiveNameservers_AutoDefaultWithEgressCIDRs(t *testing.T) {
 
 func TestEffectiveNameservers_UserProvidedTakesPrecedence(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		Nameservers:        []string{"9.9.9.9"},
 		AllowedEgressCIDRs: []string{"203.0.113.0/24"},
 	}
@@ -73,7 +73,7 @@ func TestEffectiveNameservers_UserProvidedTakesPrecedence(t *testing.T) {
 
 func TestEffectiveNameservers_ClusterDNSSkipsAutoDefault(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowClusterDNS:    ptr.To(true),
 		AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 	}
@@ -82,7 +82,7 @@ func TestEffectiveNameservers_ClusterDNSSkipsAutoDefault(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_ClusterDNSWithCIDRsNoAutoDNSRules(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowClusterDNS:    ptr.To(true),
 		AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 	}
@@ -102,7 +102,7 @@ func TestBuildCustomNetworkPolicy_NilNetwork(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_EmptyNetwork(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{}
+	network := &sandboxv1alpha1.Network{}
 
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", network)
 	g.Expect(err).ToNot(HaveOccurred())
@@ -111,7 +111,7 @@ func TestBuildCustomNetworkPolicy_EmptyNetwork(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_WithAllowedEgressCIDRs(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 	}
 
@@ -129,7 +129,7 @@ func TestBuildCustomNetworkPolicy_WithAllowedEgressCIDRs(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_BlocksRiskyCIDRs(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowedEgressCIDRs: []string{"0.0.0.0/0"},
 	}
 
@@ -151,7 +151,7 @@ func TestBuildCustomNetworkPolicy_BlocksRiskyCIDRs(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_DoesNotBlockNonOverlappingCIDRs(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowedEgressCIDRs: []string{"8.8.0.0/16"},
 	}
 
@@ -165,7 +165,7 @@ func TestBuildCustomNetworkPolicy_DoesNotBlockNonOverlappingCIDRs(t *testing.T) 
 
 func TestBuildCustomNetworkPolicy_WithNameservers(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		Nameservers: []string{"8.8.8.8", "1.1.1.1"},
 	}
 
@@ -184,7 +184,7 @@ func TestBuildCustomNetworkPolicy_WithNameservers(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_NameserversWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowInternetEgress: ptr.To(true),
 		Nameservers:         []string{"8.8.8.8"},
 	}
@@ -197,7 +197,7 @@ func TestBuildCustomNetworkPolicy_NameserversWithInternetAccess(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_PrivateNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowInternetEgress: ptr.To(true),
 		Nameservers:         []string{"10.0.0.53"},
 	}
@@ -210,7 +210,7 @@ func TestBuildCustomNetworkPolicy_PrivateNameserverWithInternetAccess(t *testing
 
 func TestBuildCustomNetworkPolicy_MixedNameserversWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowInternetEgress: ptr.To(true),
 		Nameservers:         []string{"8.8.8.8", "10.0.0.53", "1.1.1.1"},
 	}
@@ -223,7 +223,7 @@ func TestBuildCustomNetworkPolicy_MixedNameserversWithInternetAccess(t *testing.
 
 func TestBuildCustomNetworkPolicy_IPv6PublicNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowInternetEgress: ptr.To(true),
 		Nameservers:         []string{"2001:4860:4860::8888"},
 	}
@@ -236,7 +236,7 @@ func TestBuildCustomNetworkPolicy_IPv6PublicNameserverWithInternetAccess(t *test
 
 func TestBuildCustomNetworkPolicy_IPv6PrivateNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowInternetEgress: ptr.To(true),
 		Nameservers:         []string{"fd00::53"},
 	}
@@ -249,7 +249,7 @@ func TestBuildCustomNetworkPolicy_IPv6PrivateNameserverWithInternetAccess(t *tes
 
 func TestBuildCustomNetworkPolicy_NameserversWithoutInternetAccess(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowInternetEgress: ptr.To(false),
 		Nameservers:         []string{"8.8.8.8", "10.0.0.53"},
 	}
@@ -266,7 +266,7 @@ func TestBuildCustomNetworkPolicy_NameserversWithoutInternetAccess(t *testing.T)
 
 func TestBuildCustomNetworkPolicy_CIDRsAndPublicNameserversWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowInternetEgress: ptr.To(true),
 		Nameservers:         []string{"8.8.8.8"},
 		AllowedEgressCIDRs:  []string{"1.1.1.0/24"},
@@ -280,7 +280,7 @@ func TestBuildCustomNetworkPolicy_CIDRsAndPublicNameserversWithInternetAccess(t 
 
 func TestBuildCustomNetworkPolicy_CIDRsOnlyWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowInternetEgress: ptr.To(true),
 		AllowedEgressCIDRs:  []string{"8.8.8.0/24", "1.1.1.0/24"},
 	}
@@ -293,7 +293,7 @@ func TestBuildCustomNetworkPolicy_CIDRsOnlyWithInternetAccess(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_CIDRsAndPrivateNameserverWithInternetAccess(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowInternetEgress: ptr.To(true),
 		Nameservers:         []string{"10.0.0.53"},
 		AllowedEgressCIDRs:  []string{"1.1.1.0/24"},
@@ -307,7 +307,7 @@ func TestBuildCustomNetworkPolicy_CIDRsAndPrivateNameserverWithInternetAccess(t 
 
 func TestBuildCustomNetworkPolicy_InvalidNameserver(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		Nameservers: []string{"not-an-ip"},
 	}
 
@@ -318,7 +318,7 @@ func TestBuildCustomNetworkPolicy_InvalidNameserver(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_InvalidEgressCIDR(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowedEgressCIDRs: []string{"also-invalid"},
 	}
 
@@ -353,7 +353,7 @@ func TestBuildCustomNetworkPolicy_BlockedEgressCIDR(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowedEgressCIDRs: []string{tt.cidr},
 			}
 
@@ -366,7 +366,7 @@ func TestBuildCustomNetworkPolicy_BlockedEgressCIDR(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_CombinedRules(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		Nameservers:        []string{"8.8.8.8"},
 		AllowedEgressCIDRs: []string{"1.1.1.0/24"},
 	}
@@ -379,7 +379,7 @@ func TestBuildCustomNetworkPolicy_CombinedRules(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_DeduplicatesCIDRs(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowedEgressCIDRs: []string{"8.8.8.0/24", "8.8.8.0/24", "1.1.1.0/24"},
 	}
 
@@ -392,7 +392,7 @@ func TestBuildCustomNetworkPolicy_DeduplicatesCIDRs(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_IPv6Nameservers(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowIPv6Egress: ptr.To(true),
 		Nameservers:     []string{"2001:4860:4860::8888", "2001:4860:4860::8844"},
 	}
@@ -413,7 +413,7 @@ func TestBuildCustomNetworkPolicy_IPv6Nameservers(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_MixedIPv4IPv6Nameservers(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowIPv6Egress: ptr.To(true),
 		Nameservers:     []string{"8.8.8.8", "2001:4860:4860::8888"},
 	}
@@ -431,7 +431,7 @@ func TestBuildCustomNetworkPolicy_MixedIPv4IPv6Nameservers(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_IPv6AllowedEgressCIDR(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowIPv6Egress:    ptr.To(true),
 		AllowedEgressCIDRs: []string{"2607:f8b0::/32"},
 	}
@@ -447,7 +447,7 @@ func TestBuildCustomNetworkPolicy_IPv6AllowedEgressCIDR(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_IPv6AllInternet(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowIPv6Egress:    ptr.To(true),
 		AllowedEgressCIDRs: []string{"::/0"},
 	}
@@ -490,7 +490,7 @@ func TestBuildCustomNetworkPolicy_BlockedIPv6CIDRs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowIPv6Egress:    ptr.To(true),
 				AllowedEgressCIDRs: []string{tt.cidr},
 			}
@@ -504,7 +504,7 @@ func TestBuildCustomNetworkPolicy_BlockedIPv6CIDRs(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_IPv6CIDRsFilteredWithoutFlag(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowedEgressCIDRs: []string{"2607:f8b0::/32"},
 	}
 
@@ -517,7 +517,7 @@ func TestBuildCustomNetworkPolicy_IPv6CIDRsFilteredWithoutFlag(t *testing.T) {
 
 func TestBuildCustomNetworkPolicy_IPv6NameserversFilteredWithoutFlag(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		Nameservers: []string{"2001:4860:4860::8888"},
 	}
 
@@ -528,7 +528,7 @@ func TestBuildCustomNetworkPolicy_IPv6NameserversFilteredWithoutFlag(t *testing.
 
 func TestBuildCustomNetworkPolicy_MixedCIDRsFilterIPv6WithoutFlag(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowedEgressCIDRs: []string{"8.8.0.0/16", "2607:f8b0::/32"},
 	}
 
@@ -541,7 +541,7 @@ func TestBuildCustomNetworkPolicy_MixedCIDRsFilterIPv6WithoutFlag(t *testing.T) 
 
 func TestBuildCustomNetworkPolicy_MixedCIDRsWithIPv6Flag(t *testing.T) {
 	g := NewWithT(t)
-	network := &sandboxv1alpha1.NetworkSpec{
+	network := &sandboxv1alpha1.Network{
 		AllowIPv6Egress:    ptr.To(true),
 		AllowedEgressCIDRs: []string{"8.8.0.0/16", "2607:f8b0::/32"},
 	}

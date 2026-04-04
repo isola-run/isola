@@ -26,7 +26,7 @@ from isola import (
     Isola,
     IsolaError,
     IsolaTimeoutError,
-    NetworkSpec,
+    Network,
     RootfsSnapshotSource,
     SandboxStatus,
 )
@@ -101,7 +101,7 @@ def test_get_and_delete_sandbox(sandbox_response_copy: dict[str, object]) -> Non
 
 @respx.mock
 def test_network_spec_acronym_aliases_round_trip(sandbox_response_copy: dict[str, object]) -> None:
-    """Verify NetworkSpec fields with acronyms use the correct OpenAPI casing."""
+    """Verify Network fields with acronyms use the correct OpenAPI casing."""
     sandbox_response_copy["network"] = {
         "allowInternetEgress": False,
         "allowClusterDNS": True,
@@ -116,7 +116,7 @@ def test_network_spec_acronym_aliases_round_trip(sandbox_response_copy: dict[str
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.create(
             image="python:3.12",
-            network=NetworkSpec(
+            network=Network(
                 allow_internet_egress=False,
                 allow_cluster_dns=True,
                 allow_ipv6_egress=True,

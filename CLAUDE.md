@@ -60,7 +60,7 @@ After modifying handler input/output types or route registrations, run `make ope
 
 **Two-client pattern in operator tests:** `suite_test.go` uses `k8sClient` (direct, no cache delay) for test writes/assertions and `k8sCache` (cached, for field index queries). Use the direct client for new test assertions.
 
-**Python SDK:** `sdks/python/`, managed with uv. `NetworkSpec` has manual `Field(alias=...)` overrides for acronyms (`allowClusterDNS`, `allowedEgressCIDRs`) that `to_camel` cannot handle -- new fields with acronyms need the same treatment. For SDK polling on eventually consistent resources, finite deadlines must still be enforced on `NotFoundError` branches; otherwise cache lag can turn bounded waits into unbounded ones.
+**Python SDK:** `sdks/python/`, managed with uv. `Network` has manual `Field(alias=...)` overrides for acronyms (`allowClusterDNS`, `allowedEgressCIDRs`) that `to_camel` cannot handle -- new fields with acronyms need the same treatment. For SDK polling on eventually consistent resources, finite deadlines must still be enforced on `NotFoundError` branches; otherwise cache lag can turn bounded waits into unbounded ones.
 
 ## Tooling Versions
 

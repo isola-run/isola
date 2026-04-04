@@ -113,12 +113,12 @@ func resourceListToREST(rl corev1.ResourceList) *ResourceList {
 	return out
 }
 
-func crdNetworkToREST(n *sandboxv1alpha1.NetworkSpec) *NetworkSpec {
+func crdNetworkToREST(n *sandboxv1alpha1.Network) *Network {
 	if n == nil {
 		return nil
 	}
 
-	return &NetworkSpec{
+	return &Network{
 		AllowInternetEgress: n.AllowInternetEgress,
 		AllowClusterDNS:     n.AllowClusterDNS,
 		AllowIPv6Egress:     n.AllowIPv6Egress,
@@ -246,12 +246,12 @@ func crdRootfsSnapshotSourcesToREST(sources []sandboxv1alpha1.RootfsSnapshotSour
 	return out
 }
 
-func restNetworkToCRD(n *NetworkSpec) *sandboxv1alpha1.NetworkSpec {
+func restNetworkToCRD(n *Network) *sandboxv1alpha1.Network {
 	if n == nil {
 		return nil
 	}
 
-	return &sandboxv1alpha1.NetworkSpec{
+	return &sandboxv1alpha1.Network{
 		AllowInternetEgress: n.AllowInternetEgress,
 		AllowClusterDNS:     n.AllowClusterDNS,
 		AllowIPv6Egress:     n.AllowIPv6Egress,

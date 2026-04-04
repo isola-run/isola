@@ -427,7 +427,7 @@ var _ = Describe("Conversion functions", func() {
 
 	Describe("crdNetworkToREST", func() {
 		DescribeTable("nil-coalescing",
-			func(input *sandboxv1alpha1.NetworkSpec, expectNil bool) {
+			func(input *sandboxv1alpha1.Network, expectNil bool) {
 				result := crdNetworkToREST(input)
 				if expectNil {
 					Expect(result).To(BeNil())
@@ -436,11 +436,11 @@ var _ = Describe("Conversion functions", func() {
 				}
 			},
 			Entry("nil input", nil, true),
-			Entry("all-empty struct", &sandboxv1alpha1.NetworkSpec{}, false),
-			Entry("only nameservers", &sandboxv1alpha1.NetworkSpec{Nameservers: []string{"8.8.8.8"}}, false),
-			Entry("only allowClusterDNS", &sandboxv1alpha1.NetworkSpec{AllowClusterDNS: ptr.To(true)}, false),
-			Entry("only allowedEgressCIDRs", &sandboxv1alpha1.NetworkSpec{AllowedEgressCIDRs: []string{"10.0.0.0/8"}}, false),
-			Entry("only allowIPv6Egress", &sandboxv1alpha1.NetworkSpec{AllowIPv6Egress: ptr.To(true)}, false),
+			Entry("all-empty struct", &sandboxv1alpha1.Network{}, false),
+			Entry("only nameservers", &sandboxv1alpha1.Network{Nameservers: []string{"8.8.8.8"}}, false),
+			Entry("only allowClusterDNS", &sandboxv1alpha1.Network{AllowClusterDNS: ptr.To(true)}, false),
+			Entry("only allowedEgressCIDRs", &sandboxv1alpha1.Network{AllowedEgressCIDRs: []string{"10.0.0.0/8"}}, false),
+			Entry("only allowIPv6Egress", &sandboxv1alpha1.Network{AllowIPv6Egress: ptr.To(true)}, false),
 		)
 	})
 

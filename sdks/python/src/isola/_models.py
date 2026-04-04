@@ -50,7 +50,7 @@ class SandboxStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
-class NetworkSpec(IsolaModel):
+class Network(IsolaModel):
     allow_internet_egress: bool | None = None
     allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
     allow_ipv6_egress: bool | None = Field(None, alias="allowIPv6Egress")
@@ -127,7 +127,7 @@ class CreateSandboxPayload(IsolaModel):
     pod_template: PodTemplate
     timeout_seconds: int | None = None
     startup_timeout_seconds: int
-    network: NetworkSpec | None = None
+    network: Network | None = None
     rootfs_snapshot_sources: list[RootfsSnapshotSource] | None = None
 
 
@@ -148,7 +148,7 @@ class SandboxData(IsolaModel):
     creation_timestamp: datetime
     timeout_seconds: int | None = None
     startup_timeout_seconds: int | None = None
-    network: NetworkSpec | None = None
+    network: Network | None = None
     rootfs_snapshot_sources: list[RootfsSnapshotSource] | None = None
 
 

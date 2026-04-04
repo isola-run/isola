@@ -31,7 +31,7 @@ with client.sandboxes.create(image="alpine:3.21") as sandbox:
 ## Sandbox options
 
 ```python
-from isola import NetworkSpec
+from isola import Network
 
 sandbox = client.sandboxes.create(
     image="python:3.12",
@@ -42,7 +42,7 @@ sandbox = client.sandboxes.create(
     ephemeral_storage=1024, # MiB (int)
     timeout_seconds=3600,  # max lifetime in seconds
     max_wait_seconds=120,   # wait up to 120s for sandbox to be ready (default: 60)
-    network=NetworkSpec(
+    network=Network(
         allow_internet_egress=True,
     ),
 )

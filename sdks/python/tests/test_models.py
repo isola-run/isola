@@ -18,7 +18,7 @@ from isola._models import (
     Container,
     CreateSandboxPayload,
     ListSandboxesResponse,
-    NetworkSpec,
+    Network,
     PodTemplate,
     ResourceList,
     ResourceRequirements,
@@ -26,12 +26,12 @@ from isola._models import (
     SandboxStatus,
 )
 
-# --- NetworkSpec manual aliases (override to_camel for acronyms) ---
+# --- Network manual aliases (override to_camel for acronyms) ---
 
 
-class TestNetworkSpecAliases:
+class TestNetworkAliases:
     def test_allow_cluster_dns_alias(self) -> None:
-        net = NetworkSpec(allow_cluster_dns=True)
+        net = Network(allow_cluster_dns=True)
         dumped = net.model_dump(by_alias=True, exclude_none=True)
         assert "allowClusterDNS" in dumped
         assert dumped["allowClusterDNS"] is True
@@ -39,7 +39,7 @@ class TestNetworkSpecAliases:
         assert "allowClusterDns" not in dumped
 
     def test_allowed_egress_cidrs_alias(self) -> None:
-        net = NetworkSpec(allowed_egress_cidrs=["10.0.0.0/8"])
+        net = Network(allowed_egress_cidrs=["10.0.0.0/8"])
         dumped = net.model_dump(by_alias=True, exclude_none=True)
         assert "allowedEgressCIDRs" in dumped
         assert dumped["allowedEgressCIDRs"] == ["10.0.0.0/8"]
@@ -47,12 +47,12 @@ class TestNetworkSpecAliases:
         assert "allowedEgressCidrs" not in dumped
 
     def test_allow_internet_egress_uses_standard_camel(self) -> None:
-        net = NetworkSpec(allow_internet_egress=True)
+        net = Network(allow_internet_egress=True)
         dumped = net.model_dump(by_alias=True, exclude_none=True)
         assert "allowInternetEgress" in dumped
 
     def test_nameservers_no_alias_change(self) -> None:
-        net = NetworkSpec(nameservers=["8.8.8.8"])
+        net = Network(nameservers=["8.8.8.8"])
         dumped = net.model_dump(by_alias=True, exclude_none=True)
         assert "nameservers" in dumped
 
@@ -90,7 +90,7 @@ class TestValidateByNameAndAlias:
         assert payload.startup_timeout_seconds == 60
 
     def test_network_spec_by_alias(self) -> None:
-        net = NetworkSpec.model_validate(
+        net = Network.model_validate(
             {
                 "allowClusterDNS": True,
                 "allowedEgressCIDRs": ["10.0.0.0/8"],
@@ -100,7 +100,7 @@ class TestValidateByNameAndAlias:
         assert net.allowed_egress_cidrs == ["10.0.0.0/8"]
 
     def test_network_spec_by_name(self) -> None:
-        net = NetworkSpec.model_validate(
+        net = Network.model_validate(
             {
                 "allow_cluster_dns": False,
                 "allowed_egress_cidrs": ["192.168.0.0/16"],
@@ -120,14 +120,16 @@ class TestRoundTrip:
             "status": "running",
             "creationTimestamp": "2026-03-15T12:30:00Z",
             "podTemplate": {
-                "containers": [{
-                    "image": "python:3.12",
-                    "command": ["sleep", "infinity"],
-                    "resources": {
-                        "limits": {"cpu": "1", "memory": "2Gi", "ephemeralStorage": "5Gi"},
-                        "requests": {"cpu": "500m", "memory": "1Gi"},
-                    },
-                }]
+                "containers": [
+                    {
+                        "image": "python:3.12",
+                        "command": ["sleep", "infinity"],
+                        "resources": {
+                            "limits": {"cpu": "1", "memory": "2Gi", "ephemeralStorage": "5Gi"},
+                            "requests": {"cpu": "500m", "memory": "1Gi"},
+                        },
+                    }
+                ]
             },
             "timeoutSeconds": 3600,
             "network": {
@@ -169,18 +171,20 @@ class TestRoundTrip:
     def test_create_sandbox_payload_round_trip(self) -> None:
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(
-                containers=[Container(
-                    image="node:20",
-                    command=["node", "app.js"],
-                    env={"NODE_ENV": "production"},
-                    resources=ResourceRequirements(
-                        limits=ResourceList(cpu="2", memory="4Gi"),
-                    ),
-                )]
+                containers=[
+                    Container(
+                        image="node:20",
+                        command=["node", "app.js"],
+                        env={"NODE_ENV": "production"},
+                        resources=ResourceRequirements(
+                            limits=ResourceList(cpu="2", memory="4Gi"),
+                        ),
+                    )
+                ]
             ),
             timeout_seconds=1800,
             startup_timeout_seconds=60,
-            network=NetworkSpec(allow_internet_egress=True, nameservers=["1.1.1.1"]),
+            network=Network(allow_internet_egress=True, nameservers=["1.1.1.1"]),
         )
         dumped = payload.model_dump(by_alias=True, mode="json", exclude_none=True)
         reparsed = CreateSandboxPayload.model_validate(dumped)
@@ -192,7 +196,7 @@ class TestRoundTrip:
         assert reparsed.network.nameservers == ["1.1.1.1"]
 
     def test_network_spec_round_trip_preserves_manual_aliases(self) -> None:
-        net = NetworkSpec(
+        net = Network(
             allow_cluster_dns=True,
             allowed_egress_cidrs=["172.16.0.0/12"],
         )
@@ -200,7 +204,7 @@ class TestRoundTrip:
         assert "allowClusterDNS" in dumped
         assert "allowedEgressCIDRs" in dumped
 
-        reparsed = NetworkSpec.model_validate(dumped)
+        reparsed = Network.model_validate(dumped)
         assert reparsed.allow_cluster_dns is True
         assert reparsed.allowed_egress_cidrs == ["172.16.0.0/12"]
 

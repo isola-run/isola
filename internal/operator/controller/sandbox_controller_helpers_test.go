@@ -169,7 +169,7 @@ func setShutdownSnapshotReady(ctx context.Context, sandboxName string, ready boo
 	setRootfsSnapshotReady(ctx, sandboxName+"-shutdown", ready, reason, message)
 }
 
-func createSandboxWithNetwork(ctx context.Context, name string, network *sandboxv1alpha1.NetworkSpec) {
+func createSandboxWithNetwork(ctx context.Context, name string, network *sandboxv1alpha1.Network) {
 	createSandbox(ctx, name, func(s *sandboxv1alpha1.Sandbox) {
 		s.Spec.Network = network
 	})

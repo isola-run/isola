@@ -27,7 +27,7 @@ from ._models import (
     Container,
     CreateSandboxPayload,
     ListSandboxesResponse,
-    NetworkSpec,
+    Network,
     PodTemplate,
     ResourceList,
     ResourceRequirements,
@@ -52,7 +52,9 @@ def _build_rootfs_snapshot_sources(rootfs_snapshot_source: str | None) -> list[R
     return [RootfsSnapshotSource(snapshot_name=rootfs_snapshot_source)]
 
 
-def _build_resources(cpu: float | None, memory: int | None, ephemeral_storage: int | None) -> ResourceRequirements | None:
+def _build_resources(
+    cpu: float | None, memory: int | None, ephemeral_storage: int | None
+) -> ResourceRequirements | None:
     if cpu is None and memory is None and ephemeral_storage is None:
         return None
 
@@ -132,19 +134,21 @@ class Sandboxes:
         ephemeral_storage: int | None = None,
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
-        network: NetworkSpec | None = None,
+        network: Network | None = None,
         rootfs_snapshot_source: str | None = None,
         max_wait_seconds: int = 60,
     ) -> Sandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(
-                containers=[Container(
-                    image=image,
-                    command=command,
-                    env=env,
-                    resources=resources,
-                )]
+                containers=[
+                    Container(
+                        image=image,
+                        command=command,
+                        env=env,
+                        resources=resources,
+                    )
+                ]
             ),
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
@@ -187,19 +191,21 @@ class AsyncSandboxes:
         ephemeral_storage: int | None = None,
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
-        network: NetworkSpec | None = None,
+        network: Network | None = None,
         rootfs_snapshot_source: str | None = None,
         max_wait_seconds: int = 60,
     ) -> AsyncSandbox:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(
-                containers=[Container(
-                    image=image,
-                    command=command,
-                    env=env,
-                    resources=resources,
-                )]
+                containers=[
+                    Container(
+                        image=image,
+                        command=command,
+                        env=env,
+                        resources=resources,
+                    )
+                ]
             ),
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
@@ -247,7 +253,7 @@ class Sandbox:
         return self._data.creation_timestamp
 
     @property
-    def network(self) -> NetworkSpec | None:
+    def network(self) -> Network | None:
         return self._data.network
 
     @property
@@ -292,7 +298,7 @@ class AsyncSandbox:
         return self._data.creation_timestamp
 
     @property
-    def network(self) -> NetworkSpec | None:
+    def network(self) -> Network | None:
         return self._data.network
 
     @property

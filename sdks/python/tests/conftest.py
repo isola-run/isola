@@ -26,22 +26,24 @@ def sandbox_response() -> dict[str, object]:
         "status": "running",
         "creationTimestamp": "2026-02-18T00:00:00Z",
         "podTemplate": {
-            "containers": [{
-                "image": "python:3.12",
-                "command": ["sleep", "infinity"],
-                "resources": {
-                    "limits": {
-                        "cpu": "500m",
-                        "memory": "1Gi",
-                        "ephemeralStorage": "2Gi",
+            "containers": [
+                {
+                    "image": "python:3.12",
+                    "command": ["sleep", "infinity"],
+                    "resources": {
+                        "limits": {
+                            "cpu": "500m",
+                            "memory": "1Gi",
+                            "ephemeralStorage": "2Gi",
+                        },
+                        "requests": {
+                            "cpu": "500m",
+                            "memory": "1Gi",
+                            "ephemeralStorage": "2Gi",
+                        },
                     },
-                    "requests": {
-                        "cpu": "500m",
-                        "memory": "1Gi",
-                        "ephemeralStorage": "2Gi",
-                    },
-                },
-            }]
+                }
+            ]
         },
         "network": {
             "allowInternetEgress": True,

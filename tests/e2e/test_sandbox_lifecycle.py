@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from isola import Isola, NetworkSpec, Sandbox, SandboxStatus, SandboxSummary
+from isola import Isola, Network, Sandbox, SandboxStatus, SandboxSummary
 
 from utils import parse_k8s_quantity, wait_for_running
 
@@ -49,7 +49,7 @@ def test_create_sandbox_with_full_config(
         memory=128,
         ephemeral_storage=512,
         timeout_seconds=300,
-        network=NetworkSpec(allow_internet_egress=True),
+        network=Network(allow_internet_egress=True),
     )
     assert sb.id
     assert sb.timeout_seconds == 300

@@ -30,7 +30,7 @@ from ._filesystem import AsyncFilesystem, Filesystem
 from ._models import (
     CommandResult,
     FileWriteResult,
-    NetworkSpec,
+    Network,
     RootfsSnapshotSource,
     RootfsSnapshotStatus,
     SandboxStatus,
@@ -61,7 +61,7 @@ __all__ = [
     "RootfsSnapshotStatus",
     "SandboxStatus",
     "SandboxSummary",
-    "NetworkSpec",
+    "Network",
     "RootfsSnapshotSource",
     "StreamReader",
     "AsyncStreamReader",
