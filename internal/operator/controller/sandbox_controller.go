@@ -44,12 +44,8 @@ import (
 )
 
 const (
-	// SandboxSucceededCondition indicates whether the sandbox completed successfully.
-	// True = succeeded, False = failed, absent = in progress.
-	SandboxSucceededCondition = "Succeeded"
-
-	// Summary condition
-	SandboxReadyCondition = "Ready"
+	SandboxSucceededCondition = sandboxv1alpha1.SandboxSucceededCondition
+	SandboxReadyCondition     = sandboxv1alpha1.SandboxReadyCondition
 
 	SandboxPodReadyCondition       = "PodReady"
 	SandboxNetworkReadyCondition   = "NetworkConfigured"

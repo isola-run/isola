@@ -56,7 +56,7 @@ func (b *BodyStream) Resolve(ctx huma.Context) []error {
 // Uses the Tekton/Knative "Succeeded" condition pattern: Succeeded=True means success,
 // Succeeded=False means failure, absent means in-progress. DeletionTimestamp means terminating.
 func SandboxStatus(sb *sandboxv1alpha1.Sandbox) string {
-	succeeded := meta.FindStatusCondition(sb.Status.Conditions, "Succeeded")
+	succeeded := meta.FindStatusCondition(sb.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)
 	if succeeded != nil {
 		switch succeeded.Status {
 		case metav1.ConditionTrue:
@@ -68,7 +68,7 @@ func SandboxStatus(sb *sandboxv1alpha1.Sandbox) string {
 	if !sb.DeletionTimestamp.IsZero() {
 		return "Terminating"
 	}
-	if meta.IsStatusConditionTrue(sb.Status.Conditions, "Ready") {
+	if meta.IsStatusConditionTrue(sb.Status.Conditions, sandboxv1alpha1.SandboxReadyCondition) {
 		return "Running"
 	}
 	return "Pending"
@@ -101,8 +101,8 @@ func GetReadySandbox(ctx context.Context, k8sClient client.Client, namespace, id
 		return nil, K8sErrorToHuma(err, "failed to get sandbox")
 	}
 
-	if SandboxStatus(sb) != "Running" {
-		logger.Warn("sandbox is not ready", "id", id, "status", SandboxStatus(sb))
+	if status := SandboxStatus(sb); status != "Running" {
+		logger.Warn("sandbox is not ready", "id", id, "status", status)
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}
 
