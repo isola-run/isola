@@ -37,7 +37,7 @@ var _ = Describe("Conversion functions", func() {
 		It("passes command through to the container", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Containers: []ContainerSpec{{
+					Containers: []Container{{
 						Image:   "python:3.12",
 						Command: []string{"python", "-c", "print('hello')"},
 					}},
@@ -51,7 +51,7 @@ var _ = Describe("Conversion functions", func() {
 		It("leaves command nil when not specified", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Containers: []ContainerSpec{{
+					Containers: []Container{{
 						Image: "alpine:latest",
 					}},
 				},
@@ -64,7 +64,7 @@ var _ = Describe("Conversion functions", func() {
 		It("defaults container name to sandbox0 when omitted", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Containers: []ContainerSpec{{Image: "alpine:latest"}},
+					Containers: []Container{{Image: "alpine:latest"}},
 				},
 			}
 			sb, err := requestToSandboxCR(req, "test-sb", "default")
@@ -75,7 +75,7 @@ var _ = Describe("Conversion functions", func() {
 		It("uses explicit container name when provided", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Containers: []ContainerSpec{{Name: "worker", Image: "alpine:latest"}},
+					Containers: []Container{{Name: "worker", Image: "alpine:latest"}},
 				},
 			}
 			sb, err := requestToSandboxCR(req, "test-sb", "default")
@@ -86,7 +86,7 @@ var _ = Describe("Conversion functions", func() {
 		It("defaults multiple unnamed containers to sandbox0, sandbox1, ...", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Containers: []ContainerSpec{
+					Containers: []Container{
 						{Image: "alpine:latest"},
 						{Image: "python:3.12"},
 						{Image: "nginx:latest"},
@@ -104,7 +104,7 @@ var _ = Describe("Conversion functions", func() {
 		It("uses index for default name even when mixed with named containers", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Containers: []ContainerSpec{
+					Containers: []Container{
 						{Name: "worker", Image: "alpine:latest"},
 						{Image: "python:3.12"},
 						{Name: "db", Image: "postgres:16"},
@@ -121,7 +121,7 @@ var _ = Describe("Conversion functions", func() {
 		It("attributes resource error to the correct container", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Containers: []ContainerSpec{
+					Containers: []Container{
 						{Name: "good", Image: "alpine:latest", Resources: &ResourceRequirements{
 							Limits: &ResourceList{CPU: "500m"},
 						}},
@@ -140,7 +140,7 @@ var _ = Describe("Conversion functions", func() {
 		It("returns error for invalid resource limits in full request flow", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Containers: []ContainerSpec{{
+					Containers: []Container{{
 						Image: "python:3.12",
 						Resources: &ResourceRequirements{
 							Limits: &ResourceList{CPU: "500m", Memory: "not-valid"},
@@ -157,7 +157,7 @@ var _ = Describe("Conversion functions", func() {
 		It("returns error for invalid resource requests in full request flow", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Containers: []ContainerSpec{{
+					Containers: []Container{{
 						Image: "python:3.12",
 						Resources: &ResourceRequirements{
 							Limits:   &ResourceList{CPU: "1"},
@@ -175,7 +175,7 @@ var _ = Describe("Conversion functions", func() {
 		It("converts valid resources through the full request flow", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Containers: []ContainerSpec{{
+					Containers: []Container{{
 						Image: "python:3.12",
 						Resources: &ResourceRequirements{
 							Limits:   &ResourceList{CPU: "2", Memory: "4Gi"},
@@ -196,7 +196,7 @@ var _ = Describe("Conversion functions", func() {
 		It("passes rootfsSnapshotSources through to the CRD", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Containers: []ContainerSpec{{
+					Containers: []Container{{
 						Image: "python:3.12",
 					}},
 				},

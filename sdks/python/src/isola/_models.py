@@ -69,7 +69,7 @@ class ResourceRequirements(IsolaModel):
     requests: ResourceList | None = None
 
 
-class ContainerSpec(IsolaModel):
+class Container(IsolaModel):
     name: str | None = None
     image: str
     command: list[str] | None = None
@@ -116,7 +116,7 @@ class RootfsSnapshotData(IsolaModel):
 
 
 class PodTemplate(IsolaModel):
-    containers: list[ContainerSpec]
+    containers: list[Container]
 
 
 class PodTemplateInfo(IsolaModel):

@@ -102,7 +102,7 @@ def test_env_vars_are_write_only(
 ) -> None:
     """Env vars are accepted on create but not returned in get responses.
 
-    The response model uses ContainerInfo (not ContainerSpec), which has no env field.
+    The response model uses ContainerInfo (not Container), which has no env field.
     This is intentional to avoid leaking secrets.
     """
     sb = sandbox_factory(

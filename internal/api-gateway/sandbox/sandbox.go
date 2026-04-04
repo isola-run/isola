@@ -34,7 +34,7 @@ type CreateSandboxInput struct {
 	Body CreateSandboxRequest
 }
 
-type ContainerSpec struct {
+type Container struct {
 	Name    string            `json:"name,omitempty" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to sandbox{i} if omitted."`
 	Image   string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
 	Command []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
@@ -44,7 +44,7 @@ type ContainerSpec struct {
 }
 
 type PodTemplate struct {
-	Containers []ContainerSpec `json:"containers" required:"true" minItems:"1" doc:"Sandbox containers"`
+	Containers []Container `json:"containers" required:"true" minItems:"1" doc:"Sandbox containers"`
 }
 
 type CreateSandboxRequest struct {

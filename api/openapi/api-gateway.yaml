@@ -19,30 +19,7 @@ components:
       required:
         - exitCode
       type: object
-    ContainerInfo:
-      additionalProperties: false
-      properties:
-        command:
-          description: Container entrypoint override
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        image:
-          description: Container image
-          type: string
-        name:
-          description: Container name
-          type: string
-        resources:
-          $ref: "#/components/schemas/ResourceRequirements"
-          description: Resource requests and limits
-      required:
-        - name
-        - image
-      type: object
-    ContainerSpec:
+    Container:
       additionalProperties: false
       properties:
         command:
@@ -70,6 +47,29 @@ components:
           $ref: "#/components/schemas/ResourceRequirements"
           description: Resource requests and limits
       required:
+        - image
+      type: object
+    ContainerInfo:
+      additionalProperties: false
+      properties:
+        command:
+          description: Container entrypoint override
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        image:
+          description: Container image
+          type: string
+        name:
+          description: Container name
+          type: string
+        resources:
+          $ref: "#/components/schemas/ResourceRequirements"
+          description: Resource requests and limits
+      required:
+        - name
         - image
       type: object
     CreateCommandRequest:
@@ -357,7 +357,7 @@ components:
         containers:
           description: Sandbox containers
           items:
-            $ref: "#/components/schemas/ContainerSpec"
+            $ref: "#/components/schemas/Container"
           minItems: 1
           type:
             - array

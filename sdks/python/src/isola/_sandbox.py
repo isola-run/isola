@@ -24,7 +24,7 @@ from ._commands import AsyncCommands, Commands
 from ._exceptions import IsolaError, IsolaTimeoutError, NotFoundError
 from ._filesystem import AsyncFilesystem, Filesystem
 from ._models import (
-    ContainerSpec,
+    Container,
     CreateSandboxPayload,
     ListSandboxesResponse,
     NetworkSpec,
@@ -139,7 +139,7 @@ class Sandboxes:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(
-                containers=[ContainerSpec(
+                containers=[Container(
                     image=image,
                     command=command,
                     env=env,
@@ -194,7 +194,7 @@ class AsyncSandboxes:
         resources = _build_resources(cpu, memory, ephemeral_storage)
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(
-                containers=[ContainerSpec(
+                containers=[Container(
                     image=image,
                     command=command,
                     env=env,

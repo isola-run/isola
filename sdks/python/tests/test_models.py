@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from isola._models import (
-    ContainerSpec,
+    Container,
     CreateSandboxPayload,
     ListSandboxesResponse,
     NetworkSpec,
@@ -62,7 +62,7 @@ class TestNetworkSpecAliases:
 
 class TestValidateByNameAndAlias:
     def test_construct_with_snake_case(self) -> None:
-        spec = ContainerSpec(image="ubuntu:22.04")
+        spec = Container(image="ubuntu:22.04")
         assert spec.image == "ubuntu:22.04"
 
     def test_construct_with_camel_case(self) -> None:
@@ -169,7 +169,7 @@ class TestRoundTrip:
     def test_create_sandbox_payload_round_trip(self) -> None:
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(
-                containers=[ContainerSpec(
+                containers=[Container(
                     image="node:20",
                     command=["node", "app.js"],
                     env={"NODE_ENV": "production"},
