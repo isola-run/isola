@@ -165,10 +165,7 @@ def test_resource_limits_round_trip(
     isola_client: Isola,
     sandbox_factory,
 ) -> None:
-    """Resource limits set at creation should appear in the GET response.
-
-    Tests the full quantity conversion: REST string -> K8s resource.Quantity -> REST string.
-    """
+    """Resource limits set at creation should appear in the GET response."""
     sb = sandbox_factory(
         image="alpine:3.21",
         cpu=0.25,
