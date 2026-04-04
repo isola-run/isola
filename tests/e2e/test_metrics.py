@@ -20,7 +20,7 @@ import httpx
 import pytest
 from prometheus_client.parser import text_string_to_metric_families
 
-from conftest import ISOLA_METRICS_URL, POLL_INTERVAL
+from utils import ISOLA_METRICS_URL, POLL_INTERVAL
 
 
 def scrape_metrics() -> dict[str, float]:

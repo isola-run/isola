@@ -62,9 +62,8 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(np).NotTo(BeNil())
 			Expect(np.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeEgress))
 
-			// Verify CIDR rule exists
-			Expect(np.Spec.Egress).To(HaveLen(1))
-			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
+			Expect(np.Spec.Egress).To(HaveLen(2))
+			Expect(np.Spec.Egress[1].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
 
 			// Verify pod selector uses sandbox instance
 			Expect(np.Spec.PodSelector.MatchLabels).To(HaveKeyWithValue("app.kubernetes.io/instance", sandboxName))
@@ -148,9 +147,9 @@ var _ = Describe("Sandbox Controller", func() {
 			// Verify NetworkPolicy has 169.254.0.0/16 in except
 			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 			Expect(np).NotTo(BeNil())
-			Expect(np.Spec.Egress).To(HaveLen(1))
-			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("0.0.0.0/0"))
-			Expect(np.Spec.Egress[0].To[0].IPBlock.Except).To(ContainElement("169.254.0.0/16"))
+			Expect(np.Spec.Egress).To(HaveLen(2))
+			Expect(np.Spec.Egress[1].To[0].IPBlock.CIDR).To(Equal("0.0.0.0/0"))
+			Expect(np.Spec.Egress[1].To[0].IPBlock.Except).To(ContainElement("169.254.0.0/16"))
 		})
 
 		It("should not add except for public CIDRs that don't overlap blocked ranges", func() {
@@ -169,9 +168,9 @@ var _ = Describe("Sandbox Controller", func() {
 
 			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 			Expect(np).NotTo(BeNil())
-			Expect(np.Spec.Egress).To(HaveLen(1))
-			Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
-			Expect(np.Spec.Egress[0].To[0].IPBlock.Except).To(BeEmpty())
+			Expect(np.Spec.Egress).To(HaveLen(2))
+			Expect(np.Spec.Egress[1].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
+			Expect(np.Spec.Egress[1].To[0].IPBlock.Except).To(BeEmpty())
 		})
 
 		It("should recreate custom NetworkPolicy if deleted on next reconcile", func() {
@@ -487,6 +486,26 @@ var _ = Describe("configureDNS function", func() {
 		configureDNS(pod, network)
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
 		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
+	})
+
+	It("should auto-default public nameservers when egress CIDRs are set without DNS config", func() {
+		pod := &corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Name: "test", Image: "busybox"},
+				},
+			},
+		}
+
+		network := &sandboxv1alpha1.NetworkSpec{
+			AllowedEgressCIDRs: []string{"203.0.113.0/24"},
+		}
+
+		configureDNS(pod, network)
+		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
+		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
+		Expect(pod.Spec.DNSConfig.Options).To(HaveLen(1))
+		Expect(pod.Spec.DNSConfig.Options[0].Name).To(Equal("ndots"))
 	})
 
 	It("should add nameservers to cluster DNS when both are specified", func() {

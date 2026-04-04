@@ -52,11 +52,15 @@ def _build_rootfs_snapshot_sources(rootfs_snapshot_source: str | None) -> list[R
     return [RootfsSnapshotSource(snapshot_name=rootfs_snapshot_source)]
 
 
-def _build_resources(cpu: str | None, memory: str | None, ephemeral_storage: str | None) -> ResourcesSpec | None:
+def _build_resources(cpu: float | None, memory: int | None, ephemeral_storage: int | None) -> ResourcesSpec | None:
     if cpu is None and memory is None and ephemeral_storage is None:
         return None
 
-    resource_list = ResourceList(cpu=cpu, memory=memory, ephemeral_storage=ephemeral_storage)
+    resource_list = ResourceList(
+        cpu=f"{int(cpu * 1000)}m" if cpu is not None else None,
+        memory=f"{memory}Mi" if memory is not None else None,
+        ephemeral_storage=f"{ephemeral_storage}Mi" if ephemeral_storage is not None else None,
+    )
     return ResourcesSpec(limits=resource_list, requests=resource_list)
 
 
@@ -123,9 +127,9 @@ class Sandboxes:
         image: str,
         command: list[str] | None = None,
         env: dict[str, str] | None = None,
-        cpu: str | None = None,
-        memory: str | None = None,
-        ephemeral_storage: str | None = None,
+        cpu: float | None = None,
+        memory: int | None = None,
+        ephemeral_storage: int | None = None,
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
         network: NetworkSpec | None = None,
@@ -178,9 +182,9 @@ class AsyncSandboxes:
         image: str,
         command: list[str] | None = None,
         env: dict[str, str] | None = None,
-        cpu: str | None = None,
-        memory: str | None = None,
-        ephemeral_storage: str | None = None,
+        cpu: float | None = None,
+        memory: int | None = None,
+        ephemeral_storage: int | None = None,
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
         network: NetworkSpec | None = None,

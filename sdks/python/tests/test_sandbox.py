@@ -43,9 +43,9 @@ def test_create_sandbox_maps_flat_resources(sandbox_response_copy: dict[str, obj
             image="python:3.12",
             command=["sleep", "infinity"],
             env={"KEY": "value"},
-            cpu="500m",
-            memory="1Gi",
-            ephemeral_storage="2Gi",
+            cpu=0.5,
+            memory=1024,
+            ephemeral_storage=2048,
             timeout_seconds=3600,
         )
 
@@ -54,8 +54,8 @@ def test_create_sandbox_maps_flat_resources(sandbox_response_copy: dict[str, obj
 
     payload = json.loads(create_route.calls[0].request.content)
     assert payload["podTemplate"]["container"]["resources"] == {
-        "limits": {"cpu": "500m", "memory": "1Gi", "ephemeralStorage": "2Gi"},
-        "requests": {"cpu": "500m", "memory": "1Gi", "ephemeralStorage": "2Gi"},
+        "limits": {"cpu": "500m", "memory": "1024Mi", "ephemeralStorage": "2048Mi"},
+        "requests": {"cpu": "500m", "memory": "1024Mi", "ephemeralStorage": "2048Mi"},
     }
 
 

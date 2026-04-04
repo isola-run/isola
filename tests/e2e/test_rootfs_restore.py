@@ -21,7 +21,7 @@ import pytest
 
 from isola import Isola, RootfsSnapshotStatus, Sandbox, SandboxStatus
 
-from conftest import (
+from utils import (
     SANDBOXES_NAMESPACE,
     wait_for_visible,
     wait_for_running,
