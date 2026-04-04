@@ -125,7 +125,7 @@ def test_create_waits_until_complete(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     get_route = respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123").mock(
         side_effect=[
-            httpx.Response(200, json=_make_rootfs_snapshot_response("InProgress")),
+            httpx.Response(200, json=_make_rootfs_snapshot_response("Running")),
             httpx.Response(200, json=_make_rootfs_snapshot_response("Succeeded")),
         ]
     )
@@ -218,7 +218,7 @@ def test_wait_tolerates_transient_not_found(monkeypatch: pytest.MonkeyPatch) -> 
         side_effect=[
             httpx.Response(404, json={"detail": "not found"}),
             httpx.Response(404, json={"detail": "not found"}),
-            httpx.Response(200, json=_make_rootfs_snapshot_response("InProgress")),
+            httpx.Response(200, json=_make_rootfs_snapshot_response("Running")),
             httpx.Response(200, json=_make_rootfs_snapshot_response("Succeeded")),
         ]
     )
@@ -249,7 +249,7 @@ def test_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) -> None:
         return_value=httpx.Response(201, json=_make_rootfs_snapshot_response("Pending"))
     )
     respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123").mock(
-        return_value=httpx.Response(200, json=_make_rootfs_snapshot_response("InProgress"))
+        return_value=httpx.Response(200, json=_make_rootfs_snapshot_response("Running"))
     )
 
     with (
@@ -397,7 +397,7 @@ async def test_async_create_waits_until_complete(monkeypatch: pytest.MonkeyPatch
     )
     get_route = respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123").mock(
         side_effect=[
-            httpx.Response(200, json=_make_rootfs_snapshot_response("InProgress")),
+            httpx.Response(200, json=_make_rootfs_snapshot_response("Running")),
             httpx.Response(200, json=_make_rootfs_snapshot_response("Succeeded")),
         ]
     )
@@ -497,7 +497,7 @@ async def test_async_wait_tolerates_transient_not_found(monkeypatch: pytest.Monk
         side_effect=[
             httpx.Response(404, json={"detail": "not found"}),
             httpx.Response(404, json={"detail": "not found"}),
-            httpx.Response(200, json=_make_rootfs_snapshot_response("InProgress")),
+            httpx.Response(200, json=_make_rootfs_snapshot_response("Running")),
             httpx.Response(200, json=_make_rootfs_snapshot_response("Succeeded")),
         ]
     )
@@ -529,7 +529,7 @@ async def test_async_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) 
         return_value=httpx.Response(201, json=_make_rootfs_snapshot_response("Pending"))
     )
     respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123").mock(
-        return_value=httpx.Response(200, json=_make_rootfs_snapshot_response("InProgress"))
+        return_value=httpx.Response(200, json=_make_rootfs_snapshot_response("Running"))
     )
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:

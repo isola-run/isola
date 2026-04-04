@@ -176,8 +176,8 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 			Expect(snapshotStatus(nil, []metav1.Condition{})).To(Equal("Pending"))
 		})
 
-		It("maps set startTime and no Succeeded condition to InProgress", func() {
-			Expect(snapshotStatus(now, nil)).To(Equal("InProgress"))
+		It("maps set startTime and no Succeeded condition to Running", func() {
+			Expect(snapshotStatus(now, nil)).To(Equal("Running"))
 		})
 
 		It("maps Succeeded=True to Succeeded", func() {
@@ -194,8 +194,8 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 			Expect(snapshotStatus(now, conditions)).To(Equal("Failed"))
 		})
 
-		It("maps startTime set with no Succeeded condition to InProgress", func() {
-			Expect(snapshotStatus(now, []metav1.Condition{})).To(Equal("InProgress"))
+		It("maps startTime set with no Succeeded condition to Running", func() {
+			Expect(snapshotStatus(now, []metav1.Condition{})).To(Equal("Running"))
 		})
 	})
 })

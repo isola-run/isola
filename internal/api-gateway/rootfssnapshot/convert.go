@@ -64,7 +64,7 @@ func snapshotStatus(startTime *metav1.Time, conditions []metav1.Condition) strin
 	}
 
 	if startTime != nil {
-		return "InProgress"
+		return "Running"
 	}
 
 	return "Pending"

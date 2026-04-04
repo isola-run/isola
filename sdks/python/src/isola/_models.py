@@ -89,7 +89,7 @@ class RootfsSnapshotSource(IsolaModel):
 
 class RootfsSnapshotStatus(str, Enum):
     PENDING = "Pending"
-    IN_PROGRESS = "InProgress"
+    RUNNING = "Running"
     SUCCEEDED = "Succeeded"
     FAILED = "Failed"
 
