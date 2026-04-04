@@ -539,7 +539,7 @@ func (r *RootfsSnapshotReconciler) setSucceeded(ctx context.Context, base, snap 
 
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
 		{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
+			Type:               sandboxv1alpha1.RootfsSnapshotSucceededCondition,
 			Status:             metav1.ConditionTrue,
 			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotSucceeded,
 			Message:            "Snapshot completed successfully",
@@ -560,8 +560,8 @@ func (r *RootfsSnapshotReconciler) setFailed(ctx context.Context, base, snap *sa
 
 	if err := r.patchStatus(ctx, base, snap, []metav1.Condition{
 		{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotFailed),
-			Status:             metav1.ConditionTrue,
+			Type:               sandboxv1alpha1.RootfsSnapshotSucceededCondition,
+			Status:             metav1.ConditionFalse,
 			Reason:             sandboxv1alpha1.ReasonRootfsSnapshotFailed,
 			Message:            message,
 			ObservedGeneration: snap.Generation,

@@ -41,7 +41,7 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 			Expect(body.SandboxID).To(Equal("test-sb"))
 			Expect(body.SnapshotName).To(Equal("snap1"))
 			Expect(body.ContainerName).To(BeEmpty())
-			Expect(body.Status).To(Equal("pending"))
+			Expect(body.Status).To(Equal("Pending"))
 			_, err := time.Parse(time.RFC3339, body.CreationTimestamp)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -168,37 +168,34 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 	Describe("Status mapping", func() {
 		now := &metav1.Time{Time: time.Now()}
 
-		It("maps nil startTime and no conditions to pending", func() {
-			Expect(snapshotStatus(nil, nil)).To(Equal("pending"))
+		It("maps nil startTime and no conditions to Pending", func() {
+			Expect(snapshotStatus(nil, nil)).To(Equal("Pending"))
 		})
 
-		It("maps nil startTime and empty conditions to pending", func() {
-			Expect(snapshotStatus(nil, []metav1.Condition{})).To(Equal("pending"))
+		It("maps nil startTime and empty conditions to Pending", func() {
+			Expect(snapshotStatus(nil, []metav1.Condition{})).To(Equal("Pending"))
 		})
 
-		It("maps set startTime and no terminal conditions to inProgress", func() {
-			Expect(snapshotStatus(now, nil)).To(Equal("inProgress"))
+		It("maps set startTime and no Succeeded condition to InProgress", func() {
+			Expect(snapshotStatus(now, nil)).To(Equal("InProgress"))
 		})
 
-		It("maps Complete=True to complete", func() {
+		It("maps Succeeded=True to Succeeded", func() {
 			conditions := []metav1.Condition{
-				{Type: string(sandboxv1alpha1.RootfsSnapshotComplete), Status: metav1.ConditionTrue, Reason: sandboxv1alpha1.ReasonRootfsSnapshotSucceeded},
+				{Type: sandboxv1alpha1.RootfsSnapshotSucceededCondition, Status: metav1.ConditionTrue, Reason: sandboxv1alpha1.ReasonRootfsSnapshotSucceeded},
 			}
-			Expect(snapshotStatus(now, conditions)).To(Equal("complete"))
+			Expect(snapshotStatus(now, conditions)).To(Equal("Succeeded"))
 		})
 
-		It("maps Failed=True to failed", func() {
+		It("maps Succeeded=False to Failed", func() {
 			conditions := []metav1.Condition{
-				{Type: string(sandboxv1alpha1.RootfsSnapshotFailed), Status: metav1.ConditionTrue, Reason: sandboxv1alpha1.ReasonRootfsSnapshotFailed},
+				{Type: sandboxv1alpha1.RootfsSnapshotSucceededCondition, Status: metav1.ConditionFalse, Reason: sandboxv1alpha1.ReasonRootfsSnapshotFailed},
 			}
-			Expect(snapshotStatus(now, conditions)).To(Equal("failed"))
+			Expect(snapshotStatus(now, conditions)).To(Equal("Failed"))
 		})
 
-		It("maps startTime set with conditions present but none True to inProgress", func() {
-			conditions := []metav1.Condition{
-				{Type: string(sandboxv1alpha1.RootfsSnapshotComplete), Status: metav1.ConditionFalse, Reason: "InProgress"},
-			}
-			Expect(snapshotStatus(now, conditions)).To(Equal("inProgress"))
+		It("maps startTime set with no Succeeded condition to InProgress", func() {
+			Expect(snapshotStatus(now, []metav1.Condition{})).To(Equal("InProgress"))
 		})
 	})
 })

@@ -42,12 +42,11 @@ class IsolaModel(BaseModel):
 
 
 class SandboxStatus(str, Enum):
-    CREATING = "creating"
-    RUNNING = "running"
-    SHUTTING_DOWN = "shuttingDown"
-    FAILED = "failed"
-    STOPPED = "stopped"
-    UNKNOWN = "unknown"
+    PENDING = "Pending"
+    RUNNING = "Running"
+    TERMINATING = "Terminating"
+    SUCCEEDED = "Succeeded"
+    FAILED = "Failed"
 
 
 # todo benl: should we default nameservers to e.g. 1.1.1.1 if allow internet is specified?
@@ -89,10 +88,10 @@ class RootfsSnapshotSource(IsolaModel):
 
 
 class RootfsSnapshotStatus(str, Enum):
-    PENDING = "pending"
-    IN_PROGRESS = "inProgress"
-    COMPLETE = "complete"
-    FAILED = "failed"
+    PENDING = "Pending"
+    IN_PROGRESS = "InProgress"
+    SUCCEEDED = "Succeeded"
+    FAILED = "Failed"
 
 
 class CreateRootfsSnapshotPayload(IsolaModel):

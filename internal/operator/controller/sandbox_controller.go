@@ -44,6 +44,10 @@ import (
 )
 
 const (
+	// SandboxSucceededCondition indicates whether the sandbox completed successfully.
+	// True = succeeded, False = failed, absent = in progress.
+	SandboxSucceededCondition = "Succeeded"
+
 	// Summary condition
 	SandboxReadyCondition = "Ready"
 
@@ -70,6 +74,7 @@ const (
 	CondReasonInvalidRuntime               = "InvalidRuntime"
 
 	CondReasonStartupTimeoutExceeded = "StartupTimeoutExceeded"
+	CondReasonTimeout                = "Timeout"
 
 	// Restore-related reasons
 	CondReasonRootfsRestoreConfigError = "RootfsRestoreConfigurationError"
@@ -254,6 +259,13 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 					Message:            err.Error(),
 					ObservedGeneration: sandbox.Generation,
 				},
+				{
+					Type:               SandboxSucceededCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonRootfsRestoreConfigError,
+					Message:            err.Error(),
+					ObservedGeneration: sandbox.Generation,
+				},
 			})
 			return err
 		}
@@ -261,6 +273,13 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 				{
 					Type:               SandboxReadyCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonRootfsRestoreConfigError,
+					Message:            err.Error(),
+					ObservedGeneration: sandbox.Generation,
+				},
+				{
+					Type:               SandboxSucceededCondition,
 					Status:             metav1.ConditionFalse,
 					Reason:             CondReasonRootfsRestoreConfigError,
 					Message:            err.Error(),
@@ -310,6 +329,13 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 			},
 			{
 				Type:               SandboxReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonPodCreationFailed,
+				Message:            err.Error(),
+				ObservedGeneration: sandbox.Generation,
+			},
+			{
+				Type:               SandboxSucceededCondition,
 				Status:             metav1.ConditionFalse,
 				Reason:             CondReasonPodCreationFailed,
 				Message:            err.Error(),
@@ -439,6 +465,13 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 				Message:            err.Error(),
 				ObservedGeneration: sandbox.Generation,
 			},
+			{
+				Type:               SandboxSucceededCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonNetworkPolicyFailed,
+				Message:            err.Error(),
+				ObservedGeneration: sandbox.Generation,
+			},
 		}); patchErr != nil {
 			log.Error(patchErr, "Failed to update Sandbox status")
 		}
@@ -541,6 +574,10 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod)
 	conditions = append(conditions, readyCondition)
 
+	if succeeded := r.determineSucceededCondition(sandbox, sandboxPod); succeeded != nil {
+		conditions = append(conditions, *succeeded)
+	}
+
 	return r.patchStatus(ctx, baseSandbox, sandbox, conditions)
 }
 
@@ -602,25 +639,22 @@ func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1a
 		}
 	}
 
-	completeCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
-	if completeCond != nil && completeCond.Status == metav1.ConditionTrue {
-		message := fmt.Sprintf("RootfsSnapshot %q completed", snap.Name)
+	succeeded := meta.FindStatusCondition(snap.Status.Conditions, sandboxv1alpha1.RootfsSnapshotSucceededCondition)
+	if succeeded != nil && succeeded.Status == metav1.ConditionTrue {
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionTrue,
 			Reason:             CondReasonRootfsSnapshotComplete,
-			Message:            message,
+			Message:            fmt.Sprintf("RootfsSnapshot %q completed", snap.Name),
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
-
-	failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
-	if failedCond != nil && failedCond.Status == metav1.ConditionTrue {
+	if succeeded != nil && succeeded.Status == metav1.ConditionFalse {
 		return metav1.Condition{
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonRootfsSnapshotFailed,
-			Message:            fmt.Sprintf("RootfsSnapshot %q failed: %s", snap.Name, failedCond.Message),
+			Message:            fmt.Sprintf("RootfsSnapshot %q failed: %s", snap.Name, succeeded.Message),
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
@@ -682,6 +716,38 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 		Message:            "Pod is running",
 		ObservedGeneration: sandbox.Generation,
 	}
+}
+
+// determineSucceededCondition returns the Succeeded condition for terminal sandboxes.
+// Returns nil when the sandbox is still in progress (condition should not be set).
+// Once set, the condition is preserved (terminal is permanent).
+func (r *SandboxReconciler) determineSucceededCondition(sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) *metav1.Condition {
+	// Terminal is permanent — preserve existing Succeeded condition
+	if existing := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxSucceededCondition); existing != nil {
+		return existing
+	}
+
+	if sandboxPod != nil && sandboxPod.Status.Phase == corev1.PodSucceeded {
+		return &metav1.Condition{
+			Type:               SandboxSucceededCondition,
+			Status:             metav1.ConditionTrue,
+			Reason:             CondReasonPodSucceeded,
+			Message:            "Pod completed successfully",
+			ObservedGeneration: sandbox.Generation,
+		}
+	}
+
+	if podutil.IsPodTerminated(sandboxPod) {
+		return &metav1.Condition{
+			Type:               SandboxSucceededCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             CondReasonPodFailed,
+			Message:            "Pod failed",
+			ObservedGeneration: sandbox.Generation,
+		}
+	}
+
+	return nil
 }
 
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes,verbs=get;list;watch;create;update;patch;delete
@@ -761,6 +827,18 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if optionalTimeoutAt != nil && r.clock().Now().After(optionalTimeoutAt.Time) {
 		log.Info("Sandbox timed out")
 
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxSucceededCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonTimeout,
+				Message:            "Sandbox timed out",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, err
+		}
+
 		res, cleanupDone, err := r.finalizeSandbox(ctx, sandbox, baseSandbox)
 		if err != nil {
 			return res, err
@@ -784,13 +862,22 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			time.Duration(*sandbox.Spec.StartupTimeoutSeconds) * time.Second)
 		if r.clock().Now().After(startupDeadline) {
 			log.Info("Startup timeout exceeded", "deadline", startupDeadline)
-			if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{{
-				Type:               SandboxReadyCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonStartupTimeoutExceeded,
-				Message:            fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds),
-				ObservedGeneration: sandbox.Generation,
-			}}); err != nil {
+			if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+				{
+					Type:               SandboxReadyCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonStartupTimeoutExceeded,
+					Message:            fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds),
+					ObservedGeneration: sandbox.Generation,
+				},
+				{
+					Type:               SandboxSucceededCondition,
+					Status:             metav1.ConditionFalse,
+					Reason:             CondReasonStartupTimeoutExceeded,
+					Message:            fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds),
+					ObservedGeneration: sandbox.Generation,
+				},
+			}); err != nil {
 				log.Error(err, "Failed to patch startup timeout condition")
 			}
 			if err := r.Delete(ctx, sandbox); err != nil {
@@ -1079,8 +1166,8 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{RequeueAfter: requeueAfter}, false, nil
 	}
 
-	completeCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
-	if completeCond != nil && completeCond.Status == metav1.ConditionTrue {
+	succeededCond := meta.FindStatusCondition(snap.Status.Conditions, sandboxv1alpha1.RootfsSnapshotSucceededCondition)
+	if succeededCond != nil && succeededCond.Status == metav1.ConditionTrue {
 		log.Info("Snapshot completed successfully", "snapshot", snapshotName)
 		r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "SnapshotSucceeded", "SnapshotCompleted", "Snapshot %q completed", snapshotName)
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -1097,11 +1184,10 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	// Completed but failed - proceed with deletion anyway
-	failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
+	// Completed but failed (Succeeded=False) - proceed with deletion anyway
 	message := "Snapshot failed"
-	if failedCond != nil && failedCond.Message != "" {
-		message = failedCond.Message
+	if succeededCond != nil && succeededCond.Message != "" {
+		message = succeededCond.Message
 	}
 	log.Info("Snapshot failed, proceeding with deletion", "snapshot", snapshotName)
 	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "SnapshotFailed", "SnapshotFailed", "%s", message)

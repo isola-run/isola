@@ -18,15 +18,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// RootfsSnapshotConditionType defines condition types for RootfsSnapshot
-type RootfsSnapshotConditionType string
-
 const (
-	// RootfsSnapshotComplete indicates the snapshot completed successfully.
-	RootfsSnapshotComplete RootfsSnapshotConditionType = "Complete"
-
-	// RootfsSnapshotFailed indicates the snapshot operation failed.
-	RootfsSnapshotFailed RootfsSnapshotConditionType = "Failed"
+	// RootfsSnapshotSucceededCondition indicates whether the snapshot completed successfully.
+	// True = succeeded, False = failed, absent = in progress.
+	RootfsSnapshotSucceededCondition = "Succeeded"
 )
 
 // Condition reasons for RootfsSnapshot
@@ -109,8 +104,7 @@ type RootfsSnapshotStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=rfs
-// +kubebuilder:printcolumn:name="Complete",type="string",JSONPath=".status.conditions[?(@.type=='Complete')].status",description="Snapshot completed successfully"
-// +kubebuilder:printcolumn:name="Failed",type="string",JSONPath=".status.conditions[?(@.type=='Failed')].status",description="Snapshot failed"
+// +kubebuilder:printcolumn:name="Succeeded",type="string",JSONPath=".status.conditions[?(@.type=='Succeeded')].status",description="Snapshot succeeded"
 // +kubebuilder:printcolumn:name="Sandbox",type="string",JSONPath=".spec.sandboxName",description="Sandbox being snapshotted"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 

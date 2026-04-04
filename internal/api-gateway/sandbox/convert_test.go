@@ -430,12 +430,13 @@ var _ = Describe("Conversion functions", func() {
 		})
 	})
 
-	Describe("conditionsToStatus", func() {
-		It("maps unrecognized reason to unknown", func() {
-			conditions := []metav1.Condition{
+	Describe("SandboxStatus", func() {
+		It("returns Pending for unrecognized state with no Succeeded condition", func() {
+			sb := &sandboxv1alpha1.Sandbox{}
+			sb.Status.Conditions = []metav1.Condition{
 				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "SomethingNew"},
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("unknown"))
+			Expect(apigateway.SandboxStatus(sb)).To(Equal("Pending"))
 		})
 	})
 

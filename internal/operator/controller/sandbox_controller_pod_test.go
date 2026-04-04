@@ -432,6 +432,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionTrue, CondReasonPodRunning)).To(BeTrue())
 			Expect(hasConditionWithReason(sandbox, SandboxReadyCondition, metav1.ConditionTrue, CondReasonPodRunning)).To(BeTrue())
+			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, SandboxSucceededCondition)).To(BeNil())
 		})
 
 		It("should reflect pod failure in conditions with PodFailed reason", func() {
@@ -463,6 +464,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
 			Expect(hasConditionWithReason(sandbox, SandboxReadyCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
+			Expect(hasConditionWithReason(sandbox, SandboxSucceededCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
 		})
 
 		It("should reflect pod success in conditions with PodSucceeded reason", func() {
@@ -494,6 +496,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionFalse, CondReasonPodSucceeded)).To(BeTrue())
 			Expect(hasConditionWithReason(sandbox, SandboxReadyCondition, metav1.ConditionFalse, CondReasonPodSucceeded)).To(BeTrue())
+			Expect(hasConditionWithReason(sandbox, SandboxSucceededCondition, metav1.ConditionTrue, CondReasonPodSucceeded)).To(BeTrue())
 		})
 
 		It("should maintain stable conditions across multiple reconciles", func() {

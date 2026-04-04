@@ -53,19 +53,17 @@ func rootfsSnapshotToResponse(rs *sandboxv1alpha1.RootfsSnapshot) RootfsSnapshot
 }
 
 func snapshotStatus(startTime *metav1.Time, conditions []metav1.Condition) string {
-	complete := meta.FindStatusCondition(conditions, string(sandboxv1alpha1.RootfsSnapshotComplete))
-	if complete != nil && complete.Status == metav1.ConditionTrue {
-		return "complete"
-	}
-
-	failed := meta.FindStatusCondition(conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
-	if failed != nil && failed.Status == metav1.ConditionTrue {
-		return "failed"
+	succeeded := meta.FindStatusCondition(conditions, sandboxv1alpha1.RootfsSnapshotSucceededCondition)
+	if succeeded != nil {
+		if succeeded.Status == metav1.ConditionTrue {
+			return "Succeeded"
+		}
+		return "Failed"
 	}
 
 	if startTime != nil {
-		return "inProgress"
+		return "InProgress"
 	}
 
-	return "pending"
+	return "Pending"
 }

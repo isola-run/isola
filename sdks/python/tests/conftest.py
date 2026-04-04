@@ -23,7 +23,7 @@ import pytest
 def sandbox_response() -> dict[str, object]:
     return {
         "id": "sandbox-123",
-        "status": "running",
+        "status": "Running",
         "creationTimestamp": "2026-02-18T00:00:00Z",
         "podTemplate": {
             "container": {
@@ -56,12 +56,12 @@ def sandbox_summary_response() -> dict[str, object]:
         "sandboxes": [
             {
                 "id": "sandbox-123",
-                "status": "running",
+                "status": "Running",
                 "creationTimestamp": "2026-02-18T00:00:00Z",
             },
             {
                 "id": "sandbox-456",
-                "status": "creating",
+                "status": "Pending",
                 "creationTimestamp": "2026-02-18T00:01:00Z",
             },
         ]
@@ -82,7 +82,7 @@ def rootfs_snapshot_response() -> dict[str, object]:
         "containerName": "worker",
         "timeoutSeconds": 300,
         "ttlSecondsAfterFinished": 300,
-        "status": "complete",
+        "status": "Succeeded",
         "creationTimestamp": "2026-02-18T00:00:00Z",
     }
 
