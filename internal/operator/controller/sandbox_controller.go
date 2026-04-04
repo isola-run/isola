@@ -194,6 +194,30 @@ func (r *SandboxReconciler) injectSandboxSidecar(sandboxPod *corev1.Pod) {
 	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, sidecarContainer)
 }
 
+// markSandboxFailed sets Succeeded=False and Ready=False if the sandbox is not already terminal.
+// Returns nil without patching if Succeeded is already set (one-way latch).
+func (r *SandboxReconciler) markSandboxFailed(ctx context.Context, baseSandbox *sandboxv1alpha1.Sandbox, sandbox *sandboxv1alpha1.Sandbox, reason, message string) error {
+	if existing := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition); existing != nil {
+		return nil
+	}
+	return r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+		{
+			Type:               sandboxv1alpha1.SandboxReadyCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: sandbox.Generation,
+		},
+		{
+			Type:               sandboxv1alpha1.SandboxSucceededCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: sandbox.Generation,
+		},
+	})
+}
+
 func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandboxv1alpha1.Sandbox, newSandbox *sandboxv1alpha1.Sandbox, newConditions []metav1.Condition) error {
 	if newSandbox.Status.Conditions == nil {
 		newSandbox.Status.Conditions = []metav1.Condition{}
@@ -268,43 +292,24 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	}
 
 	if len(sandbox.Spec.RootfsSnapshotSources) > 0 {
-		if err := r.validateRootfsRestoreConfig(ctx); err != nil {
-			_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-				{
-					Type:               sandboxv1alpha1.SandboxReadyCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonRootfsRestoreConfigError,
-					Message:            err.Error(),
-					ObservedGeneration: sandbox.Generation,
-				},
-				{
-					Type:               sandboxv1alpha1.SandboxSucceededCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonRootfsRestoreConfigError,
-					Message:            err.Error(),
-					ObservedGeneration: sandbox.Generation,
-				},
-			})
+		if terminal, err := r.validateRootfsRestoreConfig(ctx); err != nil {
+			if terminal {
+				_ = r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonRootfsRestoreConfigError, err.Error())
+				return reconcile.TerminalError(err)
+			}
+			_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{{
+				Type:               sandboxv1alpha1.SandboxReadyCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonRootfsRestoreConfigError,
+				Message:            err.Error(),
+				ObservedGeneration: sandbox.Generation,
+			}})
 			return err
 		}
 		if err := r.injectRootfsRestore(sandbox.Spec.RootfsSnapshotSources, sandboxPod, sandbox.Namespace); err != nil {
-			_ = r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-				{
-					Type:               sandboxv1alpha1.SandboxReadyCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonRootfsRestoreConfigError,
-					Message:            err.Error(),
-					ObservedGeneration: sandbox.Generation,
-				},
-				{
-					Type:               sandboxv1alpha1.SandboxSucceededCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonRootfsRestoreConfigError,
-					Message:            err.Error(),
-					ObservedGeneration: sandbox.Generation,
-				},
-			})
-			return err
+			// injectRootfsRestore errors are all spec validation (permanent)
+			_ = r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonRootfsRestoreConfigError, err.Error())
+			return reconcile.TerminalError(err)
 		}
 	}
 
@@ -833,15 +838,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if optionalTimeoutAt != nil && r.clock().Now().After(optionalTimeoutAt.Time) {
 		log.Info("Sandbox timed out")
 
-		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-			{
-				Type:               sandboxv1alpha1.SandboxSucceededCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonTimeout,
-				Message:            "Sandbox timed out",
-				ObservedGeneration: sandbox.Generation,
-			},
-		}); err != nil {
+		if err := r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonTimeout, "Sandbox timed out"); err != nil {
 			return ctrl.Result{}, err
 		}
 
@@ -868,22 +865,8 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			time.Duration(*sandbox.Spec.StartupTimeoutSeconds) * time.Second)
 		if r.clock().Now().After(startupDeadline) {
 			log.Info("Startup timeout exceeded", "deadline", startupDeadline)
-			if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-				{
-					Type:               sandboxv1alpha1.SandboxReadyCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonStartupTimeoutExceeded,
-					Message:            fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds),
-					ObservedGeneration: sandbox.Generation,
-				},
-				{
-					Type:               sandboxv1alpha1.SandboxSucceededCondition,
-					Status:             metav1.ConditionFalse,
-					Reason:             CondReasonStartupTimeoutExceeded,
-					Message:            fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds),
-					ObservedGeneration: sandbox.Generation,
-				},
-			}); err != nil {
+			msg := fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds)
+			if err := r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonStartupTimeoutExceeded, msg); err != nil {
 				log.Error(err, "Failed to patch startup timeout condition")
 			}
 			if err := r.Delete(ctx, sandbox); err != nil {
@@ -1267,24 +1250,25 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 
 // validateRootfsRestoreConfig checks that the reconciler is configured for rootfs restore
 // (runtime class + host mount path). Called once before processing individual sources.
-func (r *SandboxReconciler) validateRootfsRestoreConfig(ctx context.Context) error {
+// Returns (true, err) for permanent misconfigurations, (false, err) for transient failures.
+func (r *SandboxReconciler) validateRootfsRestoreConfig(ctx context.Context) (terminal bool, err error) {
 	if r.RootfsSnapshotHostMountPath == "" {
-		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires rootfs snapshot restore to be configured (--rootfssnapshot-host-mount-path)"))
+		return true, fmt.Errorf("rootfsSnapshotSources requires rootfs snapshot restore to be configured (--rootfssnapshot-host-mount-path)")
 	}
 
 	if r.RuntimeClassName == "" {
-		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires gVisor runtime (no RuntimeClassName configured)"))
+		return true, fmt.Errorf("rootfsSnapshotSources requires gVisor runtime (no RuntimeClassName configured)")
 	}
 	supported, err := snapshot.CheckRuntimeClassSupport(ctx, r.Client, r.RuntimeClassName)
 	if err != nil {
 		// K8s API error — may be transient, allow retry
-		return fmt.Errorf("failed to validate runtime for rootfs restore: %w", err)
+		return false, fmt.Errorf("failed to validate runtime for rootfs restore: %w", err)
 	}
 	if !supported {
-		return reconcile.TerminalError(fmt.Errorf("rootfsSnapshotSources requires a gVisor runtime (RuntimeClass %q handler is not runsc/gvisor)", r.RuntimeClassName))
+		return true, fmt.Errorf("rootfsSnapshotSources requires a gVisor runtime (RuntimeClass %q handler is not runsc/gvisor)", r.RuntimeClassName)
 	}
 
-	return nil
+	return false, nil
 }
 
 func (r *SandboxReconciler) injectRootfsRestore(sources []sandboxv1alpha1.RootfsSnapshotSource, pod *corev1.Pod, namespace string) error {
