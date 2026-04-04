@@ -26,7 +26,7 @@ from isola import (
     SandboxStatus,
 )
 
-from conftest import wait_for_running
+from utils import wait_for_running
 
 POLL_INTERVAL = 0.5
 

@@ -32,7 +32,7 @@ from isola import (
 from isola._commands import Commands
 from isola._filesystem import Filesystem
 
-from conftest import wait_for_running
+from utils import wait_for_running
 
 FAKE_SANDBOX_ID = "nonexistent-sandbox-xyz"
 
