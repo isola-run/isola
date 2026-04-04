@@ -53,8 +53,6 @@ func (b *BodyStream) Resolve(ctx huma.Context) []error {
 }
 
 // SandboxStatus derives the user-facing status string from a Sandbox object.
-// Uses the Tekton/Knative "Succeeded" condition pattern: Succeeded=True means success,
-// Succeeded=False means failure, absent means in-progress. DeletionTimestamp means terminating.
 func SandboxStatus(sb *sandboxv1alpha1.Sandbox) string {
 	succeeded := meta.FindStatusCondition(sb.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)
 	if succeeded != nil {
