@@ -366,8 +366,8 @@ func configureDNS(sandboxPod *corev1.Pod, network *sandboxv1alpha1.NetworkSpec) 
 
 		var nameservers []string
 		var dnsOptions []corev1.PodDNSConfigOption
-		if network != nil && len(network.Nameservers) > 0 {
-			nameservers = network.Nameservers
+		if ns := netbuilder.EffectiveNameservers(network); len(ns) > 0 {
+			nameservers = ns
 			dnsOptions = []corev1.PodDNSConfigOption{
 				// ndots:1 - external domains are tried directly without search domain suffix
 				{Name: "ndots", Value: ptr.To("1")},
