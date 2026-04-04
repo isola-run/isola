@@ -23,6 +23,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -140,6 +141,30 @@ func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 		Image:           r.SandboxSidecarImage,
 		ImagePullPolicy: r.SandboxSidecarImagePullPolicy,
 		RestartPolicy:   &rp,
+		// CPU & memory: gVisor runs one sentry process in the pod cgroup, and
+		// per-container cgroups are compat-only (not enforced).
+		// sandbox-sidecar container requests/limits are summed together with the user containers'
+		// and so not setting them would effectively unbound the user pod (+ infinity),
+		// and setting them to anything bigger than 1 would just add them on top of the user-defined
+		// requests/limits, surprising the user. We'll just piggy-back the user containers' requests/limits.
+		//
+		// Ephemeral storage: not cgroup-based, but gVisor still lumps all of the storage
+		// under a single filestore, so the requests/limits are summed across all containers
+		// instead of being enforced-individually, just like for CPU and memory.
+		//
+		// All three use near-zero values so the effective pod budget ~= user containers.
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:              resource.MustParse("1m"),
+				corev1.ResourceMemory:           resource.MustParse("1Mi"),
+				corev1.ResourceEphemeralStorage: resource.MustParse("1Mi"),
+			},
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:              resource.MustParse("1m"),
+				corev1.ResourceMemory:           resource.MustParse("1Mi"),
+				corev1.ResourceEphemeralStorage: resource.MustParse("1Mi"),
+			},
+		},
 		// CAP_SYS_PTRACE is required by gVisor's ContextCanTrace check (task_files.go)
 		// that guards /proc/<pid>/root, /proc/<pid>/cwd, and /proc/<pid>/environ.
 		// These are accessed to find the container's PID, resolve its working directory,
