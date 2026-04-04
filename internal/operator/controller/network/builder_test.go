@@ -71,6 +71,28 @@ func TestEffectiveNameservers_UserProvidedTakesPrecedence(t *testing.T) {
 	g.Expect(EffectiveNameservers(network)).To(Equal([]string{"9.9.9.9"}))
 }
 
+func TestEffectiveNameservers_ClusterDNSSkipsAutoDefault(t *testing.T) {
+	g := NewWithT(t)
+	network := &sandboxv1alpha1.NetworkSpec{
+		AllowClusterDNS:    ptr.To(true),
+		AllowedEgressCIDRs: []string{"8.8.8.0/24"},
+	}
+	g.Expect(EffectiveNameservers(network)).To(BeNil())
+}
+
+func TestBuildCustomNetworkPolicy_ClusterDNSWithCIDRsNoAutoDNSRules(t *testing.T) {
+	g := NewWithT(t)
+	network := &sandboxv1alpha1.NetworkSpec{
+		AllowClusterDNS:    ptr.To(true),
+		AllowedEgressCIDRs: []string{"8.8.8.0/24"},
+	}
+
+	np := mustBuildCustomNetworkPolicy(t, network)
+
+	g.Expect(np.Spec.Egress).To(HaveLen(1))
+	g.Expect(np.Spec.Egress[0].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
+}
+
 func TestBuildCustomNetworkPolicy_NilNetwork(t *testing.T) {
 	g := NewWithT(t)
 	np, err := BuildCustomNetworkPolicy("test-sandbox", "default", nil)
@@ -100,7 +122,6 @@ func TestBuildCustomNetworkPolicy_WithAllowedEgressCIDRs(t *testing.T) {
 	g.Expect(np.Spec.PodSelector.MatchLabels["app.kubernetes.io/instance"]).To(Equal("test-sandbox"))
 	g.Expect(np.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeEgress))
 
-	// DNS rule (auto-defaulted) + CIDR rule
 	g.Expect(np.Spec.Egress).To(HaveLen(2))
 	g.Expect(np.Spec.Egress[0].Ports).To(HaveLen(2)) // DNS rule has port 53 UDP+TCP
 	g.Expect(np.Spec.Egress[1].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
@@ -114,7 +135,6 @@ func TestBuildCustomNetworkPolicy_BlocksRiskyCIDRs(t *testing.T) {
 
 	np := mustBuildCustomNetworkPolicy(t, network)
 
-	// DNS rule (auto-defaulted) + CIDR rule
 	g.Expect(np.Spec.Egress).To(HaveLen(2))
 	egressRule := np.Spec.Egress[1]
 	g.Expect(egressRule.To).To(HaveLen(1))
@@ -137,7 +157,6 @@ func TestBuildCustomNetworkPolicy_DoesNotBlockNonOverlappingCIDRs(t *testing.T) 
 
 	np := mustBuildCustomNetworkPolicy(t, network)
 
-	// DNS rule (auto-defaulted) + CIDR rule
 	g.Expect(np.Spec.Egress).To(HaveLen(2))
 	ipBlock := np.Spec.Egress[1].To[0].IPBlock
 	g.Expect(ipBlock.CIDR).To(Equal("8.8.0.0/16"))
@@ -366,7 +385,6 @@ func TestBuildCustomNetworkPolicy_DeduplicatesCIDRs(t *testing.T) {
 
 	np := mustBuildCustomNetworkPolicy(t, network)
 
-	// DNS rule (auto-defaulted) + 2 deduplicated CIDR rules
 	g.Expect(np.Spec.Egress).To(HaveLen(3))
 }
 
@@ -420,7 +438,6 @@ func TestBuildCustomNetworkPolicy_IPv6AllowedEgressCIDR(t *testing.T) {
 
 	np := mustBuildCustomNetworkPolicy(t, network)
 
-	// DNS rule (auto-defaulted IPv4) + IPv6 CIDR rule
 	g.Expect(np.Spec.Egress).To(HaveLen(2))
 	ipBlock := np.Spec.Egress[1].To[0].IPBlock
 	g.Expect(ipBlock.CIDR).To(Equal("2607:f8b0::/32"))
@@ -437,7 +454,6 @@ func TestBuildCustomNetworkPolicy_IPv6AllInternet(t *testing.T) {
 
 	np := mustBuildCustomNetworkPolicy(t, network)
 
-	// DNS rule (auto-defaulted IPv4) + IPv6 CIDR rule
 	g.Expect(np.Spec.Egress).To(HaveLen(2))
 	ipBlock := np.Spec.Egress[1].To[0].IPBlock
 	g.Expect(ipBlock.CIDR).To(Equal("::/0"))
@@ -518,7 +534,6 @@ func TestBuildCustomNetworkPolicy_MixedCIDRsFilterIPv6WithoutFlag(t *testing.T) 
 
 	np := mustBuildCustomNetworkPolicy(t, network)
 
-	// DNS rule (auto-defaulted) + IPv4 CIDR only (IPv6 filtered)
 	g.Expect(np.Spec.Egress).To(HaveLen(2))
 	ipBlock := np.Spec.Egress[1].To[0].IPBlock
 	g.Expect(ipBlock.CIDR).To(Equal("8.8.0.0/16"))
@@ -533,6 +548,5 @@ func TestBuildCustomNetworkPolicy_MixedCIDRsWithIPv6Flag(t *testing.T) {
 
 	np := mustBuildCustomNetworkPolicy(t, network)
 
-	// DNS rule (auto-defaulted) + both CIDRs
 	g.Expect(np.Spec.Egress).To(HaveLen(3))
 }

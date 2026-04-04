@@ -79,8 +79,10 @@ type NetworkSpec struct {
 	AllowedEgressCIDRs []string `json:"allowedEgressCIDRs,omitempty"`
 
 	// Nameservers are DNS server IPs to inject into the pod.
-	// When allowClusterDNS=false: These are the only nameservers (or 127.0.0.1 sink if empty).
+	// When allowClusterDNS=false and allowedEgressCIDRs is empty: 127.0.0.1 sink (DNS fails fast).
+	// When allowClusterDNS=false and allowedEgressCIDRs is set: public resolvers are auto-injected.
 	// When allowClusterDNS=true: Combined with cluster DNS.
+	// Explicit nameservers override auto-injection in all cases.
 	// When allowInternetEgress is true, nameservers do not produce additional NetworkPolicy rules.
 	// MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
 	// +kubebuilder:validation:MaxItems=3

@@ -62,7 +62,6 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(np).NotTo(BeNil())
 			Expect(np.Spec.PolicyTypes).To(ContainElement(networkingv1.PolicyTypeEgress))
 
-			// DNS rule (auto-defaulted) + CIDR rule
 			Expect(np.Spec.Egress).To(HaveLen(2))
 			Expect(np.Spec.Egress[1].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
 
@@ -148,7 +147,6 @@ var _ = Describe("Sandbox Controller", func() {
 			// Verify NetworkPolicy has 169.254.0.0/16 in except
 			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 			Expect(np).NotTo(BeNil())
-			// DNS rule (auto-defaulted) + CIDR rule
 			Expect(np.Spec.Egress).To(HaveLen(2))
 			Expect(np.Spec.Egress[1].To[0].IPBlock.CIDR).To(Equal("0.0.0.0/0"))
 			Expect(np.Spec.Egress[1].To[0].IPBlock.Except).To(ContainElement("169.254.0.0/16"))
@@ -170,7 +168,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
 			Expect(np).NotTo(BeNil())
-			// DNS rule (auto-defaulted) + CIDR rule
 			Expect(np.Spec.Egress).To(HaveLen(2))
 			Expect(np.Spec.Egress[1].To[0].IPBlock.CIDR).To(Equal("8.8.8.0/24"))
 			Expect(np.Spec.Egress[1].To[0].IPBlock.Except).To(BeEmpty())
