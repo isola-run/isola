@@ -26,7 +26,7 @@ import pytest
 
 from isola import Sandbox
 
-from conftest import ISOLA_BASE_URL
+from utils import ISOLA_BASE_URL
 
 
 @pytest.mark.timeout(30)

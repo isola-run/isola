@@ -23,7 +23,7 @@ import pytest
 
 from isola import AsyncSandbox, ConflictError, Isola, Sandbox
 
-from conftest import wait_for_running
+from utils import wait_for_running
 
 
 @pytest.mark.timeout(90)
