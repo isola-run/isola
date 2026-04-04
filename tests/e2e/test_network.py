@@ -142,6 +142,32 @@ def test_dns_sink_default(
 
 
 @pytest.mark.timeout(90)
+def test_egress_cidrs_auto_defaults_dns(
+    isola_client: Isola,
+    sandbox_factory,
+) -> None:
+    """A sandbox with allowedEgressCIDRs but no explicit DNS config gets public nameservers auto-injected."""
+    sb = sandbox_factory(
+        image="alpine:3.21",
+        network=NetworkSpec(allowed_egress_cidrs=["1.1.1.1/32"]),
+    )
+    running = wait_for_running(isola_client, sb.id)
+
+    exit_code, output = _run_and_collect_stdout(
+        running,
+        "cat", "/etc/resolv.conf",
+    )
+
+    assert exit_code == 0
+    assert "8.8.8.8" in output, (
+        f"Expected auto-defaulted nameserver 8.8.8.8 in resolv.conf, got: {output}"
+    )
+    assert "127.0.0.1" not in output, (
+        f"Expected no sink nameserver in resolv.conf when egress CIDRs are set, got: {output}"
+    )
+
+
+@pytest.mark.timeout(90)
 def test_network_spec_reflected_in_get(
     isola_client: Isola,
     sandbox_factory,

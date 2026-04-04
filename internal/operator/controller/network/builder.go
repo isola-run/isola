@@ -43,6 +43,25 @@ import (
 	"github.com/isola-run/isola/internal/operator/controller/podutil"
 )
 
+// DefaultPublicNameservers are injected when a sandbox has egress CIDRs but no
+// explicit DNS configuration, so hostname resolution works out of the box.
+var DefaultPublicNameservers = []string{"8.8.8.8", "1.1.1.1"}
+
+// EffectiveNameservers returns the nameservers to configure for a sandbox pod.
+// Priority: user-provided > auto-default (when egress CIDRs are set) > nil (sink).
+func EffectiveNameservers(network *sandboxv1alpha1.NetworkSpec) []string {
+	if network == nil {
+		return nil
+	}
+	if len(network.Nameservers) > 0 {
+		return network.Nameservers
+	}
+	if len(network.AllowedEgressCIDRs) > 0 {
+		return DefaultPublicNameservers
+	}
+	return nil
+}
+
 // egressCIDR holds a validated egress prefix with its computed exceptions.
 type egressCIDR struct {
 	Prefix netip.Prefix
@@ -96,7 +115,7 @@ func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1a
 	// Custom static-IP nameservers could be templated in allow-dns if and when need arise.
 	var dnsAddrs []netip.Addr
 	if !internetAllowed {
-		for _, ipStr := range network.Nameservers {
+		for _, ipStr := range EffectiveNameservers(network) {
 			addr, err := cidr.ParseDNSServerIP(ipStr)
 			if err != nil {
 				return nil, err
