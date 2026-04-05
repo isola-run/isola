@@ -194,6 +194,30 @@ func (r *SandboxReconciler) injectSandboxSidecar(sandboxPod *corev1.Pod) {
 	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, sidecarContainer)
 }
 
+// markSandboxSucceeded sets Succeeded=True and Ready=False if the sandbox is not already terminal.
+// Returns nil without patching if Succeeded is already set (one-way latch).
+func (r *SandboxReconciler) markSandboxSucceeded(ctx context.Context, baseSandbox *sandboxv1alpha1.Sandbox, sandbox *sandboxv1alpha1.Sandbox, reason, message string) error {
+	if existing := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition); existing != nil {
+		return nil
+	}
+	return r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+		{
+			Type:               sandboxv1alpha1.SandboxReadyCondition,
+			Status:             metav1.ConditionFalse,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: sandbox.Generation,
+		},
+		{
+			Type:               sandboxv1alpha1.SandboxSucceededCondition,
+			Status:             metav1.ConditionTrue,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: sandbox.Generation,
+		},
+	})
+}
+
 // markSandboxFailed sets Succeeded=False and Ready=False if the sandbox is not already terminal.
 // Returns nil without patching if Succeeded is already set (one-way latch).
 func (r *SandboxReconciler) markSandboxFailed(ctx context.Context, baseSandbox *sandboxv1alpha1.Sandbox, sandbox *sandboxv1alpha1.Sandbox, reason, message string) error {
@@ -348,7 +372,6 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		log.Error(err, "Failed creating Pod")
 
 		// Best effort status patch - log but don't override the original create error.
-		// Do not set Succeeded=False here: pod creation failure is recoverable (controller retries).
 		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxPodReadyCondition,
@@ -480,7 +503,6 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	desiredNP, err := netbuilder.BuildCustomNetworkPolicy(sandbox.Name, sandbox.Namespace, sandbox.Spec.Network)
 	if err != nil {
 		log.Error(err, "Failed to build custom NetworkPolicy")
-		// Do not set Succeeded=False here: network policy failure is recoverable (controller retries).
 		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               SandboxNetworkReadyCondition,
@@ -736,7 +758,7 @@ func (r *SandboxReconciler) determineReadyCondition(sandbox *sandboxv1alpha1.San
 }
 
 // determineSucceededCondition returns the Succeeded condition for terminal sandboxes.
-// Returns nil when the sandbox is still in progress (condition should not be set).
+// Returns nil when the sandbox is still running (condition should not be set).
 // Once set, the condition is preserved (terminal is permanent).
 func (r *SandboxReconciler) determineSucceededCondition(sandbox *sandboxv1alpha1.Sandbox, sandboxPod *corev1.Pod) *metav1.Condition {
 	// Terminal is permanent — preserve existing Succeeded condition
@@ -754,7 +776,7 @@ func (r *SandboxReconciler) determineSucceededCondition(sandbox *sandboxv1alpha1
 		}
 	}
 
-	if podutil.IsPodTerminated(sandboxPod) {
+	if sandboxPod != nil && sandboxPod.Status.Phase == corev1.PodFailed {
 		return &metav1.Condition{
 			Type:               sandboxv1alpha1.SandboxSucceededCondition,
 			Status:             metav1.ConditionFalse,
@@ -844,7 +866,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if optionalTimeoutAt != nil && r.clock().Now().After(optionalTimeoutAt.Time) {
 		log.Info("Sandbox timed out")
 
-		if err := r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonTimeout, "Sandbox timed out"); err != nil {
+		if err := r.markSandboxSucceeded(ctx, baseSandbox, sandbox, CondReasonTimeout, "Sandbox timed out"); err != nil {
 			return ctrl.Result{}, err
 		}
 

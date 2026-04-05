@@ -174,7 +174,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
 
-		It("should set Succeeded=False with Timeout reason before deleting sandbox", func() {
+		It("should set Succeeded=True with Timeout reason when sandbox times out", func() {
 			sandboxName := "sandbox-timeout-condition"
 			runtimeClassName := "gvisor-timeout-cond"
 
@@ -217,9 +217,10 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Sandbox still exists (snapshot not yet complete) — verify Succeeded=False
+			// Sandbox still exists (snapshot not yet complete) — verify Succeeded=True
+			// (timeout is normal lifecycle completion, not failure)
 			sandbox := getSandbox(ctx, sandboxName)
-			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionFalse, CondReasonTimeout)).To(BeTrue())
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionTrue, CondReasonTimeout)).To(BeTrue())
 		})
 
 		It("should schedule requeue before timeout", func() {
