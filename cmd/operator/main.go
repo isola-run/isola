@@ -77,7 +77,7 @@ func main() {
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&sandboxSidecarImage, "sidecar-image", "", "Container image for the sandbox-sidecar (required)")
-	flag.StringVar(&runtimeClassName, "runtime-class", "", "RuntimeClassName to use for sandbox pods (e.g. 'gvisor'). Empty means use cluster default.")
+	flag.StringVar(&runtimeClassName, "runtime-class", "", "Required. Must reference a gVisor/runsc RuntimeClass (e.g. 'gvisor').")
 	flag.StringVar(&priorityClassName, "priority-class", "", "PriorityClassName to use for sandbox pods. Empty means use cluster default.")
 	flag.StringVar(&rootfssnapshotBucketURL, "rootfssnapshot-bucket-url", "", "Bucket URL for rootfs snapshot storage (e.g., s3://bucket?region=us-east-1)")
 	flag.StringVar(&rootfssnapshotCredentialSecret, "rootfssnapshot-credential-secret", "", "Secret name for bucket credentials (optional, uses pod identity if not set)")
@@ -110,6 +110,10 @@ func main() {
 		rootfssnapshotUploaderImage = os.Getenv("ISOLA_SNAPSHOT_UPLOADER_IMAGE")
 	}
 
+	if runtimeClassName == "" {
+		setupLog.Error(nil, "--runtime-class is required")
+		os.Exit(1)
+	}
 	if sandboxSidecarImage == "" {
 		setupLog.Error(nil, "--sidecar-image or ISOLA_SANDBOX_SIDECAR_IMAGE env var is required")
 		os.Exit(1)

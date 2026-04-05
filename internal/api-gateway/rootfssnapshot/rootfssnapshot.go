@@ -35,7 +35,7 @@ type CreateRootfsSnapshotInput struct {
 
 type CreateRootfsSnapshotRequest struct {
 	SandboxID               string `json:"sandboxId" required:"true" minLength:"1" doc:"ID of the sandbox to snapshot (as returned by POST /v1/sandboxes)"`
-	SnapshotName            string `json:"snapshotName" required:"true" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Identifier for this snapshot, used both as the storage key and as the restore reference. To restore from this snapshot, pass this value as rootfsSnapshotSources[].snapshotName when creating a sandbox."`
+	SnapshotName            string `json:"snapshotName" required:"true" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Identifier for this snapshot, used both as the storage key and as the restore reference. To restore from this snapshot, pass this value as rootfsSnapshotName on a container when creating a sandbox."`
 	ContainerName           string `json:"containerName,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container to snapshot. Defaults to the first container if omitted."`
 	TimeoutSeconds          *int64 `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max duration in seconds for the snapshot job. Defaults to 300 if omitted."`
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" minimum:"0" doc:"Seconds to retain the resource after completion. 0 means immediate deletion. Defaults to 300 if omitted."`

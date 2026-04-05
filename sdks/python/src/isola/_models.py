@@ -49,7 +49,7 @@ class SandboxStatus(str, Enum):
     FAILED = "Failed"
 
 
-class NetworkSpec(IsolaModel):
+class Network(IsolaModel):
     allow_internet_egress: bool | None = None
     allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
     allow_ipv6_egress: bool | None = Field(None, alias="allowIPv6Egress")
@@ -63,27 +63,26 @@ class ResourceList(IsolaModel):
     ephemeral_storage: str | None = None
 
 
-class ResourcesSpec(IsolaModel):
+class ResourceRequirements(IsolaModel):
     limits: ResourceList | None = None
     requests: ResourceList | None = None
 
 
-class ContainerSpec(IsolaModel):
+class Container(IsolaModel):
+    name: str | None = None
     image: str
     command: list[str] | None = None
     env: dict[str, str] | None = None
-    resources: ResourcesSpec | None = None
+    resources: ResourceRequirements | None = None
+    rootfs_snapshot_name: str | None = None
 
 
 class ContainerInfo(IsolaModel):
+    name: str | None = None
     image: str
     command: list[str] | None = None
-    resources: ResourcesSpec | None = None
-
-
-class RootfsSnapshotSource(IsolaModel):
-    snapshot_name: str
-    container_name: str | None = None
+    resources: ResourceRequirements | None = None
+    rootfs_snapshot_name: str | None = None
 
 
 class RootfsSnapshotStatus(str, Enum):
@@ -113,19 +112,18 @@ class RootfsSnapshotData(IsolaModel):
 
 
 class PodTemplate(IsolaModel):
-    container: ContainerSpec
+    containers: list[Container]
 
 
 class PodTemplateInfo(IsolaModel):
-    container: ContainerInfo
+    containers: list[ContainerInfo]
 
 
 class CreateSandboxPayload(IsolaModel):
     pod_template: PodTemplate
     timeout_seconds: int | None = None
     startup_timeout_seconds: int
-    network: NetworkSpec | None = None
-    rootfs_snapshot_sources: list[RootfsSnapshotSource] | None = None
+    network: Network | None = None
 
 
 class SandboxSummary(IsolaModel):
@@ -145,8 +143,7 @@ class SandboxData(IsolaModel):
     creation_timestamp: datetime
     timeout_seconds: int | None = None
     startup_timeout_seconds: int | None = None
-    network: NetworkSpec | None = None
-    rootfs_snapshot_sources: list[RootfsSnapshotSource] | None = None
+    network: Network | None = None
 
 
 class CreateCommandPayload(IsolaModel):

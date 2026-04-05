@@ -1,6 +1,6 @@
 {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" }}
-{{- $snapshotMounter := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter }}
-{{- $storage := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage }}
+{{- $snapshotMounter := .Values.operator.sandboxRuntime.rootfssnapshot.snapshotMounter }}
+{{- $storage := .Values.operator.sandboxRuntime.rootfssnapshot.storage }}
 {{- $hostMountPath := $snapshotMounter.hostMountPath }}
 {{- $cachePath := "/var/cache/isola-snapshots" }}
 {{- $rclone := $snapshotMounter.rclone }}

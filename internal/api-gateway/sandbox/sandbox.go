@@ -34,28 +34,28 @@ type CreateSandboxInput struct {
 	Body CreateSandboxRequest
 }
 
-type ContainerSpec struct {
-	Image   string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
-	Command []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
-	Env     map[string]string `json:"env,omitempty" doc:"Environment variables"`
+type Container struct {
+	Name               string            `json:"name,omitempty" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to sandbox{i} if omitted."`
+	Image              string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
+	Command            []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
+	Env                map[string]string `json:"env,omitempty" doc:"Environment variables"`
+	RootfsSnapshotName string            `json:"rootfsSnapshotName,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Rootfs snapshot to restore into this container. Files on separately-mounted filesystems (e.g. /tmp) are excluded."`
 	// todo benl: those are enforced in gvisor only on the sandbox container, consider moving this to podtemplate and setting pod limits (though they don't support ephemeral storage limits)
-	Resources *ResourcesSpec `json:"resources,omitempty" doc:"Resource requests and limits"`
+	Resources *ResourceRequirements `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
 
 type PodTemplate struct {
-	// todo benl: list of containers?
-	Container ContainerSpec `json:"container" required:"true" doc:"Primary sandbox container"`
+	Containers []Container `json:"containers" required:"true" minItems:"1" doc:"Sandbox containers"`
 }
 
 type CreateSandboxRequest struct {
-	PodTemplate           PodTemplate            `json:"podTemplate" required:"true" doc:"Pod template"`
-	TimeoutSeconds        *int64                 `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
-	StartupTimeoutSeconds *int64                 `json:"startupTimeoutSeconds,omitempty" minimum:"1" doc:"Max seconds for the sandbox to become Ready. Defaults to 60 if omitted."`
-	Network               *NetworkSpec           `json:"network,omitempty" doc:"Network isolation config"`
-	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" maxItems:"16" doc:"Rootfs snapshots to restore into containers at creation time. Files on separately-mounted filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included."`
+	PodTemplate           PodTemplate `json:"podTemplate" required:"true" doc:"Pod template"`
+	TimeoutSeconds        *int64      `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
+	StartupTimeoutSeconds *int64      `json:"startupTimeoutSeconds,omitempty" minimum:"1" doc:"Max seconds for the sandbox to become Ready. Defaults to 60 if omitted."`
+	Network               *Network    `json:"network,omitempty" doc:"Network isolation config"`
 }
 
-type ResourcesSpec struct {
+type ResourceRequirements struct {
 	Limits   *ResourceList `json:"limits,omitempty" doc:"Resource limits"`
 	Requests *ResourceList `json:"requests,omitempty" doc:"Resource requests"`
 }
@@ -66,17 +66,12 @@ type ResourceList struct {
 	EphemeralStorage string `json:"ephemeralStorage,omitempty" example:"1Gi" doc:"Ephemeral storage (K8s quantity)"`
 }
 
-type NetworkSpec struct {
+type Network struct {
 	AllowInternetEgress *bool    `json:"allowInternetEgress,omitempty" doc:"Allow public internet egress"`
 	AllowClusterDNS     *bool    `json:"allowClusterDNS,omitempty" doc:"Allow cluster DNS queries"`
 	AllowIPv6Egress     *bool    `json:"allowIPv6Egress,omitempty" doc:"Enable IPv6 in egress configuration (default: IPv4 only)"`
 	AllowedEgressCIDRs  []string `json:"allowedEgressCIDRs,omitempty" maxItems:"16" maxLength:"43" doc:"Allowed egress CIDRs"`
 	Nameservers         []string `json:"nameservers,omitempty" maxItems:"3" doc:"Custom DNS servers (max 3)"`
-}
-
-type RootfsSnapshotSource struct {
-	SnapshotName  string `json:"snapshotName" required:"true" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Name of the rootfs snapshot to restore from."`
-	ContainerName string `json:"containerName,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container to restore. If empty and there is only one container, that container will be used. Required if there are multiple containers."`
 }
 
 type GetSandboxInput struct {
@@ -90,13 +85,15 @@ type DeleteSandboxInput struct {
 // Response types omit env vars (write-only) to avoid leaking secrets.
 
 type ContainerInfo struct {
-	Image     string         `json:"image" doc:"Container image"`
-	Command   []string       `json:"command,omitempty" doc:"Container entrypoint override"`
-	Resources *ResourcesSpec `json:"resources,omitempty" doc:"Resource requests and limits"`
+	Name               string                `json:"name" doc:"Container name"`
+	Image              string                `json:"image" doc:"Container image"`
+	Command            []string              `json:"command,omitempty" doc:"Container entrypoint override"`
+	RootfsSnapshotName string                `json:"rootfsSnapshotName,omitempty" doc:"Rootfs snapshot restored into this container."`
+	Resources          *ResourceRequirements `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
 
 type PodTemplateInfo struct {
-	Container ContainerInfo `json:"container" doc:"Primary sandbox container"`
+	Containers []ContainerInfo `json:"containers" doc:"Sandbox containers"`
 }
 
 type CreateSandboxOutput struct {
@@ -112,14 +109,13 @@ type ListSandboxesOutput struct {
 }
 
 type SandboxResponse struct {
-	ID                    string                 `json:"id" doc:"Sandbox identifier"`
-	PodTemplate           PodTemplateInfo        `json:"podTemplate" doc:"Pod template"`
-	TimeoutSeconds        *int64                 `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
-	StartupTimeoutSeconds *int64                 `json:"startupTimeoutSeconds,omitempty" doc:"Max seconds for the sandbox to become Ready"`
-	Network               *NetworkSpec           `json:"network,omitempty" doc:"Network isolation config"`
-	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" doc:"Rootfs snapshot restore configuration."`
-	Status                string                 `json:"status" doc:"Sandbox status" enum:"Pending,Running,Terminating,Succeeded,Failed"`
-	CreationTimestamp     string                 `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
+	ID                    string          `json:"id" doc:"Sandbox identifier"`
+	PodTemplate           PodTemplateInfo `json:"podTemplate" doc:"Pod template"`
+	TimeoutSeconds        *int64          `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
+	StartupTimeoutSeconds *int64          `json:"startupTimeoutSeconds,omitempty" doc:"Max seconds for the sandbox to become Ready"`
+	Network               *Network        `json:"network,omitempty" doc:"Network isolation config"`
+	Status                string          `json:"status" doc:"Sandbox status" enum:"Pending,Running,Terminating,Succeeded,Failed"`
+	CreationTimestamp     string          `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
 
 type SandboxSummary struct {

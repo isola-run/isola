@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from isola import Isola, NetworkSpec, Sandbox, SandboxStatus, SandboxSummary
+from isola import Isola, Network, Sandbox, SandboxStatus, SandboxSummary
 
 from utils import parse_k8s_quantity, wait_for_running
 
@@ -49,7 +49,7 @@ def test_create_sandbox_with_full_config(
         memory=128,
         ephemeral_storage=512,
         timeout_seconds=300,
-        network=NetworkSpec(allow_internet_egress=True),
+        network=Network(allow_internet_egress=True),
     )
     assert sb.id
     assert sb.timeout_seconds == 300
@@ -73,8 +73,8 @@ def test_get_sandbox_returns_correct_fields(
     assert sb.creation_timestamp is not None
     # The response includes the pod template with container image info
     assert sb._data.pod_template is not None
-    assert sb._data.pod_template.container is not None
-    assert sb._data.pod_template.container.image == "alpine:3.21"
+    assert sb._data.pod_template.containers[0] is not None
+    assert sb._data.pod_template.containers[0].image == "alpine:3.21"
 
 
 def test_list_sandboxes_includes_created_sandbox(
@@ -102,7 +102,7 @@ def test_env_vars_are_write_only(
 ) -> None:
     """Env vars are accepted on create but not returned in get responses.
 
-    The response model uses ContainerInfo (not ContainerSpec), which has no env field.
+    The response model uses ContainerInfo (not Container), which has no env field.
     This is intentional to avoid leaking secrets.
     """
     sb = sandbox_factory(
@@ -114,7 +114,7 @@ def test_env_vars_are_write_only(
     fetched = isola_client.sandboxes.get(sb.id)
 
     # ContainerInfo does not have an env attribute -- verify it is absent
-    container = fetched._data.pod_template.container
+    container = fetched._data.pod_template.containers[0]
     assert not hasattr(container, "env"), (
         "ContainerInfo should not expose env vars in the response"
     )
@@ -155,7 +155,7 @@ def test_custom_command_sandbox(
     assert running.status == SandboxStatus.RUNNING
 
     # Verify the command was set on the container
-    container = running._data.pod_template.container
+    container = running._data.pod_template.containers[0]
     assert container.command is not None
     assert "sh" in container.command
 
@@ -174,7 +174,7 @@ def test_resource_limits_round_trip(
     )
     running = wait_for_running(isola_client, sb.id)
 
-    container = running._data.pod_template.container
+    container = running._data.pod_template.containers[0]
     assert container.resources is not None, "Expected resources in response"
     assert container.resources.limits is not None, "Expected limits in response"
 

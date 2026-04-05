@@ -37,10 +37,10 @@ var _ = Describe("Conversion functions", func() {
 		It("passes command through to the container", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Container: ContainerSpec{
+					Containers: []Container{{
 						Image:   "python:3.12",
 						Command: []string{"python", "-c", "print('hello')"},
-					},
+					}},
 				},
 			}
 			sb, err := requestToSandboxCR(req, "test-sb", "default")
@@ -51,9 +51,9 @@ var _ = Describe("Conversion functions", func() {
 		It("leaves command nil when not specified", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Container: ContainerSpec{
+					Containers: []Container{{
 						Image: "alpine:latest",
-					},
+					}},
 				},
 			}
 			sb, err := requestToSandboxCR(req, "test-sb", "default")
@@ -61,15 +61,91 @@ var _ = Describe("Conversion functions", func() {
 			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Command).To(BeNil())
 		})
 
+		It("defaults container name to sandbox0 when omitted", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Containers: []Container{{Image: "alpine:latest"}},
+				},
+			}
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Name).To(Equal("sandbox0"))
+		})
+
+		It("uses explicit container name when provided", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Containers: []Container{{Name: "worker", Image: "alpine:latest"}},
+				},
+			}
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Name).To(Equal("worker"))
+		})
+
+		It("defaults multiple unnamed containers to sandbox0, sandbox1, ...", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Containers: []Container{
+						{Image: "alpine:latest"},
+						{Image: "python:3.12"},
+						{Image: "nginx:latest"},
+					},
+				},
+			}
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.PodTemplate.Spec.Containers).To(HaveLen(3))
+			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Name).To(Equal("sandbox0"))
+			Expect(sb.Spec.PodTemplate.Spec.Containers[1].Name).To(Equal("sandbox1"))
+			Expect(sb.Spec.PodTemplate.Spec.Containers[2].Name).To(Equal("sandbox2"))
+		})
+
+		It("uses index for default name even when mixed with named containers", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Containers: []Container{
+						{Name: "worker", Image: "alpine:latest"},
+						{Image: "python:3.12"},
+						{Name: "db", Image: "postgres:16"},
+					},
+				},
+			}
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Name).To(Equal("worker"))
+			Expect(sb.Spec.PodTemplate.Spec.Containers[1].Name).To(Equal("sandbox1"))
+			Expect(sb.Spec.PodTemplate.Spec.Containers[2].Name).To(Equal("db"))
+		})
+
+		It("attributes resource error to the correct container", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Containers: []Container{
+						{Name: "good", Image: "alpine:latest", Resources: &ResourceRequirements{
+							Limits: &ResourceList{CPU: "500m"},
+						}},
+						{Name: "bad", Image: "python:3.12", Resources: &ResourceRequirements{
+							Limits: &ResourceList{Memory: "not-valid"},
+						}},
+					},
+				},
+			}
+			_, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(`"bad"`))
+			Expect(err.Error()).To(ContainSubstring("invalid resource limits"))
+		})
+
 		It("returns error for invalid resource limits in full request flow", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Container: ContainerSpec{
+					Containers: []Container{{
 						Image: "python:3.12",
-						Resources: &ResourcesSpec{
+						Resources: &ResourceRequirements{
 							Limits: &ResourceList{CPU: "500m", Memory: "not-valid"},
 						},
-					},
+					}},
 				},
 			}
 			_, err := requestToSandboxCR(req, "test-sb", "default")
@@ -81,13 +157,13 @@ var _ = Describe("Conversion functions", func() {
 		It("returns error for invalid resource requests in full request flow", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Container: ContainerSpec{
+					Containers: []Container{{
 						Image: "python:3.12",
-						Resources: &ResourcesSpec{
+						Resources: &ResourceRequirements{
 							Limits:   &ResourceList{CPU: "1"},
 							Requests: &ResourceList{EphemeralStorage: "garbage"},
 						},
-					},
+					}},
 				},
 			}
 			_, err := requestToSandboxCR(req, "test-sb", "default")
@@ -99,13 +175,13 @@ var _ = Describe("Conversion functions", func() {
 		It("converts valid resources through the full request flow", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Container: ContainerSpec{
+					Containers: []Container{{
 						Image: "python:3.12",
-						Resources: &ResourcesSpec{
+						Resources: &ResourceRequirements{
 							Limits:   &ResourceList{CPU: "2", Memory: "4Gi"},
 							Requests: &ResourceList{CPU: "500m", Memory: "1Gi"},
 						},
-					},
+					}},
 				},
 			}
 			sb, err := requestToSandboxCR(req, "test-sb", "default")
@@ -117,63 +193,50 @@ var _ = Describe("Conversion functions", func() {
 			Expect(c.Resources.Requests[corev1.ResourceMemory]).To(Equal(resource.MustParse("1Gi")))
 		})
 
-		It("passes rootfsSnapshotSources through to the CRD", func() {
+		It("collects per-container rootfsSnapshotSource into CRD sandbox-level list", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
-					Container: ContainerSpec{
-						Image: "python:3.12",
-					},
-				},
-				RootfsSnapshotSources: []RootfsSnapshotSource{
-					{
-						SnapshotName:  "my-snapshot",
-						ContainerName: "my-container",
-					},
+					Containers: []Container{{
+						Image:              "python:3.12",
+						RootfsSnapshotName: "my-snapshot",
+					}},
 				},
 			}
 			sb, err := requestToSandboxCR(req, "test-sb", "default")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sb.Spec.RootfsSnapshotSources).To(HaveLen(1))
 			Expect(sb.Spec.RootfsSnapshotSources[0].SnapshotName).To(Equal("my-snapshot"))
-			Expect(sb.Spec.RootfsSnapshotSources[0].ContainerName).To(Equal("my-container"))
-		})
-	})
-
-	Describe("restRootfsSnapshotSourcesToCRD", func() {
-		It("returns nil for nil input", func() {
-			Expect(restRootfsSnapshotSourcesToCRD(nil)).To(BeNil())
+			Expect(sb.Spec.RootfsSnapshotSources[0].ContainerName).To(Equal("sandbox0"))
 		})
 
-		It("converts RootfsSnapshotSource list to CRD type", func() {
-			input := []RootfsSnapshotSource{
-				{
-					SnapshotName:  "my-snapshot",
-					ContainerName: "my-container",
+		It("collects rootfsSnapshotSource from multiple containers", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Containers: []Container{
+						{Name: "app", Image: "python:3.12", RootfsSnapshotName: "snap-app"},
+						{Name: "worker", Image: "nginx:latest"},
+						{Name: "db", Image: "postgres:16", RootfsSnapshotName: "snap-db"},
+					},
 				},
 			}
-			result := restRootfsSnapshotSourcesToCRD(input)
-			Expect(result).To(HaveLen(1))
-			Expect(result[0].SnapshotName).To(Equal("my-snapshot"))
-			Expect(result[0].ContainerName).To(Equal("my-container"))
-		})
-	})
-
-	Describe("crdRootfsSnapshotSourcesToREST", func() {
-		It("returns nil for nil input", func() {
-			Expect(crdRootfsSnapshotSourcesToREST(nil)).To(BeNil())
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.RootfsSnapshotSources).To(HaveLen(2))
+			Expect(sb.Spec.RootfsSnapshotSources[0].SnapshotName).To(Equal("snap-app"))
+			Expect(sb.Spec.RootfsSnapshotSources[0].ContainerName).To(Equal("app"))
+			Expect(sb.Spec.RootfsSnapshotSources[1].SnapshotName).To(Equal("snap-db"))
+			Expect(sb.Spec.RootfsSnapshotSources[1].ContainerName).To(Equal("db"))
 		})
 
-		It("converts CRD RootfsSnapshotSource list to REST type", func() {
-			input := []sandboxv1alpha1.RootfsSnapshotSource{
-				{
-					SnapshotName:  "my-snapshot",
-					ContainerName: "my-container",
+		It("produces nil rootfsSnapshotSources when no container specifies a snapshot", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Containers: []Container{{Image: "alpine:latest"}},
 				},
 			}
-			result := crdRootfsSnapshotSourcesToREST(input)
-			Expect(result).To(HaveLen(1))
-			Expect(result[0].SnapshotName).To(Equal("my-snapshot"))
-			Expect(result[0].ContainerName).To(Equal("my-container"))
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.RootfsSnapshotSources).To(BeNil())
 		})
 	})
 
@@ -195,7 +258,8 @@ var _ = Describe("Conversion functions", func() {
 				},
 			}
 			resp := sandboxToResponse(sb)
-			Expect(resp.PodTemplate.Container.Command).To(Equal([]string{"python", "-c", "print('hello')"}))
+			Expect(resp.PodTemplate.Containers[0].Name).To(Equal("sandbox"))
+			Expect(resp.PodTemplate.Containers[0].Command).To(Equal([]string{"python", "-c", "print('hello')"}))
 		})
 
 		It("returns nil command when not set on container", func() {
@@ -214,17 +278,17 @@ var _ = Describe("Conversion functions", func() {
 				},
 			}
 			resp := sandboxToResponse(sb)
-			Expect(resp.PodTemplate.Container.Command).To(BeNil())
+			Expect(resp.PodTemplate.Containers[0].Command).To(BeNil())
 		})
 
-		It("uses only the first container when multiple containers exist", func() {
+		It("returns all containers when multiple containers exist", func() {
 			sb := &sandboxv1alpha1.Sandbox{
 				Spec: sandboxv1alpha1.SandboxSpec{
 					PodTemplate: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
 								{
-									Name:  "sandbox",
+									Name:  "sandbox0",
 									Image: "python:3.12",
 									Resources: corev1.ResourceRequirements{
 										Limits: corev1.ResourceList{
@@ -234,7 +298,7 @@ var _ = Describe("Conversion functions", func() {
 									},
 								},
 								{
-									Name:  "sidecar",
+									Name:  "worker",
 									Image: "nginx:latest",
 									Resources: corev1.ResourceRequirements{
 										Limits: corev1.ResourceList{
@@ -249,11 +313,13 @@ var _ = Describe("Conversion functions", func() {
 				},
 			}
 			resp := sandboxToResponse(sb)
-			Expect(resp.PodTemplate.Container.Image).To(Equal("python:3.12"))
-			Expect(resp.PodTemplate.Container.Resources).NotTo(BeNil())
-			Expect(resp.PodTemplate.Container.Resources.Limits).NotTo(BeNil())
-			Expect(resp.PodTemplate.Container.Resources.Limits.CPU).To(Equal("2"))
-			Expect(resp.PodTemplate.Container.Resources.Limits.Memory).To(Equal("4Gi"))
+			Expect(resp.PodTemplate.Containers).To(HaveLen(2))
+			Expect(resp.PodTemplate.Containers[0].Name).To(Equal("sandbox0"))
+			Expect(resp.PodTemplate.Containers[0].Image).To(Equal("python:3.12"))
+			Expect(resp.PodTemplate.Containers[0].Resources.Limits.CPU).To(Equal("2"))
+			Expect(resp.PodTemplate.Containers[1].Name).To(Equal("worker"))
+			Expect(resp.PodTemplate.Containers[1].Image).To(Equal("nginx:latest"))
+			Expect(resp.PodTemplate.Containers[1].Resources.Limits.CPU).To(Equal("100m"))
 		})
 
 		It("returns resources with limits only when requests are empty", func() {
@@ -278,35 +344,51 @@ var _ = Describe("Conversion functions", func() {
 				},
 			}
 			resp := sandboxToResponse(sb)
-			Expect(resp.PodTemplate.Container.Resources).NotTo(BeNil())
-			Expect(resp.PodTemplate.Container.Resources.Limits).NotTo(BeNil())
-			Expect(resp.PodTemplate.Container.Resources.Limits.CPU).To(Equal("1"))
-			Expect(resp.PodTemplate.Container.Resources.Limits.EphemeralStorage).To(Equal("5Gi"))
-			Expect(resp.PodTemplate.Container.Resources.Requests).To(BeNil())
+			Expect(resp.PodTemplate.Containers[0].Resources).NotTo(BeNil())
+			Expect(resp.PodTemplate.Containers[0].Resources.Limits).NotTo(BeNil())
+			Expect(resp.PodTemplate.Containers[0].Resources.Limits.CPU).To(Equal("1"))
+			Expect(resp.PodTemplate.Containers[0].Resources.Limits.EphemeralStorage).To(Equal("5Gi"))
+			Expect(resp.PodTemplate.Containers[0].Resources.Requests).To(BeNil())
 		})
 
-		It("includes rootfsSnapshotSources in response", func() {
+		It("maps CRD rootfsSnapshotSources back to per-container fields", func() {
 			sb := &sandboxv1alpha1.Sandbox{
 				Spec: sandboxv1alpha1.SandboxSpec{
 					PodTemplate: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
-								{Name: "sandbox", Image: "alpine:latest"},
+								{Name: "app", Image: "python:3.12"},
+								{Name: "worker", Image: "nginx:latest"},
 							},
 						},
 					},
 					RootfsSnapshotSources: []sandboxv1alpha1.RootfsSnapshotSource{
-						{
-							SnapshotName:  "my-snapshot",
-							ContainerName: "my-container",
-						},
+						{SnapshotName: "snap-app", ContainerName: "app"},
 					},
 				},
 			}
 			resp := sandboxToResponse(sb)
-			Expect(resp.RootfsSnapshotSources).To(HaveLen(1))
-			Expect(resp.RootfsSnapshotSources[0].SnapshotName).To(Equal("my-snapshot"))
-			Expect(resp.RootfsSnapshotSources[0].ContainerName).To(Equal("my-container"))
+			Expect(resp.PodTemplate.Containers[0].RootfsSnapshotName).To(Equal("snap-app"))
+			Expect(resp.PodTemplate.Containers[1].RootfsSnapshotName).To(BeEmpty())
+		})
+
+		It("maps rootfs source with empty containerName to the single container", func() {
+			sb := &sandboxv1alpha1.Sandbox{
+				Spec: sandboxv1alpha1.SandboxSpec{
+					PodTemplate: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{Name: "sandbox0", Image: "alpine:latest"},
+							},
+						},
+					},
+					RootfsSnapshotSources: []sandboxv1alpha1.RootfsSnapshotSource{
+						{SnapshotName: "old-snap", ContainerName: ""},
+					},
+				},
+			}
+			resp := sandboxToResponse(sb)
+			Expect(resp.PodTemplate.Containers[0].RootfsSnapshotName).To(Equal("old-snap"))
 		})
 	})
 
@@ -348,7 +430,7 @@ var _ = Describe("Conversion functions", func() {
 
 	Describe("crdNetworkToREST", func() {
 		DescribeTable("nil-coalescing",
-			func(input *sandboxv1alpha1.NetworkSpec, expectNil bool) {
+			func(input *sandboxv1alpha1.Network, expectNil bool) {
 				result := crdNetworkToREST(input)
 				if expectNil {
 					Expect(result).To(BeNil())
@@ -357,11 +439,11 @@ var _ = Describe("Conversion functions", func() {
 				}
 			},
 			Entry("nil input", nil, true),
-			Entry("all-empty struct", &sandboxv1alpha1.NetworkSpec{}, false),
-			Entry("only nameservers", &sandboxv1alpha1.NetworkSpec{Nameservers: []string{"8.8.8.8"}}, false),
-			Entry("only allowClusterDNS", &sandboxv1alpha1.NetworkSpec{AllowClusterDNS: ptr.To(true)}, false),
-			Entry("only allowedEgressCIDRs", &sandboxv1alpha1.NetworkSpec{AllowedEgressCIDRs: []string{"10.0.0.0/8"}}, false),
-			Entry("only allowIPv6Egress", &sandboxv1alpha1.NetworkSpec{AllowIPv6Egress: ptr.To(true)}, false),
+			Entry("all-empty struct", &sandboxv1alpha1.Network{}, false),
+			Entry("only nameservers", &sandboxv1alpha1.Network{Nameservers: []string{"8.8.8.8"}}, false),
+			Entry("only allowClusterDNS", &sandboxv1alpha1.Network{AllowClusterDNS: ptr.To(true)}, false),
+			Entry("only allowedEgressCIDRs", &sandboxv1alpha1.Network{AllowedEgressCIDRs: []string{"10.0.0.0/8"}}, false),
+			Entry("only allowIPv6Egress", &sandboxv1alpha1.Network{AllowIPv6Egress: ptr.To(true)}, false),
 		)
 	})
 

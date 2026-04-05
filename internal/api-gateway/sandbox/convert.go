@@ -27,8 +27,6 @@ import (
 	apigateway "github.com/isola-run/isola/internal/api-gateway"
 )
 
-const containerName = "sandbox"
-
 func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 	resp := SandboxResponse{
 		ID:                sb.Name,
@@ -36,17 +34,29 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 		CreationTimestamp: sb.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 
-	if len(sb.Spec.PodTemplate.Spec.Containers) > 0 {
-		c := sb.Spec.PodTemplate.Spec.Containers[0]
-		resp.PodTemplate.Container.Image = c.Image
-		resp.PodTemplate.Container.Command = c.Command
-		resp.PodTemplate.Container.Resources = containerResourcesToSpec(c.Resources)
+	rootfsMap := make(map[string]string, len(sb.Spec.RootfsSnapshotSources))
+	for _, src := range sb.Spec.RootfsSnapshotSources {
+		rootfsMap[src.ContainerName] = src.SnapshotName
+	}
+	if len(sb.Spec.PodTemplate.Spec.Containers) == 1 {
+		if snap, ok := rootfsMap[""]; ok {
+			rootfsMap[sb.Spec.PodTemplate.Spec.Containers[0].Name] = snap
+		}
+	}
+
+	for _, c := range sb.Spec.PodTemplate.Spec.Containers {
+		resp.PodTemplate.Containers = append(resp.PodTemplate.Containers, ContainerInfo{
+			Name:               c.Name,
+			Image:              c.Image,
+			Command:            c.Command,
+			RootfsSnapshotName: rootfsMap[c.Name],
+			Resources:          containerResourcesToSpec(c.Resources),
+		})
 	}
 
 	resp.TimeoutSeconds = sb.Spec.TimeoutSeconds
 	resp.StartupTimeoutSeconds = sb.Spec.StartupTimeoutSeconds
 	resp.Network = crdNetworkToREST(sb.Spec.Network)
-	resp.RootfsSnapshotSources = crdRootfsSnapshotSourcesToREST(sb.Spec.RootfsSnapshotSources)
 
 	return resp
 }
@@ -75,8 +85,8 @@ func mapToEnvVars(m map[string]string) []corev1.EnvVar {
 	return envVars
 }
 
-func containerResourcesToSpec(r corev1.ResourceRequirements) *ResourcesSpec {
-	spec := &ResourcesSpec{
+func containerResourcesToSpec(r corev1.ResourceRequirements) *ResourceRequirements {
+	spec := &ResourceRequirements{
 		Limits:   resourceListToREST(r.Limits),
 		Requests: resourceListToREST(r.Requests),
 	}
@@ -113,12 +123,12 @@ func resourceListToREST(rl corev1.ResourceList) *ResourceList {
 	return out
 }
 
-func crdNetworkToREST(n *sandboxv1alpha1.NetworkSpec) *NetworkSpec {
+func crdNetworkToREST(n *sandboxv1alpha1.Network) *Network {
 	if n == nil {
 		return nil
 	}
 
-	return &NetworkSpec{
+	return &Network{
 		AllowInternetEgress: n.AllowInternetEgress,
 		AllowClusterDNS:     n.AllowClusterDNS,
 		AllowIPv6Egress:     n.AllowIPv6Egress,
@@ -128,29 +138,44 @@ func crdNetworkToREST(n *sandboxv1alpha1.NetworkSpec) *NetworkSpec {
 }
 
 func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sandboxv1alpha1.Sandbox, error) {
-	c := req.PodTemplate.Container
-	container := corev1.Container{
-		Name:    containerName,
-		Image:   c.Image,
-		Command: c.Command,
-	}
+	containers := make([]corev1.Container, 0, len(req.PodTemplate.Containers))
+	var rootfsSources []sandboxv1alpha1.RootfsSnapshotSource
+	for i, c := range req.PodTemplate.Containers {
+		containerName := c.Name
+		if containerName == "" {
+			containerName = fmt.Sprintf("sandbox%d", i)
+		}
+		container := corev1.Container{
+			Name:    containerName,
+			Image:   c.Image,
+			Command: c.Command,
+		}
 
-	if c.Resources != nil {
-		limits, err := restResourceListToK8s(c.Resources.Limits)
-		if err != nil {
-			return nil, fmt.Errorf("invalid resource limits: %w", err)
+		if c.Resources != nil {
+			limits, err := restResourceListToK8s(c.Resources.Limits)
+			if err != nil {
+				return nil, fmt.Errorf("container %q: invalid resource limits: %w", containerName, err)
+			}
+			requests, err := restResourceListToK8s(c.Resources.Requests)
+			if err != nil {
+				return nil, fmt.Errorf("container %q: invalid resource requests: %w", containerName, err)
+			}
+			container.Resources = corev1.ResourceRequirements{
+				Limits:   limits,
+				Requests: requests,
+			}
 		}
-		requests, err := restResourceListToK8s(c.Resources.Requests)
-		if err != nil {
-			return nil, fmt.Errorf("invalid resource requests: %w", err)
-		}
-		container.Resources = corev1.ResourceRequirements{
-			Limits:   limits,
-			Requests: requests,
+
+		container.Env = mapToEnvVars(c.Env)
+		containers = append(containers, container)
+
+		if c.RootfsSnapshotName != "" {
+			rootfsSources = append(rootfsSources, sandboxv1alpha1.RootfsSnapshotSource{
+				SnapshotName:  c.RootfsSnapshotName,
+				ContainerName: containerName,
+			})
 		}
 	}
-
-	container.Env = mapToEnvVars(c.Env)
 
 	sb := &sandboxv1alpha1.Sandbox{
 		ObjectMeta: metav1.ObjectMeta{
@@ -160,16 +185,16 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 		Spec: sandboxv1alpha1.SandboxSpec{
 			PodTemplate: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{container},
+					Containers: containers,
 				},
 			},
 			TimeoutSeconds:        req.TimeoutSeconds,
 			StartupTimeoutSeconds: req.StartupTimeoutSeconds,
+			RootfsSnapshotSources: rootfsSources,
 		},
 	}
 
 	sb.Spec.Network = restNetworkToCRD(req.Network)
-	sb.Spec.RootfsSnapshotSources = restRootfsSnapshotSourcesToCRD(req.RootfsSnapshotSources)
 
 	return sb, nil
 }
@@ -211,40 +236,12 @@ func restResourceListToK8s(src *ResourceList) (corev1.ResourceList, error) {
 	return rl, nil
 }
 
-func restRootfsSnapshotSourcesToCRD(sources []RootfsSnapshotSource) []sandboxv1alpha1.RootfsSnapshotSource {
-	if len(sources) == 0 {
-		return nil
-	}
-	out := make([]sandboxv1alpha1.RootfsSnapshotSource, len(sources))
-	for i, s := range sources {
-		out[i] = sandboxv1alpha1.RootfsSnapshotSource{
-			SnapshotName:  s.SnapshotName,
-			ContainerName: s.ContainerName,
-		}
-	}
-	return out
-}
-
-func crdRootfsSnapshotSourcesToREST(sources []sandboxv1alpha1.RootfsSnapshotSource) []RootfsSnapshotSource {
-	if len(sources) == 0 {
-		return nil
-	}
-	out := make([]RootfsSnapshotSource, len(sources))
-	for i, s := range sources {
-		out[i] = RootfsSnapshotSource{
-			SnapshotName:  s.SnapshotName,
-			ContainerName: s.ContainerName,
-		}
-	}
-	return out
-}
-
-func restNetworkToCRD(n *NetworkSpec) *sandboxv1alpha1.NetworkSpec {
+func restNetworkToCRD(n *Network) *sandboxv1alpha1.Network {
 	if n == nil {
 		return nil
 	}
 
-	return &sandboxv1alpha1.NetworkSpec{
+	return &sandboxv1alpha1.Network{
 		AllowInternetEgress: n.AllowInternetEgress,
 		AllowClusterDNS:     n.AllowClusterDNS,
 		AllowIPv6Egress:     n.AllowIPv6Egress,

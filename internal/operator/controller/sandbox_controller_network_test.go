@@ -47,7 +47,7 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should create custom NetworkPolicy when allowedEgressCIDRs is specified", func() {
 			sandboxName := "sandbox-netpol-cidr"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
@@ -75,7 +75,7 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should set owner reference on custom NetworkPolicy for garbage collection", func() {
 			sandboxName := "sandbox-netpol-ownerref"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
@@ -113,7 +113,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Internet access is handled by Helm-installed NetworkPolicy, no custom policy needed
 			sandboxName := "sandbox-internet-only"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowInternetEgress: ptr.To(true),
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
@@ -130,7 +130,7 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should create custom NetworkPolicy when nameservers specified without internet access", func() {
 			sandboxName := "sandbox-dns-allowed"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				Nameservers: []string{"8.8.8.8"},
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
@@ -156,7 +156,7 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should block risky CIDRs (169.254.0.0/16) when egress allows 0.0.0.0/0", func() {
 			sandboxName := "sandbox-block-metadata"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowedEgressCIDRs: []string{"0.0.0.0/0"},
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
@@ -178,7 +178,7 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should not add except for public CIDRs that don't overlap blocked ranges", func() {
 			sandboxName := "sandbox-public-range"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
@@ -199,7 +199,7 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should recreate custom NetworkPolicy if deleted on next reconcile", func() {
 			sandboxName := "sandbox-np-recreate"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
@@ -232,7 +232,7 @@ var _ = Describe("Sandbox Controller", func() {
 		})
 
 		DescribeTable("internet egress labels",
-			func(sandboxName string, network *sandboxv1alpha1.NetworkSpec, expectLabels map[string]string, dontExpectLabels []string) {
+			func(sandboxName string, network *sandboxv1alpha1.Network, expectLabels map[string]string, dontExpectLabels []string) {
 				createSandboxWithNetwork(ctx, sandboxName, network)
 				defer deleteSandbox(ctx, sandboxName)
 				defer deletePod(ctx, sandboxName+"-pod")
@@ -251,25 +251,25 @@ var _ = Describe("Sandbox Controller", func() {
 			},
 			Entry("allowInternetEgress only",
 				"sb-inet-only",
-				&sandboxv1alpha1.NetworkSpec{AllowInternetEgress: ptr.To(true)},
+				&sandboxv1alpha1.Network{AllowInternetEgress: ptr.To(true)},
 				map[string]string{LabelAllowIPv4Internet: "true"},
 				[]string{LabelAllowIPv6Internet},
 			),
 			Entry("allowInternetEgress + allowIPv6Egress",
 				"sb-inet-ipv6",
-				&sandboxv1alpha1.NetworkSpec{AllowInternetEgress: ptr.To(true), AllowIPv6Egress: ptr.To(true)},
+				&sandboxv1alpha1.Network{AllowInternetEgress: ptr.To(true), AllowIPv6Egress: ptr.To(true)},
 				map[string]string{LabelAllowIPv4Internet: "true", LabelAllowIPv6Internet: "true"},
 				nil,
 			),
 			Entry("allowIPv6Egress without internet",
 				"sb-ipv6-no-inet",
-				&sandboxv1alpha1.NetworkSpec{AllowIPv6Egress: ptr.To(true)},
+				&sandboxv1alpha1.Network{AllowIPv6Egress: ptr.To(true)},
 				nil,
 				[]string{LabelAllowIPv6Internet},
 			),
 			Entry("allowInternetEgress + allowIPv6Egress=false",
 				"sb-inet-no-ipv6",
-				&sandboxv1alpha1.NetworkSpec{AllowInternetEgress: ptr.To(true), AllowIPv6Egress: ptr.To(false)},
+				&sandboxv1alpha1.Network{AllowInternetEgress: ptr.To(true), AllowIPv6Egress: ptr.To(false)},
 				map[string]string{LabelAllowIPv4Internet: "true"},
 				[]string{LabelAllowIPv6Internet},
 			),
@@ -278,7 +278,7 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should add network labels to pod for allowClusterDNS", func() {
 			sandboxName := "sandbox-dns-labels"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowClusterDNS: ptr.To(true),
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
@@ -296,7 +296,7 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should set DNSPolicy to ClusterFirst when allowClusterDNS is true", func() {
 			sandboxName := "sandbox-dns-cluster"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowClusterDNS: ptr.To(true),
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
@@ -332,7 +332,7 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should set custom nameservers when specified", func() {
 			sandboxName := "sandbox-dns-custom"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				Nameservers: []string{"1.1.1.1", "8.8.8.8"},
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
@@ -355,7 +355,7 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should set NetworkConfigured condition to false with blocked CIDR", func() {
 			sandboxName := "sandbox-blocked-cidr"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowedEgressCIDRs: []string{"10.0.0.0/8"}, // Private range - blocked
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
@@ -398,7 +398,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Public nameservers (8.8.8.8) already reachable via static allow-ipv4-internet-egress policy
 			sandboxName := "sandbox-internet-dns"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowInternetEgress: ptr.To(true),
 				Nameservers:         []string{"8.8.8.8"},
 			}
@@ -423,7 +423,7 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should not create custom NetworkPolicy for CIDRs with internet access", func() {
 			sandboxName := "sandbox-internet-cidrs"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowInternetEgress: ptr.To(true),
 				AllowedEgressCIDRs:  []string{"1.1.1.0/24"},
 			}
@@ -443,7 +443,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// All nameservers skipped when internet is allowed — no custom NP
 			sandboxName := "sandbox-internet-private-dns"
 
-			network := &sandboxv1alpha1.NetworkSpec{
+			network := &sandboxv1alpha1.Network{
 				AllowInternetEgress: ptr.To(true),
 				Nameservers:         []string{"10.0.0.53"},
 			}
@@ -462,6 +462,55 @@ var _ = Describe("Sandbox Controller", func() {
 })
 
 var _ = Describe("configureDNS function", func() {
+	It("should configure DNSPolicy None with sink nameserver when network is nil", func() {
+		pod := &corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Name: "test", Image: "busybox"},
+				},
+			},
+		}
+
+		configureDNS(pod, nil)
+		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
+		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"127.0.0.1"}))
+	})
+
+	It("should configure DNSPolicy ClusterFirst when allowClusterDNS is true", func() {
+		pod := &corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Name: "test", Image: "busybox"},
+				},
+			},
+		}
+
+		network := &sandboxv1alpha1.Network{
+			AllowClusterDNS: ptr.To(true),
+		}
+
+		configureDNS(pod, network)
+		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
+	})
+
+	It("should configure custom nameservers when specified", func() {
+		pod := &corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Name: "test", Image: "busybox"},
+				},
+			},
+		}
+
+		network := &sandboxv1alpha1.Network{
+			Nameservers: []string{"8.8.8.8", "1.1.1.1"},
+		}
+
+		configureDNS(pod, network)
+		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
+		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
+	})
+
 	It("should auto-default public nameservers when egress CIDRs are set without DNS config", func() {
 		pod := &corev1.Pod{
 			Spec: corev1.PodSpec{
@@ -471,7 +520,7 @@ var _ = Describe("configureDNS function", func() {
 			},
 		}
 
-		network := &sandboxv1alpha1.NetworkSpec{
+		network := &sandboxv1alpha1.Network{
 			AllowedEgressCIDRs: []string{"203.0.113.0/24"},
 		}
 
@@ -491,7 +540,7 @@ var _ = Describe("configureDNS function", func() {
 			},
 		}
 
-		network := &sandboxv1alpha1.NetworkSpec{
+		network := &sandboxv1alpha1.Network{
 			AllowClusterDNS: ptr.To(true),
 			Nameservers:     []string{"8.8.8.8"},
 		}

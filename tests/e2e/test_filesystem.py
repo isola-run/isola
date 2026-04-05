@@ -222,8 +222,8 @@ def test_container_param_on_filesystem(session_sandbox: Sandbox) -> None:
     path = _unique_path("container_param")
     content = b"container param test"
 
-    result = session_sandbox.filesystem.write(path, content, container="sandbox")
+    result = session_sandbox.filesystem.write(path, content, container="sandbox0")
     assert result.bytes_written == len(content)
 
-    read_back = session_sandbox.filesystem.read(path, container="sandbox")
+    read_back = session_sandbox.filesystem.read(path, container="sandbox0")
     assert read_back == content
