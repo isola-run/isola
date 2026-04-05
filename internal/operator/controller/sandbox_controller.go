@@ -500,18 +500,11 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	desiredNP, err := netbuilder.BuildCustomNetworkPolicy(sandbox.Name, sandbox.Namespace, sandbox.Spec.Network)
 	if err != nil {
 		log.Error(err, "Failed to build custom NetworkPolicy")
-		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-			{
-				Type:               SandboxNetworkReadyCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonNetworkPolicyFailed,
-				Message:            err.Error(),
-				ObservedGeneration: sandbox.Generation,
-			},
-		}); patchErr != nil {
-			log.Error(patchErr, "Failed to update Sandbox status")
+		// Network is immutable, so this error will never resolve on retry.
+		if patchErr := r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonNetworkPolicyFailed, err.Error()); patchErr != nil {
+			return patchErr
 		}
-		return err
+		return reconcile.TerminalError(err)
 	}
 
 	if desiredNP == nil {
