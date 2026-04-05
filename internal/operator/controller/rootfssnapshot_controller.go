@@ -140,7 +140,7 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if !r.Enabled {
 		log.Info("RootfsSnapshot capability disabled (--rootfssnapshot-enabled is not set)")
-		return r.setFailed(ctx, baseSnap, snap, "RootfsSnapshot capability is not enabled. Set operator.sandboxRuntime.type=gvisor and operator.sandboxRuntime.gvisor.rootfssnapshot.enabled=true in Helm values.")
+		return r.setFailed(ctx, baseSnap, snap, "RootfsSnapshot capability is not enabled. Set operator.sandboxRuntime.rootfssnapshot.enabled=true in Helm values.")
 	}
 
 	if r.BucketURL == "" {

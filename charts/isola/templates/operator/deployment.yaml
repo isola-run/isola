@@ -37,10 +37,7 @@ spec:
             - --leader-elect
             - --health-probe-bind-address=:8081
             - "--metrics-bind-address=:{{ .Values.operator.metrics.port }}"
-            {{- $runtimeClass := include "isola.operator.runtimeClassName" . }}
-            {{- if $runtimeClass }}
-            - "--runtime-class={{ $runtimeClass }}"
-            {{- end }}
+            - "--runtime-class={{ include "isola.operator.runtimeClassName" . }}"
             - "--log-level={{ .Values.operator.logging.level }}"
             {{- if .Values.operator.logging.devMode }}
             - --dev-mode
@@ -51,7 +48,6 @@ spec:
             {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" }}
             - --rootfssnapshot-enabled
             {{- end }}
-            {{- if eq .Values.operator.sandboxRuntime.type "gvisor" }}
             {{- $bucketUrl := include "isola.operator.storageBucketUrl" . }}
             {{- if $bucketUrl }}
             - "--rootfssnapshot-bucket-url={{ $bucketUrl }}"
@@ -67,11 +63,8 @@ spec:
             {{- if $hostMountPath }}
             - "--rootfssnapshot-host-mount-path={{ $hostMountPath }}"
             {{- end }}
-            {{- end }}
             - "--sidecar-image-pull-policy={{ .Values.operator.sandboxSidecar.image.pullPolicy }}"
-            {{- if eq .Values.operator.sandboxRuntime.type "gvisor" }}
-            - "--rootfssnapshot-uploader-image-pull-policy={{ .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.pullPolicy }}"
-            {{- end }}
+            - "--rootfssnapshot-uploader-image-pull-policy={{ .Values.operator.sandboxRuntime.rootfssnapshot.uploader.image.pullPolicy }}"
             {{- $imagePullSecretNames := include "isola.imagePullSecretNames" . }}
             {{- if $imagePullSecretNames }}
             - "--image-pull-secrets={{ $imagePullSecretNames }}"

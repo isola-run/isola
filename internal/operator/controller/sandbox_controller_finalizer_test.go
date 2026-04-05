@@ -112,19 +112,14 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should execute SnapshotRootfs policy on deletion", func() {
 			sandboxName := "sandbox-snapshot-delete"
-			runtimeClassName := "gvisor-delete"
 
 			recorder := events.NewFakeRecorder(10)
 			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 
 			podName := sandboxName + "-pod"

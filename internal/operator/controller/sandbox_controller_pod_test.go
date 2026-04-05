@@ -161,34 +161,8 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Labels).To(HaveKeyWithValue("isola.run/sandbox", "true"))
 		})
 
-		It("should add gvisor overlay2 annotation when RuntimeClassName is set", func() {
+		It("should add gvisor overlay2 annotation", func() {
 			sandboxName := "sandbox-gvisor-overlay"
-			runtimeClassName := "gvisor"
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
-
-			// Use reconciler with RuntimeClassName configured
-			reconcilerWithRuntime := newTestReconcilerWithRuntimeClass(fakeClock, runtimeClassName)
-
-			createSandbox(ctx, sandboxName)
-			defer deleteSandbox(ctx, sandboxName)
-
-			podName := sandboxName + "-pod"
-			defer deletePod(ctx, podName)
-
-			_, err := doReconcile(ctx, reconcilerWithRuntime, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, podName)
-			Expect(pod).NotTo(BeNil())
-			Expect(pod.Spec.RuntimeClassName).NotTo(BeNil())
-			Expect(*pod.Spec.RuntimeClassName).To(Equal(runtimeClassName))
-			Expect(pod.Annotations).To(HaveKeyWithValue("dev.gvisor.flag.overlay2", "root:self"))
-		})
-
-		It("should not add gvisor overlay2 annotation when RuntimeClassName is not set", func() {
-			sandboxName := "sandbox-no-runtime"
 
 			createSandbox(ctx, sandboxName)
 			defer deleteSandbox(ctx, sandboxName)
@@ -201,8 +175,9 @@ var _ = Describe("Sandbox Controller", func() {
 
 			pod := getPod(ctx, podName)
 			Expect(pod).NotTo(BeNil())
-			Expect(pod.Spec.RuntimeClassName).To(BeNil())
-			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.overlay2"))
+			Expect(pod.Spec.RuntimeClassName).NotTo(BeNil())
+			Expect(*pod.Spec.RuntimeClassName).To(Equal("gvisor"))
+			Expect(pod.Annotations).To(HaveKeyWithValue("dev.gvisor.flag.overlay2", "root:self"))
 		})
 
 		It("should inject sleep infinity when no command is specified", func() {

@@ -221,30 +221,6 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(cond.Message).To(ContainSubstring("not found"))
 		})
 
-		It("should fail when no RuntimeClassName configured", func() {
-			reconciler := newTestReconcilerWithRestore(fakeClock, "", "/mnt/isola-snapshots")
-
-			sandboxName := "sb-restore-no-runtime"
-			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
-					{SnapshotName: "snap1"},
-				}
-			})
-			defer deleteSandbox(ctx, sandboxName)
-
-			podName := sandboxName + "-pod"
-			defer deletePod(ctx, podName)
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).To(HaveOccurred())
-
-			sandbox := getSandbox(ctx, sandboxName)
-			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Reason).To(Equal(CondReasonRootfsRestoreConfigError))
-			Expect(cond.Message).To(ContainSubstring("no RuntimeClassName configured"))
-		})
-
 		It("should fail when host mount path not configured", func() {
 			runtimeClassName := "gvisor-restore"
 

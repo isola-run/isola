@@ -73,16 +73,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should record RootfsSnapshotCreated event", func() {
 			sandboxName := "sandbox-event-snapshot-start"
-			runtimeClassName := "gvisor-event"
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
@@ -108,16 +103,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should record SnapshotSucceeded event", func() {
 			sandboxName := "sandbox-event-snapshot-success"
-			runtimeClassName := "gvisor-event-success"
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
@@ -149,16 +139,11 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should record SnapshotFailed event", func() {
 			sandboxName := "sandbox-event-snapshot-fail"
-			runtimeClassName := "gvisor-event-fail"
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
 

@@ -131,6 +131,13 @@ var _ = BeforeSuite(func() {
 	}
 	Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 
+	// Create default RuntimeClass for gVisor (required: all sandbox pods use runtimeClassName "gvisor")
+	gvisorRC := &nodev1.RuntimeClass{
+		ObjectMeta: metav1.ObjectMeta{Name: "gvisor"},
+		Handler:    "runsc",
+	}
+	Expect(k8sClient.Create(ctx, gvisorRC)).To(Succeed())
+
 	// Create PriorityClass for sandbox pods
 	priorityClass := &schedulingv1.PriorityClass{
 		ObjectMeta: metav1.ObjectMeta{
@@ -163,6 +170,7 @@ func newTestReconciler(clock Clock) *SandboxReconciler {
 		Recorder:            rec,
 		SandboxSidecarImage: "sandbox-sidecar:test",
 		Clock:               clock,
+		RuntimeClassName:    "gvisor",
 		// ControllerNamespace not set - defaults to sandbox namespace
 		// ControllerLabels not set - defaults to {"app.kubernetes.io/name": "isola-controller"}
 	}
@@ -177,19 +185,6 @@ func newTestReconcilerWithRecorder(clock Clock, recorder events.EventRecorder) *
 		Recorder:            recorder,
 		SandboxSidecarImage: "sandbox-sidecar:test",
 		Clock:               clock,
-	}
-}
-
-// newTestReconcilerWithRuntimeClass creates a SandboxReconciler with RuntimeClassName set.
-// Used for testing gvisor-specific features like overlay2 annotation.
-func newTestReconcilerWithRuntimeClass(clock Clock, runtimeClassName string) *SandboxReconciler {
-	rec := events.NewFakeRecorder(100)
-	return &SandboxReconciler{
-		Client:              k8sClient,
-		Scheme:              scheme.Scheme,
-		Recorder:            rec,
-		SandboxSidecarImage: "sandbox-sidecar:test",
-		Clock:               clock,
-		RuntimeClassName:    runtimeClassName,
+		RuntimeClassName:    "gvisor",
 	}
 }

@@ -23,44 +23,41 @@ operator:
       nodePort: 30082
 
   sandboxRuntime:
-    type: gvisor # alternatively, if gvisor not installed, use clusterDefault
+    runtimeClassName: gvisor
+    rootfssnapshot:
+      enabled: true
+      runsc:
+        binaryPath: /usr/local/bin/runsc
+        rootDir: /run/containerd/runsc/k8s.io
+      uploader:
+        image:
+          registry: ""
+          repository: isola-uploader
+          tag: "dev"
 
-    gvisor:
-      runtimeClassName: gvisor
-      rootfssnapshot:
-        enabled: true
-        runsc:
-          binaryPath: /usr/local/bin/runsc
-          rootDir: /run/containerd/runsc/k8s.io
-        uploader:
+      storage:
+        type: s3
+        s3:
+          bucket: isola-snapshots
+          region: us-east-1
+          endpoint: "http://localstack.localstack.svc.cluster.local:4566"
+          forcePathStyle: true
+          accessKeyId: "test"
+          secretAccessKey: "test"
+
+      snapshotMounter:
+        hostMountPath: /mnt/isola-snapshots
+        rclone:
+          image:
+            registry: docker.io
+            repository: rclone/rclone
+            tag: "1.73.2"
+          dirCacheTime: "2s"
+        mounter:
           image:
             registry: ""
-            repository: isola-uploader
+            repository: snapshot-mounter
             tag: "dev"
-
-        storage:
-          type: s3
-          s3:
-            bucket: isola-snapshots
-            region: us-east-1
-            endpoint: "http://localstack.localstack.svc.cluster.local:4566"
-            forcePathStyle: true
-            accessKeyId: "test"
-            secretAccessKey: "test"
-
-        snapshotMounter:
-          hostMountPath: /mnt/isola-snapshots
-          rclone:
-            image:
-              registry: docker.io
-              repository: rclone/rclone
-              tag: "1.73.2"
-            dirCacheTime: "2s"
-          mounter:
-            image:
-              registry: ""
-              repository: snapshot-mounter
-              tag: "dev"
 
 apiGateway:
   image:

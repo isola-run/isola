@@ -39,54 +39,19 @@ var _ = Describe("Sandbox Controller", func() {
 			reconciler = newTestReconciler(fakeClock)
 		})
 
-		It("should skip snapshot when RuntimeClassName is not set", func() {
-			sandboxName := "sandbox-no-runtimeclass"
-
-			recorder := events.NewFakeRecorder(10)
-			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
-
-			timeout := int64(1)
-			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
-				}
-			})
-			defer deleteSandbox(ctx, sandboxName)
-
-			podName := sandboxName + "-pod"
-			defer deletePod(ctx, podName)
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, podName)
-			Expect(pod).NotTo(BeNil())
-			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
-
-			fakeClock.Advance(2 * time.Second)
-
-			// Reconcile - snapshot skipped due to no runtimeclass, sandbox deleted
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			Eventually(recorder.Events).Should(Receive(ContainSubstring("RuntimeNotSupported")))
-
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
-			Expect(err).To(Satisfy(errors.IsNotFound))
-		})
-
 		It("should skip snapshot when runtime handler is not supported", func() {
 			sandboxName := "sandbox-unsupported-runtime"
-			runtimeClassName := "unsupported-runtime"
 
 			recorder := events.NewFakeRecorder(10)
 			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
 
-			createRuntimeClass(ctx, runtimeClassName, "runc") // runc is not supported for snapshotting
-			defer deleteRuntimeClass(ctx, runtimeClassName)
+			// Replace the suite-level "gvisor" RC with one using "runc" handler
+			deleteRuntimeClass(ctx, "gvisor")
+			createRuntimeClass(ctx, "gvisor", "runc")
+			defer func() {
+				deleteRuntimeClass(ctx, "gvisor")
+				createRuntimeClass(ctx, "gvisor", "runsc")
+			}()
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
@@ -94,7 +59,6 @@ var _ = Describe("Sandbox Controller", func() {
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
@@ -124,10 +88,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should create RootfsSnapshot for supported runtime (runsc)", func() {
 			sandboxName := "sandbox-runsc-snapshot"
-			runtimeClassName := "gvisor-runsc"
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
@@ -135,7 +95,6 @@ var _ = Describe("Sandbox Controller", func() {
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
@@ -204,13 +163,9 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should mark snapshot complete when RootfsSnapshot Ready=True", func() {
 			sandboxName := "sandbox-snapshot-success"
-			runtimeClassName := "gvisor-success"
 
 			recorder := events.NewFakeRecorder(10)
 			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
@@ -218,7 +173,6 @@ var _ = Describe("Sandbox Controller", func() {
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
@@ -261,10 +215,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should mark snapshot failed when RootfsSnapshot fails", func() {
 			sandboxName := "sandbox-snapshot-fail"
-			runtimeClassName := "gvisor-fail"
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
@@ -272,7 +222,6 @@ var _ = Describe("Sandbox Controller", func() {
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
@@ -304,10 +253,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should use default timeoutSeconds when not specified", func() {
 			sandboxName := "sandbox-default-deadline"
-			runtimeClassName := "gvisor-default-deadline"
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
@@ -316,7 +261,6 @@ var _ = Describe("Sandbox Controller", func() {
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 					// TimeoutSeconds not set - should use default (300)
 				}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
@@ -344,37 +288,28 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(*rootfsSnapshot.Spec.TimeoutSeconds).To(Equal(int64(300)), "Should use default timeoutSeconds of 300")
 		})
 
-		It("should handle RuntimeClass not found during snapshot verification", func() {
+		It("should fail pod creation when RuntimeClass not found", func() {
 			sandboxName := "sandbox-rc-not-found"
-			runtimeClassName := "nonexistent-runtime"
 
-			timeout := int64(1)
+			// Temporarily remove the suite-level "gvisor" RC to simulate misconfiguration
+			deleteRuntimeClass(ctx, "gvisor")
+			defer createRuntimeClass(ctx, "gvisor", "runsc")
+
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
 
-			podName := sandboxName + "-pod"
-			defer deletePod(ctx, podName)
-
-			// Reconcile to try to create pod - this should fail because RuntimeClass doesn't exist
-			// The pod creation will be rejected by the API server
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
-			// The reconcile should return an error because pod creation fails with nonexistent RuntimeClass
+			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("RuntimeClass"))
 		})
 
 		It("should create RootfsSnapshot exactly once even if reconciled multiple times", func() {
 			sandboxName := "sandbox-snapshot-idempotent"
-			runtimeClassName := "gvisor-idempotent"
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
@@ -382,7 +317,6 @@ var _ = Describe("Sandbox Controller", func() {
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
@@ -430,10 +364,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should timeout snapshot even after multiple reconciles (deadline must not slide)", func() {
 			sandboxName := "sandbox-snapshot-deadline-nosilde"
-			runtimeClassName := "gvisor-deadline-noslide"
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			snapshotDeadline := int64(10)
 			timeout := int64(1) // sandbox times out quickly to enter finalization
@@ -443,7 +373,6 @@ var _ = Describe("Sandbox Controller", func() {
 					Strategy:       sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 					TimeoutSeconds: &snapshotDeadline,
 				}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
