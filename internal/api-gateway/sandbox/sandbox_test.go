@@ -183,13 +183,13 @@ var _ = Describe("Sandbox Endpoints", func() {
 		})
 
 		It("rejects more than 3 nameservers with 422", func() {
-			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}],"network":{"nameservers":["1.1.1.1","8.8.8.8","9.9.9.9","208.67.222.222"]}}}`
+			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"nameservers":["1.1.1.1","8.8.8.8","9.9.9.9","208.67.222.222"]}}`
 			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})
 
 		It("rejects timeoutSeconds of 0", func() {
-			reqBody := `{"podTemplate":{"containers":[{"image":"x"}],"timeoutSeconds":0}}`
+			reqBody := `{"podTemplate":{"containers":[{"image":"x"}]},"timeoutSeconds":0}`
 			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})

@@ -57,8 +57,8 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -93,15 +93,15 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteShutdownSnapshot(ctx, sandboxName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -117,7 +117,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify RootfsSnapshot was created
-			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
+			rootfsSnapshot := getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.Spec.SandboxName).To(Equal(sandboxName))
 		})
@@ -128,8 +128,8 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -168,8 +168,8 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -202,7 +202,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// No RootfsSnapshot should be created (pod not ready → skip)
-			Expect(getShutdownSnapshot(ctx, sandboxName)).To(BeNil())
+			Expect(getTerminationSnapshot(ctx, sandboxName)).To(BeNil())
 
 			// Sandbox should be deleted (snapshot skipped, cleanup done)
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
@@ -218,15 +218,15 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteShutdownSnapshot(ctx, sandboxName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -243,11 +243,11 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify RootfsSnapshot was created
-			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
+			rootfsSnapshot := getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 
 			// Set RootfsSnapshot Ready=True to simulate successful snapshot
-			setShutdownSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
+			setTerminationSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -267,15 +267,15 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteShutdownSnapshot(ctx, sandboxName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
 
 			// Setup: reconcile to create pod, then bind it to a node (simulating the scheduler)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -286,11 +286,11 @@ var _ = Describe("Sandbox Controller", func() {
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
 			// Verify RootfsSnapshot was created
-			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
+			rootfsSnapshot := getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 
 			// Set RootfsSnapshot Ready=False with failed reason to simulate failed snapshot
-			setShutdownSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
+			setTerminationSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 			Expect(err).NotTo(HaveOccurred())
@@ -305,8 +305,8 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
 					// TimeoutSeconds not set - should use default (300)
 				}
 			})
@@ -314,7 +314,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteShutdownSnapshot(ctx, sandboxName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -330,7 +330,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify RootfsSnapshot was created with default timeoutSeconds (300)
-			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
+			rootfsSnapshot := getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.Spec.TimeoutSeconds).NotTo(BeNil())
 			Expect(*rootfsSnapshot.Spec.TimeoutSeconds).To(Equal(int64(300)), "Should use default timeoutSeconds of 300")
@@ -344,8 +344,8 @@ var _ = Describe("Sandbox Controller", func() {
 			defer createRuntimeClass(ctx, "gvisor", "runsc")
 
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -362,15 +362,15 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteShutdownSnapshot(ctx, sandboxName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
 
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).NotTo(HaveOccurred())
@@ -385,7 +385,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
+			rootfsSnapshot := getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			originalUID := rootfsSnapshot.UID
 
@@ -395,7 +395,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			rootfsSnapshot = getShutdownSnapshot(ctx, sandboxName)
+			rootfsSnapshot = getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.UID).To(Equal(originalUID), "RootfsSnapshot should not be recreated")
 
@@ -405,7 +405,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			rootfsSnapshot = getShutdownSnapshot(ctx, sandboxName)
+			rootfsSnapshot = getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.UID).To(Equal(originalUID), "RootfsSnapshot should not be recreated on third reconcile")
 		})
@@ -417,8 +417,8 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1) // sandbox times out quickly to enter finalization
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy:       sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
 					TimeoutSeconds: &snapshotDeadline,
 				}
 			})
@@ -426,7 +426,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteShutdownSnapshot(ctx, sandboxName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
 
 			// Reconcile to create pod
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -448,7 +448,7 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
+			rootfsSnapshot := getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil(), "RootfsSnapshot should be created")
 
 			// Simulate multiple reconciles over time, each 3s apart.

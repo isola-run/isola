@@ -473,10 +473,10 @@ func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv
 	return sandboxPod, nil
 }
 
-func (r *SandboxReconciler) getShutdownRootfssnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
+func (r *SandboxReconciler) getTerminationRootfssnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      podutil.GetShutdownSnapshotName(sandbox.Name),
+		Name:      podutil.GetTerminationSnapshotName(sandbox.Name),
 		Namespace: sandbox.Namespace,
 	}, snap)
 	if apierrors.IsNotFound(err) {
@@ -500,18 +500,11 @@ func (r *SandboxReconciler) ensureCustomNetworkPolicy(
 	desiredNP, err := netbuilder.BuildCustomNetworkPolicy(sandbox.Name, sandbox.Namespace, sandbox.Spec.Network)
 	if err != nil {
 		log.Error(err, "Failed to build custom NetworkPolicy")
-		if patchErr := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
-			{
-				Type:               SandboxNetworkReadyCondition,
-				Status:             metav1.ConditionFalse,
-				Reason:             CondReasonNetworkPolicyFailed,
-				Message:            err.Error(),
-				ObservedGeneration: sandbox.Generation,
-			},
-		}); patchErr != nil {
-			log.Error(patchErr, "Failed to update Sandbox status")
+		// Network is immutable, so this error will never resolve on retry.
+		if patchErr := r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonNetworkPolicyFailed, err.Error()); patchErr != nil {
+			return patchErr
 		}
-		return err
+		return reconcile.TerminalError(err)
 	}
 
 	if desiredNP == nil {
@@ -599,12 +592,12 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	networkCondition := r.determineNetworkCondition(sandbox)
 	conditions = append(conditions, networkCondition)
 
-	// todo benl: currently, only shutdown snapsbot condition is reflected
-	shutdownSnapshot, err := r.getShutdownRootfssnapshot(ctx, sandbox)
+	// todo benl: currently, only termination snapshot condition is reflected
+	terminationSnapshot, err := r.getTerminationRootfssnapshot(ctx, sandbox)
 	if err != nil {
 		return err
 	}
-	snapshotCondition := r.determineRootfssnapshotCondition(sandbox, shutdownSnapshot)
+	snapshotCondition := r.determineRootfssnapshotCondition(sandbox, terminationSnapshot)
 	conditions = append(conditions, snapshotCondition)
 
 	readyCondition := r.determineReadyCondition(sandbox, sandboxPod)
@@ -660,7 +653,7 @@ func (r *SandboxReconciler) determineRootfssnapshotCondition(sandbox *sandboxv1a
 			Type:               SandboxRootfsSnapshotCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonNoRootfsSnapshot,
-			Message:            "No shutdown rootfs snapshot exists",
+			Message:            "No termination rootfs snapshot exists",
 			ObservedGeneration: sandbox.Generation,
 		}
 	}
@@ -937,7 +930,7 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
-// finalize the sandbox according to the shutdown policy and have it ready to be deleted.
+// finalize the sandbox according to the termination policy and have it ready to be deleted.
 // Returns:
 // ctrl.Result: a result object that might ask for a requeue if another reconciliation would be required.
 // bool: whether the cleanup was fully completed (and thus the sandbox can be deleted) or not.
@@ -949,19 +942,19 @@ func (r *SandboxReconciler) finalizeSandbox(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	log.Info("Executing shutdown policy for deletion")
+	log.Info("Executing termination policy for deletion")
 
 	sandboxPod, err := r.getSandboxPod(ctx, sandbox)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
 
-	snapshotDeadline, err := r.ensureShutdownDeadline(ctx, sandbox, baseSandbox)
+	snapshotDeadline, err := r.ensureTerminationDeadline(ctx, sandbox, baseSandbox)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
 
-	result, cleanupDone, err := r.executeShutdownPolicy(
+	result, cleanupDone, err := r.executeTerminationPolicy(
 		ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline,
 	)
 	if err != nil {
@@ -980,9 +973,9 @@ func (r *SandboxReconciler) finalizeSandbox(
 	return ctrl.Result{}, true, nil
 }
 
-// executeShutdownPolicy executes the shutdown policy for a sandbox being cleaned up.
+// executeTerminationPolicy executes the termination policy for a sandbox being cleaned up.
 // snapshotDeadline is the deadline by which snapshotting must complete.
-func (r *SandboxReconciler) executeShutdownPolicy(
+func (r *SandboxReconciler) executeTerminationPolicy(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
@@ -991,7 +984,7 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	if sandbox.Spec.ShutdownPolicy == nil || sandbox.Spec.ShutdownPolicy.Strategy == sandboxv1alpha1.ShutdownStrategyDelete {
+	if sandbox.Spec.TerminationPolicy == nil || sandbox.Spec.TerminationPolicy.Strategy == sandboxv1alpha1.TerminationStrategyDelete {
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               sandboxv1alpha1.SandboxReadyCondition,
@@ -1011,36 +1004,36 @@ func (r *SandboxReconciler) executeShutdownPolicy(
 			Type:               sandboxv1alpha1.SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
 			Reason:             CondReasonRootfsSnapshottingInProgress,
-			Message:            "Sandbox being deleted; executing shutdown policy",
+			Message:            "Sandbox being deleted; executing termination policy",
 			ObservedGeneration: sandbox.Generation,
 		},
 	}); err != nil {
 		return ctrl.Result{}, false, err
 	}
 
-	switch sandbox.Spec.ShutdownPolicy.Strategy {
-	case sandboxv1alpha1.ShutdownStrategySnapshotRootfs:
+	switch sandbox.Spec.TerminationPolicy.Strategy {
+	case sandboxv1alpha1.TerminationStrategySnapshotRootfs:
 		return r.handleRootfsSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, r.getTimeoutSeconds(sandbox))
 	default:
-		log.Info("Unknown shutdown policy; proceeding with deletion", "strategy", sandbox.Spec.ShutdownPolicy.Strategy)
+		log.Info("Unknown termination policy; proceeding with deletion", "strategy", sandbox.Spec.TerminationPolicy.Strategy)
 		return ctrl.Result{}, true, nil
 	}
 }
 
 func (r *SandboxReconciler) getTimeoutSeconds(sandbox *sandboxv1alpha1.Sandbox) int64 {
-	if sandbox != nil && sandbox.Spec.ShutdownPolicy != nil && sandbox.Spec.ShutdownPolicy.TimeoutSeconds != nil {
-		return *sandbox.Spec.ShutdownPolicy.TimeoutSeconds
+	if sandbox != nil && sandbox.Spec.TerminationPolicy != nil && sandbox.Spec.TerminationPolicy.TimeoutSeconds != nil {
+		return *sandbox.Spec.TerminationPolicy.TimeoutSeconds
 	}
 	return defaultTimeoutSeconds
 }
 
-// ensureShutdownDeadline persists ShutdownDeadlineAt on the first call (anchored to
+// ensureTerminationDeadline persists TerminationDeadlineAt on the first call (anchored to
 // DeletionTimestamp) and returns the persisted value on subsequent reconciles.
-func (r *SandboxReconciler) ensureShutdownDeadline(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (time.Time, error) {
+func (r *SandboxReconciler) ensureTerminationDeadline(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) (time.Time, error) {
 	log := logf.FromContext(ctx)
 
-	if sandbox.Status.ShutdownDeadlineAt != nil {
-		return sandbox.Status.ShutdownDeadlineAt.Time, nil
+	if sandbox.Status.TerminationDeadlineAt != nil {
+		return sandbox.Status.TerminationDeadlineAt.Time, nil
 	}
 
 	// Anchor to DeletionTimestamp (when finalization started)
@@ -1050,13 +1043,13 @@ func (r *SandboxReconciler) ensureShutdownDeadline(ctx context.Context, sandbox 
 	}
 
 	deadline := anchor.Add(time.Duration(r.getTimeoutSeconds(sandbox)) * time.Second)
-	sandbox.Status.ShutdownDeadlineAt = &metav1.Time{Time: deadline}
+	sandbox.Status.TerminationDeadlineAt = &metav1.Time{Time: deadline}
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, nil); err != nil {
-		return time.Time{}, fmt.Errorf("failed to persist shutdown deadline: %w", err)
+		return time.Time{}, fmt.Errorf("failed to persist termination deadline: %w", err)
 	}
 
-	log.Info("Shutdown deadline set", "deadline", deadline)
+	log.Info("Termination deadline set", "deadline", deadline)
 	return deadline, nil
 }
 
@@ -1147,13 +1140,13 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
-	snap, err := r.getShutdownRootfssnapshot(ctx, sandbox)
+	snap, err := r.getTerminationRootfssnapshot(ctx, sandbox)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
 
 	if snap == nil {
-		return r.createShutdownSnapshot(ctx, sandbox, baseSandbox, timeoutSeconds)
+		return r.createTerminationSnapshot(ctx, sandbox, baseSandbox, timeoutSeconds)
 	}
 
 	snapshotName := snap.Name
@@ -1219,7 +1212,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	return ctrl.Result{}, true, nil
 }
 
-func (r *SandboxReconciler) createShutdownSnapshot(
+func (r *SandboxReconciler) createTerminationSnapshot(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
@@ -1227,7 +1220,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	snapshotName := podutil.GetShutdownSnapshotName(sandbox.Name)
+	snapshotName := podutil.GetTerminationSnapshotName(sandbox.Name)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      snapshotName,
@@ -1255,7 +1248,7 @@ func (r *SandboxReconciler) createShutdownSnapshot(
 		return ctrl.Result{}, false, err
 	}
 
-	log.Info("Created shutdown RootfsSnapshot", "name", rootfsSnapshot.Name)
+	log.Info("Created termination RootfsSnapshot", "name", rootfsSnapshot.Name)
 	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "RootfsSnapshotCreated", "Created", "Created RootfsSnapshot %q", rootfsSnapshot.Name)
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{

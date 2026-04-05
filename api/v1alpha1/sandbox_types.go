@@ -27,25 +27,25 @@ const (
 	SandboxReadyCondition = "Ready"
 )
 
-// SandboxShutdownStrategy defines the policy for handling sandbox termination
+// SandboxTerminationStrategy defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotRootfs
-type SandboxShutdownStrategy string
+type SandboxTerminationStrategy string
 
 const (
-	ShutdownStrategyDelete         SandboxShutdownStrategy = "Delete"
-	ShutdownStrategySnapshotRootfs SandboxShutdownStrategy = "SnapshotRootfs"
+	TerminationStrategyDelete         SandboxTerminationStrategy = "Delete"
+	TerminationStrategySnapshotRootfs SandboxTerminationStrategy = "SnapshotRootfs"
 )
 
-// ShutdownPolicy controls how the sandbox is handled when it ends
-type ShutdownPolicy struct {
-	// Strategy determines the action taken when the sandbox shuts down
+// TerminationPolicy controls how the sandbox is handled when it ends
+type TerminationPolicy struct {
+	// Strategy determines the action taken when the sandbox terminates
 	// +optional
 	// +kubebuilder:default=Delete
 	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
-	Strategy SandboxShutdownStrategy `json:"strategy,omitempty"`
+	Strategy SandboxTerminationStrategy `json:"strategy,omitempty"`
 
-	// TimeoutSeconds specifies the duration in seconds relative to the startTime
-	// that the snapshot job may be active before the system tries to terminate it.
+	// TimeoutSeconds specifies the duration in seconds relative to the deletion timestamp
+	// that the termination policy may be active before the system tries to terminate it.
 	// Only used when Strategy is SnapshotRootfs.
 	// +optional
 	// +kubebuilder:default=300
@@ -55,6 +55,8 @@ type ShutdownPolicy struct {
 
 // Network defines network isolation for a sandbox.
 // If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
+// +kubebuilder:validation:XValidation:rule="!has(self.nameservers) || (has(self.allowIPv6Egress) && self.allowIPv6Egress == true) || self.nameservers.all(s, ip(s).family() == 4)",message="IPv6 nameservers require allowIPv6Egress to be true"
+// +kubebuilder:validation:XValidation:rule="!has(self.allowedEgressCIDRs) || (has(self.allowIPv6Egress) && self.allowIPv6Egress == true) || self.allowedEgressCIDRs.all(s, cidr(s).ip().family() == 4)",message="IPv6 CIDRs require allowIPv6Egress to be true"
 type Network struct {
 	// AllowInternetEgress allows egress to 0.0.0.0/0 (and ::/0 when allowIPv6Egress is true)
 	// with blocked ranges (private IPs, cloud metadata, etc.) automatically excepted.
@@ -82,7 +84,7 @@ type Network struct {
 	// Creates a custom NetworkPolicy only when allowInternetEgress is false or unset.
 	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:validation:items:MaxLength=43
-	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$`
+	// +kubebuilder:validation:XValidation:rule="self.all(s, isCIDR(s))",message="must be valid CIDR notation (e.g. 10.0.0.0/8 or 2001:db8::/32)"
 	// +optional
 	AllowedEgressCIDRs []string `json:"allowedEgressCIDRs,omitempty"`
 
@@ -147,9 +149,9 @@ type SandboxSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	StartupTimeoutSeconds *int64 `json:"startupTimeoutSeconds,omitempty"`
 
-	// ShutdownPolicy defines what to do when the sandbox ends (defaults to Delete if unspecified)
+	// TerminationPolicy defines what to do when the sandbox ends (defaults to Delete if unspecified)
 	// +optional
-	ShutdownPolicy *ShutdownPolicy `json:"shutdownPolicy,omitempty"`
+	TerminationPolicy *TerminationPolicy `json:"terminationPolicy,omitempty"`
 
 	// Network specifies the network isolation configuration for this sandbox.
 	// If not specified, the sandbox has deny-all egress.
@@ -185,10 +187,10 @@ type SandboxStatus struct {
 	// +optional
 	TimeoutAt *metav1.Time `json:"timeoutAt,omitempty"`
 
-	// ShutdownDeadlineAt is the absolute time by which the shutdown policy must complete.
+	// TerminationDeadlineAt is the absolute time by which the termination policy must complete.
 	// Set once by the controller when finalization begins (anchored to DeletionTimestamp).
 	// +optional
-	ShutdownDeadlineAt *metav1.Time `json:"shutdownDeadlineAt,omitempty"`
+	TerminationDeadlineAt *metav1.Time `json:"terminationDeadlineAt,omitempty"`
 
 	// PodIP is the IP address of the sandbox pod.
 	// +optional

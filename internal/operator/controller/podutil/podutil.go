@@ -64,8 +64,8 @@ func GetCustomNetworkPolicyName(sandboxName string) string {
 	return sandboxName + "-custom-netpol"
 }
 
-func GetShutdownSnapshotName(sandboxName string) string {
-	return sandboxName + "-shutdown"
+func GetTerminationSnapshotName(sandboxName string) string {
+	return sandboxName + "-termination"
 }
 
 func GetSnapshotJobName(snapshotName string) string {

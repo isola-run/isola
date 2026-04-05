@@ -121,14 +121,14 @@ var _ = Describe("Sandbox Controller", func() {
 			reconciler = newTestReconcilerWithRecorder(fakeClock, recorder)
 
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
 				}
 			})
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteShutdownSnapshot(ctx, sandboxName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
 
 			// First reconcile - creates pod and adds finalizer
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -157,12 +157,12 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify RootfsSnapshot was created
-			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
+			rootfsSnapshot := getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.Spec.SandboxName).To(Equal(sandboxName))
 
 			// Mark RootfsSnapshot as complete
-			setShutdownSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
+			setTerminationSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
 			// Reconcile - should complete deletion
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{

@@ -140,7 +140,7 @@ snapshot = client.rootfs_snapshots.create(
     max_wait_seconds=300,
 )
 
-print(snapshot.status)  # RootfsSnapshotStatus.COMPLETE
+print(snapshot.status)  # RootfsSnapshotStatus.SUCCEEDED
 
 # Fetch the latest snapshot state by ID
 snapshot = client.rootfs_snapshots.get(snapshot.id)

@@ -54,7 +54,7 @@ def _build_resources(
         return None
 
     resource_list = ResourceList(
-        cpu=f"{int(cpu * 1000)}m" if cpu is not None else None,
+        cpu=f"{round(cpu * 1000)}m" if cpu is not None else None,
         memory=f"{memory}Mi" if memory is not None else None,
         ephemeral_storage=f"{ephemeral_storage}Mi" if ephemeral_storage is not None else None,
     )

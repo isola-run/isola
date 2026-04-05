@@ -70,7 +70,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=api
 
       - name: Build snapshot-mounter image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: cmd/snapshot-mounter
           file: cmd/snapshot-mounter/Dockerfile

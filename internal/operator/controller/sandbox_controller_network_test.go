@@ -349,10 +349,9 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"1.1.1.1", "8.8.8.8"}))
 		})
 
-		// Note: Invalid CIDR format is rejected by CRD validation, so we can't test that path here.
-		// The CRD regex validates CIDR format at creation time.
+		// Note: Invalid CIDR format is rejected by CRD CEL validation (isCIDR), so we can't test that path here.
 
-		It("should set NetworkConfigured condition to false with blocked CIDR", func() {
+		It("should mark sandbox as failed with blocked CIDR", func() {
 			sandboxName := "sandbox-blocked-cidr"
 
 			network := &sandboxv1alpha1.Network{
@@ -362,7 +361,7 @@ var _ = Describe("Sandbox Controller", func() {
 			defer deleteSandbox(ctx, sandboxName)
 			defer deletePod(ctx, sandboxName+"-pod")
 
-			// Reconcile returns error for blocked CIDR, but status is updated first
+			// Reconcile returns terminal error for blocked CIDR (network is immutable)
 			_, err := doReconcile(ctx, reconciler, sandboxName)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("blocked range"))
@@ -370,15 +369,16 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(sandbox).NotTo(BeNil())
 
-			// NetworkConfigured condition should be False with error message
-			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxNetworkReadyCondition)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal(CondReasonNetworkPolicyFailed))
-			Expect(cond.Message).To(ContainSubstring("blocked range"))
+			// Sandbox should be marked as failed since network is immutable
+			succeededCond := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)
+			Expect(succeededCond).NotTo(BeNil())
+			Expect(succeededCond.Status).To(Equal(metav1.ConditionFalse))
+			Expect(succeededCond.Reason).To(Equal(CondReasonNetworkPolicyFailed))
+			Expect(succeededCond.Message).To(ContainSubstring("blocked range"))
 
-			// Network failure is recoverable — Succeeded should not be set
-			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)).To(BeNil())
+			readyCond := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxReadyCondition)
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
 		})
 	})
 

@@ -126,12 +126,12 @@ func getRootfsSnapshot(ctx context.Context, name string) *sandboxv1alpha1.Rootfs
 	return snap
 }
 
-func getShutdownSnapshot(ctx context.Context, sandboxName string) *sandboxv1alpha1.RootfsSnapshot {
-	return getRootfsSnapshot(ctx, sandboxName+"-shutdown")
+func getTerminationSnapshot(ctx context.Context, sandboxName string) *sandboxv1alpha1.RootfsSnapshot {
+	return getRootfsSnapshot(ctx, sandboxName+"-termination")
 }
 
-func deleteShutdownSnapshot(ctx context.Context, sandboxName string) {
-	snap := getShutdownSnapshot(ctx, sandboxName)
+func deleteTerminationSnapshot(ctx context.Context, sandboxName string) {
+	snap := getTerminationSnapshot(ctx, sandboxName)
 	if snap == nil {
 		return // Already deleted
 	}
@@ -159,8 +159,8 @@ func setRootfsSnapshotReady(ctx context.Context, name string, ready bool, reason
 	ExpectWithOffset(1, k8sClient.Status().Update(ctx, snap)).To(Succeed())
 }
 
-func setShutdownSnapshotReady(ctx context.Context, sandboxName string, ready bool, reason, message string) {
-	setRootfsSnapshotReady(ctx, sandboxName+"-shutdown", ready, reason, message)
+func setTerminationSnapshotReady(ctx context.Context, sandboxName string, ready bool, reason, message string) {
+	setRootfsSnapshotReady(ctx, sandboxName+"-termination", ready, reason, message)
 }
 
 func createSandboxWithNetwork(ctx context.Context, name string, network *sandboxv1alpha1.Network) {

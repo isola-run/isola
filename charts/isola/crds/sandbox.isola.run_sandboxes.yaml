@@ -88,10 +88,12 @@ spec:
                       Creates a custom NetworkPolicy only when allowInternetEgress is false or unset.
                     items:
                       maxLength: 43
-                      pattern: ^((([0-9]{1,3}\.){3}[0-9]{1,3})/(3[0-2]|[12]?[0-9]))|(([0-9a-fA-F:]+)/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))$
                       type: string
                     maxItems: 16
                     type: array
+                    x-kubernetes-validations:
+                    - message: must be valid CIDR notation (e.g. 10.0.0.0/8 or 2001:db8::/32)
+                      rule: self.all(s, isCIDR(s))
                   nameservers:
                     description: |-
                       Nameservers are DNS server IPs to inject into the pod.
@@ -109,6 +111,14 @@ spec:
                     - message: must be valid IP addresses
                       rule: self.all(s, isIP(s))
                 type: object
+                x-kubernetes-validations:
+                - message: IPv6 nameservers require allowIPv6Egress to be true
+                  rule: '!has(self.nameservers) || (has(self.allowIPv6Egress) && self.allowIPv6Egress
+                    == true) || self.nameservers.all(s, ip(s).family() == 4)'
+                - message: IPv6 CIDRs require allowIPv6Egress to be true
+                  rule: '!has(self.allowedEgressCIDRs) || (has(self.allowIPv6Egress)
+                    && self.allowIPv6Egress == true) || self.allowedEgressCIDRs.all(s,
+                    cidr(s).ip().family() == 4)'
               podTemplate:
                 description: |-
                   PodTemplate describes the pod that will be created to run the sandbox.
@@ -158,9 +168,18 @@ spec:
                 - message: each rootfsSnapshotSource must target a different container
                   rule: self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName
                     != j.containerName))
-              shutdownPolicy:
-                description: ShutdownPolicy defines what to do when the sandbox ends
-                  (defaults to Delete if unspecified)
+              startupTimeoutSeconds:
+                default: 60
+                description: |-
+                  StartupTimeoutSeconds defines how long the sandbox has to become Ready
+                  after pod creation. If the pod hasn't reached Ready within this time,
+                  the sandbox is marked as failed.
+                format: int64
+                minimum: 1
+                type: integer
+              terminationPolicy:
+                description: TerminationPolicy defines what to do when the sandbox
+                  ends (defaults to Delete if unspecified)
                 properties:
                   strategy:
                     allOf:
@@ -172,27 +191,18 @@ spec:
                       - SnapshotRootfs
                     default: Delete
                     description: Strategy determines the action taken when the sandbox
-                      shuts down
+                      terminates
                     type: string
                   timeoutSeconds:
                     default: 300
                     description: |-
-                      TimeoutSeconds specifies the duration in seconds relative to the startTime
-                      that the snapshot job may be active before the system tries to terminate it.
+                      TimeoutSeconds specifies the duration in seconds relative to the deletion timestamp
+                      that the termination policy may be active before the system tries to terminate it.
                       Only used when Strategy is SnapshotRootfs.
                     format: int64
                     minimum: 1
                     type: integer
                 type: object
-              startupTimeoutSeconds:
-                default: 60
-                description: |-
-                  StartupTimeoutSeconds defines how long the sandbox has to become Ready
-                  after pod creation. If the pod hasn't reached Ready within this time,
-                  the sandbox is marked as failed.
-                format: int64
-                minimum: 1
-                type: integer
               timeoutSeconds:
                 description: TimeoutSeconds defines how long the sandbox runs before
                   being shut down
@@ -278,9 +288,9 @@ spec:
               podIP:
                 description: PodIP is the IP address of the sandbox pod.
                 type: string
-              shutdownDeadlineAt:
+              terminationDeadlineAt:
                 description: |-
-                  ShutdownDeadlineAt is the absolute time by which the shutdown policy must complete.
+                  TerminationDeadlineAt is the absolute time by which the termination policy must complete.
                   Set once by the controller when finalization begins (anchored to DeletionTimestamp).
                 format: date-time
                 type: string
