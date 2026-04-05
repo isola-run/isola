@@ -72,168 +72,154 @@ operator:
       pullPolicy: IfNotPresent
 
   # Sandbox runtime configuration
-  # Selects which runtime to use for sandbox pods and configures runtime-specific features.
   sandboxRuntime:
-    # Runtime type selector. Controls feature availability:
-    # - "gvisor": enables rootfs snapshot capability, gVisor-specific pod annotations
-    # - "clusterDefault": Use cluster default runtime (typically runc, no rootfs snapshot support)
-    type: gvisor
+    # Kubernetes RuntimeClass name set on sandbox pods (pod.spec.runtimeClassName).
+    # Must reference a gVisor/runsc RuntimeClass in your cluster (kubectl get runtimeclass).
+    runtimeClassName: gvisor
 
-    # gVisor runtime configuration
-    # Only used when type: gvisor
-    gvisor:
-      # Kubernetes RuntimeClass name set on sandbox pods (pod.spec.runtimeClassName).
-      # Must match a RuntimeClass CRD in your cluster (kubectl get runtimeclass).
-      runtimeClassName: gvisor
+    # Rootfs snapshot capability for gVisor sandboxes
+    # Allows creating point-in-time rootfs snapshots of sandbox container filesystems.
+    #
+    # SECURITY NOTE: RootfsSnapshot jobs require privileged operations:
+    # - hostPath mount of runsc binary and state directory
+    # - hostPID: true to verify sandbox is running
+    # - Root user in snapshotter init container
+    #
+    # Set enabled: false if your security policy prohibits these operations.
+    # Sandboxes will still run normally; only RootfsSnapshot CRs will fail.
+    rootfssnapshot:
+      enabled: true
 
-      # Rootfs snapshot capability for gVisor sandboxes
-      # Allows creating point-in-time rootfs snapshots of sandbox container filesystems.
+      # gVisor/runsc paths for rootfs snapshot operations
+      # These paths must match your cluster's gVisor installation
+      runsc:
+        binaryPath: /usr/local/bin/runsc
+        rootDir: /run/containerd/runsc/k8s.io
+
+      # RootfsSnapshot storage configuration
+      # Selects the cloud storage provider and bucket for snapshot uploads.
       #
-      # SECURITY NOTE: RootfsSnapshot jobs require privileged operations:
-      # - hostPath mount of runsc binary and state directory
-      # - hostPID: true to verify sandbox is running
-      # - Root user in snapshotter init container
+      # Three credential modes (per provider):
+      #   1. Workload identity (recommended): Leave inline credentials and existingSecret empty.
+      #      Configure serviceAccount annotations for IRSA/GKE WI/Azure WI.
+      #   2. Existing secret: Set uploader.existingSecret and/or snapshotMounter.existingSecret
+      #   3. Chart-managed: Provide inline credentials in the provider block (S3 and Azure)
+      storage:
+        # Provider type selector: "s3", "gcs", "azure"
+        # Must be set when rootfssnapshot is enabled.
+        type: ""
+
+        s3:
+          bucket: ""
+          region: ""
+          # Custom S3 endpoint. Only needed for S3-compatible stores (MinIO, LocalStack, etc.).
+          # AWS S3 resolves endpoints automatically from region.
+          endpoint: ""
+          # Force path-style S3 URLs (bucket in path, not subdomain).
+          # Required for MinIO, LocalStack, and most S3-compatible stores.
+          forcePathStyle: false
+          # Chart-managed S3 credentials (creates secrets in both namespaces).
+          accessKeyId: ""
+          secretAccessKey: ""
+
+        gcs:
+          bucket: ""
+          # GCS uses JSON service account key files that don't fit as inline YAML values.
+          # Use existingSecret or workload identity (GKE Workload Identity).
+
+        azure:
+          container: ""
+          # Storage account name (required for Azure, even with workload identity).
+          storageAccount: ""
+          # Storage account access key (from Azure Portal > Storage account > Access keys).
+          # Leave empty to use workload identity or existingSecret.
+          accountKey: ""
+
+      # Uploader job configuration (runs in sandbox namespace, needs write access)
+      uploader:
+        image:
+          registry: ghcr.io/isola-run
+          repository: isola-uploader
+          tag: ""  # Defaults to Chart.appVersion
+          digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+          pullPolicy: IfNotPresent
+        # Pre-existing secret in the sandbox namespace.
+        # Takes precedence over chart-managed credentials.
+        existingSecret: ""
+        serviceAccount:
+          create: true
+          name: ""
+          annotations: {}  # For IRSA/Workload Identity
+
+      # Isola snapshot mounter DaemonSet configuration.
+      # When rootfssnapshot is enabled, a DaemonSet is deployed on each node
+      # running rclone as an NFSv3 server with a kernel NFS mount, making
+      # snapshot tars available for gVisor rootfs restore.
       #
-      # Set enabled: false if your security policy prohibits these operations.
-      # Sandboxes will still run normally; only RootfsSnapshot CRs will fail.
-      rootfssnapshot:
-        enabled: true
+      # Host prerequisites:
+      #   - NFS client kernel support (CONFIG_NFS_FS). Built-in on all major
+      #     managed K8s node images (EKS, GKE, AKS) and required by NFS CSI
+      #     drivers (EFS, Filestore, Azure Files).
+      #
+      # Cleanup on uninstall:
+      #   The NFS mount is intentionally NOT unmounted on pod termination for restarts resiliency.
+      #   After `helm uninstall`, it is possible to it clean it up on each node:
+      #     umount /mnt/isola-snapshots; rm -rf /var/cache/isola-snapshots
+      snapshotMounter:
+        # Host path where snapshots are NFS-mounted (readable by runsc on the node)
+        hostMountPath: /mnt/isola-snapshots
 
-        # gVisor/runsc paths for rootfs snapshot operations
-        # These paths must match your cluster's gVisor installation
-        runsc:
-          binaryPath: /usr/local/bin/runsc
-          rootDir: /run/containerd/runsc/k8s.io
+        # Port for the rclone NFS server on the host loopback (127.0.0.1).
+        # Uses hostNetwork, so this port must not conflict with other services.
+        nfsPort: 12049
 
-        # RootfsSnapshot storage configuration
-        # Selects the cloud storage provider and bucket for snapshot uploads.
-        #
-        # Three credential modes (per provider):
-        #   1. Workload identity (recommended): Leave inline credentials and existingSecret empty.
-        #      Configure serviceAccount annotations for IRSA/GKE WI/Azure WI.
-        #   2. Existing secret: Set uploader.existingSecret and/or snapshotMounter.existingSecret
-        #   3. Chart-managed: Provide inline credentials in the provider block (S3 and Azure)
-        storage:
-          # Provider type selector: "s3", "gcs", "azure"
-          # Must be set when rootfssnapshot is enabled.
-          type: ""
+        # Pre-existing secret in the release namespace.
+        # Takes precedence over chart-managed credentials.
+        existingSecret: ""
 
-          s3:
-            bucket: ""
-            region: ""
-            # Custom S3 endpoint. Only needed for S3-compatible stores (MinIO, LocalStack, etc.).
-            # AWS S3 resolves endpoints automatically from region.
-            endpoint: ""
-            # Force path-style S3 URLs (bucket in path, not subdomain).
-            # Required for MinIO, LocalStack, and most S3-compatible stores.
-            forcePathStyle: false
-            # Chart-managed S3 credentials (creates secrets in both namespaces).
-            accessKeyId: ""
-            secretAccessKey: ""
+        # ServiceAccount for the snapshot-mounter DaemonSet.
+        # Separate from the snapshot job SA because they run in different namespaces
+        # (release namespace vs sandbox namespace).
+        # For IRSA/Workload Identity, this SA needs read-only access to the bucket.
+        serviceAccount:
+          create: true
+          name: ""
+          annotations: {}  # For IRSA/Workload Identity
 
-          gcs:
-            bucket: ""
-            # GCS uses JSON service account key files that don't fit as inline YAML values.
-            # Use existingSecret or workload identity (GKE Workload Identity).
+        # rclone NFS server configuration
+        rclone:
+          image:
+            registry: docker.io
+            repository: rclone/rclone
+            tag: "1.73.2"
+            digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+            pullPolicy: IfNotPresent
 
-          azure:
-            container: ""
-            # Storage account name (required for Azure, even with workload identity).
-            storageAccount: ""
-            # Storage account access key (from Azure Portal > Storage account > Access keys).
-            # Leave empty to use workload identity or existingSecret.
-            accountKey: ""
+          # How long to cache directory listings (--dir-cache-time).
+          # Lower values detect new snapshots faster but increase cloud API calls.
+          dirCacheTime: "1m"
 
-        # Uploader job configuration (runs in sandbox namespace, needs write access)
-        uploader:
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+
+        # Privileged mounter container (creates NFS mount with Bidirectional
+        # propagation). Purpose-built image with nfs-utils for mount.nfs.
+        mounter:
           image:
             registry: ghcr.io/isola-run
-            repository: isola-uploader
+            repository: snapshot-mounter
             tag: ""  # Defaults to Chart.appVersion
             digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
             pullPolicy: IfNotPresent
-          # Pre-existing secret in the sandbox namespace.
-          # Takes precedence over chart-managed credentials.
-          existingSecret: ""
-          serviceAccount:
-            create: true
-            name: ""
-            annotations: {}  # For IRSA/Workload Identity
+          resources: {}
 
-        # Isola snapshot mounter DaemonSet configuration.
-        # When rootfssnapshot is enabled, a DaemonSet is deployed on each node
-        # running rclone as an NFSv3 server with a kernel NFS mount, making
-        # snapshot tars available for gVisor rootfs restore.
-        #
-        # Host prerequisites:
-        #   - NFS client kernel support (CONFIG_NFS_FS). Built-in on all major
-        #     managed K8s node images (EKS, GKE, AKS) and required by NFS CSI
-        #     drivers (EFS, Filestore, Azure Files).
-        #
-        # Cleanup on uninstall:
-        #   The NFS mount is intentionally NOT unmounted on pod termination for restarts resiliency.
-        #   After `helm uninstall`, it is possible to it clean it up on each node:
-        #     umount /mnt/isola-snapshots; rm -rf /var/cache/isola-snapshots
-        snapshotMounter:
-          # Host path where snapshots are NFS-mounted (readable by runsc on the node)
-          hostMountPath: /mnt/isola-snapshots
+        podAnnotations: {}
+        nodeSelector: {}
+        tolerations: []
 
-          # Port for the rclone NFS server on the host loopback (127.0.0.1).
-          # Uses hostNetwork, so this port must not conflict with other services.
-          nfsPort: 12049
-
-          # Pre-existing secret in the release namespace.
-          # Takes precedence over chart-managed credentials.
-          existingSecret: ""
-
-          # ServiceAccount for the snapshot-mounter DaemonSet.
-          # Separate from the snapshot job SA because they run in different namespaces
-          # (release namespace vs sandbox namespace).
-          # For IRSA/Workload Identity, this SA needs read-only access to the bucket.
-          serviceAccount:
-            create: true
-            name: ""
-            annotations: {}  # For IRSA/Workload Identity
-
-          # rclone NFS server configuration
-          rclone:
-            image:
-              registry: docker.io
-              repository: rclone/rclone
-              tag: "1.73.2"
-              digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
-              pullPolicy: IfNotPresent
-
-            # How long to cache directory listings (--dir-cache-time).
-            # Lower values detect new snapshots faster but increase cloud API calls.
-            dirCacheTime: "1m"
-
-            resources:
-              requests:
-                cpu: 50m
-                memory: 128Mi
-
-          # Privileged mounter container (creates NFS mount with Bidirectional
-          # propagation). Purpose-built image with nfs-utils for mount.nfs.
-          mounter:
-            image:
-              registry: ghcr.io/isola-run
-              repository: snapshot-mounter
-              tag: ""  # Defaults to Chart.appVersion
-              digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
-              pullPolicy: IfNotPresent
-            resources: {}
-
-          podAnnotations: {}
-          nodeSelector: {}
-          tolerations: []
-
-    # Cluster default runtime configuration
-    # Uses cluster default RuntimeClass (no special configuration needed)
-    # RootfsSnapshot capability is not available with cluster default runtime
-    clusterDefault: {}
-
-  # PriorityClassName for sandbox pods (applies to both runtime types)
+  # PriorityClassName for sandbox pods
   sandboxPriorityClassName: ""
 
 

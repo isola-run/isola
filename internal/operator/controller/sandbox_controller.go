@@ -300,20 +300,17 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		sandboxPod.Spec.ImagePullSecrets = append(sandboxPod.Spec.ImagePullSecrets, r.ImagePullSecrets...)
 	}
 
-	// Set RuntimeClassName if configured (e.g. "gvisor" for sandboxed execution)
-	if r.RuntimeClassName != "" {
-		sandboxPod.Spec.RuntimeClassName = &r.RuntimeClassName
+	sandboxPod.Spec.RuntimeClassName = &r.RuntimeClassName
 
-		// Configure gvisor overlay2 for rootfs ("root"), backed by a file ("self").
-		// References:
-		//   - https://github.com/google/gvisor/issues/3494 (per-sandbox flag overrides)
-		//   - https://github.com/google/gvisor/commit/a53b22ad5283b00b766178eff847c3193c1293b7 (overlay2 self medium)
-		// Note: containerd must have pod_annotations=["dev.gvisor.*"] configured to pass this through.
-		if sandboxPod.Annotations == nil {
-			sandboxPod.Annotations = map[string]string{}
-		}
-		sandboxPod.Annotations["dev.gvisor.flag.overlay2"] = "root:self"
+	// Configure gvisor overlay2 for rootfs ("root"), backed by a file ("self").
+	// References:
+	//   - https://github.com/google/gvisor/issues/3494 (per-sandbox flag overrides)
+	//   - https://github.com/google/gvisor/commit/a53b22ad5283b00b766178eff847c3193c1293b7 (overlay2 self medium)
+	// Note: containerd must have pod_annotations=["dev.gvisor.*"] configured to pass this through.
+	if sandboxPod.Annotations == nil {
+		sandboxPod.Annotations = map[string]string{}
 	}
+	sandboxPod.Annotations["dev.gvisor.flag.overlay2"] = "root:self"
 
 	if len(sandbox.Spec.RootfsSnapshotSources) > 0 {
 		if terminal, err := r.validateRootfsRestoreConfig(ctx); err != nil {
@@ -1284,9 +1281,6 @@ func (r *SandboxReconciler) validateRootfsRestoreConfig(ctx context.Context) (te
 		return true, fmt.Errorf("rootfsSnapshotSources requires rootfs snapshot restore to be configured (--rootfssnapshot-host-mount-path)")
 	}
 
-	if r.RuntimeClassName == "" {
-		return true, fmt.Errorf("rootfsSnapshotSources requires gVisor runtime (no RuntimeClassName configured)")
-	}
 	supported, err := snapshot.CheckRuntimeClassSupport(ctx, r.Client, r.RuntimeClassName)
 	if err != nil {
 		// K8s API error — may be transient, allow retry

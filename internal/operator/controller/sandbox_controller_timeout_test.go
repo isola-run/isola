@@ -176,10 +176,6 @@ var _ = Describe("Sandbox Controller", func() {
 
 		It("should set Succeeded=True with Timeout reason when sandbox times out", func() {
 			sandboxName := "sandbox-timeout-condition"
-			runtimeClassName := "gvisor-timeout-cond"
-
-			createRuntimeClass(ctx, runtimeClassName, "runsc")
-			defer deleteRuntimeClass(ctx, runtimeClassName)
 
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
@@ -187,7 +183,6 @@ var _ = Describe("Sandbox Controller", func() {
 				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
 					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
 				}
-				s.Spec.PodTemplate.Spec.RuntimeClassName = &runtimeClassName
 			})
 			defer deleteSandbox(ctx, sandboxName)
 

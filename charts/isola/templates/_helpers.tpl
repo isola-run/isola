@@ -107,7 +107,7 @@ Invoked from the operator deployment template to catch misconfigurations at inst
 {{- define "isola.validateValues" -}}
 {{- $messages := list -}}
 {{- $messages = append $messages (include "isola.validateValues.sandboxNamespace" .) -}}
-{{- $messages = append $messages (include "isola.validateValues.runtimeType" .) -}}
+{{- $messages = append $messages (include "isola.validateValues.runtimeClassName" .) -}}
 {{- $messages = append $messages (include "isola.validateValues.rootfssnapshot" .) -}}
 {{- $messages = append $messages (include "isola.validateValues.rootfssnapshotCredentials" .) -}}
 {{- $messages = without $messages "" -}}
@@ -125,34 +125,32 @@ isola: sandboxNamespace.name
 {{- end -}}
 {{- end -}}
 
-{{- define "isola.validateValues.runtimeType" -}}
-{{- $validTypes := list "gvisor" "clusterDefault" -}}
-{{- if not (has .Values.operator.sandboxRuntime.type $validTypes) -}}
-isola: operator.sandboxRuntime.type
-    Invalid runtime type "{{ .Values.operator.sandboxRuntime.type }}".
-    Must be one of: gvisor, clusterDefault
+{{- define "isola.validateValues.runtimeClassName" -}}
+{{- if not .Values.operator.sandboxRuntime.runtimeClassName -}}
+isola: operator.sandboxRuntime.runtimeClassName
+    runtimeClassName must not be empty. It must reference a gVisor/runsc RuntimeClass in your cluster.
 {{- end -}}
 {{- end -}}
 
 {{- define "isola.validateValues.rootfssnapshot" -}}
 {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" -}}
-{{- $storage := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage -}}
+{{- $storage := .Values.operator.sandboxRuntime.rootfssnapshot.storage -}}
 {{- $validTypes := list "s3" "gcs" "azure" -}}
 {{- if not (has $storage.type $validTypes) -}}
-isola: operator.sandboxRuntime.gvisor.rootfssnapshot.storage.type
+isola: operator.sandboxRuntime.rootfssnapshot.storage.type
     When rootfssnapshot is enabled, storage.type must be one of: s3, gcs, azure.
     Current value: "{{ $storage.type }}"
 {{- else if and (eq $storage.type "s3") (not $storage.s3.bucket) -}}
-isola: operator.sandboxRuntime.gvisor.rootfssnapshot.storage.s3.bucket
+isola: operator.sandboxRuntime.rootfssnapshot.storage.s3.bucket
     storage.type is "s3" but s3.bucket is empty.
 {{- else if and (eq $storage.type "gcs") (not $storage.gcs.bucket) -}}
-isola: operator.sandboxRuntime.gvisor.rootfssnapshot.storage.gcs.bucket
+isola: operator.sandboxRuntime.rootfssnapshot.storage.gcs.bucket
     storage.type is "gcs" but gcs.bucket is empty.
 {{- else if and (eq $storage.type "azure") (not $storage.azure.container) -}}
-isola: operator.sandboxRuntime.gvisor.rootfssnapshot.storage.azure.container
+isola: operator.sandboxRuntime.rootfssnapshot.storage.azure.container
     storage.type is "azure" but azure.container is empty.
 {{- else if and (eq $storage.type "azure") (not $storage.azure.storageAccount) -}}
-isola: operator.sandboxRuntime.gvisor.rootfssnapshot.storage.azure.storageAccount
+isola: operator.sandboxRuntime.rootfssnapshot.storage.azure.storageAccount
     storage.type is "azure" but azure.storageAccount is empty.
     Azure requires the storage account name even with workload identity.
 {{- end -}}
@@ -161,10 +159,10 @@ isola: operator.sandboxRuntime.gvisor.rootfssnapshot.storage.azure.storageAccoun
 
 {{- define "isola.validateValues.rootfssnapshotCredentials" -}}
 {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" -}}
-{{- $storage := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage -}}
+{{- $storage := .Values.operator.sandboxRuntime.rootfssnapshot.storage -}}
 {{- if eq $storage.type "s3" -}}
 {{- if or (and $storage.s3.accessKeyId (not $storage.s3.secretAccessKey)) (and (not $storage.s3.accessKeyId) $storage.s3.secretAccessKey) -}}
-isola: operator.sandboxRuntime.gvisor.rootfssnapshot.storage.s3
+isola: operator.sandboxRuntime.rootfssnapshot.storage.s3
     Only one of s3.accessKeyId/s3.secretAccessKey is set. You must provide both together,
     or use uploader.existingSecret/snapshotMounter.existingSecret,
     or leave both empty to use pod/workload identity (e.g. IRSA).
@@ -250,20 +248,16 @@ Sandbox sidecar image
 
 {{/*
 RuntimeClassName for sandbox pods (pod.spec.runtimeClassName).
-Returns the gVisor runtimeClassName when type is "gvisor".
-Empty for "clusterDefault" (pods use cluster default runtime).
 */}}
 {{- define "isola.operator.runtimeClassName" -}}
-{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- .Values.operator.sandboxRuntime.gvisor.runtimeClassName -}}
-{{- end -}}
+{{- .Values.operator.sandboxRuntime.runtimeClassName -}}
 {{- end }}
 
 {{/*
-RootfsSnapshot enabled flag (only true for gvisor with rootfssnapshot.enabled)
+RootfsSnapshot enabled flag
 */}}
 {{- define "isola.operator.rootfssnapshotEnabled" -}}
-{{- if and (eq .Values.operator.sandboxRuntime.type "gvisor") (.Values.operator.sandboxRuntime.gvisor.rootfssnapshot.enabled) -}}
+{{- if .Values.operator.sandboxRuntime.rootfssnapshot.enabled -}}
 {{- "true" -}}
 {{- else -}}
 {{- "false" -}}
@@ -274,18 +268,14 @@ RootfsSnapshot enabled flag (only true for gvisor with rootfssnapshot.enabled)
 gVisor runsc binary path (only used when rootfssnapshot enabled)
 */}}
 {{- define "isola.operator.gvisorRunscPath" -}}
-{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.runsc.binaryPath -}}
-{{- end -}}
+{{- .Values.operator.sandboxRuntime.rootfssnapshot.runsc.binaryPath -}}
 {{- end }}
 
 {{/*
 gVisor runsc root directory (only used when rootfssnapshot enabled)
 */}}
 {{- define "isola.operator.gvisorRunscRoot" -}}
-{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.runsc.rootDir -}}
-{{- end -}}
+{{- .Values.operator.sandboxRuntime.rootfssnapshot.runsc.rootDir -}}
 {{- end }}
 
 {{/*
@@ -295,8 +285,7 @@ Construct gocloud.dev bucket URL from typed storage config.
   azure -> azblob://container?storage_account=...
 */}}
 {{- define "isola.operator.storageBucketUrl" -}}
-{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- $storage := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage -}}
+{{- $storage := .Values.operator.sandboxRuntime.rootfssnapshot.storage -}}
 {{- if eq $storage.type "s3" -}}
 {{- $params := list -}}
 {{- if $storage.s3.region -}}
@@ -318,23 +307,20 @@ Construct gocloud.dev bucket URL from typed storage config.
 {{- else if eq $storage.type "azure" -}}
 {{- printf "azblob://%s?storage_account=%s" $storage.azure.container $storage.azure.storageAccount -}}
 {{- end -}}
-{{- end -}}
 {{- end }}
 
 {{/*
-Uploader image (from gvisor rootfssnapshot config)
+Uploader image (from rootfssnapshot config)
 */}}
 {{- define "isola.operator.uploaderImage" -}}
-{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
-{{- end -}}
+{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.rootfssnapshot.uploader.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
 
 {{/*
 Rclone remote string for the snapshot mounter (e.g. ":s3:bucket/rootfssnapshots/")
 */}}
 {{- define "isola.operator.rcloneRemote" -}}
-{{- $storage := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage -}}
+{{- $storage := .Values.operator.sandboxRuntime.rootfssnapshot.storage -}}
 {{- if eq $storage.type "s3" -}}
 {{- printf ":s3:%s/rootfssnapshots/" $storage.s3.bucket -}}
 {{- else if eq $storage.type "gcs" -}}
@@ -349,7 +335,7 @@ Whether chart-managed credentials are provided for the current storage type.
 S3: both accessKeyId and secretAccessKey set. Azure: accountKey set. GCS: never (no inline creds).
 */}}
 {{- define "isola.operator.hasChartManagedCredentials" -}}
-{{- $storage := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.storage -}}
+{{- $storage := .Values.operator.sandboxRuntime.rootfssnapshot.storage -}}
 {{- if or (and (eq $storage.type "s3") $storage.s3.accessKeyId $storage.s3.secretAccessKey) (and (eq $storage.type "azure") $storage.azure.accountKey) -}}
 {{- "true" -}}
 {{- else -}}
@@ -362,13 +348,11 @@ Uploader credential secret name (sandbox namespace).
 Resolution: uploader.existingSecret > chart-managed > empty (workload identity)
 */}}
 {{- define "isola.operator.uploaderCredentialSecretName" -}}
-{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- $uploader := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.uploader -}}
+{{- $uploader := .Values.operator.sandboxRuntime.rootfssnapshot.uploader -}}
 {{- if $uploader.existingSecret -}}
 {{- $uploader.existingSecret -}}
 {{- else if eq (include "isola.operator.hasChartManagedCredentials" .) "true" -}}
 {{- printf "%s-uploader-credentials" (include "isola.operator.fullname" .) -}}
-{{- end -}}
 {{- end -}}
 {{- end }}
 
@@ -377,13 +361,11 @@ Mounter credential secret name (release namespace).
 Resolution: snapshotMounter.existingSecret > chart-managed > empty (workload identity)
 */}}
 {{- define "isola.operator.mounterCredentialSecretName" -}}
-{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- $mounter := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter -}}
+{{- $mounter := .Values.operator.sandboxRuntime.rootfssnapshot.snapshotMounter -}}
 {{- if $mounter.existingSecret -}}
 {{- $mounter.existingSecret -}}
 {{- else if eq (include "isola.operator.hasChartManagedCredentials" .) "true" -}}
 {{- printf "%s-mounter-credentials" (include "isola.operator.fullname" .) -}}
-{{- end -}}
 {{- end -}}
 {{- end }}
 
@@ -391,13 +373,11 @@ Resolution: snapshotMounter.existingSecret > chart-managed > empty (workload ide
 RootfsSnapshot service account name (from gvisor rootfssnapshot config)
 */}}
 {{- define "isola.operator.rootfssnapshotServiceAccountName" -}}
-{{- if eq .Values.operator.sandboxRuntime.type "gvisor" -}}
-{{- $sa := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.serviceAccount -}}
+{{- $sa := .Values.operator.sandboxRuntime.rootfssnapshot.uploader.serviceAccount -}}
 {{- if $sa.create -}}
 {{- $sa.name | default (printf "%s-rootfssnapshot" (include "isola.operator.fullname" .)) -}}
 {{- else -}}
 {{- default "default" $sa.name -}}
-{{- end -}}
 {{- end -}}
 {{- end }}
 
@@ -406,7 +386,7 @@ Snapshot mounter service account name (DaemonSet in release namespace, separate 
 */}}
 {{- define "isola.operator.snapshotMounterServiceAccountName" -}}
 {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" -}}
-{{- $sa := .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.serviceAccount -}}
+{{- $sa := .Values.operator.sandboxRuntime.rootfssnapshot.snapshotMounter.serviceAccount -}}
 {{- if $sa.create -}}
 {{- $sa.name | default (printf "%s-snapshot-mounter" (include "isola.operator.fullname" .)) -}}
 {{- else -}}
@@ -420,7 +400,7 @@ RootfsSnapshot host mount path for restore (only when rootfssnapshot enabled)
 */}}
 {{- define "isola.operator.rootfssnapshotHostMountPath" -}}
 {{- if eq (include "isola.operator.rootfssnapshotEnabled" .) "true" -}}
-{{- .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.hostMountPath -}}
+{{- .Values.operator.sandboxRuntime.rootfssnapshot.snapshotMounter.hostMountPath -}}
 {{- end -}}
 {{- end }}
 
@@ -428,14 +408,14 @@ RootfsSnapshot host mount path for restore (only when rootfssnapshot enabled)
 rclone image for rootfssnapshot NFS server container (unprivileged)
 */}}
 {{- define "isola.operator.rootfssnapshotRcloneImage" -}}
-{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.rclone.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.rootfssnapshot.snapshotMounter.rclone.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
 
 {{/*
 Mounter image for rootfssnapshot NFS mount container (privileged, minimal)
 */}}
 {{- define "isola.operator.rootfssnapshotMounterImage" -}}
-{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.mounter.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.rootfssnapshot.snapshotMounter.mounter.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
 
 {{/* ==========================================================================
