@@ -48,11 +48,23 @@ type PodTemplate struct {
 	Containers []Container `json:"containers" required:"true" minItems:"1" doc:"Sandbox containers"`
 }
 
+type SnapshotRootfsTermination struct {
+	SnapshotName            string `json:"snapshotName,omitempty" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Snapshot storage key. Defaults to sandbox ID if omitted."`
+	TimeoutSeconds          *int64 `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Snapshot operation deadline in seconds. Defaults to 300."`
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" minimum:"0" doc:"Auto-cleanup seconds after snapshot completes. Defaults to 300."`
+}
+
+type TerminationPolicy struct {
+	Strategy       string                     `json:"strategy,omitempty" enum:"Delete,SnapshotRootfs" default:"Delete" doc:"Termination strategy"`
+	SnapshotRootfs *SnapshotRootfsTermination `json:"snapshotRootfs,omitempty" doc:"Config for SnapshotRootfs strategy"`
+}
+
 type CreateSandboxRequest struct {
-	PodTemplate           PodTemplate `json:"podTemplate" required:"true" doc:"Pod template"`
-	TimeoutSeconds        *int64      `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
-	StartupTimeoutSeconds *int64      `json:"startupTimeoutSeconds,omitempty" minimum:"1" doc:"Max seconds for the sandbox to become Ready. Defaults to 60 if omitted."`
-	Network               *Network    `json:"network,omitempty" doc:"Network isolation config"`
+	PodTemplate           PodTemplate        `json:"podTemplate" required:"true" doc:"Pod template"`
+	TimeoutSeconds        *int64             `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
+	StartupTimeoutSeconds *int64             `json:"startupTimeoutSeconds,omitempty" minimum:"1" doc:"Max seconds for the sandbox to become Ready. Defaults to 60 if omitted."`
+	Network               *Network           `json:"network,omitempty" doc:"Network isolation config"`
+	TerminationPolicy     *TerminationPolicy `json:"terminationPolicy,omitempty" doc:"What to do when the sandbox terminates"`
 }
 
 type ResourceRequirements struct {
@@ -109,13 +121,14 @@ type ListSandboxesOutput struct {
 }
 
 type SandboxResponse struct {
-	ID                    string          `json:"id" doc:"Sandbox identifier"`
-	PodTemplate           PodTemplateInfo `json:"podTemplate" doc:"Pod template"`
-	TimeoutSeconds        *int64          `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
-	StartupTimeoutSeconds *int64          `json:"startupTimeoutSeconds,omitempty" doc:"Max seconds for the sandbox to become Ready"`
-	Network               *Network        `json:"network,omitempty" doc:"Network isolation config"`
-	Status                string          `json:"status" doc:"Sandbox status" enum:"Pending,Running,Terminating,Succeeded,Failed"`
-	CreationTimestamp     string          `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
+	ID                    string             `json:"id" doc:"Sandbox identifier"`
+	PodTemplate           PodTemplateInfo    `json:"podTemplate" doc:"Pod template"`
+	TimeoutSeconds        *int64             `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
+	StartupTimeoutSeconds *int64             `json:"startupTimeoutSeconds,omitempty" doc:"Max seconds for the sandbox to become Ready"`
+	Network               *Network           `json:"network,omitempty" doc:"Network isolation config"`
+	TerminationPolicy     *TerminationPolicy `json:"terminationPolicy,omitempty" doc:"Termination policy"`
+	Status                string             `json:"status" doc:"Sandbox status" enum:"Pending,Running,Terminating,Succeeded,Failed"`
+	CreationTimestamp     string             `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
 
 type SandboxSummary struct {
@@ -165,6 +178,10 @@ func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client) 
 
 func (h *Handlers) PostSandbox(ctx context.Context, input *CreateSandboxInput) (*CreateSandboxOutput, error) {
 	req := input.Body
+
+	if req.TerminationPolicy != nil && req.TerminationPolicy.Strategy == "SnapshotRootfs" && len(req.PodTemplate.Containers) > 1 {
+		return nil, huma.Error422UnprocessableEntity("SnapshotRootfs termination strategy currently supports single-container sandboxes only")
+	}
 
 	name, err := generateSandboxID()
 	if err != nil {

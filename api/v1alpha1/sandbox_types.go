@@ -36,7 +36,36 @@ const (
 	TerminationStrategySnapshotRootfs SandboxTerminationStrategy = "SnapshotRootfs"
 )
 
-// TerminationPolicy controls how the sandbox is handled when it ends
+// SnapshotRootfsTermination configures the SnapshotRootfs termination strategy.
+// Snapshots the first user container (matching on-demand API default behavior).
+type SnapshotRootfsTermination struct {
+	// SnapshotName is the concrete storage key for the snapshot.
+	// Same semantic as RootfsSnapshotSpec.SnapshotName and the on-demand snapshot API.
+	// Used as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	SnapshotName string `json:"snapshotName"`
+
+	// TimeoutSeconds is how long the snapshot operation gets before being terminated.
+	// Anchored to the sandbox's deletion timestamp.
+	// +optional
+	// +kubebuilder:default=300
+	// +kubebuilder:validation:Minimum=1
+	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
+
+	// TTLSecondsAfterFinished controls auto-cleanup of the RootfsSnapshot CR after completion.
+	// 0 means immediate deletion upon completion.
+	// +optional
+	// +kubebuilder:default=300
+	// +kubebuilder:validation:Minimum=0
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
+}
+
+// TerminationPolicy controls how the sandbox is handled when it ends.
+// +kubebuilder:validation:XValidation:rule="self.strategy != 'SnapshotRootfs' || has(self.snapshotRootfs)",message="snapshotRootfs config is required when strategy is SnapshotRootfs"
+// +kubebuilder:validation:XValidation:rule="self.strategy == 'SnapshotRootfs' || !has(self.snapshotRootfs)",message="snapshotRootfs config is only valid when strategy is SnapshotRootfs"
 type TerminationPolicy struct {
 	// Strategy determines the action taken when the sandbox terminates
 	// +optional
@@ -44,13 +73,9 @@ type TerminationPolicy struct {
 	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
 	Strategy SandboxTerminationStrategy `json:"strategy,omitempty"`
 
-	// TimeoutSeconds specifies the duration in seconds relative to the deletion timestamp
-	// that the termination policy may be active before the system tries to terminate it.
-	// Only used when Strategy is SnapshotRootfs.
+	// SnapshotRootfs configures the SnapshotRootfs strategy.
 	// +optional
-	// +kubebuilder:default=300
-	// +kubebuilder:validation:Minimum=1
-	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
+	SnapshotRootfs *SnapshotRootfsTermination `json:"snapshotRootfs,omitempty"`
 }
 
 // Network defines network isolation for a sandbox.
@@ -127,6 +152,8 @@ type RootfsSnapshotSource struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.network) || !has(oldSelf.network) || self.network == oldSelf.network",message="network is immutable once set"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.rootfsSnapshotSources) || has(self.rootfsSnapshotSources)",message="rootfsSnapshotSources cannot be removed once set"
 // +kubebuilder:validation:XValidation:rule="!has(self.rootfsSnapshotSources) || !has(oldSelf.rootfsSnapshotSources) || self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources",message="rootfsSnapshotSources is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.terminationPolicy) || has(self.terminationPolicy)",message="terminationPolicy cannot be removed once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.terminationPolicy) || !has(oldSelf.terminationPolicy) || self.terminationPolicy == oldSelf.terminationPolicy",message="terminationPolicy is immutable once set"
 type SandboxSpec struct {
 	// PodTemplate describes the pod that will be created to run the sandbox.
 	// The Sandbox controller will override specific security settings (runtimeClassName, etc.)

@@ -192,6 +192,9 @@ components:
           format: int64
           minimum: 1
           type: integer
+        terminationPolicy:
+          $ref: "#/components/schemas/TerminationPolicy"
+          description: What to do when the sandbox terminates
         timeoutSeconds:
           description: Max lifetime in seconds. Omit for no timeout
           format: int64
@@ -491,6 +494,9 @@ components:
             - Succeeded
             - Failed
           type: string
+        terminationPolicy:
+          $ref: "#/components/schemas/TerminationPolicy"
+          description: Termination policy
         timeoutSeconds:
           description: Max lifetime in seconds
           format: int64
@@ -523,6 +529,39 @@ components:
         - id
         - status
         - creationTimestamp
+      type: object
+    SnapshotRootfsTermination:
+      additionalProperties: false
+      properties:
+        snapshotName:
+          description: Snapshot storage key. Defaults to sandbox ID if omitted.
+          maxLength: 63
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          type: string
+        timeoutSeconds:
+          description: Snapshot operation deadline in seconds. Defaults to 300.
+          format: int64
+          minimum: 1
+          type: integer
+        ttlSecondsAfterFinished:
+          description: Auto-cleanup seconds after snapshot completes. Defaults to 300.
+          format: int32
+          minimum: 0
+          type: integer
+      type: object
+    TerminationPolicy:
+      additionalProperties: false
+      properties:
+        snapshotRootfs:
+          $ref: "#/components/schemas/SnapshotRootfsTermination"
+          description: Config for SnapshotRootfs strategy
+        strategy:
+          default: Delete
+          description: Termination strategy
+          enum:
+            - Delete
+            - SnapshotRootfs
+          type: string
       type: object
 info:
   description: API for managing sandboxes

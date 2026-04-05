@@ -36,6 +36,7 @@ from ._models import (
     RootfsSnapshotStatus,
     SandboxStatus,
     SandboxSummary,
+    SnapshotRootfs,
 )
 from ._rootfs_snapshot import AsyncRootfsSnapshot, AsyncRootfsSnapshots, RootfsSnapshot, RootfsSnapshots
 from ._sandbox import AsyncSandbox, AsyncSandboxes, Sandbox, Sandboxes
@@ -65,6 +66,7 @@ __all__ = [
     "SandboxStatus",
     "SandboxSummary",
     "Network",
+    "SnapshotRootfs",
     "StreamReader",
     "AsyncStreamReader",
     "FileWriteResult",

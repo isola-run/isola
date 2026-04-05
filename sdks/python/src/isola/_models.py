@@ -119,6 +119,25 @@ class PodTemplateInfo(IsolaModel):
     containers: list[ContainerInfo]
 
 
+class SnapshotRootfs(IsolaModel):
+    """Configure SnapshotRootfs termination strategy.
+
+    Snapshots the first user container on termination. Restore with
+    rootfs_snapshot_name matching the snapshot_name used here.
+    """
+
+    snapshot_name: str | None = None
+    timeout_seconds: int | None = None
+    ttl_seconds_after_finished: int | None = None
+
+
+class TerminationPolicy(IsolaModel):
+    """Wire format for terminationPolicy (internal, not exported)."""
+
+    strategy: str
+    snapshot_rootfs: SnapshotRootfs | None = None
+
+
 class CreateSandboxPayload(IsolaModel):
     pod_template: PodTemplate
     timeout_seconds: int | None = None
@@ -144,6 +163,7 @@ class SandboxData(IsolaModel):
     timeout_seconds: int | None = None
     startup_timeout_seconds: int | None = None
     network: Network | None = None
+    termination_policy: TerminationPolicy | None = None
 
 
 class CreateCommandPayload(IsolaModel):

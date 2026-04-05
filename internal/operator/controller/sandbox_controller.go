@@ -1021,8 +1021,10 @@ func (r *SandboxReconciler) executeTerminationPolicy(
 }
 
 func (r *SandboxReconciler) getTimeoutSeconds(sandbox *sandboxv1alpha1.Sandbox) int64 {
-	if sandbox != nil && sandbox.Spec.TerminationPolicy != nil && sandbox.Spec.TerminationPolicy.TimeoutSeconds != nil {
-		return *sandbox.Spec.TerminationPolicy.TimeoutSeconds
+	if sandbox != nil && sandbox.Spec.TerminationPolicy != nil &&
+		sandbox.Spec.TerminationPolicy.SnapshotRootfs != nil &&
+		sandbox.Spec.TerminationPolicy.SnapshotRootfs.TimeoutSeconds != nil {
+		return *sandbox.Spec.TerminationPolicy.SnapshotRootfs.TimeoutSeconds
 	}
 	return defaultTimeoutSeconds
 }
@@ -1220,16 +1222,18 @@ func (r *SandboxReconciler) createTerminationSnapshot(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	snapshotName := podutil.GetTerminationSnapshotName(sandbox.Name)
+	cfg := sandbox.Spec.TerminationPolicy.SnapshotRootfs
+	crName := podutil.GetTerminationSnapshotName(sandbox.Name)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      snapshotName,
+			Name:      crName,
 			Namespace: sandbox.Namespace,
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
-			SandboxName:    sandbox.Name,
-			SnapshotName:   sandbox.Name,
-			TimeoutSeconds: &timeoutSeconds,
+			SandboxName:             sandbox.Name,
+			SnapshotName:            cfg.SnapshotName,
+			TimeoutSeconds:          &timeoutSeconds,
+			TTLSecondsAfterFinished: cfg.TTLSecondsAfterFinished,
 		},
 	}
 
