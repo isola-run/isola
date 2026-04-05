@@ -77,13 +77,13 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs}
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs}
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteShutdownSnapshot(ctx, sandboxName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
 
 			// Create pod via reconcile, then bind to a node (simulating the scheduler)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -107,13 +107,13 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs}
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs}
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteShutdownSnapshot(ctx, sandboxName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
 
 			// Setup - bind pod to node (simulating the scheduler)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -126,9 +126,9 @@ var _ = Describe("Sandbox Controller", func() {
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
 			// Mark RootfsSnapshot succeeded
-			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
+			rootfsSnapshot := getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
-			setShutdownSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
+			setTerminationSnapshotReady(ctx, sandboxName, true, sandboxv1alpha1.ReasonRootfsSnapshotSucceeded, "All snapshots completed")
 
 			drainRecorderEvents(recorder.Events)
 
@@ -143,13 +143,13 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs}
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs}
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteShutdownSnapshot(ctx, sandboxName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
 
 			// Setup - bind pod to node (simulating the scheduler)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
@@ -160,9 +160,9 @@ var _ = Describe("Sandbox Controller", func() {
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace}})
 
 			// Mark RootfsSnapshot failed
-			rootfsSnapshot := getShutdownSnapshot(ctx, sandboxName)
+			rootfsSnapshot := getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
-			setShutdownSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
+			setTerminationSnapshotReady(ctx, sandboxName, false, sandboxv1alpha1.ReasonRootfsSnapshotFailed, "Snapshot job failed")
 
 			drainRecorderEvents(recorder.Events)
 

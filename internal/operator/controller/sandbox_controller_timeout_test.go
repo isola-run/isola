@@ -138,8 +138,8 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1) // 1 second timeout
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategyDelete,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategyDelete,
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -180,15 +180,15 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1)
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
 
 			podName := sandboxName + "-pod"
 			defer deletePod(ctx, podName)
-			defer deleteShutdownSnapshot(ctx, sandboxName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
 
 			// First reconcile creates the pod
 			_, err := doReconcile(ctx, reconciler, sandboxName)
@@ -344,8 +344,8 @@ var _ = Describe("Sandbox Controller", func() {
 			timeout := int64(1) // 1 second timeout
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
-				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
-					Strategy: sandboxv1alpha1.ShutdownStrategyDelete,
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy: sandboxv1alpha1.TerminationStrategyDelete,
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)

@@ -27,25 +27,25 @@ const (
 	SandboxReadyCondition = "Ready"
 )
 
-// SandboxShutdownStrategy defines the policy for handling sandbox termination
+// SandboxTerminationStrategy defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotRootfs
-type SandboxShutdownStrategy string
+type SandboxTerminationStrategy string
 
 const (
-	ShutdownStrategyDelete         SandboxShutdownStrategy = "Delete"
-	ShutdownStrategySnapshotRootfs SandboxShutdownStrategy = "SnapshotRootfs"
+	TerminationStrategyDelete         SandboxTerminationStrategy = "Delete"
+	TerminationStrategySnapshotRootfs SandboxTerminationStrategy = "SnapshotRootfs"
 )
 
-// ShutdownPolicy controls how the sandbox is handled when it ends
-type ShutdownPolicy struct {
-	// Strategy determines the action taken when the sandbox shuts down
+// TerminationPolicy controls how the sandbox is handled when it ends
+type TerminationPolicy struct {
+	// Strategy determines the action taken when the sandbox terminates
 	// +optional
 	// +kubebuilder:default=Delete
 	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
-	Strategy SandboxShutdownStrategy `json:"strategy,omitempty"`
+	Strategy SandboxTerminationStrategy `json:"strategy,omitempty"`
 
 	// TimeoutSeconds specifies the duration in seconds relative to the deletion timestamp
-	// that the shutdown policy may be active before the system tries to terminate it.
+	// that the termination policy may be active before the system tries to terminate it.
 	// Only used when Strategy is SnapshotRootfs.
 	// +optional
 	// +kubebuilder:default=300
@@ -149,9 +149,9 @@ type SandboxSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	StartupTimeoutSeconds *int64 `json:"startupTimeoutSeconds,omitempty"`
 
-	// ShutdownPolicy defines what to do when the sandbox ends (defaults to Delete if unspecified)
+	// TerminationPolicy defines what to do when the sandbox ends (defaults to Delete if unspecified)
 	// +optional
-	ShutdownPolicy *ShutdownPolicy `json:"shutdownPolicy,omitempty"`
+	TerminationPolicy *TerminationPolicy `json:"terminationPolicy,omitempty"`
 
 	// Network specifies the network isolation configuration for this sandbox.
 	// If not specified, the sandbox has deny-all egress.
@@ -187,10 +187,10 @@ type SandboxStatus struct {
 	// +optional
 	TimeoutAt *metav1.Time `json:"timeoutAt,omitempty"`
 
-	// ShutdownDeadlineAt is the absolute time by which the shutdown policy must complete.
+	// TerminationDeadlineAt is the absolute time by which the termination policy must complete.
 	// Set once by the controller when finalization begins (anchored to DeletionTimestamp).
 	// +optional
-	ShutdownDeadlineAt *metav1.Time `json:"shutdownDeadlineAt,omitempty"`
+	TerminationDeadlineAt *metav1.Time `json:"terminationDeadlineAt,omitempty"`
 
 	// PodIP is the IP address of the sandbox pod.
 	// +optional
