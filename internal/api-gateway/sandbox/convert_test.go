@@ -197,7 +197,7 @@ var _ = Describe("Conversion functions", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
 					Containers: []Container{{
-						Image:                "python:3.12",
+						Image:              "python:3.12",
 						RootfsSnapshotName: "my-snapshot",
 					}},
 				},

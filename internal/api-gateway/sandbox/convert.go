@@ -46,11 +46,11 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 
 	for _, c := range sb.Spec.PodTemplate.Spec.Containers {
 		resp.PodTemplate.Containers = append(resp.PodTemplate.Containers, ContainerInfo{
-			Name:                 c.Name,
-			Image:                c.Image,
-			Command:              c.Command,
+			Name:               c.Name,
+			Image:              c.Image,
+			Command:            c.Command,
 			RootfsSnapshotName: rootfsMap[c.Name],
-			Resources:            containerResourcesToSpec(c.Resources),
+			Resources:          containerResourcesToSpec(c.Resources),
 		})
 	}
 

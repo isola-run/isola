@@ -35,10 +35,10 @@ type CreateSandboxInput struct {
 }
 
 type Container struct {
-	Name                 string            `json:"name,omitempty" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to sandbox{i} if omitted."`
-	Image                string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
-	Command              []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
-	Env                  map[string]string `json:"env,omitempty" doc:"Environment variables"`
+	Name               string            `json:"name,omitempty" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to sandbox{i} if omitted."`
+	Image              string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
+	Command            []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
+	Env                map[string]string `json:"env,omitempty" doc:"Environment variables"`
 	RootfsSnapshotName string            `json:"rootfsSnapshotName,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Rootfs snapshot to restore into this container. Files on separately-mounted filesystems (e.g. /tmp) are excluded."`
 	// todo benl: those are enforced in gvisor only on the sandbox container, consider moving this to podtemplate and setting pod limits (though they don't support ephemeral storage limits)
 	Resources *ResourceRequirements `json:"resources,omitempty" doc:"Resource requests and limits"`
@@ -85,11 +85,11 @@ type DeleteSandboxInput struct {
 // Response types omit env vars (write-only) to avoid leaking secrets.
 
 type ContainerInfo struct {
-	Name                 string                `json:"name" doc:"Container name"`
-	Image                string                `json:"image" doc:"Container image"`
-	Command              []string              `json:"command,omitempty" doc:"Container entrypoint override"`
+	Name               string                `json:"name" doc:"Container name"`
+	Image              string                `json:"image" doc:"Container image"`
+	Command            []string              `json:"command,omitempty" doc:"Container entrypoint override"`
 	RootfsSnapshotName string                `json:"rootfsSnapshotName,omitempty" doc:"Rootfs snapshot restored into this container."`
-	Resources            *ResourceRequirements `json:"resources,omitempty" doc:"Resource requests and limits"`
+	Resources          *ResourceRequirements `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
 
 type PodTemplateInfo struct {

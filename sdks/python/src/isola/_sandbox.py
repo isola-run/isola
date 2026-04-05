@@ -78,8 +78,11 @@ def _validate_create_args(
 
     if containers is not None:
         per_container = {
-            "command": command, "env": env, "cpu": cpu,
-            "memory": memory, "ephemeral_storage": ephemeral_storage,
+            "command": command,
+            "env": env,
+            "cpu": cpu,
+            "memory": memory,
+            "ephemeral_storage": ephemeral_storage,
             "rootfs_snapshot_name": rootfs_snapshot_name,
         }
         set_params = [k for k, v in per_container.items() if v is not None]
@@ -91,13 +94,15 @@ def _validate_create_args(
         return containers
 
     resources = _build_resources(cpu, memory, ephemeral_storage)
-    return [Container(
-        image=image,  # type: ignore[arg-type]  # validated non-None above
-        command=command,
-        env=env,
-        resources=resources,
-        rootfs_snapshot_name=rootfs_snapshot_name,
-    )]
+    return [
+        Container(
+            image=image,  # type: ignore[arg-type]  # validated non-None above
+            command=command,
+            env=env,
+            resources=resources,
+            rootfs_snapshot_name=rootfs_snapshot_name,
+        )
+    ]
 
 
 def _check_terminal(sandbox_id: str, status: SandboxStatus) -> None:
@@ -202,7 +207,14 @@ class Sandboxes:
         max_wait_seconds: int = 60,
     ) -> Sandbox:
         container_list = _validate_create_args(
-            image, containers, command, env, cpu, memory, ephemeral_storage, rootfs_snapshot_name,
+            image,
+            containers,
+            command,
+            env,
+            cpu,
+            memory,
+            ephemeral_storage,
+            rootfs_snapshot_name,
         )
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(containers=container_list),
@@ -280,7 +292,14 @@ class AsyncSandboxes:
         max_wait_seconds: int = 60,
     ) -> AsyncSandbox:
         container_list = _validate_create_args(
-            image, containers, command, env, cpu, memory, ephemeral_storage, rootfs_snapshot_name,
+            image,
+            containers,
+            command,
+            env,
+            cpu,
+            memory,
+            ephemeral_storage,
+            rootfs_snapshot_name,
         )
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(containers=container_list),

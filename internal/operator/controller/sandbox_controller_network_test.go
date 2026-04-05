@@ -511,7 +511,6 @@ var _ = Describe("configureDNS function", func() {
 		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
 	})
 
-
 	It("should auto-default public nameservers when egress CIDRs are set without DNS config", func() {
 		pod := &corev1.Pod{
 			Spec: corev1.PodSpec{
