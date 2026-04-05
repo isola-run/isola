@@ -38,31 +38,35 @@ const (
 
 // SnapshotRootfsTermination configures the SnapshotRootfs termination strategy.
 type SnapshotRootfsTermination struct {
-	// SnapshotName is the concrete storage key for the snapshot.
-	// Same semantic as RootfsSnapshotSpec.SnapshotName and the on-demand snapshot API.
-	// Used as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
+	// SnapshotName is the name used for the snapshot storage key.
+	// This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
+	// Same semantic as RootfsSnapshotSpec.SnapshotName.
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	SnapshotName string `json:"snapshotName"`
 
-	// TimeoutSeconds is how long the snapshot operation gets before being terminated.
-	// Anchored to the sandbox's deletion timestamp.
+	// TimeoutSeconds specifies the duration in seconds for the snapshot job.
+	// If the job does not complete within this time, it will be terminated.
+	// Same semantic as RootfsSnapshotSpec.TimeoutSeconds.
 	// +optional
-	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=1
 	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
 
-	// TTLSecondsAfterFinished controls auto-cleanup of the RootfsSnapshot CR after completion.
+	// TTLSecondsAfterFinished limits the lifetime of a RootfsSnapshot that has
+	// finished execution (succeeded or failed).
+	// If set, the RootfsSnapshot will be automatically deleted after this many
+	// seconds after it finishes.
+	// If not set, the RootfsSnapshot will be deleted after a default value.
 	// 0 means immediate deletion upon completion.
+	// Same semantic as RootfsSnapshotSpec.TTLSecondsAfterFinished.
 	// +optional
-	// +kubebuilder:default=300
 	// +kubebuilder:validation:Minimum=0
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
 }
 
-// TerminationPolicy controls how the sandbox is handled when it ends.
+// TerminationPolicy controls how the sandbox is handled before termination.
 // +kubebuilder:validation:XValidation:rule="self.strategy != 'SnapshotRootfs' || has(self.snapshotRootfs)",message="snapshotRootfs config is required when strategy is SnapshotRootfs"
 // +kubebuilder:validation:XValidation:rule="self.strategy == 'SnapshotRootfs' || !has(self.snapshotRootfs)",message="snapshotRootfs config is only valid when strategy is SnapshotRootfs"
 type TerminationPolicy struct {
