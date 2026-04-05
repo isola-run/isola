@@ -92,7 +92,7 @@ k8s_resource('isola-snapshot-mounter', resource_deps=['localstack'], labels=['is
 
 local_resource(
     'e2e-tests',
-    cmd='cd tests/e2e && uv run --frozen pytest -q',
+    cmd='cd tests/e2e && uv run --frozen pytest -q -n 4',
     deps=['tests/e2e/'],
     auto_init=False,
     trigger_mode=TRIGGER_MODE_MANUAL,
