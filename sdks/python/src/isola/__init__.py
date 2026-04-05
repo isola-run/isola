@@ -30,6 +30,7 @@ from ._filesystem import AsyncFilesystem, Filesystem
 from ._models import (
     CommandResult,
     Container,
+    ContainerInfo,
     FileWriteResult,
     Network,
     RootfsSnapshotStatus,
@@ -59,6 +60,7 @@ __all__ = [
     "Filesystem",
     "AsyncFilesystem",
     "Container",
+    "ContainerInfo",
     "RootfsSnapshotStatus",
     "SandboxStatus",
     "SandboxSummary",

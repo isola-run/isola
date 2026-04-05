@@ -203,7 +203,7 @@ def test_create_sandbox_with_rootfs_snapshot_source(sandbox_response_copy: dict[
 
     payload = json.loads(create_route.calls[0].request.content)
     assert payload["podTemplate"]["containers"][0]["rootfsSnapshotSource"] == "my-snapshot"
-    assert sandbox._data.pod_template.containers[0].rootfs_snapshot_source == "my-snapshot"
+    assert sandbox.containers[0].rootfs_snapshot_source == "my-snapshot"
 
 
 @respx.mock
@@ -233,7 +233,7 @@ def test_rootfs_snapshot_source_response_deserialization(
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
 
-    assert sandbox._data.pod_template.containers[0].rootfs_snapshot_source == "snap-1"
+    assert sandbox.containers[0].rootfs_snapshot_source == "snap-1"
 
 
 @respx.mock
