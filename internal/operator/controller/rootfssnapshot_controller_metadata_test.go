@@ -259,9 +259,9 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			snap := getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
-			failedCond := meta.FindStatusCondition(snap.Status.Conditions, string(sandboxv1alpha1.RootfsSnapshotFailed))
+			failedCond := meta.FindStatusCondition(snap.Status.Conditions, sandboxv1alpha1.RootfsSnapshotSucceededCondition)
 			Expect(failedCond).NotTo(BeNil())
-			Expect(failedCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(failedCond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(failedCond.Message).To(ContainSubstring(`Container "nonexistent" not found`))
 		})
 	})

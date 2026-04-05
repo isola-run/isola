@@ -41,7 +41,7 @@ def test_active_deadline_sandbox_stops(
         except NotFoundError:
             return
         last_status = current.status
-        if current.status in (SandboxStatus.STOPPED, SandboxStatus.FAILED):
+        if current.status in (SandboxStatus.SUCCEEDED, SandboxStatus.FAILED):
             return
         time.sleep(1.0)
 
@@ -104,7 +104,7 @@ def test_operations_on_timed_out_sandbox(
             sandbox_gone = True
             break
         last_status = current.status
-        if current.status in (SandboxStatus.STOPPED, SandboxStatus.FAILED):
+        if current.status in (SandboxStatus.SUCCEEDED, SandboxStatus.FAILED):
             sandbox_gone = True
             break
         time.sleep(1.0)

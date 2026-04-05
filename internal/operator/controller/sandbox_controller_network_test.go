@@ -72,6 +72,29 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(hasConditionWithReason(sandbox, SandboxNetworkReadyCondition, metav1.ConditionTrue, CondReasonNetworkPolicyApplied)).To(BeTrue())
 		})
 
+		It("should set owner reference on custom NetworkPolicy for garbage collection", func() {
+			sandboxName := "sandbox-netpol-ownerref"
+
+			network := &sandboxv1alpha1.Network{
+				AllowedEgressCIDRs: []string{"8.8.8.0/24"},
+			}
+			createSandboxWithNetwork(ctx, sandboxName, network)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+			defer deleteNetworkPolicy(ctx, sandboxName+"-custom-netpol")
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
+			Expect(np).NotTo(BeNil())
+			Expect(np.OwnerReferences).To(HaveLen(1))
+			Expect(np.OwnerReferences[0].Name).To(Equal(sandboxName))
+			Expect(np.OwnerReferences[0].UID).To(Equal(sandbox.UID))
+			Expect(*np.OwnerReferences[0].Controller).To(BeTrue())
+		})
+
 		It("should not create custom NetworkPolicy when network spec is nil", func() {
 			sandboxName := "sandbox-no-netpol"
 
@@ -353,6 +376,9 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			Expect(cond.Reason).To(Equal(CondReasonNetworkPolicyFailed))
 			Expect(cond.Message).To(ContainSubstring("blocked range"))
+
+			// Network failure is recoverable — Succeeded should not be set
+			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)).To(BeNil())
 		})
 	})
 
@@ -484,6 +510,7 @@ var _ = Describe("configureDNS function", func() {
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
 		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
 	})
+
 
 	It("should auto-default public nameservers when egress CIDRs are set without DNS config", func() {
 		pod := &corev1.Pod{

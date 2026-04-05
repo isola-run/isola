@@ -436,10 +436,10 @@ components:
         status:
           description: Snapshot status
           enum:
-            - pending
-            - inProgress
-            - complete
-            - failed
+            - Pending
+            - Running
+            - Succeeded
+            - Failed
           type: string
         timeoutSeconds:
           description: Max duration in seconds for the snapshot job
@@ -485,12 +485,11 @@ components:
         status:
           description: Sandbox status
           enum:
-            - creating
-            - running
-            - shuttingDown
-            - failed
-            - stopped
-            - unknown
+            - Pending
+            - Running
+            - Terminating
+            - Succeeded
+            - Failed
           type: string
         timeoutSeconds:
           description: Max lifetime in seconds
@@ -513,6 +512,12 @@ components:
           type: string
         status:
           description: Sandbox status
+          enum:
+            - Pending
+            - Running
+            - Terminating
+            - Succeeded
+            - Failed
           type: string
       required:
         - id

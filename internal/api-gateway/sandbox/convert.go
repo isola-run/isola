@@ -30,7 +30,7 @@ import (
 func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 	resp := SandboxResponse{
 		ID:                sb.Name,
-		Status:            apigateway.ConditionsToStatus(sb.Status.Conditions),
+		Status:            apigateway.SandboxStatus(sb),
 		CreationTimestamp: sb.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 
@@ -64,7 +64,7 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 func sandboxToSummary(sb *sandboxv1alpha1.Sandbox) SandboxSummary {
 	return SandboxSummary{
 		ID:                sb.Name,
-		Status:            apigateway.ConditionsToStatus(sb.Status.Conditions),
+		Status:            apigateway.SandboxStatus(sb),
 		CreationTimestamp: sb.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 }

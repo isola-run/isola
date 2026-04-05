@@ -117,7 +117,7 @@ class TestRoundTrip:
     def test_sandbox_data_round_trip(self) -> None:
         camel_json = {
             "id": "sb-42",
-            "status": "running",
+            "status": "Running",
             "creationTimestamp": "2026-03-15T12:30:00Z",
             "podTemplate": {
                 "containers": [
@@ -210,12 +210,12 @@ class TestRoundTrip:
             "sandboxes": [
                 {
                     "id": "sb-1",
-                    "status": "running",
+                    "status": "Running",
                     "creationTimestamp": "2026-01-01T00:00:00Z",
                 },
                 {
                     "id": "sb-2",
-                    "status": "stopped",
+                    "status": "Succeeded",
                     "creationTimestamp": "2026-01-02T00:00:00Z",
                 },
             ]

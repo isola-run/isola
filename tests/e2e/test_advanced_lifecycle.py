@@ -88,9 +88,9 @@ def test_short_lived_command_sandbox_stops(
     isola_client: Isola,
     sandbox_factory,
 ) -> None:
-    """A sandbox with command=["true"] should transition to stopped after the process exits.
+    """A sandbox with command=["true"] should transition to Succeeded after the process exits.
 
-    Tests the pod-terminated path (PodSucceeded phase -> stopped status).
+    Tests the pod-terminated path (PodSucceeded phase -> Succeeded status).
     """
     sb = sandbox_factory(image="alpine:3.21", command=["true"], max_wait_seconds=0)
 
@@ -101,7 +101,7 @@ def test_short_lived_command_sandbox_stops(
         try:
             current = isola_client.sandboxes.get(sb.id)
             last_status = current.status
-            if last_status in (SandboxStatus.STOPPED, SandboxStatus.FAILED):
+            if last_status in (SandboxStatus.SUCCEEDED, SandboxStatus.FAILED):
                 return
         except NotFoundError:
             return  # deleted after stopping
@@ -138,9 +138,9 @@ def test_crashed_container_sandbox_fails(
             last_status = current.status
             if last_status == SandboxStatus.FAILED:
                 return
-            if last_status == SandboxStatus.STOPPED:
+            if last_status == SandboxStatus.SUCCEEDED:
                 pytest.fail(
-                    f"Sandbox {sb.id} reached 'stopped' but expected 'failed' "
+                    f"Sandbox {sb.id} reached 'succeeded' but expected 'failed' "
                     f"(container exited non-zero)"
                 )
         except NotFoundError:

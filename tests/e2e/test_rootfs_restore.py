@@ -83,7 +83,7 @@ class TestRootfsSnapshotSourcesField:
 
         # Sandbox should stay in creating (not failed)
         current = isola_client.sandboxes.get(sb.id)
-        assert current.status == SandboxStatus.CREATING
+        assert current.status == SandboxStatus.PENDING
 
 
 @pytest.mark.timeout(180)
@@ -109,11 +109,11 @@ class TestRootfsRestoreWorkflow:
 
         assert snapshot.sandbox_id == sb.id
         assert snapshot.snapshot_name == snapshot_name
-        assert snapshot.status == RootfsSnapshotStatus.COMPLETE
+        assert snapshot.status == RootfsSnapshotStatus.SUCCEEDED
 
         fetched = isola_client.rootfs_snapshots.get(snapshot.id)
         assert fetched.id == snapshot.id
-        assert fetched.status == RootfsSnapshotStatus.COMPLETE
+        assert fetched.status == RootfsSnapshotStatus.SUCCEEDED
 
         # 3. Create a new sandbox restoring from the snapshot
         restored = sandbox_factory(rootfs_snapshot_source=snapshot_name)
@@ -143,11 +143,11 @@ class TestRootfsRestoreWorkflow:
 
         assert snapshot.sandbox_id == sb.id
         assert snapshot.snapshot_name == snapshot_name
-        assert snapshot.status == RootfsSnapshotStatus.COMPLETE
+        assert snapshot.status == RootfsSnapshotStatus.SUCCEEDED
 
         fetched = isola_client.rootfs_snapshots.get(snapshot.id)
         assert fetched.id == snapshot.id
-        assert fetched.status == RootfsSnapshotStatus.COMPLETE
+        assert fetched.status == RootfsSnapshotStatus.SUCCEEDED
 
         # 4. Create a new sandbox restoring from the snapshot
         restored = sandbox_factory(rootfs_snapshot_source=snapshot_name)

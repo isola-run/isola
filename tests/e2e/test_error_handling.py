@@ -70,7 +70,7 @@ def test_filesystem_on_nonexistent_sandbox(isola_client: Isola) -> None:
 
 @pytest.mark.skip(
     reason="OPERATOR BUG: Pod with ImagePullBackOff stays in Pending phase but operator "
-    "only checks IsPodTerminated (Succeeded/Failed). Sandbox stays in 'creating' forever. "
+    "only checks IsPodTerminated (Succeeded/Failed). Sandbox stays in 'Pending' forever. "
     "Operator needs to detect persistent image pull failures from container status."
 )
 @pytest.mark.timeout(90)
@@ -91,12 +91,12 @@ def test_invalid_image_sandbox_fails(
     while time.monotonic() < deadline:
         sb_fresh = isola_client.sandboxes.get(sb.id)
         last_status = sb_fresh.status
-        if last_status in (SandboxStatus.FAILED, SandboxStatus.STOPPED):
+        if last_status in (SandboxStatus.FAILED, SandboxStatus.SUCCEEDED):
             return
         time.sleep(POLL_INTERVAL)
 
     pytest.fail(
-        f"Sandbox {sb.id} with invalid image did not reach failed/stopped "
+        f"Sandbox {sb.id} with invalid image did not reach terminal state "
         f"within {POLL_TIMEOUT}s (last status: {last_status.value})"
     )
 

@@ -361,6 +361,53 @@ var _ = Describe("Sandbox Controller", func() {
 	})
 
 	// ============================================
+	// Pod Lifecycle Edge Cases
+	// ============================================
+	Context("Pod Lifecycle Edge Cases", func() {
+		var (
+			reconciler *SandboxReconciler
+			fakeClock  *FakeClock
+		)
+
+		BeforeEach(func() {
+			fakeClock = NewFakeClock(time.Now())
+			reconciler = newTestReconciler(fakeClock)
+		})
+
+		It("should re-create pod when externally deleted after running", func() {
+			sandboxName := "sandbox-pod-extern-delete"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile creates the pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// Externally delete the pod (e.g. node drain)
+			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
+			Expect(getPod(ctx, podName)).To(BeNil())
+
+			// Next reconcile should re-create the pod
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod = getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil(), "pod should be re-created after external deletion")
+
+			// Sandbox should not be terminal
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)).To(BeNil())
+		})
+	})
+
+	// ============================================
 	// Condition State Machine Tests
 	// ============================================
 	Context("Condition State Machine", func() {
@@ -439,7 +486,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionTrue, CondReasonPodRunning)).To(BeTrue())
-			Expect(hasConditionWithReason(sandbox, SandboxReadyCondition, metav1.ConditionTrue, CondReasonPodRunning)).To(BeTrue())
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxReadyCondition, metav1.ConditionTrue, CondReasonPodRunning)).To(BeTrue())
+			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)).To(BeNil())
 		})
 
 		It("should reflect pod failure in conditions with PodFailed reason", func() {
@@ -470,7 +518,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
-			Expect(hasConditionWithReason(sandbox, SandboxReadyCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxReadyCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
 		})
 
 		It("should reflect pod success in conditions with PodSucceeded reason", func() {
@@ -501,7 +550,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(hasConditionWithReason(sandbox, SandboxPodReadyCondition, metav1.ConditionFalse, CondReasonPodSucceeded)).To(BeTrue())
-			Expect(hasConditionWithReason(sandbox, SandboxReadyCondition, metav1.ConditionFalse, CondReasonPodSucceeded)).To(BeTrue())
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxReadyCondition, metav1.ConditionFalse, CondReasonPodSucceeded)).To(BeTrue())
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionTrue, CondReasonPodSucceeded)).To(BeTrue())
 		})
 
 		It("should maintain stable conditions across multiple reconciles", func() {
@@ -557,6 +607,74 @@ var _ = Describe("Sandbox Controller", func() {
 			for _, cond := range sandbox.Status.Conditions {
 				Expect(cond.ObservedGeneration).To(Equal(sandbox.Generation))
 			}
+		})
+
+		It("should not revert Succeeded=False on subsequent reconcile", func() {
+			sandboxName := "sandbox-terminal-sticky"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Pod fails (terminal)
+			pod := getPod(ctx, podName)
+			pod.Status.Phase = corev1.PodFailed
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "sandbox", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 1}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
+
+			// Simulate another reconcile — Succeeded must remain False (one-way latch)
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionFalse, CondReasonPodFailed)).To(BeTrue())
+		})
+
+		It("should not revert Succeeded=True on subsequent reconcile", func() {
+			sandboxName := "sandbox-terminal-true-sticky"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Pod succeeds (terminal)
+			pod := getPod(ctx, podName)
+			pod.Status.Phase = corev1.PodSucceeded
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "sandbox", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0, Reason: "Completed"}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionTrue, CondReasonPodSucceeded)).To(BeTrue())
+
+			// Simulate another reconcile — Succeeded must remain True (one-way latch)
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionTrue, CondReasonPodSucceeded)).To(BeTrue())
 		})
 
 		It("should set PodIP in sandbox status when pod has IP", func() {

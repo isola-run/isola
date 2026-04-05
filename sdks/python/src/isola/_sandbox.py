@@ -40,7 +40,7 @@ from ._models import (
 
 _POLL_INTERVAL = 1.0
 
-_TERMINAL_STATUSES = frozenset({SandboxStatus.FAILED, SandboxStatus.STOPPED})
+_TERMINAL_STATUSES = frozenset({SandboxStatus.SUCCEEDED, SandboxStatus.FAILED})
 
 
 def _sandbox_path(sandbox_id: str) -> str:
