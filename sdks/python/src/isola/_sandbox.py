@@ -69,7 +69,7 @@ def _validate_create_args(
     cpu: float | None,
     memory: int | None,
     ephemeral_storage: int | None,
-    rootfs_snapshot_source: str | None,
+    rootfs_snapshot_name: str | None,
 ) -> list[Container]:
     if containers is not None and image is not None:
         raise ValueError("cannot specify both 'image' and 'containers'")
@@ -80,7 +80,7 @@ def _validate_create_args(
         per_container = {
             "command": command, "env": env, "cpu": cpu,
             "memory": memory, "ephemeral_storage": ephemeral_storage,
-            "rootfs_snapshot_source": rootfs_snapshot_source,
+            "rootfs_snapshot_name": rootfs_snapshot_name,
         }
         set_params = [k for k, v in per_container.items() if v is not None]
         if set_params:
@@ -96,7 +96,7 @@ def _validate_create_args(
         command=command,
         env=env,
         resources=resources,
-        rootfs_snapshot_source=rootfs_snapshot_source,
+        rootfs_snapshot_name=rootfs_snapshot_name,
     )]
 
 
@@ -167,7 +167,7 @@ class Sandboxes:
         cpu: float | None = ...,
         memory: int | None = ...,
         ephemeral_storage: int | None = ...,
-        rootfs_snapshot_source: str | None = ...,
+        rootfs_snapshot_name: str | None = ...,
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
         network: Network | None = ...,
@@ -195,14 +195,14 @@ class Sandboxes:
         cpu: float | None = None,
         memory: int | None = None,
         ephemeral_storage: int | None = None,
-        rootfs_snapshot_source: str | None = None,
+        rootfs_snapshot_name: str | None = None,
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
         network: Network | None = None,
         max_wait_seconds: int = 60,
     ) -> Sandbox:
         container_list = _validate_create_args(
-            image, containers, command, env, cpu, memory, ephemeral_storage, rootfs_snapshot_source,
+            image, containers, command, env, cpu, memory, ephemeral_storage, rootfs_snapshot_name,
         )
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(containers=container_list),
@@ -245,7 +245,7 @@ class AsyncSandboxes:
         cpu: float | None = ...,
         memory: int | None = ...,
         ephemeral_storage: int | None = ...,
-        rootfs_snapshot_source: str | None = ...,
+        rootfs_snapshot_name: str | None = ...,
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
         network: Network | None = ...,
@@ -273,14 +273,14 @@ class AsyncSandboxes:
         cpu: float | None = None,
         memory: int | None = None,
         ephemeral_storage: int | None = None,
-        rootfs_snapshot_source: str | None = None,
+        rootfs_snapshot_name: str | None = None,
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
         network: Network | None = None,
         max_wait_seconds: int = 60,
     ) -> AsyncSandbox:
         container_list = _validate_create_args(
-            image, containers, command, env, cpu, memory, ephemeral_storage, rootfs_snapshot_source,
+            image, containers, command, env, cpu, memory, ephemeral_storage, rootfs_snapshot_name,
         )
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(containers=container_list),

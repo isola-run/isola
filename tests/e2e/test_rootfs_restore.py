@@ -30,25 +30,25 @@ from utils import (
 
 @pytest.mark.timeout(120)
 class TestRootfsSnapshotSourcesField:
-    """Verify the per-container rootfsSnapshotSource field round-trips through the API."""
+    """Verify the per-container rootfsSnapshotName field round-trips through the API."""
 
-    def test_create_response_includes_rootfs_snapshot_source(
+    def test_create_response_includes_rootfs_snapshot_name(
         self, sandbox_factory: ..., isola_client: Isola
     ) -> None:
-        sb = sandbox_factory(rootfs_snapshot_source="nonexistent-snap", max_wait_seconds=0)
-        assert sb.containers[0].rootfs_snapshot_source == "nonexistent-snap"
+        sb = sandbox_factory(rootfs_snapshot_name="nonexistent-snap", max_wait_seconds=0)
+        assert sb.containers[0].rootfs_snapshot_name == "nonexistent-snap"
 
-    def test_get_response_includes_rootfs_snapshot_source(
+    def test_get_response_includes_rootfs_snapshot_name(
         self, sandbox_factory: ..., isola_client: Isola
     ) -> None:
-        sb = sandbox_factory(rootfs_snapshot_source="nonexistent-snap", max_wait_seconds=0)
+        sb = sandbox_factory(rootfs_snapshot_name="nonexistent-snap", max_wait_seconds=0)
         fetched = wait_for_visible(isola_client, sb.id)
-        assert fetched.containers[0].rootfs_snapshot_source == "nonexistent-snap"
+        assert fetched.containers[0].rootfs_snapshot_name == "nonexistent-snap"
 
     def test_create_without_snapshot_has_no_source(
         self, session_sandbox: Sandbox
     ) -> None:
-        source = session_sandbox.containers[0].rootfs_snapshot_source
+        source = session_sandbox.containers[0].rootfs_snapshot_name
         assert source is None or source == ""
 
     def test_sandbox_with_nonexistent_snapshot_retries(
@@ -56,7 +56,7 @@ class TestRootfsSnapshotSourcesField:
     ) -> None:
         """With restartPolicyRules, a nonexistent snapshot causes exit 128 retries."""
         sb = sandbox_factory(
-            rootfs_snapshot_source="does-not-exist",
+            rootfs_snapshot_name="does-not-exist",
             startup_timeout_seconds=120,
             max_wait_seconds=0,
         )
@@ -116,7 +116,7 @@ class TestRootfsRestoreWorkflow:
         assert fetched.status == RootfsSnapshotStatus.SUCCEEDED
 
         # 3. Create a new sandbox restoring from the snapshot
-        restored = sandbox_factory(rootfs_snapshot_source=snapshot_name)
+        restored = sandbox_factory(rootfs_snapshot_name=snapshot_name)
         restored_running = wait_for_running(isola_client, restored.id)
 
         # 4. Verify the restored sandbox has the marker file
@@ -150,7 +150,7 @@ class TestRootfsRestoreWorkflow:
         assert fetched.status == RootfsSnapshotStatus.SUCCEEDED
 
         # 4. Create a new sandbox restoring from the snapshot
-        restored = sandbox_factory(rootfs_snapshot_source=snapshot_name)
+        restored = sandbox_factory(rootfs_snapshot_name=snapshot_name)
         restored_running = wait_for_running(isola_client, restored.id)
 
         # 5. Verify the restored sandbox has the marker file
@@ -159,4 +159,4 @@ class TestRootfsRestoreWorkflow:
         assert "restored-data-marker" in read_result.stdout
 
         # 6. Verify the rootfs snapshot source on the container
-        assert restored_running.containers[0].rootfs_snapshot_source == snapshot_name
+        assert restored_running.containers[0].rootfs_snapshot_name == snapshot_name

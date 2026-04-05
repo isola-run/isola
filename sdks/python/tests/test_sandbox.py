@@ -192,22 +192,22 @@ async def test_async_create_properties_and_delete(sandbox_response_copy: dict[st
 
 
 @respx.mock
-def test_create_sandbox_with_rootfs_snapshot_source(sandbox_response_copy: dict[str, object]) -> None:
-    sandbox_response_copy["podTemplate"]["containers"][0]["rootfsSnapshotSource"] = "my-snapshot"
+def test_create_sandbox_with_rootfs_snapshot_name(sandbox_response_copy: dict[str, object]) -> None:
+    sandbox_response_copy["podTemplate"]["containers"][0]["rootfsSnapshotName"] = "my-snapshot"
     create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(201, json=sandbox_response_copy)
     )
 
     with Isola(base_url="http://localhost:8080") as client:
-        sandbox = client.sandboxes.create(image="python:3.12", rootfs_snapshot_source="my-snapshot")
+        sandbox = client.sandboxes.create(image="python:3.12", rootfs_snapshot_name="my-snapshot")
 
     payload = json.loads(create_route.calls[0].request.content)
-    assert payload["podTemplate"]["containers"][0]["rootfsSnapshotSource"] == "my-snapshot"
-    assert sandbox.containers[0].rootfs_snapshot_source == "my-snapshot"
+    assert payload["podTemplate"]["containers"][0]["rootfsSnapshotName"] == "my-snapshot"
+    assert sandbox.containers[0].rootfs_snapshot_name == "my-snapshot"
 
 
 @respx.mock
-def test_create_sandbox_without_rootfs_snapshot_source_omits_key(
+def test_create_sandbox_without_rootfs_snapshot_name_omits_key(
     sandbox_response_copy: dict[str, object],
 ) -> None:
     create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
@@ -218,14 +218,14 @@ def test_create_sandbox_without_rootfs_snapshot_source_omits_key(
         client.sandboxes.create(image="python:3.12")
 
     payload = json.loads(create_route.calls[0].request.content)
-    assert "rootfsSnapshotSource" not in payload["podTemplate"]["containers"][0]
+    assert "rootfsSnapshotName" not in payload["podTemplate"]["containers"][0]
 
 
 @respx.mock
-def test_rootfs_snapshot_source_response_deserialization(
+def test_rootfs_snapshot_name_response_deserialization(
     sandbox_response_copy: dict[str, object],
 ) -> None:
-    sandbox_response_copy["podTemplate"]["containers"][0]["rootfsSnapshotSource"] = "snap-1"
+    sandbox_response_copy["podTemplate"]["containers"][0]["rootfsSnapshotName"] = "snap-1"
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
@@ -233,7 +233,7 @@ def test_rootfs_snapshot_source_response_deserialization(
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
 
-    assert sandbox.containers[0].rootfs_snapshot_source == "snap-1"
+    assert sandbox.containers[0].rootfs_snapshot_name == "snap-1"
 
 
 @respx.mock
@@ -258,18 +258,18 @@ def test_create_sandbox_with_containers_param(sandbox_response_copy: dict[str, o
 
 @respx.mock
 def test_create_sandbox_containers_with_rootfs(sandbox_response_copy: dict[str, object]) -> None:
-    sandbox_response_copy["podTemplate"]["containers"][0]["rootfsSnapshotSource"] = "snap-a"
+    sandbox_response_copy["podTemplate"]["containers"][0]["rootfsSnapshotName"] = "snap-a"
     create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(201, json=sandbox_response_copy)
     )
 
     with Isola(base_url="http://localhost:8080") as client:
         client.sandboxes.create(
-            containers=[Container(image="python:3.12", rootfs_snapshot_source="snap-a")],
+            containers=[Container(image="python:3.12", rootfs_snapshot_name="snap-a")],
         )
 
     payload = json.loads(create_route.calls[0].request.content)
-    assert payload["podTemplate"]["containers"][0]["rootfsSnapshotSource"] == "snap-a"
+    assert payload["podTemplate"]["containers"][0]["rootfsSnapshotName"] == "snap-a"
 
 
 def test_create_raises_when_both_image_and_containers() -> None:

@@ -148,7 +148,7 @@ snapshot = client.rootfs_snapshots.get(snapshot.id)
 # Restore a new sandbox from the snapshot name
 restored = client.sandboxes.create(
     image="alpine:3.21",
-    rootfs_snapshot_source="my-snapshot",
+    rootfs_snapshot_name="my-snapshot",
 )
 ```
 

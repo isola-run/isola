@@ -74,7 +74,7 @@ class Container(IsolaModel):
     command: list[str] | None = None
     env: dict[str, str] | None = None
     resources: ResourceRequirements | None = None
-    rootfs_snapshot_source: str | None = None
+    rootfs_snapshot_name: str | None = None
 
 
 class ContainerInfo(IsolaModel):
@@ -82,7 +82,7 @@ class ContainerInfo(IsolaModel):
     image: str
     command: list[str] | None = None
     resources: ResourceRequirements | None = None
-    rootfs_snapshot_source: str | None = None
+    rootfs_snapshot_name: str | None = None
 
 
 class RootfsSnapshotStatus(str, Enum):

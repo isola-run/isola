@@ -49,7 +49,7 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 			Name:                 c.Name,
 			Image:                c.Image,
 			Command:              c.Command,
-			RootfsSnapshotSource: rootfsMap[c.Name],
+			RootfsSnapshotName: rootfsMap[c.Name],
 			Resources:            containerResourcesToSpec(c.Resources),
 		})
 	}
@@ -169,9 +169,9 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 		container.Env = mapToEnvVars(c.Env)
 		containers = append(containers, container)
 
-		if c.RootfsSnapshotSource != "" {
+		if c.RootfsSnapshotName != "" {
 			rootfsSources = append(rootfsSources, sandboxv1alpha1.RootfsSnapshotSource{
-				SnapshotName:  c.RootfsSnapshotSource,
+				SnapshotName:  c.RootfsSnapshotName,
 				ContainerName: containerName,
 			})
 		}

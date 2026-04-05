@@ -198,7 +198,7 @@ var _ = Describe("Conversion functions", func() {
 				PodTemplate: PodTemplate{
 					Containers: []Container{{
 						Image:                "python:3.12",
-						RootfsSnapshotSource: "my-snapshot",
+						RootfsSnapshotName: "my-snapshot",
 					}},
 				},
 			}
@@ -213,9 +213,9 @@ var _ = Describe("Conversion functions", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
 					Containers: []Container{
-						{Name: "app", Image: "python:3.12", RootfsSnapshotSource: "snap-app"},
+						{Name: "app", Image: "python:3.12", RootfsSnapshotName: "snap-app"},
 						{Name: "worker", Image: "nginx:latest"},
-						{Name: "db", Image: "postgres:16", RootfsSnapshotSource: "snap-db"},
+						{Name: "db", Image: "postgres:16", RootfsSnapshotName: "snap-db"},
 					},
 				},
 			}
@@ -368,8 +368,8 @@ var _ = Describe("Conversion functions", func() {
 				},
 			}
 			resp := sandboxToResponse(sb)
-			Expect(resp.PodTemplate.Containers[0].RootfsSnapshotSource).To(Equal("snap-app"))
-			Expect(resp.PodTemplate.Containers[1].RootfsSnapshotSource).To(BeEmpty())
+			Expect(resp.PodTemplate.Containers[0].RootfsSnapshotName).To(Equal("snap-app"))
+			Expect(resp.PodTemplate.Containers[1].RootfsSnapshotName).To(BeEmpty())
 		})
 
 		It("maps rootfs source with empty containerName to the single container", func() {
@@ -388,7 +388,7 @@ var _ = Describe("Conversion functions", func() {
 				},
 			}
 			resp := sandboxToResponse(sb)
-			Expect(resp.PodTemplate.Containers[0].RootfsSnapshotSource).To(Equal("old-snap"))
+			Expect(resp.PodTemplate.Containers[0].RootfsSnapshotName).To(Equal("old-snap"))
 		})
 	})
 

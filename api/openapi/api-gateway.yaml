@@ -46,7 +46,7 @@ components:
         resources:
           $ref: "#/components/schemas/ResourceRequirements"
           description: Resource requests and limits
-        rootfsSnapshotSource:
+        rootfsSnapshotName:
           description: Rootfs snapshot to restore into this container. Files on separately-mounted filesystems (e.g. /tmp) are excluded.
           maxLength: 63
           minLength: 1
@@ -74,7 +74,7 @@ components:
         resources:
           $ref: "#/components/schemas/ResourceRequirements"
           description: Resource requests and limits
-        rootfsSnapshotSource:
+        rootfsSnapshotName:
           description: Rootfs snapshot restored into this container.
           type: string
       required:
@@ -152,7 +152,7 @@ components:
           minLength: 1
           type: string
         snapshotName:
-          description: Identifier for this snapshot, used both as the storage key and as the restore reference. To restore from this snapshot, pass this value as rootfsSnapshotSource on a container when creating a sandbox.
+          description: Identifier for this snapshot, used both as the storage key and as the restore reference. To restore from this snapshot, pass this value as rootfsSnapshotName on a container when creating a sandbox.
           maxLength: 63
           minLength: 1
           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
