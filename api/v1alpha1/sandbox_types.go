@@ -37,7 +37,6 @@ const (
 )
 
 // SnapshotRootfsTermination configures the SnapshotRootfs termination strategy.
-// Snapshots the first user container (matching on-demand API default behavior).
 type SnapshotRootfsTermination struct {
 	// SnapshotName is the concrete storage key for the snapshot.
 	// Same semantic as RootfsSnapshotSpec.SnapshotName and the on-demand snapshot API.
