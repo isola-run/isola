@@ -60,13 +60,13 @@ type RootfsSnapshotReconciler struct {
 	BucketURL string
 	// CredentialSecretName is the optional Secret name for bucket credentials
 	CredentialSecretName string
-	// UploaderImage is the container image for the uploader sidecar
+	// UploaderImage is the container image for the snapshot-uploader
 	UploaderImage string
-	// UploaderImagePullPolicy is the pull policy for the uploader container
+	// UploaderImagePullPolicy is the pull policy for the snapshot-uploader container
 	UploaderImagePullPolicy corev1.PullPolicy
 	// SnapshotServiceAccount is the ServiceAccount for rootfs snapshot jobs
 	SnapshotServiceAccount string
-	// ImagePullSecrets for pulling uploader images from private registries
+	// ImagePullSecrets for pulling snapshot-uploader images from private registries
 	ImagePullSecrets []corev1.LocalObjectReference
 
 	// Enabled controls whether rootfs snapshot capability is enabled
@@ -264,7 +264,7 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 }
 
 // getUploadResult reads the upload result from the job pod's termination message.
-// The uploader writes a JSON UploadResult to /dev/termination-log when it completes.
+// The snapshot-uploader writes a JSON UploadResult to /dev/termination-log when it completes.
 func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *batchv1.Job) (*snapshotpkg.UploadResult, error) {
 	// Find the pod created by this job
 	podList := &corev1.PodList{}
@@ -287,12 +287,12 @@ func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *bat
 		}
 	}
 
-	// Find the uploader container's termination message
+	// Find the snapshot-uploader container's termination message
 	for _, cs := range pod.Status.ContainerStatuses {
-		if cs.Name == "uploader" && cs.State.Terminated != nil {
+		if cs.Name == "snapshot-uploader" && cs.State.Terminated != nil {
 			message := cs.State.Terminated.Message
 			if message == "" {
-				return nil, fmt.Errorf("uploader container has no termination message")
+				return nil, fmt.Errorf("snapshot-uploader container has no termination message")
 			}
 
 			var result snapshotpkg.UploadResult
@@ -303,7 +303,7 @@ func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *bat
 		}
 	}
 
-	return nil, fmt.Errorf("uploader container not found or not terminated")
+	return nil, fmt.Errorf("snapshot-uploader container not found or not terminated")
 }
 
 // getRootfssnapshotSizeLimit returns the ephemeral storage limit for a container.
@@ -364,7 +364,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 	}
 
 	jobLabels := map[string]string{
-		"app.kubernetes.io/name":       "isola-uploader",
+		"app.kubernetes.io/name":       "isola-snapshot-uploader",
 		"app.kubernetes.io/instance":   snap.Name,
 		"app.kubernetes.io/component":  "rootfssnapshot",
 		"app.kubernetes.io/part-of":    "isola",
@@ -429,7 +429,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 					// Main container uploads the snapshot to the bucket
 					Containers: []corev1.Container{
 						{
-							Name:            "uploader",
+							Name:            "snapshot-uploader",
 							Image:           r.UploaderImage,
 							ImagePullPolicy: r.UploaderImagePullPolicy,
 							Env:             uploaderEnv,

@@ -32,7 +32,7 @@ operator:
       uploader:
         image:
           registry: ""
-          repository: isola-uploader
+          repository: isola-snapshot-uploader
           tag: "dev"
 
       storage:

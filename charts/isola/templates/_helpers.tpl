@@ -310,7 +310,7 @@ Construct gocloud.dev bucket URL from typed storage config.
 {{- end }}
 
 {{/*
-Uploader image (from rootfssnapshot config)
+Snapshot-uploader image (from rootfssnapshot config)
 */}}
 {{- define "isola.operator.uploaderImage" -}}
 {{- include "isola.image" (dict "imageConfig" .Values.operator.sandboxRuntime.rootfssnapshot.uploader.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
@@ -344,7 +344,7 @@ S3: both accessKeyId and secretAccessKey set. Azure: accountKey set. GCS: never 
 {{- end }}
 
 {{/*
-Uploader credential secret name (sandbox namespace).
+Snapshot-uploader credential secret name (sandbox namespace).
 Resolution: uploader.existingSecret > chart-managed > empty (workload identity)
 */}}
 {{- define "isola.operator.uploaderCredentialSecretName" -}}
@@ -352,7 +352,7 @@ Resolution: uploader.existingSecret > chart-managed > empty (workload identity)
 {{- if $uploader.existingSecret -}}
 {{- $uploader.existingSecret -}}
 {{- else if eq (include "isola.operator.hasChartManagedCredentials" .) "true" -}}
-{{- printf "%s-uploader-credentials" (include "isola.operator.fullname" .) -}}
+{{- printf "%s-snapshot-uploader-credentials" (include "isola.operator.fullname" .) -}}
 {{- end -}}
 {{- end }}
 

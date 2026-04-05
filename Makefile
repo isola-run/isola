@@ -177,7 +177,7 @@ test-e2e-verbose: ## Run E2E tests in parallel with verbose output
 build: ## Build all binaries
 	go build -o bin/operator ./cmd/operator
 	go build -o bin/sandbox-sidecar ./cmd/sandbox-sidecar
-	go build -o bin/uploader ./cmd/uploader
+	go build -o bin/snapshot-uploader ./cmd/snapshot-uploader
 	go build -o bin/api-gateway ./cmd/api-gateway
 
 .PHONY: run-operator

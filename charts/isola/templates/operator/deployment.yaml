@@ -72,7 +72,7 @@ spec:
           env:
             - name: ISOLA_SANDBOX_SIDECAR_IMAGE
               value: "{{ include "isola.operator.sandboxSidecarImage" . }}"
-            - name: ISOLA_UPLOADER_IMAGE
+            - name: ISOLA_SNAPSHOT_UPLOADER_IMAGE
               value: "{{ include "isola.operator.uploaderImage" . }}"
           ports:
             - name: health

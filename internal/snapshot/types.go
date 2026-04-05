@@ -13,11 +13,11 @@
 // limitations under the License.
 
 // Package snapshot provides shared types for snapshot operations between
-// the isola-operator controller and isola-uploader.
+// the isola-operator controller and isola-snapshot-uploader.
 package snapshot
 
-// UploadResult is the contract between the uploader and the controller.
-// The uploader writes this as JSON to its termination log (/dev/termination-log),
+// UploadResult is the contract between the snapshot-uploader and the controller.
+// The snapshot-uploader writes this as JSON to its termination log (/dev/termination-log),
 // and the controller parses it to update the RootfsSnapshot status.
 //
 // This struct is the single source of truth - both services import this package

@@ -11,7 +11,7 @@ env:
   # Image names (no registry prefix - loaded directly into Kind)
   OPERATOR_IMAGE: isola-operator
   SANDBOX_SIDECAR_IMAGE: sandbox-sidecar
-  UPLOADER_IMAGE: isola-uploader
+  UPLOADER_IMAGE: isola-snapshot-uploader
   API_IMAGE: api-gateway
   SNAPSHOT_MOUNTER_IMAGE: snapshot-mounter
 
@@ -49,11 +49,11 @@ jobs:
           cache-from: type=gha,scope=sidecar
           cache-to: type=gha,mode=max,scope=sidecar
 
-      - name: Build isola-uploader image
+      - name: Build isola-snapshot-uploader image
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: cmd/uploader/Dockerfile
+          file: cmd/snapshot-uploader/Dockerfile
           load: true
           tags: ${{ env.UPLOADER_IMAGE }}:ci
           cache-from: type=gha,scope=uploader

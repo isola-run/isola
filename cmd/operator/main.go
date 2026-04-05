@@ -107,7 +107,7 @@ func main() {
 		sandboxSidecarImage = os.Getenv("ISOLA_SANDBOX_SIDECAR_IMAGE")
 	}
 	if rootfssnapshotUploaderImage == "" {
-		rootfssnapshotUploaderImage = os.Getenv("ISOLA_UPLOADER_IMAGE")
+		rootfssnapshotUploaderImage = os.Getenv("ISOLA_SNAPSHOT_UPLOADER_IMAGE")
 	}
 
 	if runtimeClassName == "" {
@@ -120,7 +120,7 @@ func main() {
 	}
 	if rootfssnapshotEnabled {
 		if rootfssnapshotUploaderImage == "" {
-			setupLog.Error(nil, "--rootfssnapshot-uploader-image or ISOLA_UPLOADER_IMAGE env var is required when --rootfssnapshot-enabled is set")
+			setupLog.Error(nil, "--rootfssnapshot-uploader-image or ISOLA_SNAPSHOT_UPLOADER_IMAGE env var is required when --rootfssnapshot-enabled is set")
 			os.Exit(1)
 		}
 		if rootfssnapshotBucketURL == "" {

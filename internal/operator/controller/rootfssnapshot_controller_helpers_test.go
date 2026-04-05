@@ -203,7 +203,7 @@ func setSnapshotJobFailed(ctx context.Context, name, message string) {
 }
 
 // createSnapshotJobPodWithTerminationMessage creates a pod for the job with a termination message
-// containing the upload result (simulating what the uploader writes)
+// containing the upload result (simulating what the snapshot-uploader writes)
 func createSnapshotJobPodWithTerminationMessage(ctx context.Context, jobName string, result *snapshotpkg.UploadResult) {
 	// Create termination message JSON
 	var terminationMessage string
@@ -221,7 +221,7 @@ func createSnapshotJobPodWithTerminationMessage(ctx context.Context, jobName str
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
-				{Name: "uploader", Image: "test"},
+				{Name: "snapshot-uploader", Image: "test"},
 			},
 			RestartPolicy: corev1.RestartPolicyNever,
 		},
@@ -232,7 +232,7 @@ func createSnapshotJobPodWithTerminationMessage(ctx context.Context, jobName str
 	pod.Status.Phase = corev1.PodSucceeded
 	pod.Status.ContainerStatuses = []corev1.ContainerStatus{
 		{
-			Name: "uploader",
+			Name: "snapshot-uploader",
 			State: corev1.ContainerState{
 				Terminated: &corev1.ContainerStateTerminated{
 					ExitCode: 0,
