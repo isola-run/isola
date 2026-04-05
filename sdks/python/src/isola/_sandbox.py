@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import datetime
+from typing import overload
 from urllib.parse import quote
 
 from ._client import _AsyncAPI, _SyncAPI
@@ -24,14 +25,14 @@ from ._commands import AsyncCommands, Commands
 from ._exceptions import IsolaError, IsolaTimeoutError, NotFoundError
 from ._filesystem import AsyncFilesystem, Filesystem
 from ._models import (
-    ContainerSpec,
+    Container,
+    ContainerInfo,
     CreateSandboxPayload,
     ListSandboxesResponse,
-    NetworkSpec,
+    Network,
     PodTemplate,
     ResourceList,
-    ResourcesSpec,
-    RootfsSnapshotSource,
+    ResourceRequirements,
     SandboxData,
     SandboxStatus,
     SandboxSummary,
@@ -46,13 +47,9 @@ def _sandbox_path(sandbox_id: str) -> str:
     return f"/v1/sandboxes/{quote(sandbox_id, safe='')}"
 
 
-def _build_rootfs_snapshot_sources(rootfs_snapshot_source: str | None) -> list[RootfsSnapshotSource] | None:
-    if rootfs_snapshot_source is None:
-        return None
-    return [RootfsSnapshotSource(snapshot_name=rootfs_snapshot_source)]
-
-
-def _build_resources(cpu: float | None, memory: int | None, ephemeral_storage: int | None) -> ResourcesSpec | None:
+def _build_resources(
+    cpu: float | None, memory: int | None, ephemeral_storage: int | None
+) -> ResourceRequirements | None:
     if cpu is None and memory is None and ephemeral_storage is None:
         return None
 
@@ -61,7 +58,51 @@ def _build_resources(cpu: float | None, memory: int | None, ephemeral_storage: i
         memory=f"{memory}Mi" if memory is not None else None,
         ephemeral_storage=f"{ephemeral_storage}Mi" if ephemeral_storage is not None else None,
     )
-    return ResourcesSpec(limits=resource_list, requests=resource_list)
+    return ResourceRequirements(limits=resource_list, requests=resource_list)
+
+
+def _validate_create_args(
+    image: str | None,
+    containers: list[Container] | None,
+    command: list[str] | None,
+    env: dict[str, str] | None,
+    cpu: float | None,
+    memory: int | None,
+    ephemeral_storage: int | None,
+    rootfs_snapshot_name: str | None,
+) -> list[Container]:
+    if containers is not None and image is not None:
+        raise ValueError("cannot specify both 'image' and 'containers'")
+    if containers is None and image is None:
+        raise ValueError("must specify either 'image' or 'containers'")
+
+    if containers is not None:
+        per_container = {
+            "command": command,
+            "env": env,
+            "cpu": cpu,
+            "memory": memory,
+            "ephemeral_storage": ephemeral_storage,
+            "rootfs_snapshot_name": rootfs_snapshot_name,
+        }
+        set_params = [k for k, v in per_container.items() if v is not None]
+        if set_params:
+            raise ValueError(
+                f"cannot specify {', '.join(repr(p) for p in set_params)} "
+                f"when using 'containers'; set these on each Container instead"
+            )
+        return containers
+
+    resources = _build_resources(cpu, memory, ephemeral_storage)
+    return [
+        Container(
+            image=image,
+            command=command,
+            env=env,
+            resources=resources,
+            rootfs_snapshot_name=rootfs_snapshot_name,
+        )
+    ]
 
 
 def _check_terminal(sandbox_id: str, status: SandboxStatus) -> None:
@@ -121,35 +162,65 @@ class Sandboxes:
     def __init__(self, api: _SyncAPI) -> None:
         self._api = api
 
+    @overload
     def create(
         self,
         *,
         image: str,
+        command: list[str] | None = ...,
+        env: dict[str, str] | None = ...,
+        cpu: float | None = ...,
+        memory: int | None = ...,
+        ephemeral_storage: int | None = ...,
+        rootfs_snapshot_name: str | None = ...,
+        timeout_seconds: int | None = ...,
+        startup_timeout_seconds: int = ...,
+        network: Network | None = ...,
+        max_wait_seconds: int = ...,
+    ) -> Sandbox: ...
+
+    @overload
+    def create(
+        self,
+        *,
+        containers: list[Container],
+        timeout_seconds: int | None = ...,
+        startup_timeout_seconds: int = ...,
+        network: Network | None = ...,
+        max_wait_seconds: int = ...,
+    ) -> Sandbox: ...
+
+    def create(
+        self,
+        *,
+        image: str | None = None,
+        containers: list[Container] | None = None,
         command: list[str] | None = None,
         env: dict[str, str] | None = None,
         cpu: float | None = None,
         memory: int | None = None,
         ephemeral_storage: int | None = None,
+        rootfs_snapshot_name: str | None = None,
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
-        network: NetworkSpec | None = None,
-        rootfs_snapshot_source: str | None = None,
+        network: Network | None = None,
         max_wait_seconds: int = 60,
     ) -> Sandbox:
-        resources = _build_resources(cpu, memory, ephemeral_storage)
+        container_list = _validate_create_args(
+            image,
+            containers,
+            command,
+            env,
+            cpu,
+            memory,
+            ephemeral_storage,
+            rootfs_snapshot_name,
+        )
         payload = CreateSandboxPayload(
-            pod_template=PodTemplate(
-                container=ContainerSpec(
-                    image=image,
-                    command=command,
-                    env=env,
-                    resources=resources,
-                )
-            ),
+            pod_template=PodTemplate(containers=container_list),
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
             network=network,
-            rootfs_snapshot_sources=_build_rootfs_snapshot_sources(rootfs_snapshot_source),
         )
 
         data = self._api.request_model(
@@ -176,35 +247,65 @@ class AsyncSandboxes:
     def __init__(self, api: _AsyncAPI) -> None:
         self._api = api
 
+    @overload
     async def create(
         self,
         *,
         image: str,
+        command: list[str] | None = ...,
+        env: dict[str, str] | None = ...,
+        cpu: float | None = ...,
+        memory: int | None = ...,
+        ephemeral_storage: int | None = ...,
+        rootfs_snapshot_name: str | None = ...,
+        timeout_seconds: int | None = ...,
+        startup_timeout_seconds: int = ...,
+        network: Network | None = ...,
+        max_wait_seconds: int = ...,
+    ) -> AsyncSandbox: ...
+
+    @overload
+    async def create(
+        self,
+        *,
+        containers: list[Container],
+        timeout_seconds: int | None = ...,
+        startup_timeout_seconds: int = ...,
+        network: Network | None = ...,
+        max_wait_seconds: int = ...,
+    ) -> AsyncSandbox: ...
+
+    async def create(
+        self,
+        *,
+        image: str | None = None,
+        containers: list[Container] | None = None,
         command: list[str] | None = None,
         env: dict[str, str] | None = None,
         cpu: float | None = None,
         memory: int | None = None,
         ephemeral_storage: int | None = None,
+        rootfs_snapshot_name: str | None = None,
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
-        network: NetworkSpec | None = None,
-        rootfs_snapshot_source: str | None = None,
+        network: Network | None = None,
         max_wait_seconds: int = 60,
     ) -> AsyncSandbox:
-        resources = _build_resources(cpu, memory, ephemeral_storage)
+        container_list = _validate_create_args(
+            image,
+            containers,
+            command,
+            env,
+            cpu,
+            memory,
+            ephemeral_storage,
+            rootfs_snapshot_name,
+        )
         payload = CreateSandboxPayload(
-            pod_template=PodTemplate(
-                container=ContainerSpec(
-                    image=image,
-                    command=command,
-                    env=env,
-                    resources=resources,
-                )
-            ),
+            pod_template=PodTemplate(containers=container_list),
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
             network=network,
-            rootfs_snapshot_sources=_build_rootfs_snapshot_sources(rootfs_snapshot_source),
         )
 
         data = await self._api.request_model(
@@ -247,7 +348,7 @@ class Sandbox:
         return self._data.creation_timestamp
 
     @property
-    def network(self) -> NetworkSpec | None:
+    def network(self) -> Network | None:
         return self._data.network
 
     @property
@@ -259,8 +360,8 @@ class Sandbox:
         return self._data.startup_timeout_seconds
 
     @property
-    def rootfs_snapshot_sources(self) -> list[RootfsSnapshotSource] | None:
-        return self._data.rootfs_snapshot_sources
+    def containers(self) -> list[ContainerInfo]:
+        return self._data.pod_template.containers
 
     def __enter__(self) -> Sandbox:
         return self
@@ -292,7 +393,7 @@ class AsyncSandbox:
         return self._data.creation_timestamp
 
     @property
-    def network(self) -> NetworkSpec | None:
+    def network(self) -> Network | None:
         return self._data.network
 
     @property
@@ -304,8 +405,8 @@ class AsyncSandbox:
         return self._data.startup_timeout_seconds
 
     @property
-    def rootfs_snapshot_sources(self) -> list[RootfsSnapshotSource] | None:
-        return self._data.rootfs_snapshot_sources
+    def containers(self) -> list[ContainerInfo]:
+        return self._data.pod_template.containers
 
     async def __aenter__(self) -> AsyncSandbox:
         return self

@@ -59,7 +59,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"python:3.12"}]}}`))
 			Expect(resp.Code).To(Equal(409))
 		})
 
@@ -74,7 +74,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"python:3.12"}]}}`))
 			Expect(resp.Code).To(Equal(422))
 		})
 
@@ -85,7 +85,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"python:3.12"}]}}`))
 			Expect(resp.Code).To(Equal(403))
 		})
 
@@ -96,7 +96,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"python:3.12"}]}}`))
 			Expect(resp.Code).To(Equal(429))
 			Expect(resp.Header().Get("Retry-After")).To(Equal("30"))
 		})
@@ -111,7 +111,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"python:3.12"}]}}`))
 			Expect(resp.Code).To(Equal(500))
 			Expect(resp.Header().Get("Retry-After")).To(Equal("10"))
 		})
@@ -123,7 +123,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"python:3.12"}]}}`))
 			Expect(resp.Code).To(Equal(503))
 		})
 
@@ -139,7 +139,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"python:3.12"}]}}`))
 			Expect(resp.Code).To(Equal(403))
 		})
 
@@ -150,7 +150,7 @@ var _ = Describe("Sandbox Error Handling", func() {
 				},
 			})
 
-			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"container":{"image":"python:3.12"}}}`))
+			resp := api.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"python:3.12"}]}}`))
 			Expect(resp.Code).To(Equal(500))
 		})
 	})

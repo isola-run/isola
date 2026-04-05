@@ -53,9 +53,9 @@ type ShutdownPolicy struct {
 	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
 }
 
-// NetworkSpec defines network isolation for a sandbox.
+// Network defines network isolation for a sandbox.
 // If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
-type NetworkSpec struct {
+type Network struct {
 	// AllowInternetEgress allows egress to 0.0.0.0/0 (and ::/0 when allowIPv6Egress is true)
 	// with blocked ranges (private IPs, cloud metadata, etc.) automatically excepted.
 	// Adds label isola.run/allow-ipv4-internet-egress=true to the pod.
@@ -155,7 +155,7 @@ type SandboxSpec struct {
 	// If not specified, the sandbox has deny-all egress.
 	// Network configuration is immutable after sandbox creation.
 	// +optional
-	Network *NetworkSpec `json:"network,omitempty"`
+	Network *Network `json:"network,omitempty"`
 
 	// RootfsSnapshotSources specifies rootfs snapshots to restore into containers at creation time.
 	// Requires gVisor runtime and the snapshot-mounter NFS mount to be running on the node.

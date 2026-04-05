@@ -80,7 +80,7 @@ client = Isola()
 <span class="comment"># Restore from snapshot on any node</span>
 <span class="kw">with</span> client.sandboxes.create(
     image=<span class="str">"alpine:3.21"</span>,
-    rootfs_snapshot_source=<span class="str">"my-snapshot"</span>,
+    rootfs_snapshot_name=<span class="str">"my-snapshot"</span>,
 ) <span class="kw">as</span> restored:
     restored.commands.run(<span class="str">"cat"</span>, <span class="str">"/data/results.json"</span>)</code></pre>
         </section>

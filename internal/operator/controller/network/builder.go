@@ -47,7 +47,7 @@ var DefaultPublicNameservers = []string{"8.8.8.8", "1.1.1.1"}
 
 // EffectiveNameservers returns the nameservers to configure for a sandbox pod.
 // Priority: user-provided > auto-default (when egress CIDRs are set and cluster DNS is off) > nil (sink).
-func EffectiveNameservers(network *sandboxv1alpha1.NetworkSpec) []string {
+func EffectiveNameservers(network *sandboxv1alpha1.Network) []string {
 	if network == nil {
 		return nil
 	}
@@ -74,7 +74,7 @@ type egressCIDR struct {
 // Returns nil if no custom policy is needed (nil network or no custom rules).
 //
 // Returns error if CIDRs are invalid or if egress CIDRs completely overlap with blocked ranges.
-func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1alpha1.NetworkSpec) (*networkingv1.NetworkPolicy, error) {
+func BuildCustomNetworkPolicy(sandboxName, namespace string, network *sandboxv1alpha1.Network) (*networkingv1.NetworkPolicy, error) {
 	if network == nil {
 		return nil, nil
 	}

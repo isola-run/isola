@@ -19,26 +19,7 @@ components:
       required:
         - exitCode
       type: object
-    ContainerInfo:
-      additionalProperties: false
-      properties:
-        command:
-          description: Container entrypoint override
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        image:
-          description: Container image
-          type: string
-        resources:
-          $ref: "#/components/schemas/ResourcesSpec"
-          description: Resource requests and limits
-      required:
-        - image
-      type: object
-    ContainerSpec:
+    Container:
       additionalProperties: false
       properties:
         command:
@@ -57,10 +38,47 @@ components:
           description: Container image
           minLength: 1
           type: string
+        name:
+          description: Container name. Defaults to sandbox{i} if omitted.
+          maxLength: 63
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          type: string
         resources:
-          $ref: "#/components/schemas/ResourcesSpec"
+          $ref: "#/components/schemas/ResourceRequirements"
           description: Resource requests and limits
+        rootfsSnapshotName:
+          description: Rootfs snapshot to restore into this container. Files on separately-mounted filesystems (e.g. /tmp) are excluded.
+          maxLength: 63
+          minLength: 1
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          type: string
       required:
+        - image
+      type: object
+    ContainerInfo:
+      additionalProperties: false
+      properties:
+        command:
+          description: Container entrypoint override
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        image:
+          description: Container image
+          type: string
+        name:
+          description: Container name
+          type: string
+        resources:
+          $ref: "#/components/schemas/ResourceRequirements"
+          description: Resource requests and limits
+        rootfsSnapshotName:
+          description: Rootfs snapshot restored into this container.
+          type: string
+      required:
+        - name
         - image
       type: object
     CreateCommandRequest:
@@ -134,7 +152,7 @@ components:
           minLength: 1
           type: string
         snapshotName:
-          description: Identifier for this snapshot, used both as the storage key and as the restore reference. To restore from this snapshot, pass this value as rootfsSnapshotSources[].snapshotName when creating a sandbox.
+          description: Identifier for this snapshot, used both as the storage key and as the restore reference. To restore from this snapshot, pass this value as rootfsSnapshotName on a container when creating a sandbox.
           maxLength: 63
           minLength: 1
           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
@@ -164,19 +182,11 @@ components:
           readOnly: true
           type: string
         network:
-          $ref: "#/components/schemas/NetworkSpec"
+          $ref: "#/components/schemas/Network"
           description: Network isolation config
         podTemplate:
           $ref: "#/components/schemas/PodTemplate"
           description: Pod template
-        rootfsSnapshotSources:
-          description: Rootfs snapshots to restore into containers at creation time. Files on separately-mounted filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included.
-          items:
-            $ref: "#/components/schemas/RootfsSnapshotSource"
-          maxItems: 16
-          type:
-            - array
-            - "null"
         startupTimeoutSeconds:
           description: Max seconds for the sandbox to become Ready. Defaults to 60 if omitted.
           format: int64
@@ -312,7 +322,7 @@ components:
       required:
         - sandboxes
       type: object
-    NetworkSpec:
+    Network:
       additionalProperties: false
       properties:
         allowClusterDNS:
@@ -345,20 +355,29 @@ components:
     PodTemplate:
       additionalProperties: false
       properties:
-        container:
-          $ref: "#/components/schemas/ContainerSpec"
-          description: Primary sandbox container
+        containers:
+          description: Sandbox containers
+          items:
+            $ref: "#/components/schemas/Container"
+          minItems: 1
+          type:
+            - array
+            - "null"
       required:
-        - container
+        - containers
       type: object
     PodTemplateInfo:
       additionalProperties: false
       properties:
-        container:
-          $ref: "#/components/schemas/ContainerInfo"
-          description: Primary sandbox container
+        containers:
+          description: Sandbox containers
+          items:
+            $ref: "#/components/schemas/ContainerInfo"
+          type:
+            - array
+            - "null"
       required:
-        - container
+        - containers
       type: object
     ResourceList:
       additionalProperties: false
@@ -379,7 +398,7 @@ components:
             - 512Mi
           type: string
       type: object
-    ResourcesSpec:
+    ResourceRequirements:
       additionalProperties: false
       properties:
         limits:
@@ -437,24 +456,6 @@ components:
         - status
         - creationTimestamp
       type: object
-    RootfsSnapshotSource:
-      additionalProperties: false
-      properties:
-        containerName:
-          description: Container to restore. If empty and there is only one container, that container will be used. Required if there are multiple containers.
-          maxLength: 63
-          minLength: 1
-          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-          type: string
-        snapshotName:
-          description: Name of the rootfs snapshot to restore from.
-          maxLength: 63
-          minLength: 1
-          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-          type: string
-      required:
-        - snapshotName
-      type: object
     SandboxResponse:
       additionalProperties: false
       properties:
@@ -472,18 +473,11 @@ components:
           description: Sandbox identifier
           type: string
         network:
-          $ref: "#/components/schemas/NetworkSpec"
+          $ref: "#/components/schemas/Network"
           description: Network isolation config
         podTemplate:
           $ref: "#/components/schemas/PodTemplateInfo"
           description: Pod template
-        rootfsSnapshotSources:
-          description: Rootfs snapshot restore configuration.
-          items:
-            $ref: "#/components/schemas/RootfsSnapshotSource"
-          type:
-            - array
-            - "null"
         startupTimeoutSeconds:
           description: Max seconds for the sandbox to become Ready
           format: int64

@@ -115,7 +115,7 @@ func (r *SandboxReconciler) clock() Clock {
 	return RealClock{}
 }
 
-func buildNetworkLabels(network *sandboxv1alpha1.NetworkSpec) map[string]string {
+func buildNetworkLabels(network *sandboxv1alpha1.Network) map[string]string {
 	labels := make(map[string]string)
 	if network == nil {
 		return labels
@@ -418,7 +418,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	return nil
 }
 
-func configureDNS(sandboxPod *corev1.Pod, network *sandboxv1alpha1.NetworkSpec) {
+func configureDNS(sandboxPod *corev1.Pod, network *sandboxv1alpha1.Network) {
 	allowClusterDNS := network != nil && network.AllowClusterDNS != nil && *network.AllowClusterDNS
 
 	if allowClusterDNS {

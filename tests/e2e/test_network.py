@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from isola import Isola, NetworkSpec, Sandbox
+from isola import Isola, Network, Sandbox
 
 from utils import wait_for_running
 
@@ -53,7 +53,7 @@ def test_internet_egress_enabled(
     """A sandbox with allow_internet_egress=True can reach the public internet."""
     sb = sandbox_factory(
         image="alpine:3.21",
-        network=NetworkSpec(allow_internet_egress=True, nameservers=["8.8.8.8", "1.1.1.1"]),
+        network=Network(allow_internet_egress=True, nameservers=["8.8.8.8", "1.1.1.1"]),
     )
     running = wait_for_running(isola_client, sb.id)
 
@@ -75,7 +75,7 @@ def test_custom_nameservers(
     """Custom nameservers are written into /etc/resolv.conf inside the sandbox."""
     sb = sandbox_factory(
         image="alpine:3.21",
-        network=NetworkSpec(
+        network=Network(
             allow_internet_egress=True,
             nameservers=["8.8.8.8"],
         ),
@@ -99,7 +99,7 @@ def test_allowed_egress_cidrs(
     """A sandbox with specific allowed_egress_cidrs can reach the allowed IP."""
     sb = sandbox_factory(
         image="alpine:3.21",
-        network=NetworkSpec(
+        network=Network(
             allowed_egress_cidrs=["1.1.1.1/32"],
             nameservers=["1.1.1.1"],
         ),
@@ -149,7 +149,7 @@ def test_egress_cidrs_auto_defaults_dns(
     """A sandbox with allowedEgressCIDRs but no explicit DNS config gets public nameservers auto-injected."""
     sb = sandbox_factory(
         image="alpine:3.21",
-        network=NetworkSpec(allowed_egress_cidrs=["1.1.1.1/32"]),
+        network=Network(allowed_egress_cidrs=["1.1.1.1/32"]),
     )
     running = wait_for_running(isola_client, sb.id)
 
@@ -175,7 +175,7 @@ def test_network_spec_reflected_in_get(
     """The network spec sent at creation time is reflected when fetching the sandbox."""
     sb = sandbox_factory(
         image="alpine:3.21",
-        network=NetworkSpec(
+        network=Network(
             allow_internet_egress=True,
             nameservers=["8.8.8.8", "1.1.1.1"],
         ),
@@ -199,7 +199,7 @@ def test_allow_cluster_dns(
     """allowClusterDNS=true switches DNS policy to ClusterFirst; resolv.conf should NOT have the 127.0.0.1 sink."""
     sb = sandbox_factory(
         image="alpine:3.21",
-        network=NetworkSpec(allow_cluster_dns=True),
+        network=Network(allow_cluster_dns=True),
     )
     running = wait_for_running(isola_client, sb.id)
 
