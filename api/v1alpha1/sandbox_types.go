@@ -44,8 +44,8 @@ type ShutdownPolicy struct {
 	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
 	Strategy SandboxShutdownStrategy `json:"strategy,omitempty"`
 
-	// TimeoutSeconds specifies the duration in seconds relative to the startTime
-	// that the snapshot job may be active before the system tries to terminate it.
+	// TimeoutSeconds specifies the duration in seconds relative to the deletion timestamp
+	// that the shutdown policy may be active before the system tries to terminate it.
 	// Only used when Strategy is SnapshotRootfs.
 	// +optional
 	// +kubebuilder:default=300
