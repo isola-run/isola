@@ -168,14 +168,14 @@ jobs:
             --set operator.image.pullPolicy=Never \
             --set operator.sandboxSidecar.image.repository=${{ env.SANDBOX_SIDECAR_IMAGE }} \
             --set operator.sandboxSidecar.image.tag=ci \
-            --set operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.repository=${{ env.UPLOADER_IMAGE }} \
-            --set operator.sandboxRuntime.gvisor.rootfssnapshot.uploader.image.tag=ci \
+            --set operator.sandboxRuntime.rootfssnapshot.uploader.image.repository=${{ env.UPLOADER_IMAGE }} \
+            --set operator.sandboxRuntime.rootfssnapshot.uploader.image.tag=ci \
             --set apiGateway.image.repository=${{ env.API_IMAGE }} \
             --set apiGateway.image.tag=ci \
             --set apiGateway.image.pullPolicy=Never \
-            --set operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.mounter.image.repository=${{ env.SNAPSHOT_MOUNTER_IMAGE }} \
-            --set operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.mounter.image.tag=ci \
-            --set operator.sandboxRuntime.gvisor.rootfssnapshot.snapshotMounter.mounter.image.pullPolicy=Never \
+            --set operator.sandboxRuntime.rootfssnapshot.snapshotMounter.mounter.image.repository=${{ env.SNAPSHOT_MOUNTER_IMAGE }} \
+            --set operator.sandboxRuntime.rootfssnapshot.snapshotMounter.mounter.image.tag=ci \
+            --set operator.sandboxRuntime.rootfssnapshot.snapshotMounter.mounter.image.pullPolicy=Never \
             --wait --timeout 3m
 
       - name: Wait for services to be ready
