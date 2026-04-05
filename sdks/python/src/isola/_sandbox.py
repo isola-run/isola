@@ -96,7 +96,7 @@ def _validate_create_args(
     resources = _build_resources(cpu, memory, ephemeral_storage)
     return [
         Container(
-            image=image,  # type: ignore[arg-type]  # validated non-None above
+            image=image,
             command=command,
             env=env,
             resources=resources,
