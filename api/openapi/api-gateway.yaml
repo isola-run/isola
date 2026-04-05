@@ -46,6 +46,12 @@ components:
         resources:
           $ref: "#/components/schemas/ResourceRequirements"
           description: Resource requests and limits
+        rootfsSnapshotSource:
+          description: Rootfs snapshot to restore into this container. Files on separately-mounted filesystems (e.g. /tmp) are excluded.
+          maxLength: 63
+          minLength: 1
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          type: string
       required:
         - image
       type: object
@@ -68,6 +74,9 @@ components:
         resources:
           $ref: "#/components/schemas/ResourceRequirements"
           description: Resource requests and limits
+        rootfsSnapshotSource:
+          description: Rootfs snapshot restored into this container.
+          type: string
       required:
         - name
         - image
@@ -143,7 +152,7 @@ components:
           minLength: 1
           type: string
         snapshotName:
-          description: Identifier for this snapshot, used both as the storage key and as the restore reference. To restore from this snapshot, pass this value as rootfsSnapshotSources[].snapshotName when creating a sandbox.
+          description: Identifier for this snapshot, used both as the storage key and as the restore reference. To restore from this snapshot, pass this value as rootfsSnapshotSource on a container when creating a sandbox.
           maxLength: 63
           minLength: 1
           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
@@ -178,14 +187,6 @@ components:
         podTemplate:
           $ref: "#/components/schemas/PodTemplate"
           description: Pod template
-        rootfsSnapshotSources:
-          description: Rootfs snapshots to restore into containers at creation time. Files on separately-mounted filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included.
-          items:
-            $ref: "#/components/schemas/RootfsSnapshotSource"
-          maxItems: 16
-          type:
-            - array
-            - "null"
         startupTimeoutSeconds:
           description: Max seconds for the sandbox to become Ready. Defaults to 60 if omitted.
           format: int64
@@ -455,24 +456,6 @@ components:
         - status
         - creationTimestamp
       type: object
-    RootfsSnapshotSource:
-      additionalProperties: false
-      properties:
-        containerName:
-          description: Container to restore. If empty and there is only one container, that container will be used. Required if there are multiple containers.
-          maxLength: 63
-          minLength: 1
-          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-          type: string
-        snapshotName:
-          description: Name of the rootfs snapshot to restore from.
-          maxLength: 63
-          minLength: 1
-          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-          type: string
-      required:
-        - snapshotName
-      type: object
     SandboxResponse:
       additionalProperties: false
       properties:
@@ -495,13 +478,6 @@ components:
         podTemplate:
           $ref: "#/components/schemas/PodTemplateInfo"
           description: Pod template
-        rootfsSnapshotSources:
-          description: Rootfs snapshot restore configuration.
-          items:
-            $ref: "#/components/schemas/RootfsSnapshotSource"
-          type:
-            - array
-            - "null"
         startupTimeoutSeconds:
           description: Max seconds for the sandbox to become Ready
           format: int64

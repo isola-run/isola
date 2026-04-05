@@ -75,6 +75,7 @@ class Container(IsolaModel):
     command: list[str] | None = None
     env: dict[str, str] | None = None
     resources: ResourceRequirements | None = None
+    rootfs_snapshot_source: str | None = None
 
 
 class ContainerInfo(IsolaModel):
@@ -82,11 +83,7 @@ class ContainerInfo(IsolaModel):
     image: str
     command: list[str] | None = None
     resources: ResourceRequirements | None = None
-
-
-class RootfsSnapshotSource(IsolaModel):
-    snapshot_name: str
-    container_name: str | None = None
+    rootfs_snapshot_source: str | None = None
 
 
 class RootfsSnapshotStatus(str, Enum):
@@ -128,7 +125,6 @@ class CreateSandboxPayload(IsolaModel):
     timeout_seconds: int | None = None
     startup_timeout_seconds: int
     network: Network | None = None
-    rootfs_snapshot_sources: list[RootfsSnapshotSource] | None = None
 
 
 class SandboxSummary(IsolaModel):
@@ -149,7 +145,6 @@ class SandboxData(IsolaModel):
     timeout_seconds: int | None = None
     startup_timeout_seconds: int | None = None
     network: Network | None = None
-    rootfs_snapshot_sources: list[RootfsSnapshotSource] | None = None
 
 
 class CreateCommandPayload(IsolaModel):

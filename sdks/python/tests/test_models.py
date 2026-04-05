@@ -124,6 +124,7 @@ class TestRoundTrip:
                     {
                         "image": "python:3.12",
                         "command": ["sleep", "infinity"],
+                        "rootfsSnapshotSource": "snap-1",
                         "resources": {
                             "limits": {"cpu": "1", "memory": "2Gi", "ephemeralStorage": "5Gi"},
                             "requests": {"cpu": "500m", "memory": "1Gi"},
@@ -138,9 +139,6 @@ class TestRoundTrip:
                 "allowedEgressCIDRs": ["10.0.0.0/8"],
                 "nameservers": ["8.8.8.8"],
             },
-            "rootfsSnapshotSources": [
-                {"snapshotName": "snap-1", "containerName": "main"},
-            ],
         }
 
         model = SandboxData.model_validate(camel_json)
@@ -153,9 +151,7 @@ class TestRoundTrip:
         assert model.network.allow_internet_egress is True
         assert model.network.allow_cluster_dns is False
         assert model.network.allowed_egress_cidrs == ["10.0.0.0/8"]
-        assert model.rootfs_snapshot_sources is not None
-        assert len(model.rootfs_snapshot_sources) == 1
-        assert model.rootfs_snapshot_sources[0].snapshot_name == "snap-1"
+        assert model.pod_template.containers[0].rootfs_snapshot_source == "snap-1"
 
         # Dump back to camelCase and re-parse
         dumped = model.model_dump(by_alias=True, mode="json")
@@ -167,6 +163,7 @@ class TestRoundTrip:
         assert reparsed.network is not None
         assert reparsed.network.allow_cluster_dns == model.network.allow_cluster_dns
         assert reparsed.network.allowed_egress_cidrs == model.network.allowed_egress_cidrs
+        assert reparsed.pod_template.containers[0].rootfs_snapshot_source == "snap-1"
 
     def test_create_sandbox_payload_round_trip(self) -> None:
         payload = CreateSandboxPayload(

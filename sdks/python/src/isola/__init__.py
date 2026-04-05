@@ -29,9 +29,9 @@ from ._exceptions import (
 from ._filesystem import AsyncFilesystem, Filesystem
 from ._models import (
     CommandResult,
+    Container,
     FileWriteResult,
     Network,
-    RootfsSnapshotSource,
     RootfsSnapshotStatus,
     SandboxStatus,
     SandboxSummary,
@@ -58,11 +58,11 @@ __all__ = [
     "AsyncCommands",
     "Filesystem",
     "AsyncFilesystem",
+    "Container",
     "RootfsSnapshotStatus",
     "SandboxStatus",
     "SandboxSummary",
     "Network",
-    "RootfsSnapshotSource",
     "StreamReader",
     "AsyncStreamReader",
     "FileWriteResult",

@@ -35,10 +35,11 @@ type CreateSandboxInput struct {
 }
 
 type Container struct {
-	Name    string            `json:"name,omitempty" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to sandbox{i} if omitted."`
-	Image   string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
-	Command []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
-	Env     map[string]string `json:"env,omitempty" doc:"Environment variables"`
+	Name                 string            `json:"name,omitempty" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to sandbox{i} if omitted."`
+	Image                string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
+	Command              []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
+	Env                  map[string]string `json:"env,omitempty" doc:"Environment variables"`
+	RootfsSnapshotSource string            `json:"rootfsSnapshotSource,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Rootfs snapshot to restore into this container. Files on separately-mounted filesystems (e.g. /tmp) are excluded."`
 	// todo benl: those are enforced in gvisor only on the sandbox container, consider moving this to podtemplate and setting pod limits (though they don't support ephemeral storage limits)
 	Resources *ResourceRequirements `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
@@ -48,11 +49,10 @@ type PodTemplate struct {
 }
 
 type CreateSandboxRequest struct {
-	PodTemplate           PodTemplate            `json:"podTemplate" required:"true" doc:"Pod template"`
-	TimeoutSeconds        *int64                 `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
-	StartupTimeoutSeconds *int64                 `json:"startupTimeoutSeconds,omitempty" minimum:"1" doc:"Max seconds for the sandbox to become Ready. Defaults to 60 if omitted."`
-	Network               *Network               `json:"network,omitempty" doc:"Network isolation config"`
-	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" maxItems:"16" doc:"Rootfs snapshots to restore into containers at creation time. Files on separately-mounted filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included."`
+	PodTemplate           PodTemplate `json:"podTemplate" required:"true" doc:"Pod template"`
+	TimeoutSeconds        *int64      `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max lifetime in seconds. Omit for no timeout"`
+	StartupTimeoutSeconds *int64      `json:"startupTimeoutSeconds,omitempty" minimum:"1" doc:"Max seconds for the sandbox to become Ready. Defaults to 60 if omitted."`
+	Network               *Network    `json:"network,omitempty" doc:"Network isolation config"`
 }
 
 type ResourceRequirements struct {
@@ -74,11 +74,6 @@ type Network struct {
 	Nameservers         []string `json:"nameservers,omitempty" maxItems:"3" doc:"Custom DNS servers (max 3)"`
 }
 
-type RootfsSnapshotSource struct {
-	SnapshotName  string `json:"snapshotName" required:"true" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Name of the rootfs snapshot to restore from."`
-	ContainerName string `json:"containerName,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container to restore. If empty and there is only one container, that container will be used. Required if there are multiple containers."`
-}
-
 type GetSandboxInput struct {
 	ID string `path:"id" doc:"Sandbox identifier"`
 }
@@ -90,10 +85,11 @@ type DeleteSandboxInput struct {
 // Response types omit env vars (write-only) to avoid leaking secrets.
 
 type ContainerInfo struct {
-	Name      string                `json:"name" doc:"Container name"`
-	Image     string                `json:"image" doc:"Container image"`
-	Command   []string              `json:"command,omitempty" doc:"Container entrypoint override"`
-	Resources *ResourceRequirements `json:"resources,omitempty" doc:"Resource requests and limits"`
+	Name                 string                `json:"name" doc:"Container name"`
+	Image                string                `json:"image" doc:"Container image"`
+	Command              []string              `json:"command,omitempty" doc:"Container entrypoint override"`
+	RootfsSnapshotSource string                `json:"rootfsSnapshotSource,omitempty" doc:"Rootfs snapshot restored into this container."`
+	Resources            *ResourceRequirements `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
 
 type PodTemplateInfo struct {
@@ -113,14 +109,13 @@ type ListSandboxesOutput struct {
 }
 
 type SandboxResponse struct {
-	ID                    string                 `json:"id" doc:"Sandbox identifier"`
-	PodTemplate           PodTemplateInfo        `json:"podTemplate" doc:"Pod template"`
-	TimeoutSeconds        *int64                 `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
-	StartupTimeoutSeconds *int64                 `json:"startupTimeoutSeconds,omitempty" doc:"Max seconds for the sandbox to become Ready"`
-	Network               *Network               `json:"network,omitempty" doc:"Network isolation config"`
-	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty" doc:"Rootfs snapshot restore configuration."`
-	Status                string                 `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
-	CreationTimestamp     string                 `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
+	ID                    string          `json:"id" doc:"Sandbox identifier"`
+	PodTemplate           PodTemplateInfo `json:"podTemplate" doc:"Pod template"`
+	TimeoutSeconds        *int64          `json:"timeoutSeconds,omitempty" doc:"Max lifetime in seconds"`
+	StartupTimeoutSeconds *int64          `json:"startupTimeoutSeconds,omitempty" doc:"Max seconds for the sandbox to become Ready"`
+	Network               *Network        `json:"network,omitempty" doc:"Network isolation config"`
+	Status                string          `json:"status" doc:"Sandbox status" enum:"creating,running,shuttingDown,failed,stopped,unknown"`
+	CreationTimestamp     string          `json:"creationTimestamp" doc:"Creation UTC timestamp in RFC3339 format"`
 }
 
 type SandboxSummary struct {

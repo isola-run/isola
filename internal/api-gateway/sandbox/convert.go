@@ -34,19 +34,29 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 		CreationTimestamp: sb.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 
+	rootfsMap := make(map[string]string, len(sb.Spec.RootfsSnapshotSources))
+	for _, src := range sb.Spec.RootfsSnapshotSources {
+		rootfsMap[src.ContainerName] = src.SnapshotName
+	}
+	if len(sb.Spec.PodTemplate.Spec.Containers) == 1 {
+		if snap, ok := rootfsMap[""]; ok {
+			rootfsMap[sb.Spec.PodTemplate.Spec.Containers[0].Name] = snap
+		}
+	}
+
 	for _, c := range sb.Spec.PodTemplate.Spec.Containers {
 		resp.PodTemplate.Containers = append(resp.PodTemplate.Containers, ContainerInfo{
-			Name:      c.Name,
-			Image:     c.Image,
-			Command:   c.Command,
-			Resources: containerResourcesToSpec(c.Resources),
+			Name:                 c.Name,
+			Image:                c.Image,
+			Command:              c.Command,
+			RootfsSnapshotSource: rootfsMap[c.Name],
+			Resources:            containerResourcesToSpec(c.Resources),
 		})
 	}
 
 	resp.TimeoutSeconds = sb.Spec.TimeoutSeconds
 	resp.StartupTimeoutSeconds = sb.Spec.StartupTimeoutSeconds
 	resp.Network = crdNetworkToREST(sb.Spec.Network)
-	resp.RootfsSnapshotSources = crdRootfsSnapshotSourcesToREST(sb.Spec.RootfsSnapshotSources)
 
 	return resp
 }
@@ -129,6 +139,7 @@ func crdNetworkToREST(n *sandboxv1alpha1.Network) *Network {
 
 func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sandboxv1alpha1.Sandbox, error) {
 	containers := make([]corev1.Container, 0, len(req.PodTemplate.Containers))
+	var rootfsSources []sandboxv1alpha1.RootfsSnapshotSource
 	for i, c := range req.PodTemplate.Containers {
 		containerName := c.Name
 		if containerName == "" {
@@ -157,6 +168,13 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 
 		container.Env = mapToEnvVars(c.Env)
 		containers = append(containers, container)
+
+		if c.RootfsSnapshotSource != "" {
+			rootfsSources = append(rootfsSources, sandboxv1alpha1.RootfsSnapshotSource{
+				SnapshotName:  c.RootfsSnapshotSource,
+				ContainerName: containerName,
+			})
+		}
 	}
 
 	sb := &sandboxv1alpha1.Sandbox{
@@ -172,11 +190,11 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 			},
 			TimeoutSeconds:        req.TimeoutSeconds,
 			StartupTimeoutSeconds: req.StartupTimeoutSeconds,
+			RootfsSnapshotSources: rootfsSources,
 		},
 	}
 
 	sb.Spec.Network = restNetworkToCRD(req.Network)
-	sb.Spec.RootfsSnapshotSources = restRootfsSnapshotSourcesToCRD(req.RootfsSnapshotSources)
 
 	return sb, nil
 }
@@ -216,34 +234,6 @@ func restResourceListToK8s(src *ResourceList) (corev1.ResourceList, error) {
 		return nil, nil
 	}
 	return rl, nil
-}
-
-func restRootfsSnapshotSourcesToCRD(sources []RootfsSnapshotSource) []sandboxv1alpha1.RootfsSnapshotSource {
-	if len(sources) == 0 {
-		return nil
-	}
-	out := make([]sandboxv1alpha1.RootfsSnapshotSource, len(sources))
-	for i, s := range sources {
-		out[i] = sandboxv1alpha1.RootfsSnapshotSource{
-			SnapshotName:  s.SnapshotName,
-			ContainerName: s.ContainerName,
-		}
-	}
-	return out
-}
-
-func crdRootfsSnapshotSourcesToREST(sources []sandboxv1alpha1.RootfsSnapshotSource) []RootfsSnapshotSource {
-	if len(sources) == 0 {
-		return nil
-	}
-	out := make([]RootfsSnapshotSource, len(sources))
-	for i, s := range sources {
-		out[i] = RootfsSnapshotSource{
-			SnapshotName:  s.SnapshotName,
-			ContainerName: s.ContainerName,
-		}
-	}
-	return out
 }
 
 func restNetworkToCRD(n *Network) *sandboxv1alpha1.Network {
