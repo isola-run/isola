@@ -40,7 +40,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(body.ID).To(HaveLen(22))
 			Expect(body.ID).To(MatchRegexp(`^[a-z][a-z0-9]{21}$`))
 			Expect(body.PodTemplate.Container.Image).To(Equal("python:3.12"))
-			Expect(body.Status).To(Equal("unknown"))
+			Expect(body.Status).To(Equal(apigateway.StatusPending))
 			_, err := time.Parse(time.RFC3339, body.CreationTimestamp)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -290,71 +290,70 @@ var _ = Describe("Sandbox Endpoints", func() {
 		})
 	})
 
-	Describe("Status mapping", func() {
-		It("maps Ready=True to running regardless of reason", func() {
-			Expect(apigateway.ConditionsToStatus([]metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionTrue, Reason: "PodRunning"},
-			})).To(Equal("running"))
-			Expect(apigateway.ConditionsToStatus([]metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionTrue, Reason: "AnythingElse"},
-			})).To(Equal("running"))
-		})
-
-		It("maps PodPending to creating", func() {
-			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodPending"},
+	Describe("SandboxStatus", func() {
+		makeSandbox := func(conditions []metav1.Condition, deleted bool) *sandboxv1alpha1.Sandbox {
+			sb := &sandboxv1alpha1.Sandbox{}
+			sb.Status.Conditions = conditions
+			if deleted {
+				now := metav1.Now()
+				sb.DeletionTimestamp = &now
 			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("creating"))
+			return sb
+		}
+
+		It("returns Succeeded when Succeeded=True", func() {
+			sb := makeSandbox([]metav1.Condition{
+				{Type: sandboxv1alpha1.SandboxSucceededCondition, Status: metav1.ConditionTrue},
+			}, false)
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusSucceeded))
 		})
 
-		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
-		// and encapsulated in the RootfsSnapshot CRD only (see convert.go TODO).
-		It("maps RootfsSnapshottingInProgress to running", func() {
-			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshottingInProgress"},
-			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("running"))
+		It("returns Failed when Succeeded=False", func() {
+			sb := makeSandbox([]metav1.Condition{
+				{Type: sandboxv1alpha1.SandboxSucceededCondition, Status: metav1.ConditionFalse},
+			}, false)
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusFailed))
 		})
 
-		It("maps NetworkPolicyApplied to creating", func() {
-			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "NetworkPolicyApplied"},
-			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("creating"))
+		It("returns Succeeded even when DeletionTimestamp is set", func() {
+			sb := makeSandbox([]metav1.Condition{
+				{Type: sandboxv1alpha1.SandboxSucceededCondition, Status: metav1.ConditionTrue},
+			}, true)
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusSucceeded))
 		})
 
-		It("maps Deleting to shuttingDown", func() {
-			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "Deleting"},
-			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("shuttingDown"))
+		It("returns Terminating when DeletionTimestamp is set and no Succeeded", func() {
+			sb := makeSandbox([]metav1.Condition{
+				{Type: sandboxv1alpha1.SandboxReadyCondition, Status: metav1.ConditionFalse, Reason: "Deleting"},
+			}, true)
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusTerminating))
 		})
 
-		It("maps PodFailed to failed", func() {
-			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodFailed"},
-			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("failed"))
+		It("returns Running when Ready=True and no Succeeded", func() {
+			sb := makeSandbox([]metav1.Condition{
+				{Type: sandboxv1alpha1.SandboxReadyCondition, Status: metav1.ConditionTrue, Reason: "PodRunning"},
+			}, false)
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusRunning))
 		})
 
-		It("maps PodSucceeded to stopped", func() {
-			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "PodSucceeded"},
-			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("stopped"))
+		It("returns Pending when Ready=False and no Succeeded", func() {
+			sb := makeSandbox([]metav1.Condition{
+				{Type: sandboxv1alpha1.SandboxReadyCondition, Status: metav1.ConditionFalse, Reason: "PodPending"},
+			}, false)
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusPending))
 		})
 
-		// Temporary: snapshot-related reasons should be removed from the Sandbox CRD
-		// and encapsulated in the RootfsSnapshot CRD only (see convert.go TODO).
-		It("maps RootfsSnapshotComplete to stopped", func() {
-			conditions := []metav1.Condition{
-				{Type: "Ready", Status: metav1.ConditionFalse, Reason: "RootfsSnapshotComplete"},
-			}
-			Expect(apigateway.ConditionsToStatus(conditions)).To(Equal("stopped"))
+		It("returns Pending when no conditions", func() {
+			sb := makeSandbox(nil, false)
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusPending))
 		})
 
-		It("maps no conditions to unknown", func() {
-			Expect(apigateway.ConditionsToStatus(nil)).To(Equal("unknown"))
+		It("falls through on Succeeded=Unknown (defensive)", func() {
+			sb := makeSandbox([]metav1.Condition{
+				{Type: sandboxv1alpha1.SandboxSucceededCondition, Status: metav1.ConditionUnknown},
+				{Type: sandboxv1alpha1.SandboxReadyCondition, Status: metav1.ConditionTrue},
+			}, false)
+			Expect(apigateway.SandboxStatus(sb)).To(Equal(apigateway.StatusRunning))
 		})
 	})
 })

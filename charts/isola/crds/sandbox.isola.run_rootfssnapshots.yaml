@@ -17,13 +17,9 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: Snapshot completed successfully
-      jsonPath: .status.conditions[?(@.type=='Complete')].status
-      name: Complete
-      type: string
-    - description: Snapshot failed
-      jsonPath: .status.conditions[?(@.type=='Failed')].status
-      name: Failed
+    - description: Snapshot succeeded
+      jsonPath: .status.conditions[?(@.type=='Succeeded')].status
+      name: Succeeded
       type: string
     - description: Sandbox being snapshotted
       jsonPath: .spec.sandboxName

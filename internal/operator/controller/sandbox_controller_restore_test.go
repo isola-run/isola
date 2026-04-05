@@ -214,11 +214,13 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).To(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
-			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+			cond := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxReadyCondition)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Reason).To(Equal(CondReasonRootfsRestoreConfigError))
 			Expect(cond.Message).To(ContainSubstring("nonexistent"))
 			Expect(cond.Message).To(ContainSubstring("not found"))
+
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionFalse, CondReasonRootfsRestoreConfigError)).To(BeTrue())
 		})
 
 		It("should fail when no RuntimeClassName configured", func() {
@@ -239,10 +241,12 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).To(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
-			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+			cond := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxReadyCondition)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Reason).To(Equal(CondReasonRootfsRestoreConfigError))
 			Expect(cond.Message).To(ContainSubstring("no RuntimeClassName configured"))
+
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionFalse, CondReasonRootfsRestoreConfigError)).To(BeTrue())
 		})
 
 		It("should fail when host mount path not configured", func() {
@@ -268,10 +272,12 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).To(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
-			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+			cond := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxReadyCondition)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Reason).To(Equal(CondReasonRootfsRestoreConfigError))
 			Expect(cond.Message).To(ContainSubstring("--rootfssnapshot-host-mount-path"))
+
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionFalse, CondReasonRootfsRestoreConfigError)).To(BeTrue())
 		})
 
 		It("should fail when runtime is not gVisor", func() {
@@ -297,10 +303,12 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).To(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
-			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+			cond := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxReadyCondition)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Reason).To(Equal(CondReasonRootfsRestoreConfigError))
 			Expect(cond.Message).To(ContainSubstring("not runsc/gvisor"))
+
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionFalse, CondReasonRootfsRestoreConfigError)).To(BeTrue())
 		})
 
 		It("should inject restartPolicyRules on container with restore annotation", func() {
@@ -459,11 +467,13 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(err).To(HaveOccurred())
 
 			sandbox := getSandbox(ctx, sandboxName)
-			cond := meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+			cond := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxReadyCondition)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Reason).To(Equal(CondReasonRootfsRestoreConfigError))
 			Expect(cond.Message).To(ContainSubstring("must be specified"))
 			Expect(cond.Message).To(ContainSubstring("2 containers"))
+
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionFalse, CondReasonRootfsRestoreConfigError)).To(BeTrue())
 		})
 
 	})

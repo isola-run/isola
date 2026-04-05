@@ -19,6 +19,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// SandboxSucceededCondition indicates whether the sandbox execution completed successfully.
+	SandboxSucceededCondition = "Succeeded"
+
+	// SandboxReadyCondition is the aggregate readiness condition.
+	SandboxReadyCondition = "Ready"
+)
+
 // SandboxShutdownStrategy defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotRootfs
 type SandboxShutdownStrategy string

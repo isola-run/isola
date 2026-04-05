@@ -82,7 +82,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(cond).NotTo(BeNil(), "PodReady condition should be set")
 
 			// Ready should be set
-			cond = meta.FindStatusCondition(sandbox.Status.Conditions, SandboxReadyCondition)
+			cond = meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxReadyCondition)
 			Expect(cond).NotTo(BeNil(), "Ready condition should be set")
 		})
 
@@ -101,6 +101,10 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(sandbox.Finalizers).To(ContainElement(SandboxFinalizer))
 
 			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
+
+			// Sandbox is being deleted (DeletionTimestamp set) — Succeeded should not be set
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)).To(BeNil())
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
