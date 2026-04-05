@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// isola-uploader uploads a local file to cloud object storage.
+// isola-snapshot-uploader uploads a local file to cloud object storage.
 // Used as a sidecar container in RootfsSnapshot jobs to upload tarballs to S3/GCS/Azure.
 //
 // # Required Bucket Permissions
 //
-// The uploader requires the following permissions on the target bucket:
+// The snapshot-uploader requires the following permissions on the target bucket:
 //
 // AWS S3:
 //   - s3:PutObject (to upload the rootfs snapshot)

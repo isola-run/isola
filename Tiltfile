@@ -12,7 +12,7 @@ allow_k8s_contexts('kind-isola-dev')
 
 # Local registry (created by hack/setup.sh)
 default_registry('localhost:5001')
-update_settings(suppress_unused_image_warnings=['isola-uploader'])
+update_settings(suppress_unused_image_warnings=['isola-snapshot-uploader'])
 
 # ==============================================================================
 # LocalStack (S3 storage backend)
@@ -51,10 +51,10 @@ docker_build(
 )
 
 docker_build(
-    'isola-uploader',
+    'isola-snapshot-uploader',
     context='.',
-    dockerfile='cmd/uploader/Dockerfile',
-    only=['cmd/uploader/', 'internal/', 'go.mod', 'go.sum'],
+    dockerfile='cmd/snapshot-uploader/Dockerfile',
+    only=['cmd/snapshot-uploader/', 'internal/', 'go.mod', 'go.sum'],
     match_in_env_vars=True,
 )
 

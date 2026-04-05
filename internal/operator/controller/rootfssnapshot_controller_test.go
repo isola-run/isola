@@ -53,7 +53,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Recorder:               recorder,
 			Clock:                  fakeClock,
 			BucketURL:              "s3://test-bucket?region=us-east-1",
-			UploaderImage:          "isola-uploader:test",
+			UploaderImage:          "isola-snapshot-uploader:test",
 			SnapshotServiceAccount: "test-snapshot-sa",
 			Enabled:                true,
 			GvisorRunscPath:        "/usr/local/bin/runsc",
@@ -72,7 +72,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				Recorder:        recorder,
 				Clock:           fakeClock,
 				BucketURL:       "s3://test-bucket?region=us-east-1",
-				UploaderImage:   "isola-uploader:test",
+				UploaderImage:   "isola-snapshot-uploader:test",
 				Enabled:         false,
 				GvisorRunscPath: "/usr/local/bin/runsc",
 				GvisorRunscRoot: "/run/containerd/runsc/k8s.io",
@@ -159,7 +159,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			// Verify standard labels on Job metadata
 			expectedLabels := map[string]string{
-				"app.kubernetes.io/name":       "isola-uploader",
+				"app.kubernetes.io/name":       "isola-snapshot-uploader",
 				"app.kubernetes.io/instance":   snapName,
 				"app.kubernetes.io/component":  "rootfssnapshot",
 				"app.kubernetes.io/part-of":    "isola",

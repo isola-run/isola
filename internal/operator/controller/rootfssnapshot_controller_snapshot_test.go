@@ -47,7 +47,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Recorder:               recorder,
 			Clock:                  fakeClock,
 			BucketURL:              "s3://test-bucket?region=us-east-1",
-			UploaderImage:          "isola-uploader:test",
+			UploaderImage:          "isola-snapshot-uploader:test",
 			SnapshotServiceAccount: "test-snapshot-sa",
 			Enabled:                true,
 			GvisorRunscPath:        "/usr/local/bin/runsc",
@@ -92,8 +92,8 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			// Main container should be uploader (uploads to bucket)
 			Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
-			Expect(job.Spec.Template.Spec.Containers[0].Name).To(Equal("uploader"))
-			Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal("isola-uploader:test"))
+			Expect(job.Spec.Template.Spec.Containers[0].Name).To(Equal("snapshot-uploader"))
+			Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal("isola-snapshot-uploader:test"))
 
 			// Verify uploader ImagePullPolicy propagates from reconciler config
 			reconciler.UploaderImagePullPolicy = corev1.PullAlways
@@ -262,7 +262,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 				Recorder:               recorder,
 				Clock:                  fakeClock,
 				BucketURL:              "s3://test-bucket?region=us-east-1",
-				UploaderImage:          "isola-uploader:test",
+				UploaderImage:          "isola-snapshot-uploader:test",
 				CredentialSecretName:   "cloud-credentials",
 				SnapshotServiceAccount: "test-snapshot-sa",
 				Enabled:                true,
@@ -280,7 +280,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			// Verify uploader container has EnvFrom with secret reference
 			uploaderContainer := job.Spec.Template.Spec.Containers[0]
-			Expect(uploaderContainer.Name).To(Equal("uploader"))
+			Expect(uploaderContainer.Name).To(Equal("snapshot-uploader"))
 			Expect(uploaderContainer.EnvFrom).To(HaveLen(1))
 			Expect(uploaderContainer.EnvFrom[0].SecretRef).NotTo(BeNil())
 			Expect(uploaderContainer.EnvFrom[0].SecretRef.Name).To(Equal("cloud-credentials"))
@@ -545,7 +545,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 					Labels:    map[string]string{"job-name": jobName},
 				},
 				Spec: corev1.PodSpec{
-					Containers:    []corev1.Container{{Name: "uploader", Image: "test"}},
+					Containers:    []corev1.Container{{Name: "snapshot-uploader", Image: "test"}},
 					RestartPolicy: corev1.RestartPolicyNever,
 				},
 			}
@@ -555,7 +555,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			jobPod.Status.Phase = corev1.PodSucceeded
 			jobPod.Status.ContainerStatuses = []corev1.ContainerStatus{
 				{
-					Name: "uploader",
+					Name: "snapshot-uploader",
 					State: corev1.ContainerState{
 						Terminated: &corev1.ContainerStateTerminated{
 							ExitCode: 0,

@@ -5,7 +5,7 @@ fullnameOverride: ""
 
 
 global:
-  # Override registry for all images (operator, sandbox-sidecar, uploader, api-gateway)
+  # Override registry for all images (operator, sandbox-sidecar, snapshot-uploader, api-gateway)
   # Useful for air-gapped environments or private registries.
   # Example: "my-registry.example.com/isola"
   imageRegistry: ""
@@ -148,7 +148,7 @@ operator:
         uploader:
           image:
             registry: ghcr.io/isola-run
-            repository: isola-uploader
+            repository: isola-snapshot-uploader
             tag: ""  # Defaults to Chart.appVersion
             digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
             pullPolicy: IfNotPresent

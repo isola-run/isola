@@ -85,7 +85,7 @@ var _ = Describe("Metrics", func() {
 				Recorder:               recorder,
 				Clock:                  NewFakeClock(time.Now()),
 				BucketURL:              "s3://test-bucket?region=us-east-1",
-				UploaderImage:          "isola-uploader:test",
+				UploaderImage:          "isola-snapshot-uploader:test",
 				SnapshotServiceAccount: "test-snapshot-sa",
 				Enabled:                true,
 				GvisorRunscPath:        "/usr/local/bin/runsc",

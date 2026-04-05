@@ -6,7 +6,7 @@
 # Published images:
 #   - ghcr.io/isola-run/isola-operator:<tag>
 #   - ghcr.io/isola-run/sandbox-sidecar:<tag>
-#   - ghcr.io/isola-run/isola-uploader:<tag>
+#   - ghcr.io/isola-run/isola-snapshot-uploader:<tag>
 #   - ghcr.io/isola-run/api-gateway:<tag>
 #   - ghcr.io/isola-run/snapshot-mounter:<tag>
 
@@ -37,8 +37,8 @@ jobs:
             dockerfile: cmd/operator/Dockerfile
           - name: sandbox-sidecar
             dockerfile: cmd/sandbox-sidecar/Dockerfile
-          - name: isola-uploader
-            dockerfile: cmd/uploader/Dockerfile
+          - name: isola-snapshot-uploader
+            dockerfile: cmd/snapshot-uploader/Dockerfile
           - name: api-gateway
             dockerfile: cmd/api-gateway/Dockerfile
           - name: snapshot-mounter

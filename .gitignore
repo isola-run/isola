@@ -227,4 +227,4 @@ go.work.sum
 /operator
 /sandbox-sidecar
 /snapshot-mounter
-/uploader
+/snapshot-uploader
