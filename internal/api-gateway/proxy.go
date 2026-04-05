@@ -34,6 +34,15 @@ import (
 	"github.com/isola-run/isola/internal/httputil"
 )
 
+// REST API status values. Huma enum tags must duplicate these as string literals.
+const (
+	StatusPending     = "Pending"
+	StatusRunning     = "Running"
+	StatusTerminating = "Terminating"
+	StatusSucceeded   = "Succeeded"
+	StatusFailed      = "Failed"
+)
+
 // HTTPDoer abstracts HTTP request execution (satisfied by *http.Client), for faking it in tests.
 type HTTPDoer interface {
 	Do(req *http.Request) (*http.Response, error)
@@ -52,35 +61,24 @@ func (b *BodyStream) Resolve(ctx huma.Context) []error {
 	return nil
 }
 
-func ConditionsToStatus(conditions []metav1.Condition) string {
-	ready := meta.FindStatusCondition(conditions, "Ready")
-	if ready == nil {
-		return "unknown"
+// SandboxStatus derives the user-facing status string from a Sandbox object.
+func SandboxStatus(sb *sandboxv1alpha1.Sandbox) string {
+	succeeded := meta.FindStatusCondition(sb.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)
+	if succeeded != nil {
+		switch succeeded.Status {
+		case metav1.ConditionTrue:
+			return StatusSucceeded
+		case metav1.ConditionFalse:
+			return StatusFailed
+		}
 	}
-
-	if ready.Status == metav1.ConditionTrue {
-		return "running"
+	if !sb.DeletionTimestamp.IsZero() {
+		return StatusTerminating
 	}
-
-	// TODO: remove snapshot-related reasons from Sandbox CRD — they should be
-	// encapsulated in the RootfsSnapshot CRD only.
-	// TODO benl: make them as constants and share them with routes.go openapi enum generation
-	switch ready.Reason {
-	case "PodPending", "PodCreating", "Reconciling", "NetworkPolicyApplied":
-		return "creating"
-	case "PodRunning", "RootfsSnapshottingInProgress":
-		return "running"
-	case "Deleting":
-		return "shuttingDown"
-	case "PodFailed", "PodCreationFailed", "InvalidRuntime",
-		"NetworkPolicyFailed", "RootfsSnapshotFailed", "RootfsSnapshotTimeout",
-		"RootfsRestoreConfigurationError", "StartupTimeoutExceeded":
-		return "failed"
-	case "PodSucceeded", "RootfsSnapshotComplete":
-		return "stopped"
-	default:
-		return "unknown"
+	if meta.IsStatusConditionTrue(sb.Status.Conditions, sandboxv1alpha1.SandboxReadyCondition) {
+		return StatusRunning
 	}
+	return StatusPending
 }
 
 func K8sErrorToHuma(err error, fallbackMsg string) error {
@@ -110,9 +108,8 @@ func GetReadySandbox(ctx context.Context, k8sClient client.Client, namespace, id
 		return nil, K8sErrorToHuma(err, "failed to get sandbox")
 	}
 
-	// todo benl: stop using raw strings for sandbox status
-	if ConditionsToStatus(sb.Status.Conditions) != "running" {
-		logger.Warn("sandbox is not ready", "id", id, "status", ConditionsToStatus(sb.Status.Conditions))
+	if status := SandboxStatus(sb); status != StatusRunning {
+		logger.Warn("sandbox is not ready", "id", id, "status", status)
 		return nil, huma.Error409Conflict("sandbox is not ready")
 	}
 

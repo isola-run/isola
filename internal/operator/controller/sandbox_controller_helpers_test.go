@@ -143,23 +143,17 @@ func setRootfsSnapshotReady(ctx context.Context, name string, ready bool, reason
 	if snap == nil {
 		return
 	}
-	if ready {
-		meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotComplete),
-			Status:             metav1.ConditionTrue,
-			Reason:             reason,
-			Message:            message,
-			ObservedGeneration: snap.Generation,
-		})
-	} else {
-		meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
-			Type:               string(sandboxv1alpha1.RootfsSnapshotFailed),
-			Status:             metav1.ConditionTrue,
-			Reason:             reason,
-			Message:            message,
-			ObservedGeneration: snap.Generation,
-		})
+	status := metav1.ConditionTrue
+	if !ready {
+		status = metav1.ConditionFalse
 	}
+	meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
+		Type:               sandboxv1alpha1.RootfsSnapshotSucceededCondition,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: snap.Generation,
+	})
 	now := metav1.Now()
 	snap.Status.CompletionTime = &now
 	ExpectWithOffset(1, k8sClient.Status().Update(ctx, snap)).To(Succeed())

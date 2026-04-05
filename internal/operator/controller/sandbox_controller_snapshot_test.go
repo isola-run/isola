@@ -19,6 +19,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
@@ -157,6 +158,53 @@ var _ = Describe("Sandbox Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
+			Expect(err).To(Satisfy(errors.IsNotFound))
+		})
+
+		It("should skip snapshot when pod exists but is not ready", func() {
+			sandboxName := "sandbox-pod-notready-snapshot"
+
+			timeout := int64(1)
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.ShutdownPolicy = &sandboxv1alpha1.ShutdownPolicy{
+					Strategy: sandboxv1alpha1.ShutdownStrategySnapshotRootfs,
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Make pod ready so TimeoutAt gets persisted, then make it not-ready
+			pod := bindPodToNode(ctx, sandboxName+"-pod")
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Simulate pod becoming not-ready (e.g. container crashed)
+			pod = getPod(ctx, sandboxName+"-pod")
+			pod.Status.Phase = corev1.PodRunning
+			pod.Status.Conditions = []corev1.PodCondition{
+				{Type: corev1.PodReady, Status: corev1.ConditionFalse},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			fakeClock.Advance(2 * time.Second)
+
+			// Reconcile triggers timeout — snapshot should be skipped because pod not ready
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// No RootfsSnapshot should be created (pod not ready → skip)
+			Expect(getShutdownSnapshot(ctx, sandboxName)).To(BeNil())
+
+			// Sandbox should be deleted (snapshot skipped, cleanup done)
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(err).To(Satisfy(errors.IsNotFound))
 		})

@@ -51,7 +51,7 @@ def _wait_until_complete(
                 ) from err
             time.sleep(_POLL_INTERVAL)
             continue
-        if data.status == RootfsSnapshotStatus.COMPLETE:
+        if data.status == RootfsSnapshotStatus.SUCCEEDED:
             return data
         _check_failed(snapshot_id, data.status)
         if time.monotonic() >= deadline:
@@ -77,7 +77,7 @@ async def _async_wait_until_complete(
                 ) from err
             await asyncio.sleep(_POLL_INTERVAL)
             continue
-        if data.status == RootfsSnapshotStatus.COMPLETE:
+        if data.status == RootfsSnapshotStatus.SUCCEEDED:
             return data
         _check_failed(snapshot_id, data.status)
         if time.monotonic() >= deadline:
@@ -115,7 +115,7 @@ class RootfsSnapshots:
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
         _check_failed(data.id, data.status)
-        if data.status != RootfsSnapshotStatus.COMPLETE and max_wait_seconds != 0:
+        if data.status != RootfsSnapshotStatus.SUCCEEDED and max_wait_seconds != 0:
             data = _wait_until_complete(data.id, self._api, max_wait_seconds)
         return RootfsSnapshot(self._api, data)
 
@@ -152,7 +152,7 @@ class AsyncRootfsSnapshots:
             json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
         _check_failed(data.id, data.status)
-        if data.status != RootfsSnapshotStatus.COMPLETE and max_wait_seconds != 0:
+        if data.status != RootfsSnapshotStatus.SUCCEEDED and max_wait_seconds != 0:
             data = await _async_wait_until_complete(data.id, self._api, max_wait_seconds)
         return AsyncRootfsSnapshot(self._api, data)
 
