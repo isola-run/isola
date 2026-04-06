@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/isola-run/isola/api/v1alpha1"
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 	apigateway "github.com/isola-run/isola/internal/api-gateway"
 )
@@ -179,7 +180,7 @@ func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client) 
 func (h *Handlers) PostSandbox(ctx context.Context, input *CreateSandboxInput) (*CreateSandboxOutput, error) {
 	req := input.Body
 
-	if req.TerminationPolicy != nil && req.TerminationPolicy.Strategy == "SnapshotRootfs" && len(req.PodTemplate.Containers) > 1 {
+	if req.TerminationPolicy != nil && req.TerminationPolicy.Strategy == string(sandboxv1alpha1.TerminationStrategySnapshotRootfs) && len(req.PodTemplate.Containers) > 1 {
 		return nil, huma.Error422UnprocessableEntity("SnapshotRootfs termination strategy currently supports single-container sandboxes only")
 	}
 
