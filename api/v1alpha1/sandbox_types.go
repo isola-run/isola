@@ -53,17 +53,6 @@ type SnapshotRootfsTermination struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=1
 	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
-
-	// TTLSecondsAfterFinished limits the lifetime of a RootfsSnapshot that has
-	// finished execution (succeeded or failed).
-	// If set, the RootfsSnapshot will be automatically deleted after this many
-	// seconds after it finishes.
-	// If not set, the RootfsSnapshot will be deleted after a default value.
-	// 0 means immediate deletion upon completion.
-	// Same semantic as RootfsSnapshotSpec.TTLSecondsAfterFinished.
-	// +optional
-	// +kubebuilder:validation:Minimum=0
-	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
 }
 
 // TerminationPolicy controls how the sandbox is handled before termination.

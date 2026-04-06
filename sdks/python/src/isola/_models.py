@@ -128,7 +128,6 @@ class SnapshotRootfs(IsolaModel):
 
     snapshot_name: str | None = None
     timeout_seconds: int | None = None
-    ttl_seconds_after_finished: int | None = None
 
 
 class TerminationPolicy(IsolaModel):

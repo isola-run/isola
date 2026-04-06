@@ -1242,10 +1242,13 @@ func (r *SandboxReconciler) createTerminationSnapshot(
 			Namespace: sandbox.Namespace,
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
-			SandboxName:             sandbox.Name,
-			SnapshotName:            snapshotName,
-			TimeoutSeconds:          &timeoutSeconds,
-			TTLSecondsAfterFinished: cfg.TTLSecondsAfterFinished,
+			SandboxName:    sandbox.Name,
+			SnapshotName:   snapshotName,
+			TimeoutSeconds: &timeoutSeconds,
+			// TTL must outlive the time between snapshot completion and the next sandbox
+			// reconcile (~5s), otherwise the snapshot is deleted before we read the result.
+			// Owner-ref cascade handles final cleanup when the sandbox is deleted.
+			TTLSecondsAfterFinished: ptr.To(int32(300)),
 		},
 	}
 

@@ -261,9 +261,8 @@ func restTerminationPolicyToCRD(rest *TerminationPolicy) *sandboxv1alpha1.Termin
 	}
 	if rest.SnapshotRootfs != nil {
 		crd.SnapshotRootfs = &sandboxv1alpha1.SnapshotRootfsTermination{
-			SnapshotName:            rest.SnapshotRootfs.SnapshotName,
-			TimeoutSeconds:          rest.SnapshotRootfs.TimeoutSeconds,
-			TTLSecondsAfterFinished: rest.SnapshotRootfs.TTLSecondsAfterFinished,
+			SnapshotName:   rest.SnapshotRootfs.SnapshotName,
+			TimeoutSeconds: rest.SnapshotRootfs.TimeoutSeconds,
 		}
 	}
 	return crd
@@ -278,9 +277,8 @@ func crdTerminationPolicyToREST(tp *sandboxv1alpha1.TerminationPolicy) *Terminat
 	}
 	if tp.SnapshotRootfs != nil {
 		rest.SnapshotRootfs = &SnapshotRootfsTermination{
-			SnapshotName:            tp.SnapshotRootfs.SnapshotName,
-			TimeoutSeconds:          tp.SnapshotRootfs.TimeoutSeconds,
-			TTLSecondsAfterFinished: tp.SnapshotRootfs.TTLSecondsAfterFinished,
+			SnapshotName:   tp.SnapshotRootfs.SnapshotName,
+			TimeoutSeconds: tp.SnapshotRootfs.TimeoutSeconds,
 		}
 	}
 	return rest

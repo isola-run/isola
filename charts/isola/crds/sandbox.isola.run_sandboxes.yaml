@@ -201,18 +201,6 @@ spec:
                         format: int64
                         minimum: 1
                         type: integer
-                      ttlSecondsAfterFinished:
-                        description: |-
-                          TTLSecondsAfterFinished limits the lifetime of a RootfsSnapshot that has
-                          finished execution (succeeded or failed).
-                          If set, the RootfsSnapshot will be automatically deleted after this many
-                          seconds after it finishes.
-                          If not set, the RootfsSnapshot will be deleted after a default value.
-                          0 means immediate deletion upon completion.
-                          Same semantic as RootfsSnapshotSpec.TTLSecondsAfterFinished.
-                        format: int32
-                        minimum: 0
-                        type: integer
                     type: object
                   type:
                     allOf:

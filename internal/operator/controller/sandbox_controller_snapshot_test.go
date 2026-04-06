@@ -122,6 +122,8 @@ var _ = Describe("Sandbox Controller", func() {
 			rootfsSnapshot := getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil())
 			Expect(rootfsSnapshot.Spec.SandboxName).To(Equal(sandboxName))
+			Expect(rootfsSnapshot.Spec.TTLSecondsAfterFinished).NotTo(BeNil())
+			Expect(*rootfsSnapshot.Spec.TTLSecondsAfterFinished).To(Equal(int32(300)))
 		})
 
 		It("should default snapshotName to sandbox name when omitted", func() {
