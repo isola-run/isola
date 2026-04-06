@@ -1105,6 +1105,22 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		return ctrl.Result{}, true, nil
 	}
 
+	if len(sandboxPod.Spec.Containers) > 1 {
+		log.Info("SnapshotRootfs termination does not support multi-container sandboxes")
+		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+			{
+				Type:               SandboxRootfsSnapshotCondition,
+				Status:             metav1.ConditionFalse,
+				Reason:             CondReasonRootfsSnapshotFailed,
+				Message:            "SnapshotRootfs termination type currently supports single-container sandboxes only",
+				ObservedGeneration: sandbox.Generation,
+			},
+		}); err != nil {
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{}, true, nil
+	}
+
 	if !podutil.IsPodReady(sandboxPod) {
 		log.Info("Unable to perform rootfs snapshot: pod not ready")
 		r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, "PodNotReady", "SnapshotBlocked", "Unable to perform rootfs snapshot: pod not ready")
