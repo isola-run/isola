@@ -124,15 +124,6 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// Create base copy for status patches
 	baseSnap := snap.DeepCopy()
 
-	// Default snapshotName to sandboxName if omitted
-	if snap.Spec.SnapshotName == "" {
-		snap.Spec.SnapshotName = snap.Spec.SandboxName
-		if err := r.Update(ctx, snap); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
-	}
-
 	isComplete := snap.Status.CompletionTime != nil
 	if isComplete {
 		ttlLeft := r.ttlLeft(snap)
@@ -198,8 +189,13 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "No containers found in sandbox pod")
 	}
 
+	snapshotName := snap.Spec.SnapshotName
+	if snapshotName == "" {
+		snapshotName = snap.Spec.SandboxName
+	}
+
 	// Key path: rootfssnapshots/<namespace>/<snapshotName>.tar
-	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName, snap.Spec.SnapshotName)
+	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName, snapshotName)
 }
 
 func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
