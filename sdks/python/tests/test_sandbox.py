@@ -278,7 +278,7 @@ def test_create_sandbox_with_termination_policy_omits_snapshot_name(
     sandbox_response_copy: dict[str, object],
 ) -> None:
     sandbox_response_copy["terminationPolicy"] = {
-        "strategy": "SnapshotRootfs",
+        "type": "SnapshotRootfs",
         "snapshotRootfs": {},
     }
     create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
@@ -293,7 +293,7 @@ def test_create_sandbox_with_termination_policy_omits_snapshot_name(
 
     payload = json.loads(create_route.calls[0].request.content)
     assert payload["terminationPolicy"] == {
-        "strategy": "SnapshotRootfs",
+        "type": "SnapshotRootfs",
         "snapshotRootfs": {},
     }
 
@@ -303,7 +303,7 @@ def test_create_sandbox_with_termination_policy_includes_snapshot_name(
     sandbox_response_copy: dict[str, object],
 ) -> None:
     sandbox_response_copy["terminationPolicy"] = {
-        "strategy": "SnapshotRootfs",
+        "type": "SnapshotRootfs",
         "snapshotRootfs": {"snapshotName": "my-snap"},
     }
     create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
@@ -318,7 +318,7 @@ def test_create_sandbox_with_termination_policy_includes_snapshot_name(
 
     payload = json.loads(create_route.calls[0].request.content)
     assert payload["terminationPolicy"] == {
-        "strategy": "SnapshotRootfs",
+        "type": "SnapshotRootfs",
         "snapshotRootfs": {"snapshotName": "my-snap"},
     }
 
@@ -341,7 +341,7 @@ def test_termination_policy_response_snapshot_rootfs(
     sandbox_response_copy: dict[str, object],
 ) -> None:
     sandbox_response_copy["terminationPolicy"] = {
-        "strategy": "SnapshotRootfs",
+        "type": "SnapshotRootfs",
         "snapshotRootfs": {"snapshotName": "my-snap", "timeoutSeconds": 120},
     }
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(

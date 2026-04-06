@@ -227,7 +227,7 @@ class Sandboxes:
             startup_timeout_seconds=startup_timeout_seconds,
             network=network,
             termination_policy=TerminationPolicy(
-                strategy="SnapshotRootfs",
+                type="SnapshotRootfs",
                 snapshot_rootfs=termination_policy,
             )
             if termination_policy is not None
@@ -321,7 +321,7 @@ class AsyncSandboxes:
             startup_timeout_seconds=startup_timeout_seconds,
             network=network,
             termination_policy=TerminationPolicy(
-                strategy="SnapshotRootfs",
+                type="SnapshotRootfs",
                 snapshot_rootfs=termination_policy,
             )
             if termination_policy is not None

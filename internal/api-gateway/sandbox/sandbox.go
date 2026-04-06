@@ -55,8 +55,8 @@ type SnapshotRootfsTermination struct {
 }
 
 type TerminationPolicy struct {
-	Strategy       string                     `json:"strategy,omitempty" enum:"Delete,SnapshotRootfs" default:"Delete" doc:"Termination strategy"`
-	SnapshotRootfs *SnapshotRootfsTermination `json:"snapshotRootfs,omitempty" doc:"Config for SnapshotRootfs strategy"`
+	Type           string                     `json:"type,omitempty" enum:"Delete,SnapshotRootfs" default:"Delete" doc:"Termination type"`
+	SnapshotRootfs *SnapshotRootfsTermination `json:"snapshotRootfs,omitempty" doc:"Config for SnapshotRootfs type"`
 }
 
 type CreateSandboxRequest struct {
@@ -179,8 +179,8 @@ func New(logger *slog.Logger, sandboxNamespace string, k8sClient client.Client) 
 func (h *Handlers) PostSandbox(ctx context.Context, input *CreateSandboxInput) (*CreateSandboxOutput, error) {
 	req := input.Body
 
-	if req.TerminationPolicy != nil && req.TerminationPolicy.Strategy == string(sandboxv1alpha1.TerminationStrategySnapshotRootfs) && len(req.PodTemplate.Containers) > 1 {
-		return nil, huma.Error422UnprocessableEntity("SnapshotRootfs termination strategy currently supports single-container sandboxes only")
+	if req.TerminationPolicy != nil && req.TerminationPolicy.Type == string(sandboxv1alpha1.TerminationTypeSnapshotRootfs) && len(req.PodTemplate.Containers) > 1 {
+		return nil, huma.Error422UnprocessableEntity("SnapshotRootfs termination type currently supports single-container sandboxes only")
 	}
 
 	name, err := generateSandboxID()

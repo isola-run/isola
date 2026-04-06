@@ -984,7 +984,7 @@ func (r *SandboxReconciler) executeTerminationPolicy(
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	if sandbox.Spec.TerminationPolicy == nil || sandbox.Spec.TerminationPolicy.Strategy == sandboxv1alpha1.TerminationStrategyDelete {
+	if sandbox.Spec.TerminationPolicy == nil || sandbox.Spec.TerminationPolicy.Type == sandboxv1alpha1.TerminationTypeDelete {
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 			{
 				Type:               sandboxv1alpha1.SandboxReadyCondition,
@@ -1011,16 +1011,16 @@ func (r *SandboxReconciler) executeTerminationPolicy(
 		return ctrl.Result{}, false, err
 	}
 
-	switch sandbox.Spec.TerminationPolicy.Strategy {
-	case sandboxv1alpha1.TerminationStrategySnapshotRootfs:
+	switch sandbox.Spec.TerminationPolicy.Type {
+	case sandboxv1alpha1.TerminationTypeSnapshotRootfs:
 		cfg := sandbox.Spec.TerminationPolicy.SnapshotRootfs
 		if cfg == nil {
-			log.Info("SnapshotRootfs config missing despite SnapshotRootfs strategy; proceeding with deletion")
+			log.Info("SnapshotRootfs config missing despite SnapshotRootfs type; proceeding with deletion")
 			return ctrl.Result{}, true, nil
 		}
 		return r.handleRootfsSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, cfg)
 	default:
-		log.Info("Unknown termination policy; proceeding with deletion", "strategy", sandbox.Spec.TerminationPolicy.Strategy)
+		log.Info("Unknown termination policy; proceeding with deletion", "type", sandbox.Spec.TerminationPolicy.Type)
 		return ctrl.Result{}, true, nil
 	}
 }

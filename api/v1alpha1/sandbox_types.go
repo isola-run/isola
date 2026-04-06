@@ -27,16 +27,16 @@ const (
 	SandboxReadyCondition = "Ready"
 )
 
-// SandboxTerminationStrategy defines the policy for handling sandbox termination
+// SandboxTerminationType defines the policy for handling sandbox termination
 // +kubebuilder:validation:Enum=Delete;SnapshotRootfs
-type SandboxTerminationStrategy string
+type SandboxTerminationType string
 
 const (
-	TerminationStrategyDelete         SandboxTerminationStrategy = "Delete"
-	TerminationStrategySnapshotRootfs SandboxTerminationStrategy = "SnapshotRootfs"
+	TerminationTypeDelete         SandboxTerminationType = "Delete"
+	TerminationTypeSnapshotRootfs SandboxTerminationType = "SnapshotRootfs"
 )
 
-// SnapshotRootfsTermination configures the SnapshotRootfs termination strategy.
+// SnapshotRootfsTermination configures the SnapshotRootfs termination type.
 type SnapshotRootfsTermination struct {
 	// SnapshotName is the name used for the snapshot storage key.
 	// This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
@@ -67,16 +67,16 @@ type SnapshotRootfsTermination struct {
 }
 
 // TerminationPolicy controls how the sandbox is handled before termination.
-// +kubebuilder:validation:XValidation:rule="self.strategy != 'SnapshotRootfs' || has(self.snapshotRootfs)",message="snapshotRootfs config is required when strategy is SnapshotRootfs"
-// +kubebuilder:validation:XValidation:rule="self.strategy == 'SnapshotRootfs' || !has(self.snapshotRootfs)",message="snapshotRootfs config is only valid when strategy is SnapshotRootfs"
+// +kubebuilder:validation:XValidation:rule="self.type != 'SnapshotRootfs' || has(self.snapshotRootfs)",message="snapshotRootfs config is required when type is SnapshotRootfs"
+// +kubebuilder:validation:XValidation:rule="self.type == 'SnapshotRootfs' || !has(self.snapshotRootfs)",message="snapshotRootfs config is only valid when type is SnapshotRootfs"
 type TerminationPolicy struct {
-	// Strategy determines the action taken when the sandbox terminates
+	// Type determines the action taken when the sandbox terminates
 	// +optional
 	// +kubebuilder:default=Delete
 	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
-	Strategy SandboxTerminationStrategy `json:"strategy,omitempty"`
+	Type SandboxTerminationType `json:"type,omitempty"`
 
-	// SnapshotRootfs configures the SnapshotRootfs strategy.
+	// SnapshotRootfs configures the SnapshotRootfs type.
 	// +optional
 	SnapshotRootfs *SnapshotRootfsTermination `json:"snapshotRootfs,omitempty"`
 }

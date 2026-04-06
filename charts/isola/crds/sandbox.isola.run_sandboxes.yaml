@@ -182,7 +182,7 @@ spec:
                   ends (defaults to Delete if unspecified)
                 properties:
                   snapshotRootfs:
-                    description: SnapshotRootfs configures the SnapshotRootfs strategy.
+                    description: SnapshotRootfs configures the SnapshotRootfs type.
                     properties:
                       snapshotName:
                         description: |-
@@ -214,7 +214,7 @@ spec:
                         minimum: 0
                         type: integer
                     type: object
-                  strategy:
+                  type:
                     allOf:
                     - enum:
                       - Delete
@@ -223,15 +223,15 @@ spec:
                       - Delete
                       - SnapshotRootfs
                     default: Delete
-                    description: Strategy determines the action taken when the sandbox
+                    description: Type determines the action taken when the sandbox
                       terminates
                     type: string
                 type: object
                 x-kubernetes-validations:
-                - message: snapshotRootfs config is required when strategy is SnapshotRootfs
-                  rule: self.strategy != 'SnapshotRootfs' || has(self.snapshotRootfs)
-                - message: snapshotRootfs config is only valid when strategy is SnapshotRootfs
-                  rule: self.strategy == 'SnapshotRootfs' || !has(self.snapshotRootfs)
+                - message: snapshotRootfs config is required when type is SnapshotRootfs
+                  rule: self.type != 'SnapshotRootfs' || has(self.snapshotRootfs)
+                - message: snapshotRootfs config is only valid when type is SnapshotRootfs
+                  rule: self.type == 'SnapshotRootfs' || !has(self.snapshotRootfs)
               timeoutSeconds:
                 description: TimeoutSeconds defines how long the sandbox runs before
                   being shut down

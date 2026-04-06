@@ -257,7 +257,7 @@ func restTerminationPolicyToCRD(rest *TerminationPolicy) *sandboxv1alpha1.Termin
 		return nil
 	}
 	crd := &sandboxv1alpha1.TerminationPolicy{
-		Strategy: sandboxv1alpha1.SandboxTerminationStrategy(rest.Strategy),
+		Type: sandboxv1alpha1.SandboxTerminationType(rest.Type),
 	}
 	if rest.SnapshotRootfs != nil {
 		crd.SnapshotRootfs = &sandboxv1alpha1.SnapshotRootfsTermination{
@@ -274,7 +274,7 @@ func crdTerminationPolicyToREST(tp *sandboxv1alpha1.TerminationPolicy) *Terminat
 		return nil
 	}
 	rest := &TerminationPolicy{
-		Strategy: string(tp.Strategy),
+		Type: string(tp.Type),
 	}
 	if tp.SnapshotRootfs != nil {
 		rest.SnapshotRootfs = &SnapshotRootfsTermination{

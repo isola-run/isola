@@ -245,14 +245,14 @@ var _ = Describe("Conversion functions", func() {
 					Containers: []Container{{Image: "alpine:latest"}},
 				},
 				TerminationPolicy: &TerminationPolicy{
-					Strategy:       "SnapshotRootfs",
+					Type:           "SnapshotRootfs",
 					SnapshotRootfs: &SnapshotRootfsTermination{},
 				},
 			}
 			sb, err := requestToSandboxCR(req, "test-sb", "default")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sb.Spec.TerminationPolicy).NotTo(BeNil())
-			Expect(sb.Spec.TerminationPolicy.Strategy).To(Equal(sandboxv1alpha1.TerminationStrategySnapshotRootfs))
+			Expect(sb.Spec.TerminationPolicy.Type).To(Equal(sandboxv1alpha1.TerminationTypeSnapshotRootfs))
 			Expect(sb.Spec.TerminationPolicy.SnapshotRootfs).NotTo(BeNil())
 			Expect(sb.Spec.TerminationPolicy.SnapshotRootfs.SnapshotName).To(BeEmpty())
 		})
@@ -263,7 +263,7 @@ var _ = Describe("Conversion functions", func() {
 					Containers: []Container{{Image: "alpine:latest"}},
 				},
 				TerminationPolicy: &TerminationPolicy{
-					Strategy: "SnapshotRootfs",
+					Type: "SnapshotRootfs",
 					SnapshotRootfs: &SnapshotRootfsTermination{
 						SnapshotName: "my-snap",
 					},
@@ -418,7 +418,7 @@ var _ = Describe("Conversion functions", func() {
 						},
 					},
 					TerminationPolicy: &sandboxv1alpha1.TerminationPolicy{
-						Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+						Type: sandboxv1alpha1.TerminationTypeSnapshotRootfs,
 						SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{
 							SnapshotName: "my-snap",
 						},
@@ -427,7 +427,7 @@ var _ = Describe("Conversion functions", func() {
 			}
 			resp := sandboxToResponse(sb)
 			Expect(resp.TerminationPolicy).NotTo(BeNil())
-			Expect(resp.TerminationPolicy.Strategy).To(Equal("SnapshotRootfs"))
+			Expect(resp.TerminationPolicy.Type).To(Equal("SnapshotRootfs"))
 			Expect(resp.TerminationPolicy.SnapshotRootfs).NotTo(BeNil())
 			Expect(resp.TerminationPolicy.SnapshotRootfs.SnapshotName).To(Equal("my-snap"))
 		})
