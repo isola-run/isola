@@ -531,6 +531,26 @@ var _ = Describe("configureDNS function", func() {
 		Expect(pod.Spec.DNSConfig.Options[0].Name).To(Equal("ndots"))
 	})
 
+	It("should auto-default public nameservers when internet egress is enabled without DNS config", func() {
+		pod := &corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Name: "test", Image: "busybox"},
+				},
+			},
+		}
+
+		network := &sandboxv1alpha1.Network{
+			AllowInternetEgress: ptr.To(true),
+		}
+
+		configureDNS(pod, network)
+		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
+		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
+		Expect(pod.Spec.DNSConfig.Options).To(HaveLen(1))
+		Expect(pod.Spec.DNSConfig.Options[0].Name).To(Equal("ndots"))
+	})
+
 	It("should add nameservers to cluster DNS when both are specified", func() {
 		pod := &corev1.Pod{
 			Spec: corev1.PodSpec{

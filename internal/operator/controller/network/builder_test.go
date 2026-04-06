@@ -71,6 +71,14 @@ func TestEffectiveNameservers_UserProvidedTakesPrecedence(t *testing.T) {
 	g.Expect(EffectiveNameservers(network)).To(Equal([]string{"9.9.9.9"}))
 }
 
+func TestEffectiveNameservers_AutoDefaultWithInternetEgress(t *testing.T) {
+	g := NewWithT(t)
+	network := &sandboxv1alpha1.Network{
+		AllowInternetEgress: ptr.To(true),
+	}
+	g.Expect(EffectiveNameservers(network)).To(Equal(DefaultPublicNameservers))
+}
+
 func TestEffectiveNameservers_ClusterDNSSkipsAutoDefault(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.Network{

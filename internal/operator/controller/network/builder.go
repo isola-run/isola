@@ -55,7 +55,8 @@ func EffectiveNameservers(network *sandboxv1alpha1.Network) []string {
 		return network.Nameservers
 	}
 	allowClusterDNS := network.AllowClusterDNS != nil && *network.AllowClusterDNS
-	if !allowClusterDNS && len(network.AllowedEgressCIDRs) > 0 {
+	internetEgress := network.AllowInternetEgress != nil && *network.AllowInternetEgress
+	if !allowClusterDNS && (len(network.AllowedEgressCIDRs) > 0 || internetEgress) {
 		return DefaultPublicNameservers
 	}
 	return nil
