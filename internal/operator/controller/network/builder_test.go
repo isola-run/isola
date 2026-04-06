@@ -62,6 +62,15 @@ func TestEffectiveNameservers_AutoDefaultWithEgressCIDRs(t *testing.T) {
 	g.Expect(EffectiveNameservers(network)).To(Equal(DefaultPublicNameservers))
 }
 
+func TestEffectiveNameservers_AutoDefaultWithIPv6Egress(t *testing.T) {
+	g := NewWithT(t)
+	network := &sandboxv1alpha1.Network{
+		AllowIPv6Egress:    ptr.To(true),
+		AllowedEgressCIDRs: []string{"2607:f8b0::/32"},
+	}
+	g.Expect(EffectiveNameservers(network)).To(Equal(DefaultPublicNameserversIPv6))
+}
+
 func TestEffectiveNameservers_UserProvidedTakesPrecedence(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.Network{
@@ -427,6 +436,31 @@ func TestBuildCustomNetworkPolicy_MixedIPv4IPv6Nameservers(t *testing.T) {
 	cidrs := []string{dnsRule.To[0].IPBlock.CIDR, dnsRule.To[1].IPBlock.CIDR}
 	g.Expect(cidrs).To(ContainElement("8.8.8.8/32"))
 	g.Expect(cidrs).To(ContainElement("2001:4860:4860::8888/128"))
+}
+
+func TestBuildCustomNetworkPolicy_IPv6AutoDefaultDNSInEgressRules(t *testing.T) {
+	g := NewWithT(t)
+	network := &sandboxv1alpha1.Network{
+		AllowIPv6Egress:    ptr.To(true),
+		AllowedEgressCIDRs: []string{"2607:f8b0::/32"},
+	}
+
+	np := mustBuildCustomNetworkPolicy(t, network)
+
+	// Expect 2 rules: DNS + CIDR
+	g.Expect(np.Spec.Egress).To(HaveLen(2))
+
+	dnsRule := np.Spec.Egress[0]
+	// Auto-defaulted IPv6 nameservers: 8.8.8.8, 1.1.1.1, 2001:4860:4860::8888
+	g.Expect(dnsRule.To).To(HaveLen(3))
+	cidrs := make([]string, len(dnsRule.To))
+	for i, to := range dnsRule.To {
+		cidrs[i] = to.IPBlock.CIDR
+	}
+	g.Expect(cidrs).To(ContainElement("8.8.8.8/32"))
+	g.Expect(cidrs).To(ContainElement("1.1.1.1/32"))
+	g.Expect(cidrs).To(ContainElement("2001:4860:4860::8888/128"))
+	g.Expect(dnsRule.Ports).To(HaveLen(2))
 }
 
 func TestBuildCustomNetworkPolicy_IPv6AllowedEgressCIDR(t *testing.T) {

@@ -44,6 +44,7 @@ import (
 )
 
 var DefaultPublicNameservers = []string{"8.8.8.8", "1.1.1.1"}
+var DefaultPublicNameserversIPv6 = []string{"8.8.8.8", "1.1.1.1", "2001:4860:4860::8888"}
 
 // EffectiveNameservers returns the nameservers to configure for a sandbox pod.
 // Priority: user-provided > auto-default (when egress CIDRs are set and cluster DNS is off) > nil (sink).
@@ -56,6 +57,10 @@ func EffectiveNameservers(network *sandboxv1alpha1.Network) []string {
 	}
 	allowClusterDNS := network.AllowClusterDNS != nil && *network.AllowClusterDNS
 	if !allowClusterDNS && len(network.AllowedEgressCIDRs) > 0 {
+		ipv6Allowed := network.AllowIPv6Egress != nil && *network.AllowIPv6Egress
+		if ipv6Allowed {
+			return DefaultPublicNameserversIPv6
+		}
 		return DefaultPublicNameservers
 	}
 	return nil
