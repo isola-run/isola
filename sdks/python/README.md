@@ -33,15 +33,15 @@ export ISOLA_BASE_URL=http://localhost:8080
 ```python
 from isola import Isola
 
-client = Isola()
-
-with client.sandboxes.create(image="alpine:3.21") as sandbox:
+with Isola() as client:
+    sandbox = client.sandboxes.create(image="alpine:3.21")
     result = sandbox.commands.run("echo", "hello world")
     print(result.stdout)      # "hello world\n"
     print(result.exit_code)   # 0
+    sandbox.delete()  # or use "with ... as sandbox:" for automatic cleanup
 ```
 
-The `with` block deletes the sandbox automatically when it exits. You can also call `sandbox.delete()` manually.
+The `with` block closes the client automatically when it exits. You can also call `client.close()` instead.
 
 ## Async client
 
