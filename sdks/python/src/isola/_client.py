@@ -303,7 +303,7 @@ class Isola:
 
     Args:
         base_url: Isola API base URL. If not provided, reads from the
-            ``ISOLA_BASE_URL`` environment variable.
+            `ISOLA_BASE_URL` environment variable.
 
     Raises:
         ValueError: If no base URL is provided or found in environment.
@@ -350,7 +350,7 @@ class AsyncIsola:
 
     Args:
         base_url: Isola API base URL. If not provided, reads from the
-            ``ISOLA_BASE_URL`` environment variable.
+            `ISOLA_BASE_URL` environment variable.
 
     Raises:
         ValueError: If no base URL is provided or found in environment.

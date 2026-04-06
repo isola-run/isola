@@ -75,16 +75,16 @@ class Network(IsolaModel):
     When internet egress or custom CIDRs are enabled without cluster DNS,
     the server automatically configures public nameservers (8.8.8.8, 1.1.1.1)
     so DNS resolution works out of the box. Override this with the
-    ``nameservers`` field.
+    nameservers field.
 
     Attributes:
         allow_internet_egress: Allow outbound traffic to the public internet.
         allow_cluster_dns: Allow DNS resolution through the cluster's DNS
             service. When False, the sandbox uses public nameservers or
-            the ones you provide in ``nameservers``.
+            the ones you provide in nameservers.
         allow_ipv6_egress: Allow outbound IPv6 traffic.
         allowed_egress_cidrs: List of CIDR blocks the sandbox can reach
-            (e.g. ``["10.0.0.0/8"]``). Use this for fine-grained control
+            (e.g. ["10.0.0.0/8"]). Use this for fine-grained control
             instead of allowing all internet traffic.
         nameservers: Custom DNS nameservers. Overrides the automatic
             public nameservers.
@@ -111,13 +111,13 @@ class ResourceRequirements(IsolaModel):
 class Container(IsolaModel):
     """Container specification for sandbox creation.
 
-    Used with the ``containers`` parameter of ``Sandboxes.create()`` when
+    Used with the containers parameter of Sandboxes.create() when
     running multi-container sandboxes. For single-container sandboxes, pass
-    ``image`` directly to ``create()`` instead.
+    image directly to create() instead.
 
     Attributes:
         name: Container name. Auto-generated if not set.
-        image: Container image to run (e.g. ``"python:3.12"``).
+        image: Container image to run (e.g. "python:3.12").
         command: Command and arguments to run in the container.
         env: Environment variables as key-value pairs.
         resources: CPU, memory, and storage limits.
@@ -197,10 +197,10 @@ class PodTemplateInfo(IsolaModel):
 class SnapshotRootfs(IsolaModel):
     """Termination policy that snapshots the sandbox filesystem on exit.
 
-    Pass this as the ``termination_policy`` parameter of
-    ``Sandboxes.create()`` to automatically capture a rootfs snapshot
+    Pass this as the termination_policy parameter of
+    Sandboxes.create() to automatically capture a rootfs snapshot
     when the sandbox terminates. Restore the snapshot later by passing
-    its name as ``rootfs_snapshot_name``.
+    its name as rootfs_snapshot_name.
 
     Attributes:
         snapshot_name: Name for the snapshot. If not set, the server

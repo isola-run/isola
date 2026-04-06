@@ -35,8 +35,8 @@ def _command_path(sandbox_id: str, command_id: str) -> str:
 class Command:
     """A running or completed command inside a sandbox.
 
-    Returned by ``Commands.spawn()``. Use ``stdout`` and ``stderr`` to
-    stream output, ``wait()`` to block until completion, or ``kill()``
+    Returned by `Commands.spawn()`. Use `stdout` and `stderr` to
+    stream output, `wait()` to block until completion, or `kill()`
     to terminate the process.
     """
 
@@ -62,7 +62,7 @@ class Command:
         """Stream of the command's standard output.
 
         Yields text chunks as they arrive. Single-use: iterate once
-        or call ``.read()`` to collect everything.
+        or call `.read()` to collect everything.
         """
         if self._stdout is None:
             path = f"{_command_path(self._sandbox_id, self._command_id)}/stdout"
@@ -139,9 +139,9 @@ class Command:
 class AsyncCommand:
     """Async version of Command.
 
-    Returned by ``AsyncCommands.spawn()``. Use ``stdout`` and ``stderr``
-    to stream output, ``await wait()`` to block until completion, or
-    ``await kill()`` to terminate the process.
+    Returned by `AsyncCommands.spawn()`. Use `stdout` and `stderr`
+    to stream output, `await wait()` to block until completion, or
+    `await kill()` to terminate the process.
     """
 
     def __init__(
@@ -166,7 +166,7 @@ class AsyncCommand:
         """Stream of the command's standard output.
 
         Yields text chunks as they arrive. Single-use: iterate once
-        with ``async for`` or call ``await .read()`` to collect everything.
+        with `async for` or call `await .read()` to collect everything.
         """
         if self._stdout is None:
             path = f"{_command_path(self._sandbox_id, self._command_id)}/stdout"
@@ -259,7 +259,7 @@ class Commands:
 
         Args:
             args: The command and its arguments as separate strings
-                (e.g. ``"ls"``, ``"-la"``).
+                (e.g. `"ls"`, `"-la"`).
             env: Environment variables for the command.
             cwd: Working directory inside the sandbox.
             timeout_seconds: Maximum time the command can run, in
@@ -299,16 +299,16 @@ class Commands:
     ) -> CommandResult:
         """Run a command and wait for it to complete.
 
-        This is a convenience wrapper around ``spawn()``: it starts
+        This is a convenience wrapper around `spawn()`: it starts
         the command, optionally sends input to stdin, waits for the
         process to exit, and collects stdout and stderr.
 
         Args:
             args: The command and its arguments as separate strings
-                (e.g. ``"echo"``, ``"hello world"``).
+                (e.g. `"echo"`, `"hello world"`).
             input: Data to send to the command's stdin. The SDK writes
                 this and closes stdin automatically. For interactive
-                control, use ``spawn()`` with ``write_stdin()`` instead.
+                control, use `spawn()` with `write_stdin()` instead.
             env: Environment variables for the command.
             cwd: Working directory inside the sandbox.
             timeout_seconds: Maximum time the command can run, in
@@ -352,7 +352,7 @@ class AsyncCommands:
 
         Args:
             args: The command and its arguments as separate strings
-                (e.g. ``"ls"``, ``"-la"``).
+                (e.g. `"ls"`, `"-la"`).
             env: Environment variables for the command.
             cwd: Working directory inside the sandbox.
             timeout_seconds: Maximum time the command can run, in
@@ -392,16 +392,16 @@ class AsyncCommands:
     ) -> CommandResult:
         """Run a command and wait for it to complete.
 
-        This is a convenience wrapper around ``spawn()``: it starts
+        This is a convenience wrapper around `spawn()`: it starts
         the command, optionally sends input to stdin, waits for the
         process to exit, and collects stdout and stderr.
 
         Args:
             args: The command and its arguments as separate strings
-                (e.g. ``"echo"``, ``"hello world"``).
+                (e.g. `"echo"`, `"hello world"`).
             input: Data to send to the command's stdin. The SDK writes
                 this and closes stdin automatically. For interactive
-                control, use ``spawn()`` with ``write_stdin()`` instead.
+                control, use `spawn()` with `write_stdin()` instead.
             env: Environment variables for the command.
             cwd: Working directory inside the sandbox.
             timeout_seconds: Maximum time the command can run, in
