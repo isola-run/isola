@@ -104,13 +104,13 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 			Expect(resp.Code).To(Equal(422))
 		})
 
-		It("accepts missing snapshotName", func() {
+		It("defaults snapshotName to sandboxId when omitted", func() {
 			resp := testAPI.Post("/v1/rootfs-snapshots", strings.NewReader(`{"sandboxId":"sb"}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var body RootfsSnapshotResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body.SnapshotName).To(BeEmpty())
+			Expect(body.SnapshotName).To(Equal("sb"))
 			Expect(body.SandboxID).To(Equal("sb"))
 		})
 
@@ -163,6 +163,23 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 			Expect(got.ID).To(Equal(created.ID))
 			Expect(got.SandboxID).To(Equal("test-sb-get"))
 			Expect(got.SnapshotName).To(Equal("snap-get"))
+		})
+
+		It("defaults snapshotName to sandboxId on GET when omitted", func() {
+			createResp := testAPI.Post("/v1/rootfs-snapshots", strings.NewReader(`{"sandboxId":"sb-default-name"}`))
+			Expect(createResp.Code).To(Equal(201))
+
+			var created RootfsSnapshotResponse
+			Expect(json.NewDecoder(createResp.Body).Decode(&created)).To(Succeed())
+
+			Eventually(func() int {
+				return testAPI.Get(fmt.Sprintf("/v1/rootfs-snapshots/%s", created.ID)).Code
+			}).Should(Equal(200))
+
+			getResp := testAPI.Get(fmt.Sprintf("/v1/rootfs-snapshots/%s", created.ID))
+			var got RootfsSnapshotResponse
+			Expect(json.NewDecoder(getResp.Body).Decode(&got)).To(Succeed())
+			Expect(got.SnapshotName).To(Equal("sb-default-name"))
 		})
 
 		It("returns 404 for nonexistent rootfs snapshot", func() {

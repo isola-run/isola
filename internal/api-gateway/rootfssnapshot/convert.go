@@ -41,10 +41,14 @@ func requestToRootfsSnapshotCR(req CreateRootfsSnapshotRequest, name, namespace 
 }
 
 func rootfsSnapshotToResponse(rs *sandboxv1alpha1.RootfsSnapshot) RootfsSnapshotResponse {
+	snapshotName := rs.Spec.SnapshotName
+	if snapshotName == "" {
+		snapshotName = rs.Spec.SandboxName
+	}
 	return RootfsSnapshotResponse{
 		ID:                      rs.Name,
 		SandboxID:               rs.Spec.SandboxName,
-		SnapshotName:            rs.Spec.SnapshotName,
+		SnapshotName:            snapshotName,
 		ContainerName:           rs.Spec.ContainerName,
 		TimeoutSeconds:          rs.Spec.TimeoutSeconds,
 		TTLSecondsAfterFinished: rs.Spec.TTLSecondsAfterFinished,
