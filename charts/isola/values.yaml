@@ -80,15 +80,15 @@ operator:
     # Rootfs snapshot capability for gVisor sandboxes
     # Allows creating point-in-time rootfs snapshots of sandbox container filesystems.
     #
+    # Disabled by default because it requires cloud storage bucket configuration.
+    # Enable and configure storage below to use rootfs snapshots.
+    #
     # SECURITY NOTE: RootfsSnapshot jobs require privileged operations:
     # - hostPath mount of runsc binary and state directory
     # - hostPID: true to verify sandbox is running
     # - Root user in snapshotter init container
-    #
-    # Set enabled: false if your security policy prohibits these operations.
-    # Sandboxes will still run normally; only RootfsSnapshot CRs will fail.
     rootfssnapshot:
-      enabled: true
+      enabled: false
 
       # gVisor/runsc paths for rootfs snapshot operations
       # These paths must match your cluster's gVisor installation
