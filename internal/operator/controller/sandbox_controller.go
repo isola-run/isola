@@ -1013,7 +1013,12 @@ func (r *SandboxReconciler) executeTerminationPolicy(
 
 	switch sandbox.Spec.TerminationPolicy.Strategy {
 	case sandboxv1alpha1.TerminationStrategySnapshotRootfs:
-		return r.handleRootfsSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, r.getTimeoutSeconds(sandbox))
+		cfg := sandbox.Spec.TerminationPolicy.SnapshotRootfs
+		if cfg == nil {
+			log.Info("SnapshotRootfs config missing despite SnapshotRootfs strategy; proceeding with deletion")
+			return ctrl.Result{}, true, nil
+		}
+		return r.handleRootfsSnapshot(ctx, sandbox, baseSandbox, sandboxPod, snapshotDeadline, cfg)
 	default:
 		log.Info("Unknown termination policy; proceeding with deletion", "strategy", sandbox.Spec.TerminationPolicy.Strategy)
 		return ctrl.Result{}, true, nil
@@ -1061,7 +1066,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	baseSandbox *sandboxv1alpha1.Sandbox,
 	sandboxPod *corev1.Pod,
 	snapshotDeadline time.Time,
-	timeoutSeconds int64,
+	cfg *sandboxv1alpha1.SnapshotRootfsTermination,
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
@@ -1148,7 +1153,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	}
 
 	if snap == nil {
-		return r.createTerminationSnapshot(ctx, sandbox, baseSandbox, timeoutSeconds)
+		return r.createTerminationSnapshot(ctx, sandbox, baseSandbox, cfg)
 	}
 
 	snapshotName := snap.Name
@@ -1218,14 +1223,17 @@ func (r *SandboxReconciler) createTerminationSnapshot(
 	ctx context.Context,
 	sandbox *sandboxv1alpha1.Sandbox,
 	baseSandbox *sandboxv1alpha1.Sandbox,
-	timeoutSeconds int64,
+	cfg *sandboxv1alpha1.SnapshotRootfsTermination,
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
 
-	cfg := sandbox.Spec.TerminationPolicy.SnapshotRootfs
 	snapshotName := cfg.SnapshotName
 	if snapshotName == "" {
 		snapshotName = sandbox.Name
+	}
+	timeoutSeconds := defaultTimeoutSeconds
+	if cfg.TimeoutSeconds != nil {
+		timeoutSeconds = *cfg.TimeoutSeconds
 	}
 	crName := podutil.GetTerminationSnapshotName(sandbox.Name)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
