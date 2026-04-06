@@ -225,6 +225,12 @@ type SandboxStatus struct {
 	// PodIP is the IP address of the sandbox pod.
 	// +optional
 	PodIP string `json:"podIP,omitempty"`
+
+	// TerminationSnapshotCreated is set to true once the controller creates the
+	// termination RootfsSnapshot during finalization. This prevents re-creation
+	// if the snapshot is deleted by the TTL controller before finalization completes.
+	// +optional
+	TerminationSnapshotCreated bool `json:"terminationSnapshotCreated,omitempty"`
 }
 
 // +kubebuilder:object:root=true

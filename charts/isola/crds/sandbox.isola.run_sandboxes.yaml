@@ -328,6 +328,12 @@ spec:
                   Set once by the controller when finalization begins (anchored to DeletionTimestamp).
                 format: date-time
                 type: string
+              terminationSnapshotCreated:
+                description: |-
+                  TerminationSnapshotCreated is set to true once the controller creates the
+                  termination RootfsSnapshot during finalization. This prevents re-creation
+                  if the snapshot is deleted by the TTL controller before finalization completes.
+                type: boolean
               timeoutAt:
                 description: |-
                   TimeoutAt is the absolute time at which the sandbox should be considered timed out.

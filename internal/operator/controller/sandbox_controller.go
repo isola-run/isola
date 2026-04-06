@@ -1153,6 +1153,12 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 	}
 
 	if snap == nil {
+		if sandbox.Status.TerminationSnapshotCreated {
+			// Snapshot was already created but has been deleted (e.g. by TTL controller).
+			// Treat as completed to avoid an infinite create/delete loop.
+			log.Info("Termination snapshot was already created and deleted, proceeding with cleanup")
+			return ctrl.Result{}, true, nil
+		}
 		return r.createTerminationSnapshot(ctx, sandbox, baseSandbox, cfg)
 	}
 
@@ -1267,6 +1273,7 @@ func (r *SandboxReconciler) createTerminationSnapshot(
 	log.Info("Created termination RootfsSnapshot", "name", rootfsSnapshot.Name)
 	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "RootfsSnapshotCreated", "Created", "Created RootfsSnapshot %q", rootfsSnapshot.Name)
 
+	sandbox.Status.TerminationSnapshotCreated = true
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               SandboxRootfsSnapshotCondition,

@@ -19,10 +19,12 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
@@ -110,6 +112,128 @@ var _ = Describe("Sandbox Controller", func() {
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
+			Expect(err).To(Satisfy(errors.IsNotFound))
+		})
+
+		It("should reject SnapshotRootfs termination for multi-container sandboxes", func() {
+			sandboxName := "sandbox-multi-container-snapshot"
+
+			reconciler = newTestReconciler(fakeClock)
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.PodTemplate.Spec.Containers = append(s.Spec.PodTemplate.Spec.Containers, corev1.Container{
+					Name:    "sidecar",
+					Image:   "busybox:latest",
+					Command: []string{"sleep", "infinity"},
+				})
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Type:           sandboxv1alpha1.TerminationTypeSnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{SnapshotName: "test-snapshot"},
+				}
+			})
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile - creates pod and adds finalizer
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Bind pod and make it ready
+			pod := bindPodToNode(ctx, podName)
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Delete the sandbox to trigger finalization
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
+
+			// Reconcile - should reject multi-container snapshot and proceed to deletion
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// No snapshot should have been created
+			Expect(getTerminationSnapshot(ctx, sandboxName)).To(BeNil())
+
+			// Sandbox should be deleted (rejection allows finalization to proceed)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
+			Expect(err).To(Satisfy(errors.IsNotFound))
+		})
+
+		It("should not recreate termination snapshot after TTL deletion", func() {
+			sandboxName := "sandbox-ttl-zero"
+
+			reconciler = newTestReconciler(fakeClock)
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Type: sandboxv1alpha1.TerminationTypeSnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{
+						SnapshotName:            "test-snapshot",
+						TTLSecondsAfterFinished: ptr.To(int32(0)),
+					},
+				}
+			})
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
+
+			// First reconcile - creates pod and adds finalizer
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Bind pod and make it ready
+			pod := bindPodToNode(ctx, podName)
+			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Delete the sandbox to trigger finalization
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(k8sClient.Delete(ctx, sandbox)).To(Succeed())
+
+			// Reconcile - should create termination snapshot
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify snapshot was created and status field was set
+			snap := getTerminationSnapshot(ctx, sandboxName)
+			Expect(snap).NotTo(BeNil())
+
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(sandbox.Status.TerminationSnapshotCreated).To(BeTrue())
+
+			// Simulate TTL controller deleting the snapshot (TTL=0)
+			deleteTerminationSnapshot(ctx, sandboxName)
+			Expect(getTerminationSnapshot(ctx, sandboxName)).To(BeNil())
+
+			// Reconcile again - should NOT recreate the snapshot, should proceed to cleanup
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Snapshot should still be nil (not recreated)
+			Expect(getTerminationSnapshot(ctx, sandboxName)).To(BeNil())
+
+			// Sandbox should be deleted (cleanup completed)
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(err).To(Satisfy(errors.IsNotFound))
 		})
