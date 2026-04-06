@@ -16,7 +16,9 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -46,9 +48,8 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 const (
-	testNamespace = "test-sandbox"
-	testTimeout   = time.Second * 10
-	testInterval  = time.Millisecond * 10
+	testTimeout  = time.Second * 10
+	testInterval = time.Millisecond * 10
 )
 
 var (
@@ -58,7 +59,20 @@ var (
 	cfg       *rest.Config
 	k8sClient client.Client // Direct client for test reads/writes (no cache delay)
 	k8sCache  client.Client // Cached client for reconciler field index queries
+
+	// testNamespace is set to a unique value before each test spec.
+	testNamespace string
+	nsCounter     atomic.Int32
 )
+
+// Each test gets its own namespace to prevent cross-test resource collisions.
+// See "Namespace usage limitation" in https://book.kubebuilder.io/reference/envtest
+var _ = BeforeEach(func() {
+	n := nsCounter.Add(1)
+	testNamespace = fmt.Sprintf("test-ns-%d", n)
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testNamespace}}
+	Expect(k8sClient.Create(ctx, ns)).To(Succeed())
+})
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -123,13 +137,6 @@ var _ = BeforeSuite(func() {
 	Expect(k8sCache).NotTo(BeNil())
 
 	Expect(mgr.GetCache().WaitForCacheSync(ctx)).To(BeTrue())
-
-	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: testNamespace,
-		},
-	}
-	Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 
 	// Create default RuntimeClass for gVisor (required: all sandbox pods use runtimeClassName "gvisor")
 	gvisorRC := &nodev1.RuntimeClass{
