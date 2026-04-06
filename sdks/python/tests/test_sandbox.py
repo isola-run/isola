@@ -29,6 +29,7 @@ from isola import (
     IsolaTimeoutError,
     Network,
     SandboxStatus,
+    SnapshotRootfs,
 )
 
 
@@ -272,6 +273,56 @@ def test_create_sandbox_containers_with_rootfs(sandbox_response_copy: dict[str, 
     assert payload["podTemplate"]["containers"][0]["rootfsSnapshotName"] == "snap-a"
 
 
+@respx.mock
+def test_create_sandbox_with_termination_policy_omits_snapshot_name(
+    sandbox_response_copy: dict[str, object],
+) -> None:
+    sandbox_response_copy["terminationPolicy"] = {
+        "strategy": "SnapshotRootfs",
+        "snapshotRootfs": {},
+    }
+    create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
+        return_value=httpx.Response(201, json=sandbox_response_copy)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        client.sandboxes.create(
+            image="python:3.12",
+            termination_policy=SnapshotRootfs(),
+        )
+
+    payload = json.loads(create_route.calls[0].request.content)
+    assert payload["terminationPolicy"] == {
+        "strategy": "SnapshotRootfs",
+        "snapshotRootfs": {},
+    }
+
+
+@respx.mock
+def test_create_sandbox_with_termination_policy_includes_snapshot_name(
+    sandbox_response_copy: dict[str, object],
+) -> None:
+    sandbox_response_copy["terminationPolicy"] = {
+        "strategy": "SnapshotRootfs",
+        "snapshotRootfs": {"snapshotName": "my-snap"},
+    }
+    create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
+        return_value=httpx.Response(201, json=sandbox_response_copy)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        client.sandboxes.create(
+            image="python:3.12",
+            termination_policy=SnapshotRootfs(snapshot_name="my-snap"),
+        )
+
+    payload = json.loads(create_route.calls[0].request.content)
+    assert payload["terminationPolicy"] == {
+        "strategy": "SnapshotRootfs",
+        "snapshotRootfs": {"snapshotName": "my-snap"},
+    }
+
+
 def test_create_raises_when_both_image_and_containers() -> None:
     with Isola(base_url="http://localhost:8080") as client, pytest.raises(ValueError):
         client.sandboxes.create(
@@ -283,6 +334,40 @@ def test_create_raises_when_both_image_and_containers() -> None:
 def test_create_raises_when_neither_image_nor_containers() -> None:
     with Isola(base_url="http://localhost:8080") as client, pytest.raises(ValueError):
         client.sandboxes.create()
+
+
+@respx.mock
+def test_termination_policy_response_snapshot_rootfs(
+    sandbox_response_copy: dict[str, object],
+) -> None:
+    sandbox_response_copy["terminationPolicy"] = {
+        "strategy": "SnapshotRootfs",
+        "snapshotRootfs": {"snapshotName": "my-snap", "timeoutSeconds": 120},
+    }
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+
+    assert sandbox.termination_policy is not None
+    assert sandbox.termination_policy.snapshot_name == "my-snap"
+    assert sandbox.termination_policy.timeout_seconds == 120
+
+
+@respx.mock
+def test_termination_policy_response_absent(
+    sandbox_response_copy: dict[str, object],
+) -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+
+    with Isola(base_url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+
+    assert sandbox.termination_policy is None
 
 
 def test_create_raises_when_flat_params_with_containers() -> None:

@@ -39,12 +39,11 @@ type RootfsSnapshotSpec struct {
 
 	// SnapshotName is the name used for the snapshot storage key.
 	// This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
-	// The SnapshotName validation is crucial as paths may be constructed from it.
-	// +required
-	// +kubebuilder:validation:MinLength=1
+	// If omitted, the operator defaults it to the sandbox name.
+	// +optional
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
-	SnapshotName string `json:"snapshotName"`
+	SnapshotName string `json:"snapshotName,omitempty"`
 
 	// ContainerName is the name of the container to snapshot.
 	// If empty, defaults to the first container in the sandbox pod.

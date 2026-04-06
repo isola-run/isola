@@ -122,7 +122,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
-					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{SnapshotName: "test-snapshot"},
 				}
 			})
 

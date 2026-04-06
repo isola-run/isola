@@ -282,10 +282,10 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 		})
 
 		It("should use default timeoutSeconds when not specified", func() {
-			snapName := "rfs-snap-default-deadline"
-			sandboxName := "rfs-sandbox-default-deadline"
+			snapName := "snap-default-deadline"
+			sandboxName := "sandbox-default-deadline"
 			podName := sandboxName + "-pod"
-			runtimeClassName := "rfs-gvisor-default-deadline"
+			runtimeClassName := "gvisor-default-deadline"
 
 			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
 			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)

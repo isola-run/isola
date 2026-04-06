@@ -189,8 +189,13 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "No containers found in sandbox pod")
 	}
 
+	snapshotName := snap.Spec.SnapshotName
+	if snapshotName == "" {
+		snapshotName = snap.Spec.SandboxName
+	}
+
 	// Key path: rootfssnapshots/<namespace>/<snapshotName>.tar
-	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName, snap.Spec.SnapshotName)
+	return r.reconcileSnapshotJob(ctx, baseSnap, snap, sandboxPod, containerName, snapshotName)
 }
 
 func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(

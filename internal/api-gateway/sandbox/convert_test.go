@@ -238,6 +238,41 @@ var _ = Describe("Conversion functions", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sb.Spec.RootfsSnapshotSources).To(BeNil())
 		})
+
+		It("passes termination policy through without defaulting snapshotName", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Containers: []Container{{Image: "alpine:latest"}},
+				},
+				TerminationPolicy: &TerminationPolicy{
+					Strategy:       "SnapshotRootfs",
+					SnapshotRootfs: &SnapshotRootfsTermination{},
+				},
+			}
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.TerminationPolicy).NotTo(BeNil())
+			Expect(sb.Spec.TerminationPolicy.Strategy).To(Equal(sandboxv1alpha1.TerminationStrategySnapshotRootfs))
+			Expect(sb.Spec.TerminationPolicy.SnapshotRootfs).NotTo(BeNil())
+			Expect(sb.Spec.TerminationPolicy.SnapshotRootfs.SnapshotName).To(BeEmpty())
+		})
+
+		It("passes explicit termination policy snapshotName through", func() {
+			req := CreateSandboxRequest{
+				PodTemplate: PodTemplate{
+					Containers: []Container{{Image: "alpine:latest"}},
+				},
+				TerminationPolicy: &TerminationPolicy{
+					Strategy: "SnapshotRootfs",
+					SnapshotRootfs: &SnapshotRootfsTermination{
+						SnapshotName: "my-snap",
+					},
+				},
+			}
+			sb, err := requestToSandboxCR(req, "test-sb", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sb.Spec.TerminationPolicy.SnapshotRootfs.SnapshotName).To(Equal("my-snap"))
+		})
 	})
 
 	Describe("sandboxToResponse", func() {
@@ -370,6 +405,31 @@ var _ = Describe("Conversion functions", func() {
 			resp := sandboxToResponse(sb)
 			Expect(resp.PodTemplate.Containers[0].RootfsSnapshotName).To(Equal("snap-app"))
 			Expect(resp.PodTemplate.Containers[1].RootfsSnapshotName).To(BeEmpty())
+		})
+
+		It("includes termination policy in response", func() {
+			sb := &sandboxv1alpha1.Sandbox{
+				Spec: sandboxv1alpha1.SandboxSpec{
+					PodTemplate: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{Name: "sandbox0", Image: "alpine:latest"},
+							},
+						},
+					},
+					TerminationPolicy: &sandboxv1alpha1.TerminationPolicy{
+						Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+						SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{
+							SnapshotName: "my-snap",
+						},
+					},
+				},
+			}
+			resp := sandboxToResponse(sb)
+			Expect(resp.TerminationPolicy).NotTo(BeNil())
+			Expect(resp.TerminationPolicy.Strategy).To(Equal("SnapshotRootfs"))
+			Expect(resp.TerminationPolicy.SnapshotRootfs).NotTo(BeNil())
+			Expect(resp.TerminationPolicy.SnapshotRootfs.SnapshotName).To(Equal("my-snap"))
 		})
 
 		It("maps rootfs source with empty containerName to the single container", func() {

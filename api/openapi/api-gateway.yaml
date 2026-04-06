@@ -152,9 +152,8 @@ components:
           minLength: 1
           type: string
         snapshotName:
-          description: Identifier for this snapshot, used both as the storage key and as the restore reference. To restore from this snapshot, pass this value as rootfsSnapshotName on a container when creating a sandbox.
+          description: Snapshot storage key and restore reference. Defaults to the sandbox ID if omitted. To restore, pass this value as rootfsSnapshotName on a container when creating a sandbox.
           maxLength: 63
-          minLength: 1
           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
           type: string
         timeoutSeconds:
@@ -169,7 +168,6 @@ components:
           type: integer
       required:
         - sandboxId
-        - snapshotName
       type: object
     CreateSandboxRequest:
       additionalProperties: false
@@ -192,6 +190,9 @@ components:
           format: int64
           minimum: 1
           type: integer
+        terminationPolicy:
+          $ref: "#/components/schemas/TerminationPolicy"
+          description: What to do when the sandbox terminates
         timeoutSeconds:
           description: Max lifetime in seconds. Omit for no timeout
           format: int64
@@ -491,6 +492,9 @@ components:
             - Succeeded
             - Failed
           type: string
+        terminationPolicy:
+          $ref: "#/components/schemas/TerminationPolicy"
+          description: Termination policy
         timeoutSeconds:
           description: Max lifetime in seconds
           format: int64
@@ -523,6 +527,39 @@ components:
         - id
         - status
         - creationTimestamp
+      type: object
+    SnapshotRootfsTermination:
+      additionalProperties: false
+      properties:
+        snapshotName:
+          description: Snapshot storage key. Defaults to sandbox ID if omitted.
+          maxLength: 63
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          type: string
+        timeoutSeconds:
+          description: Snapshot operation deadline in seconds. Defaults to 300.
+          format: int64
+          minimum: 1
+          type: integer
+        ttlSecondsAfterFinished:
+          description: Auto-cleanup seconds after snapshot completes. Defaults to 300.
+          format: int32
+          minimum: 0
+          type: integer
+      type: object
+    TerminationPolicy:
+      additionalProperties: false
+      properties:
+        snapshotRootfs:
+          $ref: "#/components/schemas/SnapshotRootfsTermination"
+          description: Config for SnapshotRootfs strategy
+        strategy:
+          default: Delete
+          description: Termination strategy
+          enum:
+            - Delete
+            - SnapshotRootfs
+          type: string
       type: object
 info:
   description: API for managing sandboxes

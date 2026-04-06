@@ -181,6 +181,39 @@ spec:
                 description: TerminationPolicy defines what to do when the sandbox
                   ends (defaults to Delete if unspecified)
                 properties:
+                  snapshotRootfs:
+                    description: SnapshotRootfs configures the SnapshotRootfs strategy.
+                    properties:
+                      snapshotName:
+                        description: |-
+                          SnapshotName is the name used for the snapshot storage key.
+                          This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
+                          Same semantic as RootfsSnapshotSpec.SnapshotName.
+                          If omitted, the operator defaults it to the sandbox name.
+                        maxLength: 63
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                      timeoutSeconds:
+                        description: |-
+                          TimeoutSeconds specifies the duration in seconds for the snapshot job.
+                          If the job does not complete within this time, it will be terminated.
+                          Same semantic as RootfsSnapshotSpec.TimeoutSeconds.
+                        format: int64
+                        minimum: 1
+                        type: integer
+                      ttlSecondsAfterFinished:
+                        description: |-
+                          TTLSecondsAfterFinished limits the lifetime of a RootfsSnapshot that has
+                          finished execution (succeeded or failed).
+                          If set, the RootfsSnapshot will be automatically deleted after this many
+                          seconds after it finishes.
+                          If not set, the RootfsSnapshot will be deleted after a default value.
+                          0 means immediate deletion upon completion.
+                          Same semantic as RootfsSnapshotSpec.TTLSecondsAfterFinished.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                    type: object
                   strategy:
                     allOf:
                     - enum:
@@ -193,16 +226,12 @@ spec:
                     description: Strategy determines the action taken when the sandbox
                       terminates
                     type: string
-                  timeoutSeconds:
-                    default: 300
-                    description: |-
-                      TimeoutSeconds specifies the duration in seconds relative to the deletion timestamp
-                      that the termination policy may be active before the system tries to terminate it.
-                      Only used when Strategy is SnapshotRootfs.
-                    format: int64
-                    minimum: 1
-                    type: integer
                 type: object
+                x-kubernetes-validations:
+                - message: snapshotRootfs config is required when strategy is SnapshotRootfs
+                  rule: self.strategy != 'SnapshotRootfs' || has(self.snapshotRootfs)
+                - message: snapshotRootfs config is only valid when strategy is SnapshotRootfs
+                  rule: self.strategy == 'SnapshotRootfs' || !has(self.snapshotRootfs)
               timeoutSeconds:
                 description: TimeoutSeconds defines how long the sandbox runs before
                   being shut down
@@ -223,6 +252,11 @@ spec:
             - message: rootfsSnapshotSources is immutable once set
               rule: '!has(self.rootfsSnapshotSources) || !has(oldSelf.rootfsSnapshotSources)
                 || self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources'
+            - message: terminationPolicy cannot be removed once set
+              rule: '!has(oldSelf.terminationPolicy) || has(self.terminationPolicy)'
+            - message: terminationPolicy is immutable once set
+              rule: '!has(self.terminationPolicy) || !has(oldSelf.terminationPolicy)
+                || self.terminationPolicy == oldSelf.terminationPolicy'
           status:
             description: status defines the observed state of Sandbox
             properties:

@@ -157,6 +157,54 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(snapshotNameEnv).To(Equal(customSnapshotName))
 			Expect(snapshotNamespaceEnv).To(Equal(testNamespace))
 		})
+
+		It("should default snapshotName to sandboxName when omitted", func() {
+			sandboxName := "sandbox-default-snapname"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-default-snapname"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://default123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			snapName := "snap-default-snapname"
+			snap := &sandboxv1alpha1.RootfsSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      snapName,
+					Namespace: testNamespace,
+				},
+				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
+					SandboxName: sandboxName,
+				},
+			}
+			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-job"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			job := getSnapshotJob(ctx, jobName)
+			Expect(job).NotTo(BeNil())
+
+			uploaderContainer := job.Spec.Template.Spec.Containers[0]
+			var snapshotNameEnv string
+			for _, env := range uploaderContainer.Env {
+				if env.Name == "SNAPSHOT_NAME" {
+					snapshotNameEnv = env.Value
+				}
+			}
+			Expect(snapshotNameEnv).To(Equal(sandboxName))
+		})
 	})
 
 	Context("Container Selection", func() {

@@ -58,7 +58,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
-					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{SnapshotName: "test-snapshot"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -94,7 +95,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
-					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{SnapshotName: "test-snapshot"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -122,6 +124,41 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(rootfsSnapshot.Spec.SandboxName).To(Equal(sandboxName))
 		})
 
+		It("should default snapshotName to sandbox name when omitted", func() {
+			sandboxName := "sandbox-default-snapname"
+
+			timeout := int64(1)
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
+					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{},
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+			defer deleteTerminationSnapshot(ctx, sandboxName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := bindPodToNode(ctx, podName)
+			makePodReady(ctx, pod, "containerd://abc123def456", fakeClock)
+
+			fakeClock.Advance(2 * time.Second)
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			rootfsSnapshot := getTerminationSnapshot(ctx, sandboxName)
+			Expect(rootfsSnapshot).NotTo(BeNil())
+			Expect(rootfsSnapshot.Spec.SnapshotName).To(Equal(sandboxName))
+		})
+
 		It("should set condition when sandbox pod is not found during snapshot", func() {
 			sandboxName := "sandbox-no-pod-snapshot"
 
@@ -129,7 +166,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
-					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{SnapshotName: "test-snapshot"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -169,7 +207,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
-					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{SnapshotName: "test-snapshot"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -219,7 +258,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
-					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{SnapshotName: "test-snapshot"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -268,7 +308,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
-					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{SnapshotName: "test-snapshot"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -306,8 +347,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
-					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
-					// TimeoutSeconds not set - should use default (300)
+					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{SnapshotName: "test-snapshot"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -345,7 +386,8 @@ var _ = Describe("Sandbox Controller", func() {
 
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
-					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{SnapshotName: "test-snapshot"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -363,7 +405,8 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
-					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{SnapshotName: "test-snapshot"},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)
@@ -418,8 +461,11 @@ var _ = Describe("Sandbox Controller", func() {
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.TimeoutSeconds = &timeout
 				s.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
-					Strategy:       sandboxv1alpha1.TerminationStrategySnapshotRootfs,
-					TimeoutSeconds: &snapshotDeadline,
+					Strategy: sandboxv1alpha1.TerminationStrategySnapshotRootfs,
+					SnapshotRootfs: &sandboxv1alpha1.SnapshotRootfsTermination{
+						SnapshotName:   "test-snapshot",
+						TimeoutSeconds: &snapshotDeadline,
+					},
 				}
 			})
 			defer deleteSandbox(ctx, sandboxName)

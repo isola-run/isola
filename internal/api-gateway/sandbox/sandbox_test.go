@@ -194,6 +194,12 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(resp.Code).To(Equal(422))
 		})
 
+		It("rejects SnapshotRootfs with multiple containers with 422", func() {
+			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"},{"image":"nginx"}]},"terminationPolicy":{"strategy":"SnapshotRootfs","snapshotRootfs":{}}}`
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(422))
+		})
+
 		It("accepts omitted timeoutSeconds as no timeout", func() {
 			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(`{"podTemplate":{"containers":[{"image":"alpine:latest"}]}}`))
 			Expect(resp.Code).To(Equal(201))

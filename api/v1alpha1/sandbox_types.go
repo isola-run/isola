@@ -36,7 +36,39 @@ const (
 	TerminationStrategySnapshotRootfs SandboxTerminationStrategy = "SnapshotRootfs"
 )
 
-// TerminationPolicy controls how the sandbox is handled when it ends
+// SnapshotRootfsTermination configures the SnapshotRootfs termination strategy.
+type SnapshotRootfsTermination struct {
+	// SnapshotName is the name used for the snapshot storage key.
+	// This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
+	// Same semantic as RootfsSnapshotSpec.SnapshotName.
+	// If omitted, the operator defaults it to the sandbox name.
+	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	SnapshotName string `json:"snapshotName,omitempty"`
+
+	// TimeoutSeconds specifies the duration in seconds for the snapshot job.
+	// If the job does not complete within this time, it will be terminated.
+	// Same semantic as RootfsSnapshotSpec.TimeoutSeconds.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
+
+	// TTLSecondsAfterFinished limits the lifetime of a RootfsSnapshot that has
+	// finished execution (succeeded or failed).
+	// If set, the RootfsSnapshot will be automatically deleted after this many
+	// seconds after it finishes.
+	// If not set, the RootfsSnapshot will be deleted after a default value.
+	// 0 means immediate deletion upon completion.
+	// Same semantic as RootfsSnapshotSpec.TTLSecondsAfterFinished.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
+}
+
+// TerminationPolicy controls how the sandbox is handled before termination.
+// +kubebuilder:validation:XValidation:rule="self.strategy != 'SnapshotRootfs' || has(self.snapshotRootfs)",message="snapshotRootfs config is required when strategy is SnapshotRootfs"
+// +kubebuilder:validation:XValidation:rule="self.strategy == 'SnapshotRootfs' || !has(self.snapshotRootfs)",message="snapshotRootfs config is only valid when strategy is SnapshotRootfs"
 type TerminationPolicy struct {
 	// Strategy determines the action taken when the sandbox terminates
 	// +optional
@@ -44,13 +76,9 @@ type TerminationPolicy struct {
 	// +kubebuilder:validation:Enum=Delete;SnapshotRootfs
 	Strategy SandboxTerminationStrategy `json:"strategy,omitempty"`
 
-	// TimeoutSeconds specifies the duration in seconds relative to the deletion timestamp
-	// that the termination policy may be active before the system tries to terminate it.
-	// Only used when Strategy is SnapshotRootfs.
+	// SnapshotRootfs configures the SnapshotRootfs strategy.
 	// +optional
-	// +kubebuilder:default=300
-	// +kubebuilder:validation:Minimum=1
-	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
+	SnapshotRootfs *SnapshotRootfsTermination `json:"snapshotRootfs,omitempty"`
 }
 
 // Network defines network isolation for a sandbox.
@@ -127,6 +155,8 @@ type RootfsSnapshotSource struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.network) || !has(oldSelf.network) || self.network == oldSelf.network",message="network is immutable once set"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.rootfsSnapshotSources) || has(self.rootfsSnapshotSources)",message="rootfsSnapshotSources cannot be removed once set"
 // +kubebuilder:validation:XValidation:rule="!has(self.rootfsSnapshotSources) || !has(oldSelf.rootfsSnapshotSources) || self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources",message="rootfsSnapshotSources is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.terminationPolicy) || has(self.terminationPolicy)",message="terminationPolicy cannot be removed once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.terminationPolicy) || !has(oldSelf.terminationPolicy) || self.terminationPolicy == oldSelf.terminationPolicy",message="terminationPolicy is immutable once set"
 type SandboxSpec struct {
 	// PodTemplate describes the pod that will be created to run the sandbox.
 	// The Sandbox controller will override specific security settings (runtimeClassName, etc.)

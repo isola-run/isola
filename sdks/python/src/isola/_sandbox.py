@@ -36,6 +36,8 @@ from ._models import (
     SandboxData,
     SandboxStatus,
     SandboxSummary,
+    SnapshotRootfs,
+    TerminationPolicy,
 )
 
 _POLL_INTERVAL = 1.0
@@ -176,6 +178,7 @@ class Sandboxes:
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
         network: Network | None = ...,
+        termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> Sandbox: ...
 
@@ -187,6 +190,7 @@ class Sandboxes:
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
         network: Network | None = ...,
+        termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> Sandbox: ...
 
@@ -204,6 +208,7 @@ class Sandboxes:
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
         network: Network | None = None,
+        termination_policy: SnapshotRootfs | None = None,
         max_wait_seconds: int = 60,
     ) -> Sandbox:
         container_list = _validate_create_args(
@@ -221,6 +226,12 @@ class Sandboxes:
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
             network=network,
+            termination_policy=TerminationPolicy(
+                strategy="SnapshotRootfs",
+                snapshot_rootfs=termination_policy,
+            )
+            if termination_policy is not None
+            else None,
         )
 
         data = self._api.request_model(
@@ -261,6 +272,7 @@ class AsyncSandboxes:
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
         network: Network | None = ...,
+        termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> AsyncSandbox: ...
 
@@ -272,6 +284,7 @@ class AsyncSandboxes:
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
         network: Network | None = ...,
+        termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> AsyncSandbox: ...
 
@@ -289,6 +302,7 @@ class AsyncSandboxes:
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
         network: Network | None = None,
+        termination_policy: SnapshotRootfs | None = None,
         max_wait_seconds: int = 60,
     ) -> AsyncSandbox:
         container_list = _validate_create_args(
@@ -306,6 +320,12 @@ class AsyncSandboxes:
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
             network=network,
+            termination_policy=TerminationPolicy(
+                strategy="SnapshotRootfs",
+                snapshot_rootfs=termination_policy,
+            )
+            if termination_policy is not None
+            else None,
         )
 
         data = await self._api.request_model(
@@ -360,6 +380,12 @@ class Sandbox:
         return self._data.startup_timeout_seconds
 
     @property
+    def termination_policy(self) -> SnapshotRootfs | None:
+        if self._data.termination_policy and self._data.termination_policy.snapshot_rootfs:
+            return self._data.termination_policy.snapshot_rootfs
+        return None
+
+    @property
     def containers(self) -> list[ContainerInfo]:
         return self._data.pod_template.containers
 
@@ -403,6 +429,12 @@ class AsyncSandbox:
     @property
     def startup_timeout_seconds(self) -> int | None:
         return self._data.startup_timeout_seconds
+
+    @property
+    def termination_policy(self) -> SnapshotRootfs | None:
+        if self._data.termination_policy and self._data.termination_policy.snapshot_rootfs:
+            return self._data.termination_policy.snapshot_rootfs
+        return None
 
     @property
     def containers(self) -> list[ContainerInfo]:

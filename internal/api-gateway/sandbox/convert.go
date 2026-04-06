@@ -57,6 +57,7 @@ func sandboxToResponse(sb *sandboxv1alpha1.Sandbox) SandboxResponse {
 	resp.TimeoutSeconds = sb.Spec.TimeoutSeconds
 	resp.StartupTimeoutSeconds = sb.Spec.StartupTimeoutSeconds
 	resp.Network = crdNetworkToREST(sb.Spec.Network)
+	resp.TerminationPolicy = crdTerminationPolicyToREST(sb.Spec.TerminationPolicy)
 
 	return resp
 }
@@ -195,6 +196,7 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 	}
 
 	sb.Spec.Network = restNetworkToCRD(req.Network)
+	sb.Spec.TerminationPolicy = restTerminationPolicyToCRD(req.TerminationPolicy)
 
 	return sb, nil
 }
@@ -248,4 +250,38 @@ func restNetworkToCRD(n *Network) *sandboxv1alpha1.Network {
 		AllowedEgressCIDRs:  n.AllowedEgressCIDRs,
 		Nameservers:         n.Nameservers,
 	}
+}
+
+func restTerminationPolicyToCRD(rest *TerminationPolicy) *sandboxv1alpha1.TerminationPolicy {
+	if rest == nil {
+		return nil
+	}
+	crd := &sandboxv1alpha1.TerminationPolicy{
+		Strategy: sandboxv1alpha1.SandboxTerminationStrategy(rest.Strategy),
+	}
+	if rest.SnapshotRootfs != nil {
+		crd.SnapshotRootfs = &sandboxv1alpha1.SnapshotRootfsTermination{
+			SnapshotName:            rest.SnapshotRootfs.SnapshotName,
+			TimeoutSeconds:          rest.SnapshotRootfs.TimeoutSeconds,
+			TTLSecondsAfterFinished: rest.SnapshotRootfs.TTLSecondsAfterFinished,
+		}
+	}
+	return crd
+}
+
+func crdTerminationPolicyToREST(tp *sandboxv1alpha1.TerminationPolicy) *TerminationPolicy {
+	if tp == nil {
+		return nil
+	}
+	rest := &TerminationPolicy{
+		Strategy: string(tp.Strategy),
+	}
+	if tp.SnapshotRootfs != nil {
+		rest.SnapshotRootfs = &SnapshotRootfsTermination{
+			SnapshotName:            tp.SnapshotRootfs.SnapshotName,
+			TimeoutSeconds:          tp.SnapshotRootfs.TimeoutSeconds,
+			TTLSecondsAfterFinished: tp.SnapshotRootfs.TTLSecondsAfterFinished,
+		}
+	}
+	return rest
 }
