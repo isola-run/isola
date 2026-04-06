@@ -157,6 +157,33 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(snapshotNameEnv).To(Equal(customSnapshotName))
 			Expect(snapshotNamespaceEnv).To(Equal(testNamespace))
 		})
+
+		It("should default snapshotName to sandboxName when omitted", func() {
+			snapName := "snap-default-name"
+			sandboxName := "sandbox-default-name"
+
+			snap := &sandboxv1alpha1.RootfsSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      snapName,
+					Namespace: testNamespace,
+				},
+				Spec: sandboxv1alpha1.RootfsSnapshotSpec{
+					SandboxName:  sandboxName,
+					SnapshotName: "",
+				},
+			}
+			Expect(k8sClient.Create(ctx, snap)).To(Succeed())
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			updated := getRootfsSnapshotCR(ctx, snapName)
+			Expect(updated).NotTo(BeNil())
+			Expect(updated.Spec.SnapshotName).To(Equal(sandboxName))
+		})
 	})
 
 	Context("Container Selection", func() {

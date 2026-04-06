@@ -37,6 +37,7 @@ from ._models import (
     SandboxStatus,
     SandboxSummary,
     SnapshotRootfs,
+    TerminationPolicy,
 )
 
 _POLL_INTERVAL = 1.0
@@ -225,19 +226,17 @@ class Sandboxes:
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
             network=network,
+            termination_policy=TerminationPolicy(
+                strategy="SnapshotRootfs",
+                snapshot_rootfs=termination_policy,
+            ) if termination_policy is not None else None,
         )
-        body = payload.model_dump(by_alias=True, exclude_none=True)
-        if termination_policy is not None:
-            body["terminationPolicy"] = {
-                "strategy": "SnapshotRootfs",
-                "snapshotRootfs": termination_policy.model_dump(by_alias=True, exclude_none=True),
-            }
 
         data = self._api.request_model(
             "POST",
             "/v1/sandboxes",
             SandboxData,
-            json_body=body,
+            json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
         _check_terminal(data.id, data.status)
         if data.status != SandboxStatus.RUNNING and max_wait_seconds != 0:
@@ -319,19 +318,17 @@ class AsyncSandboxes:
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
             network=network,
+            termination_policy=TerminationPolicy(
+                strategy="SnapshotRootfs",
+                snapshot_rootfs=termination_policy,
+            ) if termination_policy is not None else None,
         )
-        body = payload.model_dump(by_alias=True, exclude_none=True)
-        if termination_policy is not None:
-            body["terminationPolicy"] = {
-                "strategy": "SnapshotRootfs",
-                "snapshotRootfs": termination_policy.model_dump(by_alias=True, exclude_none=True),
-            }
 
         data = await self._api.request_model(
             "POST",
             "/v1/sandboxes",
             SandboxData,
-            json_body=body,
+            json_body=payload.model_dump(by_alias=True, exclude_none=True),
         )
         _check_terminal(data.id, data.status)
         if data.status != SandboxStatus.RUNNING and max_wait_seconds != 0:

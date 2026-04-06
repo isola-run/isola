@@ -94,7 +94,7 @@ class RootfsSnapshotStatus(str, Enum):
 
 class CreateRootfsSnapshotPayload(IsolaModel):
     sandbox_id: str
-    snapshot_name: str
+    snapshot_name: str | None = None
     container_name: str | None = None
     timeout_seconds: int
     ttl_seconds_after_finished: int
@@ -143,6 +143,7 @@ class CreateSandboxPayload(IsolaModel):
     timeout_seconds: int | None = None
     startup_timeout_seconds: int
     network: Network | None = None
+    termination_policy: TerminationPolicy | None = None
 
 
 class SandboxSummary(IsolaModel):

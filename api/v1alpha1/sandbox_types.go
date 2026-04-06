@@ -41,11 +41,11 @@ type SnapshotRootfsTermination struct {
 	// SnapshotName is the name used for the snapshot storage key.
 	// This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
 	// Same semantic as RootfsSnapshotSpec.SnapshotName.
-	// +required
-	// +kubebuilder:validation:MinLength=1
+	// If omitted, the operator defaults it to the sandbox name.
+	// +optional
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
-	SnapshotName string `json:"snapshotName"`
+	SnapshotName string `json:"snapshotName,omitempty"`
 
 	// TimeoutSeconds specifies the duration in seconds for the snapshot job.
 	// If the job does not complete within this time, it will be terminated.

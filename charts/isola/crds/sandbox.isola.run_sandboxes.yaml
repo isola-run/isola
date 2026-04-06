@@ -189,8 +189,8 @@ spec:
                           SnapshotName is the name used for the snapshot storage key.
                           This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
                           Same semantic as RootfsSnapshotSpec.SnapshotName.
+                          If omitted, the operator defaults it to the sandbox name.
                         maxLength: 63
-                        minLength: 1
                         pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                         type: string
                       timeoutSeconds:
@@ -213,8 +213,6 @@ spec:
                         format: int32
                         minimum: 0
                         type: integer
-                    required:
-                    - snapshotName
                     type: object
                   strategy:
                     allOf:

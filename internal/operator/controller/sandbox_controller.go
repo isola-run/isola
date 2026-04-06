@@ -1223,6 +1223,10 @@ func (r *SandboxReconciler) createTerminationSnapshot(
 	log := logf.FromContext(ctx)
 
 	cfg := sandbox.Spec.TerminationPolicy.SnapshotRootfs
+	snapshotName := cfg.SnapshotName
+	if snapshotName == "" {
+		snapshotName = sandbox.Name
+	}
 	crName := podutil.GetTerminationSnapshotName(sandbox.Name)
 	rootfsSnapshot := &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1231,7 +1235,7 @@ func (r *SandboxReconciler) createTerminationSnapshot(
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 			SandboxName:             sandbox.Name,
-			SnapshotName:            cfg.SnapshotName,
+			SnapshotName:            snapshotName,
 			TimeoutSeconds:          &timeoutSeconds,
 			TTLSecondsAfterFinished: cfg.TTLSecondsAfterFinished,
 		},

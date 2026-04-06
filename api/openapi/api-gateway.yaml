@@ -152,9 +152,8 @@ components:
           minLength: 1
           type: string
         snapshotName:
-          description: Identifier for this snapshot, used both as the storage key and as the restore reference. To restore from this snapshot, pass this value as rootfsSnapshotName on a container when creating a sandbox.
+          description: Snapshot storage key and restore reference. Defaults to the sandbox ID if omitted. To restore, pass this value as rootfsSnapshotName on a container when creating a sandbox.
           maxLength: 63
-          minLength: 1
           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
           type: string
         timeoutSeconds:
@@ -169,7 +168,6 @@ components:
           type: integer
       required:
         - sandboxId
-        - snapshotName
       type: object
     CreateSandboxRequest:
       additionalProperties: false

@@ -124,6 +124,15 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// Create base copy for status patches
 	baseSnap := snap.DeepCopy()
 
+	// Default snapshotName to sandboxName if omitted
+	if snap.Spec.SnapshotName == "" {
+		snap.Spec.SnapshotName = snap.Spec.SandboxName
+		if err := r.Update(ctx, snap); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
 	isComplete := snap.Status.CompletionTime != nil
 	if isComplete {
 		ttlLeft := r.ttlLeft(snap)
