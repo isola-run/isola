@@ -48,16 +48,13 @@ The `with` block deletes the sandbox automatically when it exits. You can also c
 Import `AsyncIsola` instead of `Isola` and use `await` with each call:
 
 ```python
-import asyncio
 from isola import AsyncIsola
 
-async def main():
-    async with AsyncIsola() as client:
-        async with await client.sandboxes.create(image="alpine:3.21") as sandbox:
-            result = await sandbox.commands.run("echo", "hello async")
-            print(result.stdout)
-
-asyncio.run(main())
+async with AsyncIsola() as client:
+    sandbox = await client.sandboxes.create(image="alpine:3.21")
+    result = await sandbox.commands.run("echo", "hello async")
+    print(result.stdout)
+    await sandbox.delete()  # or use "async with ... as sandbox:" for automatic cleanup
 ```
 
 The async API is identical to the sync API. All examples below use the sync client.
@@ -327,7 +324,7 @@ result = sandbox.commands.run("curl", "http://localhost:8080", container="worker
 sandbox.filesystem.write("/tmp/data.txt", "hello", container="app")
 ```
 
-You cannot mix `image` with `containers`. Per-container options like `command`, `env`, `cpu`, `memory`, and `rootfs_snapshot_name` go on each `Container` object.
+You cannot mix `image` with `containers`. Per-container options like `command`, `env`, `resources`, and `rootfs_snapshot_name` go on each `Container` object.
 
 ## Error handling
 
