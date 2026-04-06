@@ -26,7 +26,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/isola-run/isola/api/v1alpha1"
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 	apigateway "github.com/isola-run/isola/internal/api-gateway"
 )
