@@ -195,7 +195,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 		})
 
 		It("rejects SnapshotRootfs with multiple containers with 422", func() {
-			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"},{"image":"nginx"}]},"terminationPolicy":{"strategy":"SnapshotRootfs","snapshotRootfs":{}}}`
+			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"},{"image":"nginx"}]},"terminationPolicy":{"type":"SnapshotRootfs","snapshotRootfs":{}}}`
 			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})

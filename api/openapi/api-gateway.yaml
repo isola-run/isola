@@ -552,10 +552,10 @@ components:
       properties:
         snapshotRootfs:
           $ref: "#/components/schemas/SnapshotRootfsTermination"
-          description: Config for SnapshotRootfs strategy
-        strategy:
+          description: Config for SnapshotRootfs type
+        type:
           default: Delete
-          description: Termination strategy
+          description: Termination type
           enum:
             - Delete
             - SnapshotRootfs

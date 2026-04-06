@@ -120,7 +120,7 @@ class PodTemplateInfo(IsolaModel):
 
 
 class SnapshotRootfs(IsolaModel):
-    """Configure SnapshotRootfs termination strategy.
+    """Configure SnapshotRootfs termination policy.
 
     Snapshots the first user container on termination. Restore with
     rootfs_snapshot_name matching the snapshot_name used here.
@@ -134,7 +134,7 @@ class SnapshotRootfs(IsolaModel):
 class TerminationPolicy(IsolaModel):
     """Wire format for terminationPolicy (internal, not exported)."""
 
-    strategy: str
+    type: str
     snapshot_rootfs: SnapshotRootfs | None = None
 
 
