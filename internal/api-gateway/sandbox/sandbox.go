@@ -49,9 +49,8 @@ type PodTemplate struct {
 }
 
 type SnapshotRootfsTermination struct {
-	SnapshotName            string `json:"snapshotName,omitempty" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Snapshot storage key. Defaults to sandbox ID if omitted."`
-	TimeoutSeconds          *int64 `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Snapshot operation deadline in seconds. Defaults to 300."`
-	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" minimum:"0" doc:"Auto-cleanup seconds after snapshot completes. Defaults to 300."`
+	SnapshotName   string `json:"snapshotName,omitempty" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Snapshot storage key. Defaults to sandbox ID if omitted."`
+	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Snapshot operation deadline in seconds. Defaults to 300."`
 }
 
 type TerminationPolicy struct {

@@ -541,11 +541,6 @@ components:
           format: int64
           minimum: 1
           type: integer
-        ttlSecondsAfterFinished:
-          description: Auto-cleanup seconds after snapshot completes. Defaults to 300.
-          format: int32
-          minimum: 0
-          type: integer
       type: object
     TerminationPolicy:
       additionalProperties: false
