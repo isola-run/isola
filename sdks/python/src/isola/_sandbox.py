@@ -229,7 +229,9 @@ class Sandboxes:
             termination_policy=TerminationPolicy(
                 strategy="SnapshotRootfs",
                 snapshot_rootfs=termination_policy,
-            ) if termination_policy is not None else None,
+            )
+            if termination_policy is not None
+            else None,
         )
 
         data = self._api.request_model(
@@ -321,7 +323,9 @@ class AsyncSandboxes:
             termination_policy=TerminationPolicy(
                 strategy="SnapshotRootfs",
                 snapshot_rootfs=termination_policy,
-            ) if termination_policy is not None else None,
+            )
+            if termination_policy is not None
+            else None,
         )
 
         data = await self._api.request_model(
