@@ -88,7 +88,7 @@ operator:
     # Set enabled: false if your security policy prohibits these operations.
     # Sandboxes will still run normally; only RootfsSnapshot CRs will fail.
     rootfssnapshot:
-      enabled: true
+      enabled: false
 
       # gVisor/runsc paths for rootfs snapshot operations
       # These paths must match your cluster's gVisor installation
