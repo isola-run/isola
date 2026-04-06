@@ -26,11 +26,30 @@ def _filesystem_path(sandbox_id: str) -> str:
 
 
 class Filesystem:
+    """Read and write files inside a sandbox."""
+
     def __init__(self, api: _SyncAPI, sandbox_id: str) -> None:
         self._api = api
         self._sandbox_id = sandbox_id
 
     def write(self, path: str, data: str | bytes | BinaryIO, *, container: str | None = None) -> FileWriteResult:
+        """Write a file to the sandbox.
+
+        Creates the file if it does not exist, overwrites it if it does.
+        Parent directories are created automatically.
+
+        Args:
+            path: Absolute path inside the sandbox
+                (e.g. ``"/tmp/hello.txt"``).
+            data: Content to write. Pass a ``str`` for text, ``bytes``
+                for binary data, or an open file object to stream from
+                disk.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Returns:
+            A FileWriteResult with the resolved path and bytes written.
+        """
         params = {"path": path}
         if container:
             params["container"] = container
@@ -47,6 +66,16 @@ class Filesystem:
         return result
 
     def read(self, path: str, *, container: str | None = None) -> bytes:
+        """Read a file from the sandbox.
+
+        Args:
+            path: Absolute path inside the sandbox.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Returns:
+            File contents as bytes. Decode with ``.decode()`` for text.
+        """
         params = {"path": path}
         if container:
             params["container"] = container
@@ -55,11 +84,30 @@ class Filesystem:
 
 
 class AsyncFilesystem:
+    """Async version of Filesystem."""
+
     def __init__(self, api: _AsyncAPI, sandbox_id: str) -> None:
         self._api = api
         self._sandbox_id = sandbox_id
 
     async def write(self, path: str, data: str | bytes | BinaryIO, *, container: str | None = None) -> FileWriteResult:
+        """Write a file to the sandbox.
+
+        Creates the file if it does not exist, overwrites it if it does.
+        Parent directories are created automatically.
+
+        Args:
+            path: Absolute path inside the sandbox
+                (e.g. ``"/tmp/hello.txt"``).
+            data: Content to write. Pass a ``str`` for text, ``bytes``
+                for binary data, or an open file object to stream from
+                disk.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Returns:
+            A FileWriteResult with the resolved path and bytes written.
+        """
         params = {"path": path}
         if container:
             params["container"] = container
@@ -76,6 +124,16 @@ class AsyncFilesystem:
         return result
 
     async def read(self, path: str, *, container: str | None = None) -> bytes:
+        """Read a file from the sandbox.
+
+        Args:
+            path: Absolute path inside the sandbox.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Returns:
+            File contents as bytes. Decode with ``.decode()`` for text.
+        """
         params = {"path": path}
         if container:
             params["container"] = container

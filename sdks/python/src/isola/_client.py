@@ -290,6 +290,25 @@ def _normalize_base_url(base_url: str) -> str:
 
 
 class Isola:
+    """Synchronous client for the Isola API.
+
+    Example::
+
+        from isola import Isola
+
+        client = Isola()  # reads ISOLA_BASE_URL env var
+        with client.sandboxes.create(image="alpine:3.21") as sandbox:
+            result = sandbox.commands.run("echo", "hello")
+            print(result.stdout)
+
+    Args:
+        base_url: Isola API base URL. If not provided, reads from the
+            ``ISOLA_BASE_URL`` environment variable.
+
+    Raises:
+        ValueError: If no base URL is provided or found in environment.
+    """
+
     def __init__(self, *, base_url: str | None = None) -> None:
         base_url = base_url or os.environ.get("ISOLA_BASE_URL")
         if not base_url:
@@ -304,6 +323,10 @@ class Isola:
         self.rootfs_snapshots = RootfsSnapshots(self._api)
 
     def close(self) -> None:
+        """Close the HTTP connection.
+
+        Called automatically when using the client as a context manager.
+        """
         self._api.close()
 
     def __enter__(self) -> Isola:
@@ -314,6 +337,25 @@ class Isola:
 
 
 class AsyncIsola:
+    """Asynchronous client for the Isola API.
+
+    Example::
+
+        from isola import AsyncIsola
+
+        async with AsyncIsola() as client:
+            async with await client.sandboxes.create(image="alpine:3.21") as sandbox:
+                result = await sandbox.commands.run("echo", "hello")
+                print(result.stdout)
+
+    Args:
+        base_url: Isola API base URL. If not provided, reads from the
+            ``ISOLA_BASE_URL`` environment variable.
+
+    Raises:
+        ValueError: If no base URL is provided or found in environment.
+    """
+
     def __init__(self, *, base_url: str | None = None) -> None:
         base_url = base_url or os.environ.get("ISOLA_BASE_URL")
         if not base_url:
@@ -328,6 +370,11 @@ class AsyncIsola:
         self.rootfs_snapshots = AsyncRootfsSnapshots(self._api)
 
     async def close(self) -> None:
+        """Close the HTTP connection.
+
+        Called automatically when using the client as an async context
+        manager.
+        """
         await self._api.close()
 
     async def __aenter__(self) -> AsyncIsola:

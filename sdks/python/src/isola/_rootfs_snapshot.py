@@ -88,6 +88,13 @@ async def _async_wait_until_complete(
 
 
 class RootfsSnapshots:
+    """Manage rootfs snapshots.
+
+    Rootfs snapshots capture a sandbox container's filesystem at a point
+    in time. You can restore a snapshot into a new sandbox to pick up
+    where you left off.
+    """
+
     def __init__(self, api: _SyncAPI) -> None:
         self._api = api
 
@@ -101,6 +108,35 @@ class RootfsSnapshots:
         ttl_seconds_after_finished: int = 300,
         max_wait_seconds: int = 300,
     ) -> RootfsSnapshot:
+        """Create a rootfs snapshot from a running sandbox.
+
+        Blocks until the snapshot completes, up to ``max_wait_seconds``.
+        Set ``max_wait_seconds=0`` to return immediately.
+
+        Args:
+            sandbox_id: ID of the sandbox to snapshot.
+            snapshot_name: Name for the snapshot. The server generates
+                one if not provided. Use this name to restore later via
+                ``rootfs_snapshot_name`` on sandbox creation.
+            container_name: Which container to snapshot, for
+                multi-container sandboxes. Defaults to the first
+                container.
+            timeout_seconds: Maximum time for the snapshot operation,
+                in seconds. Enforced server-side. Default: 300.
+            ttl_seconds_after_finished: How long the server keeps the
+                snapshot resource after it completes, in seconds.
+                Default: 300.
+            max_wait_seconds: How long this method polls for completion,
+                in seconds. Client-side only. Default: 300.
+
+        Returns:
+            A RootfsSnapshot with the snapshot metadata and status.
+
+        Raises:
+            IsolaError: If the snapshot fails.
+            IsolaTimeoutError: If the snapshot does not complete within
+                ``max_wait_seconds``.
+        """
         payload = CreateRootfsSnapshotPayload(
             sandbox_id=sandbox_id,
             snapshot_name=snapshot_name,
@@ -120,11 +156,24 @@ class RootfsSnapshots:
         return RootfsSnapshot(self._api, data)
 
     def get(self, snapshot_id: str) -> RootfsSnapshot:
+        """Get a rootfs snapshot by ID.
+
+        Args:
+            snapshot_id: The snapshot's unique identifier.
+
+        Returns:
+            A RootfsSnapshot with the current state.
+
+        Raises:
+            NotFoundError: If no snapshot with that ID exists.
+        """
         data = self._api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
         return RootfsSnapshot(self._api, data)
 
 
 class AsyncRootfsSnapshots:
+    """Async version of RootfsSnapshots."""
+
     def __init__(self, api: _AsyncAPI) -> None:
         self._api = api
 
@@ -138,6 +187,10 @@ class AsyncRootfsSnapshots:
         ttl_seconds_after_finished: int = 300,
         max_wait_seconds: int = 300,
     ) -> AsyncRootfsSnapshot:
+        """Create a rootfs snapshot from a running sandbox.
+
+        See ``RootfsSnapshots.create()`` for full documentation.
+        """
         payload = CreateRootfsSnapshotPayload(
             sandbox_id=sandbox_id,
             snapshot_name=snapshot_name,
@@ -157,79 +210,114 @@ class AsyncRootfsSnapshots:
         return AsyncRootfsSnapshot(self._api, data)
 
     async def get(self, snapshot_id: str) -> AsyncRootfsSnapshot:
+        """Get a rootfs snapshot by ID.
+
+        Args:
+            snapshot_id: The snapshot's unique identifier.
+
+        Returns:
+            An AsyncRootfsSnapshot with the current state.
+
+        Raises:
+            NotFoundError: If no snapshot with that ID exists.
+        """
         data = await self._api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
         return AsyncRootfsSnapshot(self._api, data)
 
 
 class RootfsSnapshot:
+    """A rootfs snapshot.
+
+    Inspect the snapshot's status and metadata. To restore from this
+    snapshot, pass its ``snapshot_name`` as the ``rootfs_snapshot_name``
+    parameter when creating a new sandbox.
+    """
+
     def __init__(self, api: _SyncAPI, data: RootfsSnapshotData) -> None:
         self._api = api
         self._data = data
 
     @property
     def id(self) -> str:
+        """Unique identifier of the snapshot."""
         return self._data.id
 
     @property
     def sandbox_id(self) -> str:
+        """ID of the sandbox this snapshot was taken from."""
         return self._data.sandbox_id
 
     @property
     def snapshot_name(self) -> str:
+        """Name of the snapshot. Use this to restore from it."""
         return self._data.snapshot_name
 
     @property
     def container_name(self) -> str | None:
+        """Container that was snapshotted, or None for the default."""
         return self._data.container_name
 
     @property
     def timeout_seconds(self) -> int | None:
+        """Server-side timeout for the snapshot operation, in seconds."""
         return self._data.timeout_seconds
 
     @property
     def ttl_seconds_after_finished(self) -> int | None:
+        """How long the server keeps this resource after completion, in seconds."""
         return self._data.ttl_seconds_after_finished
 
     @property
     def status(self) -> RootfsSnapshotStatus:
+        """Current lifecycle status of the snapshot."""
         return self._data.status
 
     @property
     def creation_timestamp(self) -> datetime:
+        """When the snapshot was created."""
         return self._data.creation_timestamp
 
 
 class AsyncRootfsSnapshot:
+    """Async version of RootfsSnapshot."""
+
     def __init__(self, api: _AsyncAPI, data: RootfsSnapshotData) -> None:
         self._api = api
         self._data = data
 
     @property
     def id(self) -> str:
+        """Unique identifier of the snapshot."""
         return self._data.id
 
     @property
     def sandbox_id(self) -> str:
+        """ID of the sandbox this snapshot was taken from."""
         return self._data.sandbox_id
 
     @property
     def snapshot_name(self) -> str:
+        """Name of the snapshot. Use this to restore from it."""
         return self._data.snapshot_name
 
     @property
     def container_name(self) -> str | None:
+        """Container that was snapshotted, or None for the default."""
         return self._data.container_name
 
     @property
     def timeout_seconds(self) -> int | None:
+        """Server-side timeout for the snapshot operation, in seconds."""
         return self._data.timeout_seconds
 
     @property
     def ttl_seconds_after_finished(self) -> int | None:
+        """How long the server keeps this resource after completion, in seconds."""
         return self._data.ttl_seconds_after_finished
 
     @property
     def status(self) -> RootfsSnapshotStatus:
+        """Current lifecycle status of the snapshot."""
         return self._data.status
 
     @property

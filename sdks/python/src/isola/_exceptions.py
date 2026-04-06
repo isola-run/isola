@@ -20,48 +20,85 @@ import httpx
 
 
 class IsolaError(Exception):
+    """Base exception for all Isola SDK errors.
+
+    Attributes:
+        message: Human-readable error description.
+    """
+
     def __init__(self, message: str) -> None:
         self.message = message
         super().__init__(message)
 
 
 class APIError(IsolaError):
+    """An error response from the Isola API.
+
+    Attributes:
+        status_code: HTTP status code from the API.
+        message: Error detail from the response body, or a generic
+            message if the body could not be parsed.
+    """
+
     def __init__(self, *, status_code: int, message: str) -> None:
         self.status_code = status_code
         super().__init__(f"{status_code}: {message}")
 
 
 class BadRequestError(APIError):
+    """HTTP 400: the request was malformed or invalid."""
+
     pass
 
 
 class NotFoundError(APIError):
+    """HTTP 404: the requested resource does not exist."""
+
     pass
 
 
 class ConflictError(APIError):
+    """HTTP 409: the request conflicts with current state."""
+
     pass
 
 
 class ValidationError(APIError):
+    """HTTP 422: the request body failed validation."""
+
     pass
 
 
 class InternalError(APIError):
+    """HTTP 500: an unexpected error on the server."""
+
     pass
 
 
 class BadGatewayError(APIError):
+    """HTTP 502: the server received an invalid response from upstream."""
+
     pass
 
 
 class IsolaTimeoutError(IsolaError):
-    """Client-side timeout exceeded."""
+    """A client-side timeout expired.
+
+    Raised when the SDK waited longer than ``max_wait_seconds`` for a
+    sandbox to become ready or a snapshot to complete. The resource
+    may still be progressing on the server.
+    """
 
     pass
 
 
 class APIConnectionError(IsolaError, ConnectionError):
+    """Could not connect to the Isola API.
+
+    Raised after exhausting all retry attempts. Check that the base URL
+    is correct and the Isola API gateway is reachable.
+    """
+
     pass
 
 
