@@ -171,15 +171,15 @@ class Sandboxes:
         self,
         *,
         image: str,
+        rootfs_snapshot_name: str | None = ...,
         command: list[str] | None = ...,
         env: dict[str, str] | None = ...,
         cpu: float | None = ...,
         memory: int | None = ...,
         ephemeral_storage: int | None = ...,
-        rootfs_snapshot_name: str | None = ...,
+        network: Network | None = ...,
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
-        network: Network | None = ...,
         termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> Sandbox: ...
@@ -189,9 +189,9 @@ class Sandboxes:
         self,
         *,
         containers: list[Container],
+        network: Network | None = ...,
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
-        network: Network | None = ...,
         termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> Sandbox: ...
@@ -200,16 +200,16 @@ class Sandboxes:
         self,
         *,
         image: str | None = None,
-        containers: list[Container] | None = None,
+        rootfs_snapshot_name: str | None = None,
         command: list[str] | None = None,
         env: dict[str, str] | None = None,
         cpu: float | None = None,
         memory: int | None = None,
         ephemeral_storage: int | None = None,
-        rootfs_snapshot_name: str | None = None,
+        containers: list[Container] | None = None,
+        network: Network | None = None,
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
-        network: Network | None = None,
         termination_policy: SnapshotRootfs | None = None,
         max_wait_seconds: int = 60,
     ) -> Sandbox:
@@ -243,21 +243,21 @@ class Sandboxes:
         Args:
             image: Container image to run (e.g. "python:3.12").
                 Required unless containers is provided.
-            containers: List of Container specs for multi-container
-                sandboxes. Cannot be combined with image.
+            rootfs_snapshot_name: Restore the container's filesystem
+                from this named snapshot.
             command: Command and arguments to run in the container.
             env: Environment variables as key-value pairs.
             cpu: CPU limit in cores (e.g. 0.5, 2.0).
             memory: Memory limit in MiB (e.g. 256, 1024).
             ephemeral_storage: Ephemeral storage limit in MiB.
-            rootfs_snapshot_name: Restore the container's filesystem
-                from this named snapshot.
+            containers: List of Container specs for multi-container
+                sandboxes. Cannot be combined with image.
+            network: Network policy. Sandboxes have no network access
+                by default. See the Network class.
             timeout_seconds: Maximum sandbox lifetime in seconds.
                 Enforced server-side. None means no limit.
             startup_timeout_seconds: Maximum time for the container to
                 start, in seconds. Enforced server-side. Default: 60.
-            network: Network policy. Sandboxes have no network access
-                by default. See the Network class.
             termination_policy: A SnapshotRootfs to automatically
                 snapshot the filesystem when the sandbox terminates.
             max_wait_seconds: How long to wait for the sandbox to be
@@ -287,9 +287,9 @@ class Sandboxes:
         )
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(containers=container_list),
+            network=network,
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
-            network=network,
             termination_policy=TerminationPolicy(
                 type="SnapshotRootfs",
                 snapshot_rootfs=termination_policy,
@@ -346,15 +346,15 @@ class AsyncSandboxes:
         self,
         *,
         image: str,
+        rootfs_snapshot_name: str | None = ...,
         command: list[str] | None = ...,
         env: dict[str, str] | None = ...,
         cpu: float | None = ...,
         memory: int | None = ...,
         ephemeral_storage: int | None = ...,
-        rootfs_snapshot_name: str | None = ...,
+        network: Network | None = ...,
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
-        network: Network | None = ...,
         termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> AsyncSandbox: ...
@@ -364,9 +364,9 @@ class AsyncSandboxes:
         self,
         *,
         containers: list[Container],
+        network: Network | None = ...,
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
-        network: Network | None = ...,
         termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> AsyncSandbox: ...
@@ -375,16 +375,16 @@ class AsyncSandboxes:
         self,
         *,
         image: str | None = None,
-        containers: list[Container] | None = None,
+        rootfs_snapshot_name: str | None = None,
         command: list[str] | None = None,
         env: dict[str, str] | None = None,
         cpu: float | None = None,
         memory: int | None = None,
         ephemeral_storage: int | None = None,
-        rootfs_snapshot_name: str | None = None,
+        containers: list[Container] | None = None,
+        network: Network | None = None,
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
-        network: Network | None = None,
         termination_policy: SnapshotRootfs | None = None,
         max_wait_seconds: int = 60,
     ) -> AsyncSandbox:
@@ -404,9 +404,9 @@ class AsyncSandboxes:
         )
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(containers=container_list),
+            network=network,
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
-            network=network,
             termination_policy=TerminationPolicy(
                 type="SnapshotRootfs",
                 snapshot_rootfs=termination_policy,

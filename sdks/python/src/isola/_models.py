@@ -118,19 +118,19 @@ class Container(IsolaModel):
     Attributes:
         name: Container name. Auto-generated if not set.
         image: Container image to run (e.g. "python:3.12").
+        rootfs_snapshot_name: Name of a rootfs snapshot to restore into
+            this container.
         command: Command and arguments to run in the container.
         env: Environment variables as key-value pairs.
         resources: CPU, memory, and storage limits.
-        rootfs_snapshot_name: Name of a rootfs snapshot to restore into
-            this container.
     """
 
     name: str | None = None
     image: str
+    rootfs_snapshot_name: str | None = None
     command: list[str] | None = None
     env: dict[str, str] | None = None
     resources: ResourceRequirements | None = None
-    rootfs_snapshot_name: str | None = None
 
 
 class ContainerInfo(IsolaModel):
@@ -139,16 +139,16 @@ class ContainerInfo(IsolaModel):
     Attributes:
         name: Container name.
         image: Container image.
+        rootfs_snapshot_name: Rootfs snapshot name, if restoring from one.
         command: Command and arguments.
         resources: Resource limits and requests.
-        rootfs_snapshot_name: Rootfs snapshot name, if restoring from one.
     """
 
     name: str | None = None
     image: str
+    rootfs_snapshot_name: str | None = None
     command: list[str] | None = None
     resources: ResourceRequirements | None = None
-    rootfs_snapshot_name: str | None = None
 
 
 class RootfsSnapshotStatus(str, Enum):
