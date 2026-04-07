@@ -391,7 +391,7 @@ except IsolaError:
     print("Something else went wrong")
 ```
 
-The SDK automatically retries on transient errors (502, 503, 504 and connection failures), up to 5 times with a 1-second delay between attempts.
+The SDK automatically retries on transient errors (502, 503, 504 and connection failures).
 
 ## Configuration
 
