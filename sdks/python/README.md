@@ -297,7 +297,7 @@ from isola import Isola, Network
 
 client = Isola()
 
-# 1. Install a heavy stack once (~35s)
+# 1. Install a heavy stack once, with internet connectivity
 with client.sandboxes.create(
     image="python:3.12-slim",
     network=Network(allow_internet_egress=True),
@@ -309,21 +309,17 @@ with client.sandboxes.create(
         snapshot_name="datascience-base",
     )
 
-# 2. Each sandbox restores in seconds — no reinstall
+# 2. Restore from the snapshotted rootfs, packages already installed, no internet needed
 with client.sandboxes.create(
     image="python:3.12-slim",
     ephemeral_storage=4096,
     rootfs_snapshot_name="datascience-base",
 ) as sandbox:
     result = sandbox.commands.run("python3", "-c", """
-import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.datasets import load_iris
-
-data = load_iris()
-clf = RandomForestClassifier(n_estimators=10, random_state=42)
-clf.fit(data.data, data.target)
-print(f"accuracy: {clf.score(data.data, data.target):.2f}")
+from sklearn.ensemble import RandomForestClassifier
+X, y = load_iris(return_X_y=True)
+print(RandomForestClassifier(random_state=0).fit(X, y).score(X, y))
 """)
     print(result.stdout)
 ```
