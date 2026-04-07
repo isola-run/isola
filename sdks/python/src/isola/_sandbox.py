@@ -221,8 +221,7 @@ class Sandboxes:
         env, cpu, memory, ephemeral_storage, and rootfs_snapshot_name.
 
         Multiple containers: pass a containers list of Container objects.
-        Per-container options go on each Container. You cannot combine
-        image with containers.
+        Per-container options go on each Container.
 
         The method blocks until the sandbox reaches the Running state,
         up to max_wait_seconds. Set max_wait_seconds=0 to return
@@ -230,15 +229,14 @@ class Sandboxes:
 
         Timeouts:
 
-        - max_wait_seconds (client-side, default 65): How long this
-          method polls before giving up. Does not affect the sandbox on
-          the server. Raises IsolaTimeoutError if it expires.
-        - startup_timeout_seconds (server-side, default 60): How long
-          the server waits for the container to start. If it expires, the
-          sandbox is marked as Failed.
-        - timeout_seconds (server-side, no default): Maximum lifetime
-          of the sandbox. The server terminates it after this duration.
-          None means no limit.
+        - max_wait_seconds (client-side): How long this method polls
+          before giving up. Does not affect the sandbox on the server
+        - startup_timeout_seconds (server-side): How long the server
+          waits for the sandbox pod to become ready. If it expires,
+          the sandbox is marked as Failed.
+        - timeout_seconds (server-side, no default): How long the
+          sandbox runs before the server begins the termination
+          process. None means no limit.
 
         Args:
             image: Container image to run (e.g. "python:3.12").
@@ -248,20 +246,28 @@ class Sandboxes:
             command: Command and arguments to run in the container.
                 If not set, defaults to sleep infinity.
             env: Environment variables as key-value pairs.
-            cpu: CPU limit in cores (e.g. 0.5, 2.0).
-            memory: Memory limit in MiB (e.g. 256, 1024).
-            ephemeral_storage: Ephemeral storage limit in MiB.
+            cpu: CPU limit in cores (e.g. 0.5, 2.0). Sets both the
+                Kubernetes request and limit. If omitted, no CPU
+                limit is applied.
+            memory: Memory limit in MiB (e.g. 256, 1024). Sets both
+                the Kubernetes request and limit. If omitted, no
+                memory limit is applied.
+            ephemeral_storage: Ephemeral storage limit in MiB. Sets
+                both the Kubernetes request and limit. If omitted,
+                no ephemeral storage limit is applied.
             containers: List of Container specs for multi-container
                 sandboxes. Cannot be combined with image.
             network: Network policy. Sandboxes have no network access
                 by default. See the Network class.
-            timeout_seconds: Maximum sandbox lifetime in seconds.
+            timeout_seconds: How long the sandbox runs before the
+                server begins the termination process, in seconds.
                 Enforced server-side. None means no limit.
-            startup_timeout_seconds: Maximum time for the container to
-                start, in seconds. Enforced server-side.
-            termination_policy: A SnapshotRootfs to automatically
-                snapshot the container's root filesystem changes when
-                the sandbox terminates.
+            startup_timeout_seconds: Maximum time for the sandbox pod
+                to become ready, in seconds. Enforced server-side.
+            termination_policy: Action to run before the sandbox pod
+                is removed. Defaults to immediate deletion if not
+                set. Pass a SnapshotRootfs to snapshot the
+                container's rootfs changes before removal.
             max_wait_seconds: How long to wait for the sandbox to be
                 ready, in seconds. Client-side only. Set to 0 to return
                 immediately.
@@ -398,8 +404,7 @@ class AsyncSandboxes:
         env, cpu, memory, ephemeral_storage, and rootfs_snapshot_name.
 
         Multiple containers: pass a containers list of Container objects.
-        Per-container options go on each Container. You cannot combine
-        image with containers.
+        Per-container options go on each Container.
 
         The method blocks until the sandbox reaches the Running state,
         up to max_wait_seconds. Set max_wait_seconds=0 to return
@@ -407,15 +412,14 @@ class AsyncSandboxes:
 
         Timeouts:
 
-        - max_wait_seconds (client-side, default 65): How long this
-          method polls before giving up. Does not affect the sandbox on
-          the server. Raises IsolaTimeoutError if it expires.
-        - startup_timeout_seconds (server-side, default 60): How long
-          the server waits for the container to start. If it expires, the
-          sandbox is marked as Failed.
-        - timeout_seconds (server-side, no default): Maximum lifetime
-          of the sandbox. The server terminates it after this duration.
-          None means no limit.
+        - max_wait_seconds (client-side): How long this method polls
+          before giving up. Does not affect the sandbox on the server
+        - startup_timeout_seconds (server-side): How long the server
+          waits for the sandbox pod to become ready. If it expires,
+          the sandbox is marked as Failed.
+        - timeout_seconds (server-side, no default): How long the
+          sandbox runs before the server begins the termination
+          process. None means no limit.
 
         Args:
             image: Container image to run (e.g. "python:3.12").
@@ -425,20 +429,28 @@ class AsyncSandboxes:
             command: Command and arguments to run in the container.
                 If not set, defaults to sleep infinity.
             env: Environment variables as key-value pairs.
-            cpu: CPU limit in cores (e.g. 0.5, 2.0).
-            memory: Memory limit in MiB (e.g. 256, 1024).
-            ephemeral_storage: Ephemeral storage limit in MiB.
+            cpu: CPU limit in cores (e.g. 0.5, 2.0). Sets both the
+                Kubernetes request and limit. If omitted, no CPU
+                limit is applied.
+            memory: Memory limit in MiB (e.g. 256, 1024). Sets both
+                the Kubernetes request and limit. If omitted, no
+                memory limit is applied.
+            ephemeral_storage: Ephemeral storage limit in MiB. Sets
+                both the Kubernetes request and limit. If omitted,
+                no ephemeral storage limit is applied.
             containers: List of Container specs for multi-container
                 sandboxes. Cannot be combined with image.
             network: Network policy. Sandboxes have no network access
                 by default. See the Network class.
-            timeout_seconds: Maximum sandbox lifetime in seconds.
+            timeout_seconds: How long the sandbox runs before the
+                server begins the termination process, in seconds.
                 Enforced server-side. None means no limit.
-            startup_timeout_seconds: Maximum time for the container to
-                start, in seconds. Enforced server-side.
-            termination_policy: A SnapshotRootfs to automatically
-                snapshot the container's root filesystem changes when
-                the sandbox terminates.
+            startup_timeout_seconds: Maximum time for the sandbox pod
+                to become ready, in seconds. Enforced server-side.
+            termination_policy: Action to run before the sandbox pod
+                is removed. Defaults to immediate deletion if not
+                set. Pass a SnapshotRootfs to snapshot the
+                container's rootfs changes before removal.
             max_wait_seconds: How long to wait for the sandbox to be
                 ready, in seconds. Client-side only. Set to 0 to return
                 immediately.
@@ -557,24 +569,23 @@ class Sandbox:
 
     @property
     def timeout_seconds(self) -> int | None:
-        """Maximum sandbox lifetime in seconds, or None for no limit."""
+        """How long the sandbox runs before the server begins the termination process, in seconds.
+
+        None means no limit.
+        """
         return self._data.timeout_seconds
 
     @property
     def startup_timeout_seconds(self) -> int | None:
-        """Maximum startup time in seconds."""
+        """Maximum time for the sandbox pod to become ready, in seconds.
+
+        If exceeded, the sandbox is marked as Failed.
+        """
         return self._data.startup_timeout_seconds
 
     @property
-    def termination_policy(self) -> SnapshotRootfs | None:
-        """Snapshot-on-termination policy, if configured."""
-        if self._data.termination_policy and self._data.termination_policy.snapshot_rootfs:
-            return self._data.termination_policy.snapshot_rootfs
-        return None
-
-    @property
     def containers(self) -> list[ContainerInfo]:
-        """Containers running in this sandbox."""
+        """The sandbox's containers. Does not include init or ephemeral containers."""
         return self._data.pod_template.containers
 
     def __enter__(self) -> Sandbox:
@@ -586,7 +597,7 @@ class Sandbox:
     def delete(self) -> None:
         """Delete the sandbox.
 
-        Stops all running processes and removes the sandbox. Called
+        Executes the termination policy and removes the pod. Called
         automatically when using the sandbox as a context manager.
         """
         self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
@@ -636,24 +647,23 @@ class AsyncSandbox:
 
     @property
     def timeout_seconds(self) -> int | None:
-        """Maximum sandbox lifetime in seconds, or None for no limit."""
+        """How long the sandbox runs before the server begins the termination process, in seconds.
+
+        None means no limit.
+        """
         return self._data.timeout_seconds
 
     @property
     def startup_timeout_seconds(self) -> int | None:
-        """Maximum startup time in seconds."""
+        """Maximum time for the sandbox pod to become ready, in seconds.
+
+        If exceeded, the sandbox is marked as Failed.
+        """
         return self._data.startup_timeout_seconds
 
     @property
-    def termination_policy(self) -> SnapshotRootfs | None:
-        """Snapshot-on-termination policy, if configured."""
-        if self._data.termination_policy and self._data.termination_policy.snapshot_rootfs:
-            return self._data.termination_policy.snapshot_rootfs
-        return None
-
-    @property
     def containers(self) -> list[ContainerInfo]:
-        """Containers running in this sandbox."""
+        """The sandbox's containers. Does not include init or ephemeral containers."""
         return self._data.pod_template.containers
 
     async def __aenter__(self) -> AsyncSandbox:
@@ -665,7 +675,7 @@ class AsyncSandbox:
     async def delete(self) -> None:
         """Delete the sandbox.
 
-        Stops all running processes and removes the sandbox. Called
+        Executes the termination policy and removes the pod. Called
         automatically when using the sandbox as an async context manager.
         """
         await self._api.request_no_content("DELETE", _sandbox_path(self._data.id))

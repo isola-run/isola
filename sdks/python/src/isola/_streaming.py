@@ -54,14 +54,14 @@ class _AsyncStreamAPI(Protocol):
 
 
 class StreamReader:
-    """Reads a command's output stream (stdout or stderr).
+    """A single-use reader for a streaming output.
 
-    StreamReader is single-use: you can iterate over it once, or call
-    read() to collect everything into a string. Attempting to iterate
-    a second time raises RuntimeError.
+    Iterate over it to receive chunks as they arrive, or call read()
+    to collect everything into a string. Attempting to iterate a
+    second time raises RuntimeError.
 
-    The reader reconnects automatically (up to 5 times) on transient
-    network errors, resuming from the last received event.
+    The reader reconnects automatically on transient
+    network errors, resuming from where it left off.
 
     Example:
 
@@ -93,8 +93,6 @@ class StreamReader:
 
     def read(self) -> str:
         """Read the entire stream and return it as a string.
-
-        Consumes the stream. Cannot be called after iterating.
 
         Raises:
             RuntimeError: If the stream has already been consumed.
@@ -136,14 +134,14 @@ class StreamReader:
 
 
 class AsyncStreamReader:
-    """Reads a command's output stream (stdout or stderr).
+    """A single-use reader for a streaming output.
 
-    AsyncStreamReader is single-use: you can iterate over it once with
-    async for, or call await read() to collect everything into a string.
+    Iterate over it with async for to receive chunks as they arrive,
+    or call await read() to collect everything into a string.
     Attempting to iterate a second time raises RuntimeError.
 
-    The reader reconnects automatically (up to 5 times) on transient
-    network errors, resuming from the last received event.
+    The reader reconnects automatically on transient
+    network errors, resuming from where it left off.
 
     Example:
 
@@ -206,8 +204,6 @@ class AsyncStreamReader:
 
     async def read(self) -> str:
         """Read the entire stream and return it as a string.
-
-        Consumes the stream. Cannot be called after iterating.
 
         Raises:
             RuntimeError: If the stream has already been consumed.

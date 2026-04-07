@@ -222,7 +222,7 @@ spec:
                   rule: self.type == 'SnapshotRootfs' || !has(self.snapshotRootfs)
               timeoutSeconds:
                 description: TimeoutSeconds defines how long the sandbox runs before
-                  being shut down
+                  the termination process begins
                 format: int64
                 minimum: 1
                 type: integer
