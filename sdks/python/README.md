@@ -360,17 +360,17 @@ You cannot mix `image` with `containers`. Per-container options like `command`, 
 
 ## Error handling
 
-All exceptions inherit from `IsolaError`:
+API and SDK errors inherit from `IsolaError`:
 
 ```
 IsolaError
-├── APIError          status_code, message
-│   ├── BadRequestError    400
-│   ├── NotFoundError      404
-│   ├── ConflictError      409
-│   ├── ValidationError    422
-│   ├── InternalError      500
-│   └── BadGatewayError    502
+├── APIError
+│   ├── BadRequestError
+│   ├── NotFoundError
+│   ├── ConflictError
+│   ├── ValidationError
+│   ├── InternalError
+│   └── BadGatewayError
 ├── IsolaTimeoutError
 └── APIConnectionError
 ```
@@ -391,7 +391,7 @@ except IsolaError:
     print("Something else went wrong")
 ```
 
-The SDK automatically retries on transient errors (502, 503, 504 and connection failures).
+The SDK automatically retries on transient errors.
 
 ## Configuration
 
