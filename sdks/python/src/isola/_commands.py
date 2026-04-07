@@ -94,7 +94,8 @@ class Command:
     def wait(self) -> int:
         """Block until the command finishes.
 
-        Uses long-polling internally, so this does not busy-wait.
+        Blocks until the command exits. To bound the wait, pass
+        timeout_seconds to spawn().
 
         Returns:
             The exit code of the command.
@@ -202,7 +203,8 @@ class AsyncCommand:
     async def wait(self) -> int:
         """Block until the command finishes.
 
-        Uses long-polling internally, so this does not busy-wait.
+        Blocks until the command exits. To bound the wait, pass
+        timeout_seconds to spawn().
 
         Returns:
             The exit code of the command.

@@ -136,16 +136,23 @@ class StreamReader:
 
 
 class AsyncStreamReader:
-    """Async version of StreamReader.
+    """Reads a command's output stream (stdout or stderr).
 
-    Use async for to iterate, or await reader.read() to collect
-    everything.
+    AsyncStreamReader is single-use: you can iterate over it once with
+    async for, or call await read() to collect everything into a string.
+    Attempting to iterate a second time raises RuntimeError.
+
+    The reader reconnects automatically (up to 5 times) on transient
+    network errors, resuming from the last received event.
 
     Example:
 
         cmd = await sandbox.commands.spawn("ls", "-la")
         async for chunk in cmd.stdout:
             print(chunk, end="")
+
+        # Or read everything at once:
+        output = await cmd.stderr.read()
     """
 
     def __init__(self, api: _AsyncStreamAPI, path: str) -> None:
