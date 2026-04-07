@@ -122,12 +122,11 @@ class RootfsSnapshots:
                 multi-container sandboxes. Defaults to the first
                 container.
             timeout_seconds: Maximum time for the snapshot operation,
-                in seconds. Enforced server-side. Default: 300.
+                in seconds. Enforced server-side.
             ttl_seconds_after_finished: How long the server keeps the
                 snapshot resource after it completes, in seconds.
-                Default: 300.
             max_wait_seconds: How long this method polls for completion,
-                in seconds. Client-side only. Default: 310.
+                in seconds. Client-side only.
 
         Returns:
             A RootfsSnapshot with the snapshot metadata and status.
@@ -201,12 +200,11 @@ class AsyncRootfsSnapshots:
                 multi-container sandboxes. Defaults to the first
                 container.
             timeout_seconds: Maximum time for the snapshot operation,
-                in seconds. Enforced server-side. Default: 300.
+                in seconds. Enforced server-side.
             ttl_seconds_after_finished: How long the server keeps the
                 snapshot resource after it completes, in seconds.
-                Default: 300.
             max_wait_seconds: How long this method polls for completion,
-                in seconds. Client-side only. Default: 310.
+                in seconds. Client-side only.
 
         Returns:
             An AsyncRootfsSnapshot with the snapshot metadata and status.
