@@ -246,6 +246,7 @@ class Sandboxes:
             rootfs_snapshot_name: Restore the container's filesystem
                 from this named snapshot.
             command: Command and arguments to run in the container.
+                If not set, defaults to sleep infinity.
             env: Environment variables as key-value pairs.
             cpu: CPU limit in cores (e.g. 0.5, 2.0).
             memory: Memory limit in MiB (e.g. 256, 1024).
@@ -422,6 +423,7 @@ class AsyncSandboxes:
             rootfs_snapshot_name: Restore the container's filesystem
                 from this named snapshot.
             command: Command and arguments to run in the container.
+                If not set, defaults to sleep infinity.
             env: Environment variables as key-value pairs.
             cpu: CPU limit in cores (e.g. 0.5, 2.0).
             memory: Memory limit in MiB (e.g. 256, 1024).

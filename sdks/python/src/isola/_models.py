@@ -115,6 +115,7 @@ class Container(IsolaModel):
         rootfs_snapshot_name: Name of a rootfs snapshot to restore into
             this container.
         command: Command and arguments to run in the container.
+            If not set, defaults to sleep infinity.
         env: Environment variables as key-value pairs.
         resources: CPU, memory, and ephemeral storage k8s resource requirements.
     """
@@ -190,8 +191,8 @@ class SnapshotRootfs(IsolaModel):
     Restore the snapshot later by passing its name as rootfs_snapshot_name.
 
     Attributes:
-        snapshot_name: Name for the snapshot. If not set, the server
-            generates one.
+        snapshot_name: Name for the snapshot. If not set, defaults to
+            the sandbox's ID on the server.
         timeout_seconds: Maximum time for the snapshot operation, in
             seconds. Enforced server-side. The server cancels the
             snapshot if it takes longer than this.

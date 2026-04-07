@@ -115,8 +115,8 @@ class RootfsSnapshots:
 
         Args:
             sandbox_id: ID of the sandbox to snapshot.
-            snapshot_name: Name for the snapshot. The server generates
-                one if not provided. Use this name later as
+            snapshot_name: Name for the snapshot. Defaults to the
+                sandbox's ID on the server. Use this name later as
                 rootfs_snapshot_name when creating a new sandbox.
             container_name: Which container to snapshot, for
                 multi-container sandboxes. Defaults to the first
@@ -194,8 +194,8 @@ class AsyncRootfsSnapshots:
 
         Args:
             sandbox_id: ID of the sandbox to snapshot.
-            snapshot_name: Name for the snapshot. The server generates
-                one if not provided. Use this name later as
+            snapshot_name: Name for the snapshot. Defaults to the
+                sandbox's ID on the server. Use this name later as
                 rootfs_snapshot_name when creating a new sandbox.
             container_name: Which container to snapshot, for
                 multi-container sandboxes. Defaults to the first

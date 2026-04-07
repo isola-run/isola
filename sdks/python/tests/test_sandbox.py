@@ -294,7 +294,7 @@ def test_create_sandbox_with_termination_policy_omits_snapshot_name(
     payload = json.loads(create_route.calls[0].request.content)
     assert payload["terminationPolicy"] == {
         "type": "SnapshotRootfs",
-        "snapshotRootfs": {},
+        "snapshotRootfs": {"timeoutSeconds": 300},
     }
 
 
@@ -319,7 +319,7 @@ def test_create_sandbox_with_termination_policy_includes_snapshot_name(
     payload = json.loads(create_route.calls[0].request.content)
     assert payload["terminationPolicy"] == {
         "type": "SnapshotRootfs",
-        "snapshotRootfs": {"snapshotName": "my-snap"},
+        "snapshotRootfs": {"snapshotName": "my-snap", "timeoutSeconds": 300},
     }
 
 
