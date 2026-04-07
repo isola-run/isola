@@ -37,7 +37,7 @@ def test_filesystem_write_and_read(sandbox_response_copy: dict[str, object]) -> 
         return_value=httpx.Response(200, content=b"content")
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         sandbox.filesystem.write("/workspace/file.txt", b"content", container="worker")
         downloaded = sandbox.filesystem.read("/workspace/file.txt", container="worker")
@@ -61,7 +61,7 @@ def test_filesystem_write_from_file_like(sandbox_response_copy: dict[str, object
         return_value=httpx.Response(204)
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         file_obj = io.BytesIO(b"print()")
         sandbox.filesystem.write("/workspace/script.py", file_obj)
@@ -82,7 +82,7 @@ async def test_async_filesystem_write_and_read(sandbox_response_copy: dict[str, 
         return_value=httpx.Response(200, content=b"data")
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         await sandbox.filesystem.write("/tmp/data.bin", b"data")
         downloaded = await sandbox.filesystem.read("/tmp/data.bin")
@@ -107,7 +107,7 @@ async def test_async_filesystem_with_container(sandbox_response_copy: dict[str, 
         return_value=httpx.Response(200, content=b"abc")
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         await sandbox.filesystem.write("/app/cfg.yaml", b"abc", container="sidecar")
         await sandbox.filesystem.read("/app/cfg.yaml", container="sidecar")
@@ -125,7 +125,7 @@ def test_filesystem_write_str(sandbox_response_copy: dict[str, object]) -> None:
         return_value=httpx.Response(204)
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         sandbox.filesystem.write("/workspace/hello.py", "print('hello')")
 
@@ -142,7 +142,7 @@ async def test_async_filesystem_write_str(sandbox_response_copy: dict[str, objec
         return_value=httpx.Response(204)
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         await sandbox.filesystem.write("/workspace/hello.py", "print('hello')")
 
@@ -181,7 +181,7 @@ def test_filesystem_write_streams_without_full_buffering(sandbox_response_copy: 
     # Payload larger than httpx's 64KB chunk size to ensure multiple reads
     stream = _ChunkedReadValidator(b"x" * 200_000, max_read_size=128 * 1024)
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         sandbox.filesystem.write("/big.bin", cast(BinaryIO, stream))
 
@@ -198,7 +198,7 @@ def test_filesystem_upload_real_file(sandbox_response_copy: dict[str, object], t
         return_value=httpx.Response(204)
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with open(local_file, "rb") as f:
             sandbox.filesystem.write("/workspace/script.py", f)
@@ -221,7 +221,7 @@ def test_filesystem_read_raises_on_404(
         return_value=httpx.Response(404, json={"detail": "file not found"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with pytest.raises(NotFoundError) as exc_info:
             sandbox.filesystem.read("/nonexistent/file.txt")
@@ -242,7 +242,7 @@ def test_filesystem_read_raises_on_500(
         return_value=httpx.Response(500, json={"detail": "internal server error"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with pytest.raises(InternalError) as exc_info:
             sandbox.filesystem.read("/some/file.txt")
@@ -262,7 +262,7 @@ def test_filesystem_write_raises_on_404(
         return_value=httpx.Response(404, json={"detail": "sandbox not found"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with pytest.raises(NotFoundError) as exc_info:
             sandbox.filesystem.write("/workspace/file.txt", b"data")
@@ -282,7 +282,7 @@ def test_filesystem_write_raises_on_500(
         return_value=httpx.Response(500, json={"detail": "disk full"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with pytest.raises(InternalError) as exc_info:
             sandbox.filesystem.write("/workspace/file.txt", b"data")
@@ -307,7 +307,7 @@ async def test_async_filesystem_read_raises_on_404(
         return_value=httpx.Response(404, json={"detail": "file not found"})
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         with pytest.raises(NotFoundError):
             await sandbox.filesystem.read("/nonexistent/file.txt")
@@ -329,7 +329,7 @@ async def test_async_filesystem_write_raises_on_500(
         return_value=httpx.Response(500, json={"detail": "disk full"})
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         with pytest.raises(InternalError):
             await sandbox.filesystem.write("/workspace/file.txt", b"data")

@@ -16,19 +16,31 @@ Requires Python 3.10 or later.
 
 Before diving into code, here is a quick overview of the object model:
 
-- `Isola` (or `AsyncIsola`) is the client. It holds the connection to your Isola instance.
-- `client.sandboxes.create()` returns a `Sandbox`, an isolated container (or group of containers) where you run code.
+- `Isola` (or `AsyncIsola`) is the client. It holds the connections to your Isola instance.
+- `client.sandboxes.create()` returns a `Sandbox`, where you run code.
 - A `Sandbox` exposes `.commands` for executing processes and `.filesystem` for reading and writing files.
 - Commands can be blocking (`run`, waits for completion) or non-blocking (`spawn`, streams output as it arrives).
-- Rootfs snapshots are separate resources managed through `client.rootfs_snapshots`. They let you capture and restore a container's root filesystem changes.
+- Rootfs snapshots are separate resources managed through `RootfsSnapshot`. They let you capture and restore a container's root filesystem changes.
 
 ## Quick start
 
-Set the `ISOLA_BASE_URL` environment variable to point at your Isola instance:
+`ISOLA_URL` must point at your Isola api-gateway. There is no default - set it for every deployment:
 
 ```bash
-export ISOLA_BASE_URL=http://localhost:8080
+# Local development (kubectl port-forward)
+export ISOLA_URL=http://localhost:8080
+
+# In-cluster (same namespace)
+export ISOLA_URL=http://isola-api-gateway
+
+# In-cluster (cross-namespace)
+export ISOLA_URL=http://isola-api-gateway.isola.svc.cluster.local
+
+# External (ingress or load balancer)
+export ISOLA_URL=https://isola.example.com
 ```
+
+Or pass it directly: `Isola(url="http://isola-api-gateway.isola.svc.cluster.local")`
 
 ```python
 from isola import Isola
@@ -68,12 +80,12 @@ Customize resources, environment variables, and the startup command:
 ```python
 sandbox = client.sandboxes.create(
     image="python:3.12-slim",
-    command=["sleep", "infinity"],
-    env={"APP_ENV": "sandbox"},
+    command=["python", "-m", "http.server", "8080"],
+    env={"PORT": "8080", "DEBUG": "1"},
     cpu=0.5,            # CPU cores
     memory=256,         # MiB
     ephemeral_storage=1024,  # MiB
-    timeout_seconds=3600,
+    timeout_seconds=3600,   # auto-delete after 1 hour
 )
 ```
 
@@ -84,17 +96,15 @@ sandbox = client.sandboxes.create(image="alpine:3.21", max_wait_seconds=0)
 print(sandbox.status)  # might be SandboxStatus.PENDING
 ```
 
-### Timeouts
+> Sandboxes have **no network access by default**. See [Network configuration](#network-configuration) to enable it.
 
-There are three timeouts that control different things. They are easy to mix up, so here is what each one does:
+### Timeouts
 
 | Timeout | Side | Default | What it controls |
 |---------|------|---------|-----------------|
-| `max_wait_seconds` | Client | 60s | How long `create()` polls before returning. Set to 0 to return immediately. Raises `IsolaTimeoutError` if it expires. The sandbox keeps running on the server regardless. |
+| `max_wait_seconds` | Client | 65s | How long `create()` polls before returning. Set to 0 to return immediately. Raises `IsolaTimeoutError` if it expires. The sandbox keeps running on the server regardless. |
 | `startup_timeout_seconds` | Server | 60s | How long the server gives the container to start (image pull, scheduling). If it expires, the sandbox is marked Failed. |
-| `timeout_seconds` | Server | No limit | Maximum lifetime of the sandbox. The server terminates it after this duration. |
-
-> Sandboxes have **no network access by default**. See [Network configuration](#network-configuration) to enable it.
+| `timeout_seconds` | Server | No limit | Maximum lifetime of the sandbox. The server begins the termination process after this duration. |
 
 ## Commands
 
@@ -109,20 +119,18 @@ print(result.stderr)      # ""
 print(result.exit_code)   # 0
 ```
 
-Pass options as keyword arguments:
-
 ```python
 result = sandbox.commands.run(
     "ls", "-la",
-    env={"HOME": "/root"},
-    cwd="/tmp",
-    timeout_seconds=30,
+    cwd="/app",                   # working directory for this command
+    env={"LANG": "en_US.UTF-8"},  # merged with sandbox env
+    timeout_seconds=30,           # SIGKILL after 30s
 )
 ```
 
 ### Running scripts
 
-**Shell scripts** — pass to `sh -c`:
+**Shell scripts**, pass to `sh -c`:
 
 ```python
 script = """
@@ -133,7 +141,7 @@ done
 result = sandbox.commands.run("sh", "-c", script)
 ```
 
-**Python code** — pass to `python3 -c`:
+**Python code**, pass to `python3 -c`:
 
 ```python
 code = """
@@ -144,11 +152,11 @@ result = sandbox.commands.run("python3", "-c", code)
 ```
 
 This is the natural pattern when executing LLM-generated code blocks. Both work with
-multi-line strings — newlines are preserved and interpreted by the shell or Python
+multi-line strings, newlines are preserved and interpreted by the shell or Python
 interpreter as statement separators.
 
-> For commands you control, prefer separate args (`run("python3", "script.py")`) —
-> it avoids shell quoting issues and keeps data separate from the command itself.
+> For commands you control, prefer separate args (`run("python3", "analyze.py", "--input", filename)`),
+> it keeps data separate from the command itself.
 
 ### Spawn (non-blocking)
 
@@ -193,7 +201,7 @@ cmd.wait()       # returns exit code
 
 ```python
 # Write text
-sandbox.filesystem.write("/tmp/hello.txt", "hello world")
+sandbox.filesystem.write("/tmp/hello.txt", "Hello, World!")
 
 # Write binary data
 sandbox.filesystem.write("/tmp/data.bin", b"\x00\x01\x02")
@@ -202,17 +210,17 @@ sandbox.filesystem.write("/tmp/data.bin", b"\x00\x01\x02")
 with open("local.tar.gz", "rb") as f:
     sandbox.filesystem.write("/tmp/archive.tar.gz", f)
 
-# Read a file (returns bytes)
+# Read a file
 data = sandbox.filesystem.read("/tmp/hello.txt")
-print(data.decode())  # "hello world"
+print(data.decode())  # "Hello, World!"
 ```
 
-Parent directories are created automatically.
+Parent directories are created automatically on uploads.
 
 ## Sandbox management
 
 ```python
-# List all sandboxes
+# List sandboxes
 summaries = client.sandboxes.list()
 for s in summaries:
     print(s.id, s.status)
@@ -247,15 +255,17 @@ Other network options:
 
 ```python
 Network(
-    allow_internet_egress=True,     # allow outbound internet traffic
-    allow_cluster_dns=True,         # use the cluster's DNS service
-    allow_ipv6_egress=True,         # allow outbound IPv6
+    allow_internet_egress=False,          # allow outbound internet traffic
     allowed_egress_cidrs=["10.0.0.0/8"],  # fine-grained CIDR allowlist
-    nameservers=["8.8.8.8"],        # custom DNS nameservers
+    allow_cluster_dns=False,              # use the cluster's DNS service
+    nameservers=["8.8.8.8"],              # custom DNS nameservers
+    allow_ipv6_egress=False,              # extend egress config to IPv6
 )
 ```
 
 ## Rootfs snapshots
+
+> Requires rootfs snapshots to be enabled and a storage bucket configured in your Helm values (`operator.rootfssnapshot`).
 
 Rootfs snapshots capture one container's root filesystem changes so you can restore them later in a new sandbox. This is useful for pre-warming environments: install dependencies once, snapshot, then spin up fresh sandboxes from that snapshot.
 
@@ -269,7 +279,7 @@ snapshot = client.rootfs_snapshots.create(
 print(snapshot.status)  # RootfsSnapshotStatus.SUCCEEDED
 ```
 
-`create()` blocks until the snapshot completes (up to 300 seconds by default). Pass `max_wait_seconds=0` to return immediately.
+`create()` blocks `max_wait_seconds` until the snapshot completes. Pass `max_wait_seconds=0` to return immediately.
 
 ### Restore from a snapshot
 
@@ -283,32 +293,40 @@ restored = client.sandboxes.create(
 ### Full round-trip example
 
 ```python
-from isola import Isola
+from isola import Isola, Network
 
 client = Isola()
 
-# 1. Create a sandbox and install something
-with client.sandboxes.create(image="python:3.12-slim") as sandbox:
-    sandbox.commands.run("pip", "install", "requests")
-
-    # 2. Snapshot the state
-    snapshot = client.rootfs_snapshots.create(
-        sandbox_id=sandbox.id,
-        snapshot_name="python-with-requests",
-    )
-
-# 3. Spin up a new sandbox from the snapshot
+# 1. Install a heavy stack once, with internet connectivity
 with client.sandboxes.create(
     image="python:3.12-slim",
-    rootfs_snapshot_name="python-with-requests",
+    network=Network(allow_internet_egress=True),
+    ephemeral_storage=4096,
 ) as sandbox:
-    result = sandbox.commands.run("python", "-c", "import requests; print(requests.__version__)")
+    sandbox.commands.run("pip", "install", "numpy", "pandas", "scikit-learn")
+    snapshot = client.rootfs_snapshots.create(
+        sandbox_id=sandbox.id,
+        snapshot_name="datascience-base",
+    )
+
+# 2. Restore from the snapshotted rootfs, packages already installed, no internet needed
+with client.sandboxes.create(
+    image="python:3.12-slim",
+    ephemeral_storage=4096,
+    rootfs_snapshot_name="datascience-base",
+) as sandbox:
+    result = sandbox.commands.run("python3", "-c", """
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+X, y = load_iris(return_X_y=True)
+print(RandomForestClassifier(random_state=0).fit(X, y).score(X, y))
+""")
     print(result.stdout)
 ```
 
 ### Automatic snapshots on termination
 
-You can also configure a sandbox to snapshot automatically when it terminates:
+You can also configure a sandbox to snapshot automatically before it terminates:
 
 ```python
 from isola import SnapshotRootfs
@@ -343,7 +361,6 @@ sandbox = client.sandboxes.create(
         Container(
             name="worker",
             image="alpine:3.21",
-            command=["sleep", "infinity"],
         ),
     ],
 )
@@ -355,8 +372,6 @@ Target a specific container when running commands or writing files:
 result = sandbox.commands.run("curl", "http://localhost:8080", container="worker")
 sandbox.filesystem.write("/tmp/data.txt", "hello", container="app")
 ```
-
-You cannot mix `image` with `containers`. Per-container options like `command`, `env`, `resources`, and `rootfs_snapshot_name` go on each `Container` object.
 
 ## Error handling
 
@@ -393,18 +408,3 @@ except IsolaError:
 
 The SDK automatically retries on transient errors.
 
-## Configuration
-
-The base URL can be set via environment variable or constructor argument:
-
-```python
-# From environment variable (recommended)
-client = Isola()  # reads ISOLA_BASE_URL
-
-# Explicit
-client = Isola(base_url="http://localhost:8080")
-
-# Both clients support context managers
-with Isola() as client:
-    ...
-```

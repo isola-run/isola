@@ -91,8 +91,8 @@ class RootfsSnapshots:
     """Manage rootfs snapshots.
 
     Rootfs snapshots capture one container's root filesystem changes at
-    a point in time. Other mounts (e.g. /tmp) are not included. Restore
-    a snapshot when creating a new sandbox to pick up where you left off.
+    a point in time. Other mounts (e.g. tmpfs like /tmp) are not included.
+    Restore a snapshot when creating a new sandbox to pick up where you left off.
     """
 
     def __init__(self, api: _SyncAPI) -> None:
@@ -106,7 +106,7 @@ class RootfsSnapshots:
         container_name: str | None = None,
         timeout_seconds: int = 300,
         ttl_seconds_after_finished: int = 300,
-        max_wait_seconds: int = 300,
+        max_wait_seconds: int = 310,
     ) -> RootfsSnapshot:
         """Create a rootfs snapshot from a running sandbox.
 
@@ -115,19 +115,18 @@ class RootfsSnapshots:
 
         Args:
             sandbox_id: ID of the sandbox to snapshot.
-            snapshot_name: Name for the snapshot. The server generates
-                one if not provided. Use this name later as
+            snapshot_name: Name for the snapshot. Defaults to the
+                sandbox's ID on the server. Use this name later as
                 rootfs_snapshot_name when creating a new sandbox.
             container_name: Which container to snapshot, for
                 multi-container sandboxes. Defaults to the first
                 container.
             timeout_seconds: Maximum time for the snapshot operation,
-                in seconds. Enforced server-side. Default: 300.
-            ttl_seconds_after_finished: How long the server keeps the
-                snapshot resource after it completes, in seconds.
-                Default: 300.
+                in seconds. Enforced server-side.
+            ttl_seconds_after_finished: How long the Kubernetes resource is
+                retained after the snapshot completes, in seconds.
             max_wait_seconds: How long this method polls for completion,
-                in seconds. Client-side only. Default: 300.
+                in seconds. Client-side only.
 
         Returns:
             A RootfsSnapshot with the snapshot metadata and status.
@@ -153,7 +152,7 @@ class RootfsSnapshots:
         _check_failed(data.id, data.status)
         if data.status != RootfsSnapshotStatus.SUCCEEDED and max_wait_seconds != 0:
             data = _wait_until_complete(data.id, self._api, max_wait_seconds)
-        return RootfsSnapshot(self._api, data)
+        return RootfsSnapshot(data)
 
     def get(self, snapshot_id: str) -> RootfsSnapshot:
         """Get a rootfs snapshot by ID.
@@ -165,10 +164,12 @@ class RootfsSnapshots:
             A RootfsSnapshot with the current state.
 
         Raises:
-            NotFoundError: If no snapshot with that ID exists.
+            NotFoundError: If the snapshot's Kubernetes resource no longer
+                exists. A completed snapshot's data remains in storage and
+                can still be restored by snapshot_name.
         """
         data = self._api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
-        return RootfsSnapshot(self._api, data)
+        return RootfsSnapshot(data)
 
 
 class AsyncRootfsSnapshots:
@@ -185,7 +186,7 @@ class AsyncRootfsSnapshots:
         container_name: str | None = None,
         timeout_seconds: int = 300,
         ttl_seconds_after_finished: int = 300,
-        max_wait_seconds: int = 300,
+        max_wait_seconds: int = 310,
     ) -> AsyncRootfsSnapshot:
         """Create a rootfs snapshot from a running sandbox.
 
@@ -194,19 +195,18 @@ class AsyncRootfsSnapshots:
 
         Args:
             sandbox_id: ID of the sandbox to snapshot.
-            snapshot_name: Name for the snapshot. The server generates
-                one if not provided. Use this name later as
+            snapshot_name: Name for the snapshot. Defaults to the
+                sandbox's ID on the server. Use this name later as
                 rootfs_snapshot_name when creating a new sandbox.
             container_name: Which container to snapshot, for
                 multi-container sandboxes. Defaults to the first
                 container.
             timeout_seconds: Maximum time for the snapshot operation,
-                in seconds. Enforced server-side. Default: 300.
-            ttl_seconds_after_finished: How long the server keeps the
-                snapshot resource after it completes, in seconds.
-                Default: 300.
+                in seconds. Enforced server-side.
+            ttl_seconds_after_finished: How long the Kubernetes resource is
+                retained after the snapshot completes, in seconds.
             max_wait_seconds: How long this method polls for completion,
-                in seconds. Client-side only. Default: 300.
+                in seconds. Client-side only.
 
         Returns:
             An AsyncRootfsSnapshot with the snapshot metadata and status.
@@ -232,7 +232,7 @@ class AsyncRootfsSnapshots:
         _check_failed(data.id, data.status)
         if data.status != RootfsSnapshotStatus.SUCCEEDED and max_wait_seconds != 0:
             data = await _async_wait_until_complete(data.id, self._api, max_wait_seconds)
-        return AsyncRootfsSnapshot(self._api, data)
+        return AsyncRootfsSnapshot(data)
 
     async def get(self, snapshot_id: str) -> AsyncRootfsSnapshot:
         """Get a rootfs snapshot by ID.
@@ -244,10 +244,12 @@ class AsyncRootfsSnapshots:
             An AsyncRootfsSnapshot with the current state.
 
         Raises:
-            NotFoundError: If no snapshot with that ID exists.
+            NotFoundError: If the snapshot's Kubernetes resource no longer
+                exists. A completed snapshot's data remains in storage and
+                can still be restored by snapshot_name.
         """
         data = await self._api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
-        return AsyncRootfsSnapshot(self._api, data)
+        return AsyncRootfsSnapshot(data)
 
 
 class RootfsSnapshot:
@@ -258,8 +260,7 @@ class RootfsSnapshot:
     creating a new sandbox.
     """
 
-    def __init__(self, api: _SyncAPI, data: RootfsSnapshotData) -> None:
-        self._api = api
+    def __init__(self, data: RootfsSnapshotData) -> None:
         self._data = data
 
     @property
@@ -299,15 +300,14 @@ class RootfsSnapshot:
 
     @property
     def ttl_seconds_after_finished(self) -> int | None:
-        """How long the server keeps this resource after completion, in seconds."""
+        """How long the Kubernetes resource is retained after the snapshot completes, in seconds."""
         return self._data.ttl_seconds_after_finished
 
 
 class AsyncRootfsSnapshot:
     """Async version of RootfsSnapshot."""
 
-    def __init__(self, api: _AsyncAPI, data: RootfsSnapshotData) -> None:
-        self._api = api
+    def __init__(self, data: RootfsSnapshotData) -> None:
         self._data = data
 
     @property
@@ -347,5 +347,5 @@ class AsyncRootfsSnapshot:
 
     @property
     def ttl_seconds_after_finished(self) -> int | None:
-        """How long the server keeps this resource after completion, in seconds."""
+        """How long the Kubernetes resource is retained after the snapshot completes, in seconds."""
         return self._data.ttl_seconds_after_finished

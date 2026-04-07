@@ -155,7 +155,7 @@ type SandboxSpec struct {
 	// +required
 	PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
 
-	// TimeoutSeconds defines how long the sandbox runs before being shut down
+	// TimeoutSeconds defines how long the sandbox runs before the termination process begins
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`

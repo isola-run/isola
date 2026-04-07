@@ -23,7 +23,7 @@ import pytest
 from isola import AsyncIsola, AsyncSandbox, Isola, NotFoundError, Sandbox, SandboxStatus
 
 SANDBOXES_NAMESPACE = "isola-sandboxes"
-ISOLA_BASE_URL = os.environ.get("ISOLA_BASE_URL", "http://localhost:8080")
+ISOLA_URL = os.environ.get("ISOLA_URL", "http://localhost:8080")
 ISOLA_METRICS_URL = os.environ.get("ISOLA_METRICS_URL", "http://localhost:8082")
 
 POLL_INTERVAL = 1.0

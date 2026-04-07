@@ -21,7 +21,7 @@ import pytest_asyncio
 
 from isola import AsyncIsola, AsyncSandbox, Isola, NotFoundError, Sandbox
 
-from utils import ISOLA_BASE_URL, wait_for_running, wait_for_running_async
+from utils import ISOLA_URL, wait_for_running, wait_for_running_async
 
 
 def pytest_addoption(parser):
@@ -42,7 +42,7 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture(scope="session")
 def isola_client() -> Isola:
-    client = Isola(base_url=ISOLA_BASE_URL)
+    client = Isola(url=ISOLA_URL)
     yield client
     client.close()
 
@@ -80,7 +80,7 @@ def session_sandbox(isola_client: Isola, sandbox_factory) -> Sandbox:
 
 @pytest_asyncio.fixture(loop_scope="session", scope="session")
 async def async_isola_client() -> AsyncIsola:
-    client = AsyncIsola(base_url=ISOLA_BASE_URL)
+    client = AsyncIsola(url=ISOLA_URL)
     yield client
     await client.close()
 
