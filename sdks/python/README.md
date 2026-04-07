@@ -16,19 +16,31 @@ Requires Python 3.10 or later.
 
 Before diving into code, here is a quick overview of the object model:
 
-- `Isola` (or `AsyncIsola`) is the client. It holds the connection to your Isola instance.
-- `client.sandboxes.create()` returns a `Sandbox`, an isolated container (or group of containers) where you run code.
+- `Isola` (or `AsyncIsola`) is the client. It holds the connections to your Isola instance.
+- `client.sandboxes.create()` returns a `Sandbox`, where you run code.
 - A `Sandbox` exposes `.commands` for executing processes and `.filesystem` for reading and writing files.
 - Commands can be blocking (`run`, waits for completion) or non-blocking (`spawn`, streams output as it arrives).
-- Rootfs snapshots are separate resources managed through `client.rootfs_snapshots`. They let you capture and restore a container's root filesystem changes.
+- Rootfs snapshots are separate resources managed through `RootfsSnapshot`. They let you capture and restore a container's root filesystem changes.
 
 ## Quick start
 
-Set the `ISOLA_BASE_URL` environment variable to point at your Isola instance:
+`ISOLA_URL` must point at your Isola api-gateway. There is no default - set it for every deployment:
 
 ```bash
-export ISOLA_BASE_URL=http://localhost:8080
+# Local development (kubectl port-forward)
+export ISOLA_URL=http://localhost:8080
+
+# In-cluster (same namespace)
+export ISOLA_URL=http://isola-api-gateway
+
+# In-cluster (cross-namespace)
+export ISOLA_URL=http://isola-api-gateway.isola.svc.cluster.local
+
+# External (ingress or load balancer)
+export ISOLA_URL=https://isola.example.com
 ```
+
+Or pass it directly: `Isola(url="http://isola-api-gateway.isola.svc.cluster.local")`
 
 ```python
 from isola import Isola
@@ -122,7 +134,7 @@ result = sandbox.commands.run(
 
 ### Running scripts
 
-**Shell scripts** — pass to `sh -c`:
+**Shell scripts**, pass to `sh -c`:
 
 ```python
 script = """
@@ -133,7 +145,7 @@ done
 result = sandbox.commands.run("sh", "-c", script)
 ```
 
-**Python code** — pass to `python3 -c`:
+**Python code**, pass to `python3 -c`:
 
 ```python
 code = """
@@ -144,10 +156,10 @@ result = sandbox.commands.run("python3", "-c", code)
 ```
 
 This is the natural pattern when executing LLM-generated code blocks. Both work with
-multi-line strings — newlines are preserved and interpreted by the shell or Python
+multi-line strings, newlines are preserved and interpreted by the shell or Python
 interpreter as statement separators.
 
-> For commands you control, prefer separate args (`run("python3", "script.py")`) —
+> For commands you control, prefer separate args (`run("python3", "script.py")`),
 > it avoids shell quoting issues and keeps data separate from the command itself.
 
 ### Spawn (non-blocking)
@@ -393,18 +405,3 @@ except IsolaError:
 
 The SDK automatically retries on transient errors.
 
-## Configuration
-
-The base URL can be set via environment variable or constructor argument:
-
-```python
-# From environment variable (recommended)
-client = Isola()  # reads ISOLA_BASE_URL
-
-# Explicit
-client = Isola(base_url="http://localhost:8080")
-
-# Both clients support context managers
-with Isola() as client:
-    ...
-```
