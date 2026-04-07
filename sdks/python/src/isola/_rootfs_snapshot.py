@@ -106,7 +106,7 @@ class RootfsSnapshots:
         container_name: str | None = None,
         timeout_seconds: int = 300,
         ttl_seconds_after_finished: int = 300,
-        max_wait_seconds: int = 300,
+        max_wait_seconds: int = 310,
     ) -> RootfsSnapshot:
         """Create a rootfs snapshot from a running sandbox.
 
@@ -127,7 +127,7 @@ class RootfsSnapshots:
                 snapshot resource after it completes, in seconds.
                 Default: 300.
             max_wait_seconds: How long this method polls for completion,
-                in seconds. Client-side only. Default: 300.
+                in seconds. Client-side only. Default: 310.
 
         Returns:
             A RootfsSnapshot with the snapshot metadata and status.
@@ -185,7 +185,7 @@ class AsyncRootfsSnapshots:
         container_name: str | None = None,
         timeout_seconds: int = 300,
         ttl_seconds_after_finished: int = 300,
-        max_wait_seconds: int = 300,
+        max_wait_seconds: int = 310,
     ) -> AsyncRootfsSnapshot:
         """Create a rootfs snapshot from a running sandbox.
 
@@ -206,7 +206,7 @@ class AsyncRootfsSnapshots:
                 snapshot resource after it completes, in seconds.
                 Default: 300.
             max_wait_seconds: How long this method polls for completion,
-                in seconds. Client-side only. Default: 300.
+                in seconds. Client-side only. Default: 310.
 
         Returns:
             An AsyncRootfsSnapshot with the snapshot metadata and status.

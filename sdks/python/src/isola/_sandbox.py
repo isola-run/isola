@@ -211,7 +211,7 @@ class Sandboxes:
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
         termination_policy: SnapshotRootfs | None = None,
-        max_wait_seconds: int = 60,
+        max_wait_seconds: int = 65,
     ) -> Sandbox:
         """Create a new sandbox and wait for it to be ready.
 
@@ -230,7 +230,7 @@ class Sandboxes:
 
         Timeouts:
 
-        - max_wait_seconds (client-side, default 60): How long this
+        - max_wait_seconds (client-side, default 65): How long this
           method polls before giving up. Does not affect the sandbox on
           the server. Raises IsolaTimeoutError if it expires.
         - startup_timeout_seconds (server-side, default 60): How long
@@ -388,7 +388,7 @@ class AsyncSandboxes:
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
         termination_policy: SnapshotRootfs | None = None,
-        max_wait_seconds: int = 60,
+        max_wait_seconds: int = 65,
     ) -> AsyncSandbox:
         """Create a new sandbox and wait for it to be ready.
 
@@ -407,7 +407,7 @@ class AsyncSandboxes:
 
         Timeouts:
 
-        - max_wait_seconds (client-side, default 60): How long this
+        - max_wait_seconds (client-side, default 65): How long this
           method polls before giving up. Does not affect the sandbox on
           the server. Raises IsolaTimeoutError if it expires.
         - startup_timeout_seconds (server-side, default 60): How long
