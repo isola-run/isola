@@ -119,14 +119,12 @@ print(result.stderr)      # ""
 print(result.exit_code)   # 0
 ```
 
-Pass options as keyword arguments:
-
 ```python
 result = sandbox.commands.run(
     "ls", "-la",
-    env={"HOME": "/root"},
-    cwd="/tmp",
-    timeout_seconds=30,
+    cwd="/app",                   # working directory for this command
+    env={"LANG": "en_US.UTF-8"},  # merged with sandbox env
+    timeout_seconds=30,           # SIGKILL after 30s
 )
 ```
 
@@ -157,8 +155,8 @@ This is the natural pattern when executing LLM-generated code blocks. Both work 
 multi-line strings, newlines are preserved and interpreted by the shell or Python
 interpreter as statement separators.
 
-> For commands you control, prefer separate args (`run("python3", "script.py")`),
-> it avoids shell quoting issues and keeps data separate from the command itself.
+> For commands you control, prefer separate args (`run("python3", "analyze.py", "--input", filename)`),
+> it keeps data separate from the command itself.
 
 ### Spawn (non-blocking)
 
@@ -203,7 +201,7 @@ cmd.wait()       # returns exit code
 
 ```python
 # Write text
-sandbox.filesystem.write("/tmp/hello.txt", "hello world")
+sandbox.filesystem.write("/tmp/hello.txt", "Hello, World!")
 
 # Write binary data
 sandbox.filesystem.write("/tmp/data.bin", b"\x00\x01\x02")
@@ -212,17 +210,17 @@ sandbox.filesystem.write("/tmp/data.bin", b"\x00\x01\x02")
 with open("local.tar.gz", "rb") as f:
     sandbox.filesystem.write("/tmp/archive.tar.gz", f)
 
-# Read a file (returns bytes)
+# Read a file
 data = sandbox.filesystem.read("/tmp/hello.txt")
-print(data.decode())  # "hello world"
+print(data.decode())  # "Hello, World!"
 ```
 
-Parent directories are created automatically.
+Parent directories are created automatically on uploads.
 
 ## Sandbox management
 
 ```python
-# List all sandboxes
+# List sandboxes
 summaries = client.sandboxes.list()
 for s in summaries:
     print(s.id, s.status)
@@ -257,15 +255,17 @@ Other network options:
 
 ```python
 Network(
-    allow_internet_egress=True,     # allow outbound internet traffic
-    allow_cluster_dns=True,         # use the cluster's DNS service
-    allow_ipv6_egress=True,         # allow outbound IPv6
+    allow_internet_egress=False,          # allow outbound internet traffic
     allowed_egress_cidrs=["10.0.0.0/8"],  # fine-grained CIDR allowlist
-    nameservers=["8.8.8.8"],        # custom DNS nameservers
+    allow_cluster_dns=False,              # use the cluster's DNS service
+    nameservers=["8.8.8.8"],              # custom DNS nameservers
+    allow_ipv6_egress=False,              # extend egress config to IPv6
 )
 ```
 
 ## Rootfs snapshots
+
+> Requires rootfs snapshots to be enabled and a storage bucket configured in your Helm values (`operator.rootfssnapshot`).
 
 Rootfs snapshots capture one container's root filesystem changes so you can restore them later in a new sandbox. This is useful for pre-warming environments: install dependencies once, snapshot, then spin up fresh sandboxes from that snapshot.
 

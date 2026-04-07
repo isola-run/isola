@@ -318,7 +318,9 @@ class Sandboxes:
         return Sandbox(self._api, data)
 
     def list(self) -> list[SandboxSummary]:
-        """List all sandboxes.
+        """List sandboxes.
+
+        Results are eventually consistent.
 
         Returns:
             A list of SandboxSummary objects with id, status, and
@@ -501,7 +503,9 @@ class AsyncSandboxes:
         return AsyncSandbox(self._api, data)
 
     async def list(self) -> list[SandboxSummary]:
-        """List all sandboxes.
+        """List sandboxes.
+
+        Results are eventually consistent.
 
         Returns:
             A list of SandboxSummary objects with id, status, and
