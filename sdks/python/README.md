@@ -122,17 +122,9 @@ result = sandbox.commands.run(
 
 ### Running scripts
 
-Pass a script as a single string to `sh -c` or `python3 -c`. This is the natural pattern
-when executing LLM-generated code blocks:
+**Shell scripts** — pass to `sh -c`:
 
 ```python
-code = """
-import json, os
-print(json.dumps({"cwd": os.getcwd(), "files": os.listdir(".")}))
-"""
-result = sandbox.commands.run("python3", "-c", code)
-print(result.stdout)
-
 script = """
 for f in /tmp/*.txt; do
   echo "$f: $(wc -l < "$f") lines"
@@ -141,9 +133,22 @@ done
 result = sandbox.commands.run("sh", "-c", script)
 ```
 
-> Prefer separate args (`run("python3", "script.py")`) when you control the command —
+**Python code** — pass to `python3 -c`:
+
+```python
+code = """
+import json, os
+print(json.dumps({"cwd": os.getcwd(), "files": os.listdir(".")}))
+"""
+result = sandbox.commands.run("python3", "-c", code)
+```
+
+This is the natural pattern when executing LLM-generated code blocks. Both work with
+multi-line strings — newlines are preserved and interpreted by the shell or Python
+interpreter as statement separators.
+
+> For commands you control, prefer separate args (`run("python3", "script.py")`) —
 > it avoids shell quoting issues and keeps data separate from the command itself.
-> Use `sh -c` or `python3 -c` when you have a preformed script string.
 
 ### Spawn (non-blocking)
 
