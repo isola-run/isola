@@ -202,8 +202,6 @@ class SnapshotRootfs(IsolaModel):
 
 
 class TerminationPolicy(IsolaModel):
-    """Wire format for terminationPolicy (internal, not exported)."""
-
     type: str
     snapshot_rootfs: SnapshotRootfs | None = None
 
