@@ -106,8 +106,8 @@ class Container(IsolaModel):
     """Container specification for sandbox creation.
 
     Used with the containers parameter of Sandboxes.create() when
-    running multi-container sandboxes. For single-container sandboxes, pass
-    image directly to create() instead.
+    running multi-container sandboxes or when specifying custom
+    and non-equal requests and limits resource requirements.
 
     Attributes:
         name: Container name. Auto-generated if not set.
@@ -116,7 +116,7 @@ class Container(IsolaModel):
             this container.
         command: Command and arguments to run in the container.
         env: Environment variables as key-value pairs.
-        resources: CPU, memory, and storage limits.
+        resources: CPU, memory, and ephemeral storage k8s resource requirements.
     """
 
     name: str | None = None
@@ -146,14 +146,7 @@ class ContainerInfo(IsolaModel):
 
 
 class RootfsSnapshotStatus(str, Enum):
-    """Lifecycle status of a rootfs snapshot.
-
-    Attributes:
-        PENDING: Snapshot request accepted, not yet started.
-        RUNNING: Snapshot is being captured.
-        SUCCEEDED: Snapshot completed successfully.
-        FAILED: Snapshot failed.
-    """
+    """Lifecycle status of a rootfs snapshot."""
 
     PENDING = "Pending"
     RUNNING = "Running"
@@ -205,7 +198,7 @@ class SnapshotRootfs(IsolaModel):
     """
 
     snapshot_name: str | None = None
-    timeout_seconds: int | None = None
+    timeout_seconds: int = 300
 
 
 class TerminationPolicy(IsolaModel):
