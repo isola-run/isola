@@ -49,15 +49,7 @@ class IsolaModel(BaseModel):
 
 
 class SandboxStatus(str, Enum):
-    """Lifecycle status of a sandbox.
-
-    Attributes:
-        PENDING: Sandbox is being created (container pulling, scheduling).
-        RUNNING: Sandbox is ready and accepting commands.
-        TERMINATING: Sandbox is shutting down.
-        SUCCEEDED: Sandbox exited normally.
-        FAILED: Sandbox failed to start or crashed.
-    """
+    """Lifecycle status of a sandbox."""
 
     PENDING = "Pending"
     RUNNING = "Running"
@@ -79,9 +71,6 @@ class Network(IsolaModel):
 
     Attributes:
         allow_internet_egress: Allow outbound traffic to the public internet.
-        allow_ipv6_egress: Enable IPv6 across egress configuration.
-            Extends allow_internet_egress to cover IPv6, and allows
-            IPv6 addresses in allowed_egress_cidrs and nameservers.
         allowed_egress_cidrs: List of CIDR blocks the sandbox can reach
             (e.g. ["10.0.0.0/8"]). Use this for fine-grained control
             instead of allowing all internet traffic.
@@ -90,13 +79,16 @@ class Network(IsolaModel):
             the sandbox uses public nameservers or the ones you provide in nameservers.
         nameservers: Custom DNS nameservers. Overrides the automatic
             public nameservers.
+        allow_ipv6_egress: Enable IPv6 across egress configuration.
+            Extends allow_internet_egress to cover IPv6, and allows
+            IPv6 addresses in allowed_egress_cidrs and nameservers.
     """
 
     allow_internet_egress: bool | None = None
-    allow_ipv6_egress: bool | None = Field(None, alias="allowIPv6Egress")
     allowed_egress_cidrs: list[str] | None = Field(None, alias="allowedEgressCIDRs")
     allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
     nameservers: list[str] | None = None
+    allow_ipv6_egress: bool | None = Field(None, alias="allowIPv6Egress")
 
 
 class ResourceList(IsolaModel):
