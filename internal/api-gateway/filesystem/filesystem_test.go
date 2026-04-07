@@ -34,7 +34,6 @@ import (
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 	apigateway "github.com/isola-run/isola/internal/api-gateway"
-	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
 
 func createSandboxCR() string {
@@ -262,7 +261,7 @@ var _ = Describe("Filesystem Proxy", func() {
 	})
 
 	Describe("POST /sandboxes/{sandboxId}/filesystem", func() {
-		It("proxies file write to sidecar and returns response", func() {
+		It("proxies file write to sidecar and returns 204", func() {
 			var capturedBody []byte
 			var capturedPath, capturedContainer, capturedContentType string
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -273,19 +272,13 @@ var _ = Describe("Filesystem Proxy", func() {
 				capturedBody, err = io.ReadAll(r.Body)
 				Expect(err).NotTo(HaveOccurred())
 
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusCreated)
-				_ = json.NewEncoder(w).Encode(sidecarapi.FilesystemWriteResponse{
-					AbsolutePath: "/workspace/hello.txt",
-					BytesWritten: int64(len(capturedBody)),
-				})
+				w.WriteHeader(http.StatusNoContent)
 			}))
 			defer mockSidecar.Close()
 
 			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
 			api := newFilesystemTestAPI(&http.Client{}, port)
 
-			// Use 127.0.0.1 as PodIP since mock sidecar is local
 			sbName := createRunningSandboxCR()
 
 			resp := api.Post(
@@ -293,12 +286,7 @@ var _ = Describe("Filesystem Proxy", func() {
 				"Content-Type: application/octet-stream",
 				strings.NewReader("file content here"),
 			)
-			Expect(resp.Code).To(Equal(http.StatusCreated))
-
-			var body FilesystemWriteResponse
-			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body.AbsolutePath).To(Equal("/workspace/hello.txt"))
-			Expect(body.BytesWritten).To(Equal(int64(len("file content here"))))
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
 			// Verify query params were forwarded
 			Expect(capturedPath).To(Equal("/workspace/hello.txt"))
@@ -317,13 +305,7 @@ var _ = Describe("Filesystem Proxy", func() {
 			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				capturedContainer = r.URL.Query().Get("container")
 				hasContainer = r.URL.Query().Has("container")
-
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusCreated)
-				_ = json.NewEncoder(w).Encode(sidecarapi.FilesystemWriteResponse{
-					AbsolutePath: "/tmp/test.txt",
-					BytesWritten: 4,
-				})
+				w.WriteHeader(http.StatusNoContent)
 			}))
 			defer mockSidecar.Close()
 
@@ -336,7 +318,7 @@ var _ = Describe("Filesystem Proxy", func() {
 				"Content-Type: application/octet-stream",
 				strings.NewReader("data"),
 			)
-			Expect(resp.Code).To(Equal(http.StatusCreated))
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
 			Expect(hasContainer).To(BeFalse())
 			Expect(capturedContainer).To(BeEmpty())
 		})
@@ -401,26 +383,6 @@ var _ = Describe("Filesystem Proxy", func() {
 				strings.NewReader("data"),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
-		})
-
-		It("returns 502 when sidecar returns invalid JSON on success", func() {
-			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusCreated)
-				_, _ = w.Write([]byte("not json"))
-			}))
-			defer mockSidecar.Close()
-
-			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
-			api := newFilesystemTestAPI(&http.Client{}, port)
-			sbName := createRunningSandboxCR()
-
-			resp := api.Post(
-				fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName),
-				"Content-Type: application/octet-stream",
-				strings.NewReader("data"),
-			)
-			Expect(resp.Code).To(Equal(http.StatusBadGateway))
 		})
 
 		It("falls back to status text when sidecar error body is unreadable", func() {

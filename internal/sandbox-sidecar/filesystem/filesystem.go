@@ -29,17 +29,12 @@ import (
 	"github.com/isola-run/isola/internal/httputil"
 	sandboxsidecar "github.com/isola-run/isola/internal/sandbox-sidecar"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/proc"
-	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
 
 type FilesystemWriteInput struct {
 	Path      string `query:"path" required:"true" minLength:"1" doc:"Destination path (absolute or relative to container cwd)"`
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 	sandboxsidecar.BodyStream
-}
-
-type FilesystemWriteOutput struct {
-	Body sidecarapi.FilesystemWriteResponse
 }
 
 type FilesystemReadInput struct {
@@ -109,7 +104,7 @@ func mkdirAllChown(path string, uid, gid int) error {
 	return os.Chown(path, uid, gid)
 }
 
-func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput) (*FilesystemWriteOutput, error) {
+func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput) (*struct{}, error) {
 	path := input.Path
 	container := input.Container
 
@@ -157,8 +152,7 @@ func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput
 
 	stream := httputil.NewDeadlineReader(input.Stream, input.ResponseController, httputil.StreamTimeout)
 
-	written, err := io.Copy(dst, stream)
-	if err != nil {
+	if _, err := io.Copy(dst, stream); err != nil {
 		h.logger.Error("failed to write file", "error", err, "path", targetPath)
 		return nil, huma.Error500InternalServerError("failed to write file")
 	}
@@ -171,12 +165,7 @@ func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput
 		h.logger.Error("failed to set file ownership", "error", err, "path", targetPath, "uid", uid, "gid", gid)
 	}
 
-	return &FilesystemWriteOutput{
-		Body: sidecarapi.FilesystemWriteResponse{
-			AbsolutePath: resolvedPath,
-			BytesWritten: written,
-		},
-	}, nil
+	return nil, nil
 }
 
 func (h *Handlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {
@@ -265,7 +254,7 @@ func Register(api huma.API, h *Handlers) {
 				},
 			},
 		},
-		DefaultStatus: http.StatusCreated,
+		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusBadRequest},
 	}, h.PostFilesystem)
 

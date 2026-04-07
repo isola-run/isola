@@ -258,14 +258,3 @@ class CreateCommandResponse(IsolaModel):
 class CommandStatusResponse(IsolaModel):
     exit_code: int | None = None
 
-
-class FileWriteResult(IsolaModel):
-    """Result of a file write operation.
-
-    Attributes:
-        absolute_path: Resolved absolute path where the file was written.
-        bytes_written: Number of bytes written.
-    """
-
-    absolute_path: str
-    bytes_written: int

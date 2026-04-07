@@ -17,7 +17,6 @@ package filesystem
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -34,7 +33,6 @@ import (
 
 	sandboxsidecar "github.com/isola-run/isola/internal/sandbox-sidecar"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/proc"
-	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
 
 var _ = Describe("Filesystem", func() {
@@ -191,15 +189,8 @@ var _ = Describe("Filesystem", func() {
 			content := []byte("hello world")
 			resp := doPost("/v1/filesystem?path=/tmp/test.txt", content)
 
-			Expect(resp.Code).To(Equal(http.StatusCreated))
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
-			var body sidecarapi.FilesystemWriteResponse
-			err := json.NewDecoder(resp.Body).Decode(&body)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(body.AbsolutePath).To(Equal("/tmp/test.txt"))
-			Expect(body.BytesWritten).To(Equal(int64(len(content))))
-
-			// Verify file was written
 			hostPath := filepath.Join(testRootDir, "/tmp/test.txt")
 			written, err := os.ReadFile(hostPath) //nolint:gosec // test file path
 			Expect(err).NotTo(HaveOccurred())
@@ -210,15 +201,8 @@ var _ = Describe("Filesystem", func() {
 			content := []byte("relative file content")
 			resp := doPost("/v1/filesystem?path=myfile.txt", content)
 
-			Expect(resp.Code).To(Equal(http.StatusCreated))
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
-			var body sidecarapi.FilesystemWriteResponse
-			err := json.NewDecoder(resp.Body).Decode(&body)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(body.AbsolutePath).To(Equal("/workspace/myfile.txt"))
-			Expect(body.BytesWritten).To(Equal(int64(len(content))))
-
-			// Verify file was written
 			hostPath := filepath.Join(testRootDir, "/workspace/myfile.txt")
 			written, err := os.ReadFile(hostPath) //nolint:gosec // test file path
 			Expect(err).NotTo(HaveOccurred())
@@ -229,14 +213,8 @@ var _ = Describe("Filesystem", func() {
 			content := []byte("nested file")
 			resp := doPost("/v1/filesystem?path=/deep/nested/dir/file.txt", content)
 
-			Expect(resp.Code).To(Equal(http.StatusCreated))
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
-			var body sidecarapi.FilesystemWriteResponse
-			err := json.NewDecoder(resp.Body).Decode(&body)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(body.AbsolutePath).To(Equal("/deep/nested/dir/file.txt"))
-
-			// Verify file was written
 			hostPath := filepath.Join(testRootDir, "/deep/nested/dir/file.txt")
 			written, err := os.ReadFile(hostPath) //nolint:gosec // test file path
 			Expect(err).NotTo(HaveOccurred())
@@ -259,25 +237,14 @@ var _ = Describe("Filesystem", func() {
 			content := []byte("container test")
 			resp := doPost("/v1/filesystem?path=/tmp/container-test.txt&container=main", content)
 
-			Expect(resp.Code).To(Equal(http.StatusCreated))
-
-			var body sidecarapi.FilesystemWriteResponse
-			err := json.NewDecoder(resp.Body).Decode(&body)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(body.AbsolutePath).To(Equal("/tmp/container-test.txt"))
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
 		})
 
 		It("writes empty file", func() {
 			resp := doPost("/v1/filesystem?path=/tmp/empty.txt", []byte{})
 
-			Expect(resp.Code).To(Equal(http.StatusCreated))
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
 
-			var body sidecarapi.FilesystemWriteResponse
-			err := json.NewDecoder(resp.Body).Decode(&body)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(body.BytesWritten).To(Equal(int64(0)))
-
-			// Verify file was created
 			hostPath := filepath.Join(testRootDir, "/tmp/empty.txt")
 			info, err := os.Stat(hostPath)
 			Expect(err).NotTo(HaveOccurred())
@@ -288,24 +255,14 @@ var _ = Describe("Filesystem", func() {
 			content := []byte("normalized")
 			resp := doPost("/v1/filesystem?path=/tmp/../tmp/./normalized.txt", content)
 
-			Expect(resp.Code).To(Equal(http.StatusCreated))
-
-			var body sidecarapi.FilesystemWriteResponse
-			err := json.NewDecoder(resp.Body).Decode(&body)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(body.AbsolutePath).To(Equal("/tmp/normalized.txt"))
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
 		})
 
 		It("succeeds with empty container name", func() {
 			content := []byte("no container specified")
 			resp := doPost("/v1/filesystem?path=/tmp/no-container.txt", content)
 
-			Expect(resp.Code).To(Equal(http.StatusCreated))
-
-			var body sidecarapi.FilesystemWriteResponse
-			err := json.NewDecoder(resp.Body).Decode(&body)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(body.AbsolutePath).To(Equal("/tmp/no-container.txt"))
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
 		})
 
 		It("returns 500 for null bytes in path", func() {
@@ -422,7 +379,7 @@ var _ = Describe("Filesystem deadline wiring", func() {
 
 		fsHandler.ServeHTTP(mock, req)
 
-		Expect(mock.Code).To(Equal(http.StatusCreated))
+		Expect(mock.Code).To(Equal(http.StatusNoContent))
 		Expect(mock.getReadDeadlines()).NotTo(BeEmpty())
 		Expect(mock.getWriteDeadlines()).NotTo(BeEmpty())
 

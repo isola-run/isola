@@ -16,11 +16,6 @@
 // sandbox-sidecar (server). Only types that are identical across both services belong here.
 package sidecarapi
 
-type FilesystemWriteResponse struct {
-	AbsolutePath string `json:"absolutePath" example:"/workspace/file.txt" doc:"Absolute path where file was written"`
-	BytesWritten int64  `json:"bytesWritten" example:"1024" doc:"Number of bytes written"`
-}
-
 type CreateCommandRequest struct {
 	Args           []string          `json:"args" required:"true" minItems:"1" doc:"Argument vector: Args[0] is the executable path, Args[1:] are its arguments"`
 	Env            map[string]string `json:"env,omitempty" doc:"Environment variable overrides"`

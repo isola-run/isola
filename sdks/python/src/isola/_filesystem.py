@@ -18,7 +18,6 @@ from typing import BinaryIO
 from urllib.parse import quote
 
 from ._client import _AsyncAPI, _SyncAPI
-from ._models import FileWriteResult
 
 
 def _filesystem_path(sandbox_id: str) -> str:
@@ -32,7 +31,7 @@ class Filesystem:
         self._api = api
         self._sandbox_id = sandbox_id
 
-    def write(self, path: str, data: str | bytes | BinaryIO, *, container: str | None = None) -> FileWriteResult:
+    def write(self, path: str, data: str | bytes | BinaryIO, *, container: str | None = None) -> None:
         """Write a file to the sandbox.
 
         Creates the file if it does not exist, overwrites it if it does.
@@ -45,24 +44,19 @@ class Filesystem:
                 binary data, or any binary file-like object.
             container: Target container name. Only needed for
                 multi-container sandboxes.
-
-        Returns:
-            A FileWriteResult with the resolved path and bytes written.
         """
         params = {"path": path}
         if container:
             params["container"] = container
 
         content: bytes | BinaryIO = data.encode() if isinstance(data, str) else data
-        result = self._api.request_model(
+        self._api.request_no_content(
             "POST",
             _filesystem_path(self._sandbox_id),
-            FileWriteResult,
             params=params,
             content=content,
             headers={"Content-Type": "application/octet-stream"},
         )
-        return result
 
     def read(self, path: str, *, container: str | None = None) -> bytes:
         """Read a file from the sandbox.
@@ -89,7 +83,7 @@ class AsyncFilesystem:
         self._api = api
         self._sandbox_id = sandbox_id
 
-    async def write(self, path: str, data: str | bytes | BinaryIO, *, container: str | None = None) -> FileWriteResult:
+    async def write(self, path: str, data: str | bytes | BinaryIO, *, container: str | None = None) -> None:
         """Write a file to the sandbox.
 
         Creates the file if it does not exist, overwrites it if it does.
@@ -102,24 +96,19 @@ class AsyncFilesystem:
                 binary data, or any binary file-like object.
             container: Target container name. Only needed for
                 multi-container sandboxes.
-
-        Returns:
-            A FileWriteResult with the resolved path and bytes written.
         """
         params = {"path": path}
         if container:
             params["container"] = container
 
         content: bytes | BinaryIO = data.encode() if isinstance(data, str) else data
-        result = await self._api.request_model(
+        await self._api.request_no_content(
             "POST",
             _filesystem_path(self._sandbox_id),
-            FileWriteResult,
             params=params,
             content=content,
             headers={"Content-Type": "application/octet-stream"},
         )
-        return result
 
     async def read(self, path: str, *, container: str | None = None) -> bytes:
         """Read a file from the sandbox.
