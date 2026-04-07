@@ -38,12 +38,12 @@ from isola._client import MAX_RETRIES
 
 
 @respx.mock
-def test_sync_client_uses_base_url_with_trailing_slash() -> None:
+def test_sync_client_uses_url_with_trailing_slash() -> None:
     route = respx.get("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(200, json={"sandboxes": []})
     )
 
-    with Isola(base_url="http://localhost:8080/") as client:
+    with Isola(url="http://localhost:8080/") as client:
         assert client.sandboxes.list() == []
 
     assert route.called
@@ -56,7 +56,7 @@ async def test_async_client_list() -> None:
         return_value=httpx.Response(200, json={"sandboxes": []})
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandboxes = await client.sandboxes.list()
 
     assert sandboxes == []
@@ -76,7 +76,7 @@ def test_error_mapping_for_problem_details() -> None:
         )
     )
 
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(NotFoundError) as exc_info:
+    with Isola(url="http://localhost:8080") as client, pytest.raises(NotFoundError) as exc_info:
         client.sandboxes.get("missing")
 
     assert exc_info.value.status_code == 404
@@ -89,7 +89,7 @@ def test_transport_error_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
     route = respx.get("http://localhost:8080/v1/sandboxes")
     route.mock(side_effect=httpx.ConnectError("connect failed"))
 
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(APIConnectionError) as exc_info:
+    with Isola(url="http://localhost:8080") as client, pytest.raises(APIConnectionError) as exc_info:
         client.sandboxes.list()
 
     assert "connect failed" in exc_info.value.message
@@ -118,7 +118,7 @@ def test_error_status_code_mapping(status_code: int, exc_type: type[APIError], m
         )
     )
 
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(exc_type) as exc_info:
+    with Isola(url="http://localhost:8080") as client, pytest.raises(exc_type) as exc_info:
         client.sandboxes.get("bad")
 
     assert exc_info.value.status_code == status_code
@@ -132,7 +132,7 @@ def test_unknown_status_code_raises_base_api_error(monkeypatch: pytest.MonkeyPat
         return_value=httpx.Response(503, json={"detail": "service unavailable"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(APIError) as exc_info:
+    with Isola(url="http://localhost:8080") as client, pytest.raises(APIError) as exc_info:
         client.sandboxes.get("bad")
 
     assert type(exc_info.value) is APIError
@@ -145,7 +145,7 @@ def test_invalid_json_response_raises_api_error() -> None:
         return_value=httpx.Response(200, content=b"<html>not json</html>")
     )
 
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(APIError) as exc_info:
+    with Isola(url="http://localhost:8080") as client, pytest.raises(APIError) as exc_info:
         client.sandboxes.get("sandbox-123")
 
     assert exc_info.value.message == "200: invalid response payload"
@@ -157,34 +157,34 @@ def test_json_schema_mismatch_raises_api_error() -> None:
         return_value=httpx.Response(200, json={"unexpected": "schema"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(APIError) as exc_info:
+    with Isola(url="http://localhost:8080") as client, pytest.raises(APIError) as exc_info:
         client.sandboxes.get("sandbox-123")
 
     assert exc_info.value.message == "200: invalid response payload"
 
 
-def test_empty_base_url_raises_value_error() -> None:
-    with pytest.raises(ValueError, match="ISOLA_BASE_URL"):
-        Isola(base_url="")
+def test_empty_url_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="ISOLA_URL"):
+        Isola(url="")
 
 
-def test_no_base_url_raises_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ISOLA_BASE_URL", raising=False)
-    with pytest.raises(ValueError, match="ISOLA_BASE_URL"):
+def test_no_url_raises_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ISOLA_URL", raising=False)
+    with pytest.raises(ValueError, match="ISOLA_URL"):
         Isola()
 
 
-def test_base_url_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ISOLA_BASE_URL", "http://from-env:9090")
+def test_url_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ISOLA_URL", "http://from-env:9090")
     client = Isola()
-    assert client._api.base_url == "http://from-env:9090"
+    assert client._api.url == "http://from-env:9090"
     client.close()
 
 
-def test_explicit_base_url_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ISOLA_BASE_URL", "http://from-env:9090")
-    client = Isola(base_url="http://explicit:8080")
-    assert client._api.base_url == "http://explicit:8080"
+def test_explicit_url_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ISOLA_URL", "http://from-env:9090")
+    client = Isola(url="http://explicit:8080")
+    assert client._api.url == "http://explicit:8080"
     client.close()
 
 
@@ -193,7 +193,7 @@ def test_unexpected_exception_raises_api_connection_error() -> None:
     respx.get("http://localhost:8080/v1/sandboxes").mock(return_value=httpx.Response(200, json={"sandboxes": []}))
 
     with (
-        Isola(base_url="http://localhost:8080") as client,
+        Isola(url="http://localhost:8080") as client,
         patch.object(client._api._client, "request", side_effect=RuntimeError("unexpected")),
         pytest.raises(APIConnectionError) as exc_info,
     ):
@@ -214,7 +214,7 @@ def test_retries_transient_502_then_succeeds(monkeypatch: pytest.MonkeyPatch) ->
             httpx.Response(200, json={"sandboxes": []}),
         ]
     )
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         assert client.sandboxes.list() == []
 
 
@@ -227,7 +227,7 @@ def test_retries_transient_504_then_succeeds(monkeypatch: pytest.MonkeyPatch) ->
             httpx.Response(200, json={"sandboxes": []}),
         ]
     )
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         assert client.sandboxes.list() == []
 
 
@@ -240,7 +240,7 @@ def test_retries_connection_error_then_succeeds(monkeypatch: pytest.MonkeyPatch)
             httpx.Response(200, json={"sandboxes": []}),
         ]
     )
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         assert client.sandboxes.list() == []
 
 
@@ -250,7 +250,7 @@ def test_no_retry_on_404(monkeypatch: pytest.MonkeyPatch) -> None:
     route = respx.get("http://localhost:8080/v1/sandboxes/bad").mock(
         return_value=httpx.Response(404, json={"detail": "not found"})
     )
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(NotFoundError):
+    with Isola(url="http://localhost:8080") as client, pytest.raises(NotFoundError):
         client.sandboxes.get("bad")
     assert route.call_count == 1
 
@@ -261,7 +261,7 @@ def test_no_retry_on_400(monkeypatch: pytest.MonkeyPatch) -> None:
     route = respx.get("http://localhost:8080/v1/sandboxes/bad").mock(
         return_value=httpx.Response(400, json={"detail": "bad request"})
     )
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(BadRequestError):
+    with Isola(url="http://localhost:8080") as client, pytest.raises(BadRequestError):
         client.sandboxes.get("bad")
     assert route.call_count == 1
 
@@ -272,7 +272,7 @@ def test_exhausts_retries_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     route = respx.get("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(502, json={"detail": "bad gateway"})
     )
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(BadGatewayError):
+    with Isola(url="http://localhost:8080") as client, pytest.raises(BadGatewayError):
         client.sandboxes.list()
     assert route.call_count == 1 + MAX_RETRIES
 
@@ -282,7 +282,7 @@ def test_exhausts_retries_on_connection_error(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
     route = respx.get("http://localhost:8080/v1/sandboxes")
     route.mock(side_effect=httpx.ConnectError("connect failed"))
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(APIConnectionError):
+    with Isola(url="http://localhost:8080") as client, pytest.raises(APIConnectionError):
         client.sandboxes.list()
     assert route.call_count == 1 + MAX_RETRIES
 
@@ -300,7 +300,7 @@ async def test_async_retries_transient_502_then_succeeds(monkeypatch: pytest.Mon
             httpx.Response(200, json={"sandboxes": []}),
         ]
     )
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         assert await client.sandboxes.list() == []
 
 
@@ -317,7 +317,7 @@ async def test_async_retries_connection_error_then_succeeds(monkeypatch: pytest.
             httpx.Response(200, json={"sandboxes": []}),
         ]
     )
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         assert await client.sandboxes.list() == []
 
 
@@ -331,7 +331,7 @@ async def test_async_no_retry_on_404(monkeypatch: pytest.MonkeyPatch) -> None:
     route = respx.get("http://localhost:8080/v1/sandboxes/bad").mock(
         return_value=httpx.Response(404, json={"detail": "not found"})
     )
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         with pytest.raises(NotFoundError):
             await client.sandboxes.get("bad")
     assert route.call_count == 1
@@ -347,7 +347,7 @@ async def test_async_exhausts_retries_raises(monkeypatch: pytest.MonkeyPatch) ->
     route = respx.get("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(502, json={"detail": "bad gateway"})
     )
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         with pytest.raises(BadGatewayError):
             await client.sandboxes.list()
     assert route.call_count == 1 + MAX_RETRIES
@@ -360,7 +360,7 @@ async def test_async_exhausts_retries_raises(monkeypatch: pytest.MonkeyPatch) ->
 def test_sync_context_manager_closes_client() -> None:
     respx.get("http://localhost:8080/v1/sandboxes").mock(return_value=httpx.Response(200, json={"sandboxes": []}))
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         client.sandboxes.list()
 
     assert client._api._client.is_closed
@@ -371,7 +371,7 @@ def test_sync_context_manager_closes_client() -> None:
 async def test_async_context_manager_closes_client() -> None:
     respx.get("http://localhost:8080/v1/sandboxes").mock(return_value=httpx.Response(200, json={"sandboxes": []}))
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         await client.sandboxes.list()
 
     assert client._api._client.is_closed
@@ -383,7 +383,7 @@ def test_sync_context_manager_closes_on_exception() -> None:
         return_value=httpx.Response(404, json={"detail": "not found"})
     )
 
-    with pytest.raises(NotFoundError), Isola(base_url="http://localhost:8080") as client:
+    with pytest.raises(NotFoundError), Isola(url="http://localhost:8080") as client:
         client.sandboxes.get("missing")
 
     assert client._api._client.is_closed
@@ -397,14 +397,14 @@ async def test_async_context_manager_closes_on_exception() -> None:
     )
 
     with pytest.raises(NotFoundError):
-        async with AsyncIsola(base_url="http://localhost:8080") as client:
+        async with AsyncIsola(url="http://localhost:8080") as client:
             await client.sandboxes.get("missing")
 
     assert client._api._client.is_closed
 
 
 def test_sync_close_is_idempotent() -> None:
-    client = Isola(base_url="http://localhost:8080")
+    client = Isola(url="http://localhost:8080")
     client.close()
     client.close()
     assert client._api._client.is_closed
@@ -412,7 +412,7 @@ def test_sync_close_is_idempotent() -> None:
 
 @pytest.mark.asyncio
 async def test_async_close_is_idempotent() -> None:
-    client = AsyncIsola(base_url="http://localhost:8080")
+    client = AsyncIsola(url="http://localhost:8080")
     await client.close()
     await client.close()
     assert client._api._client.is_closed
@@ -436,7 +436,7 @@ def test_retries_rewind_seekable_stream_on_transient_error(monkeypatch: pytest.M
     respx.get("http://localhost:8080/v1/sandboxes").mock(side_effect=capture_body)
 
     stream = io.BytesIO(payload)
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         client._api.request("GET", "/v1/sandboxes", content=stream)
 
     assert len(bodies_received) == 2
@@ -462,7 +462,7 @@ def test_retries_rewind_seekable_stream_on_connection_error(monkeypatch: pytest.
     respx.get("http://localhost:8080/v1/sandboxes").mock(side_effect=handler)
 
     stream = io.BytesIO(payload)
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         client._api.request("GET", "/v1/sandboxes", content=stream)
 
     assert len(bodies_received) == 1
@@ -483,7 +483,7 @@ def test_no_retry_for_non_seekable_stream_on_connection_error(monkeypatch: pytes
     os.close(w)
     with (
         os.fdopen(r, "rb") as stream,
-        Isola(base_url="http://localhost:8080") as client,
+        Isola(url="http://localhost:8080") as client,
         pytest.raises(APIConnectionError),
     ):
         client._api.request("GET", "/v1/sandboxes", content=stream)

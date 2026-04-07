@@ -24,7 +24,14 @@ from pydantic.alias_generators import to_camel
 
 @dataclass(frozen=True)
 class CommandResult:
-    """Result of a completed command execution."""
+    """Result of a completed command execution.
+
+    Attributes:
+        id: Unique identifier of the command.
+        stdout: Complete standard output as a string.
+        stderr: Complete standard error as a string.
+        exit_code: Process exit code. 0 indicates success.
+    """
 
     id: str
     stdout: str
@@ -42,6 +49,8 @@ class IsolaModel(BaseModel):
 
 
 class SandboxStatus(str, Enum):
+    """Lifecycle status of a sandbox."""
+
     PENDING = "Pending"
     RUNNING = "Running"
     TERMINATING = "Terminating"
@@ -50,11 +59,36 @@ class SandboxStatus(str, Enum):
 
 
 class Network(IsolaModel):
+    """Network configuration for a sandbox.
+
+    Sandboxes have no network access by default. Use this to enable
+    internet access, cluster DNS, or fine-grained egress rules.
+
+    When internet egress or custom CIDRs are enabled without cluster DNS,
+    the server automatically configures public nameservers (8.8.8.8, 1.1.1.1)
+    so DNS resolution works out of the box. Override this with the
+    nameservers field.
+
+    Attributes:
+        allow_internet_egress: Allow outbound traffic to the public internet.
+        allowed_egress_cidrs: List of CIDR blocks the sandbox can reach
+            (e.g. ["10.0.0.0/8"]). Use this for fine-grained control
+            instead of allowing all internet traffic.
+        allow_cluster_dns: Allow DNS resolution through the cluster's DNS
+            service. When False and allow_internet_egress or allowed_egress_cidrs are specified,
+            the sandbox uses public nameservers or the ones you provide in nameservers.
+        nameservers: Custom DNS nameservers. Overrides the automatic
+            public nameservers.
+        allow_ipv6_egress: Enable IPv6 across egress configuration.
+            Extends allow_internet_egress to cover IPv6, and allows
+            IPv6 addresses in allowed_egress_cidrs and nameservers.
+    """
+
     allow_internet_egress: bool | None = None
-    allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
-    allow_ipv6_egress: bool | None = Field(None, alias="allowIPv6Egress")
     allowed_egress_cidrs: list[str] | None = Field(None, alias="allowedEgressCIDRs")
+    allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
     nameservers: list[str] | None = None
+    allow_ipv6_egress: bool | None = Field(None, alias="allowIPv6Egress")
 
 
 class ResourceList(IsolaModel):
@@ -69,23 +103,52 @@ class ResourceRequirements(IsolaModel):
 
 
 class Container(IsolaModel):
+    """Container specification for sandbox creation.
+
+    Used with the containers parameter of Sandboxes.create() when
+    running multi-container sandboxes or when specifying custom
+    and non-equal requests and limits resource requirements.
+
+    Attributes:
+        name: Container name. Auto-generated if not set.
+        image: Container image to run (e.g. "python:3.12").
+        rootfs_snapshot_name: Name of a rootfs snapshot to restore into
+            this container.
+        command: Command and arguments to run in the container.
+            If not set, defaults to sleep infinity.
+        env: Environment variables as key-value pairs.
+        resources: CPU, memory, and ephemeral storage k8s resource requirements.
+    """
+
     name: str | None = None
     image: str
+    rootfs_snapshot_name: str | None = None
     command: list[str] | None = None
     env: dict[str, str] | None = None
     resources: ResourceRequirements | None = None
-    rootfs_snapshot_name: str | None = None
 
 
 class ContainerInfo(IsolaModel):
+    """Read-only container information returned by the API.
+
+    Attributes:
+        name: Container name.
+        image: Container image.
+        rootfs_snapshot_name: Rootfs snapshot name, if restoring from one.
+        command: Command and arguments.
+        resources: Resource limits and requests.
+    """
+
     name: str | None = None
     image: str
+    rootfs_snapshot_name: str | None = None
     command: list[str] | None = None
     resources: ResourceRequirements | None = None
-    rootfs_snapshot_name: str | None = None
 
 
 class RootfsSnapshotStatus(str, Enum):
+    """Lifecycle status of a rootfs snapshot."""
+
     PENDING = "Pending"
     RUNNING = "Running"
     SUCCEEDED = "Succeeded"
@@ -120,19 +183,26 @@ class PodTemplateInfo(IsolaModel):
 
 
 class SnapshotRootfs(IsolaModel):
-    """Configure SnapshotRootfs termination policy.
+    """Termination policy that snapshots a container's root filesystem changes on exit.
 
-    Snapshots the first user container on termination. Restore with
-    rootfs_snapshot_name matching the snapshot_name used here.
+    Pass this as the termination_policy parameter of
+    Sandboxes.create() to automatically capture a rootfs snapshot of
+    the container's root filesystem changes when the sandbox terminates.
+    Restore the snapshot later by passing its name as rootfs_snapshot_name.
+
+    Attributes:
+        snapshot_name: Name for the snapshot. If not set, defaults to
+            the sandbox's ID on the server.
+        timeout_seconds: Maximum time for the snapshot operation, in
+            seconds. Enforced server-side. The server cancels the
+            snapshot if it takes longer than this.
     """
 
     snapshot_name: str | None = None
-    timeout_seconds: int | None = None
+    timeout_seconds: int = 300
 
 
 class TerminationPolicy(IsolaModel):
-    """Wire format for terminationPolicy (internal, not exported)."""
-
     type: str
     snapshot_rootfs: SnapshotRootfs | None = None
 
@@ -146,6 +216,14 @@ class CreateSandboxPayload(IsolaModel):
 
 
 class SandboxSummary(IsolaModel):
+    """Lightweight sandbox summary returned by list operations.
+
+    Attributes:
+        id: Unique identifier of the sandbox.
+        status: Current lifecycle status.
+        creation_timestamp: When the sandbox was created.
+    """
+
     id: str
     status: SandboxStatus
     creation_timestamp: datetime
@@ -182,5 +260,12 @@ class CommandStatusResponse(IsolaModel):
 
 
 class FileWriteResult(IsolaModel):
+    """Result of a file write operation.
+
+    Attributes:
+        absolute_path: Resolved absolute path where the file was written.
+        bytes_written: Number of bytes written.
+    """
+
     absolute_path: str
     bytes_written: int

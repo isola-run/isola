@@ -48,7 +48,7 @@ def test_spawn_and_command_lifecycle(sandbox_response_copy: dict[str, object]) -
         "http://localhost:8080/v1/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000001"
     ).mock(return_value=httpx.Response(204))
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.spawn(
             "python",
@@ -93,7 +93,7 @@ async def test_async_spawn_and_exit_code(sandbox_response_copy: dict[str, object
         "http://localhost:8080/v1/sandboxes/sandbox-123/commands/00000000-0000-0000-0000-000000000002/status"
     ).mock(return_value=httpx.Response(200, json={"exitCode": 0}))
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         cmd = await sandbox.commands.spawn("ls", "-la")
         code = await cmd.exit_code()
@@ -118,7 +118,7 @@ async def test_async_spawn_stdin_and_kill(sandbox_response_copy: dict[str, objec
         return_value=httpx.Response(204)
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         cmd = await sandbox.commands.spawn("cat")
         await cmd.write_stdin(b"hello\n")
@@ -146,7 +146,7 @@ def test_run_returns_command_result(sandbox_response_copy: dict[str, object]) ->
         return_value=httpx.Response(200, content=b"", headers={"content-type": "text/event-stream"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         result = sandbox.commands.run("echo", "hello world")
 
@@ -170,7 +170,7 @@ def test_command_stdout_streams_text(sandbox_response_copy: dict[str, object]) -
         )
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.spawn("echo", "hello world")
         output = "".join(cmd.stdout)
@@ -192,7 +192,7 @@ def test_command_stderr_streams_text(sandbox_response_copy: dict[str, object]) -
         )
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.spawn("ls", "nonexistent")
         output = "".join(cmd.stderr)
@@ -215,7 +215,7 @@ async def test_async_command_stdout_streams_text(sandbox_response_copy: dict[str
         )
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         cmd = await sandbox.commands.spawn("echo", "test")
         chunks_list: list[str] = []
@@ -237,7 +237,7 @@ def test_command_write_stdin_str(sandbox_response_copy: dict[str, object]) -> No
         return_value=httpx.Response(204)
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.spawn("cat")
         cmd.write_stdin("hello\n")
@@ -258,7 +258,7 @@ async def test_async_command_write_stdin_str(sandbox_response_copy: dict[str, ob
         return_value=httpx.Response(204)
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         cmd = await sandbox.commands.spawn("cat")
         await cmd.write_stdin("hello\n")
@@ -275,7 +275,7 @@ def test_spawn_minimal_payload(sandbox_response_copy: dict[str, object]) -> None
         return_value=httpx.Response(202, json={"id": "cmd-5"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         sandbox.commands.spawn("ls")
 
@@ -290,7 +290,7 @@ def test_spawn_requires_at_least_one_arg(sandbox_response_copy: dict[str, object
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with pytest.raises(ValueError, match="at least one argument"):
             sandbox.commands.spawn()
@@ -308,7 +308,7 @@ def test_command_exit_code_method(sandbox_response_copy: dict[str, object]) -> N
         return_value=httpx.Response(200, json={"exitCode": 42})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.spawn("sh", "-c", "exit 42")
 
@@ -335,7 +335,7 @@ async def test_async_run_returns_command_result(sandbox_response_copy: dict[str,
         return_value=httpx.Response(200, content=b"", headers={"content-type": "text/event-stream"})
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         result = await sandbox.commands.run("echo", "async result")
 
@@ -357,7 +357,7 @@ def test_close_stdin_sends_post(sandbox_response_copy: dict[str, object]) -> Non
         return_value=httpx.Response(204)
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.spawn("cat")
         cmd.close_stdin()
@@ -389,7 +389,7 @@ def test_run_with_input(sandbox_response_copy: dict[str, object]) -> None:
         return_value=httpx.Response(200, content=b"", headers={"content-type": "text/event-stream"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         result = sandbox.commands.run("cat", input="hello\n")
 
@@ -412,7 +412,7 @@ async def test_async_close_stdin_sends_post(sandbox_response_copy: dict[str, obj
         return_value=httpx.Response(204)
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         cmd = await sandbox.commands.spawn("cat")
         await cmd.close_stdin()
@@ -432,7 +432,7 @@ def test_wait_sends_long_poll_request(sandbox_response_copy: dict[str, object]) 
         return_value=httpx.Response(200, json={"exitCode": 0})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.spawn("echo", "hi")
         code = cmd.wait()
@@ -457,7 +457,7 @@ def test_wait_retries_on_null_exit_code(sandbox_response_copy: dict[str, object]
         ]
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.spawn("sleep", "1")
         code = cmd.wait()
@@ -479,7 +479,7 @@ async def test_async_wait_sends_long_poll_request(sandbox_response_copy: dict[st
         return_value=httpx.Response(200, json={"exitCode": 0})
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         cmd = await sandbox.commands.spawn("echo", "hi")
         code = await cmd.wait()
@@ -502,7 +502,7 @@ def test_spawn_raises_on_api_error(sandbox_response_copy: dict[str, object], mon
         return_value=httpx.Response(500, json={"detail": "sidecar unreachable"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with pytest.raises(InternalError) as exc_info:
             sandbox.commands.spawn("ls")
@@ -521,7 +521,7 @@ def test_spawn_raises_on_bad_gateway(sandbox_response_copy: dict[str, object], m
         return_value=httpx.Response(502, json={"detail": "bad gateway"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with pytest.raises(BadGatewayError):
             sandbox.commands.spawn("ls")
@@ -540,7 +540,7 @@ def test_kill_raises_on_not_found(sandbox_response_copy: dict[str, object], monk
         return_value=httpx.Response(404, json={"detail": "command not found"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.spawn("sleep", "100")
         with pytest.raises(NotFoundError) as exc_info:
@@ -562,7 +562,7 @@ def test_write_stdin_raises_on_error(sandbox_response_copy: dict[str, object], m
         return_value=httpx.Response(500, json={"detail": "stdin closed"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.spawn("cat")
         with pytest.raises(InternalError):
@@ -582,7 +582,7 @@ def test_close_stdin_raises_on_error(sandbox_response_copy: dict[str, object], m
         return_value=httpx.Response(404, json={"detail": "command not found"})
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         cmd = sandbox.commands.spawn("cat")
         with pytest.raises(NotFoundError):
@@ -605,7 +605,7 @@ async def test_async_spawn_raises_on_api_error(
         return_value=httpx.Response(500, json={"detail": "sidecar unreachable"})
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         with pytest.raises(InternalError):
             await sandbox.commands.spawn("ls")
@@ -630,7 +630,7 @@ async def test_async_kill_raises_on_not_found(
         return_value=httpx.Response(404, json={"detail": "command not found"})
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         cmd = await sandbox.commands.spawn("sleep", "100")
         with pytest.raises(NotFoundError):
@@ -656,7 +656,7 @@ async def test_async_write_stdin_raises_on_error(
         return_value=httpx.Response(500, json={"detail": "stdin closed"})
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         cmd = await sandbox.commands.spawn("cat")
         with pytest.raises(InternalError):
@@ -682,7 +682,7 @@ async def test_async_close_stdin_raises_on_error(
         return_value=httpx.Response(404, json={"detail": "command not found"})
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         cmd = await sandbox.commands.spawn("cat")
         with pytest.raises(NotFoundError):

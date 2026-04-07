@@ -43,8 +43,8 @@ def _stream_pos(content: bytes | BinaryIO | None) -> int | None:
 
 
 class _SyncAPI:
-    def __init__(self, base_url: str) -> None:
-        self.base_url = _normalize_base_url(base_url)
+    def __init__(self, url: str) -> None:
+        self.url = _normalize_url(url)
         self._client = httpx.Client(timeout=DEFAULT_TIMEOUT)
 
     def close(self) -> None:
@@ -61,7 +61,7 @@ class _SyncAPI:
         headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
-        url = f"{self.base_url}{path}"
+        url = f"{self.url}{path}"
         pos = _stream_pos(content)
         can_retry = pos is not None or content is None or isinstance(content, bytes)
 
@@ -155,7 +155,7 @@ class _SyncAPI:
     ) -> AbstractContextManager[httpx.Response]:
         return self._client.stream(
             "GET",
-            f"{self.base_url}{path}",
+            f"{self.url}{path}",
             params=params,
             headers=headers,
             timeout=timeout,
@@ -163,8 +163,8 @@ class _SyncAPI:
 
 
 class _AsyncAPI:
-    def __init__(self, base_url: str) -> None:
-        self.base_url = _normalize_base_url(base_url)
+    def __init__(self, url: str) -> None:
+        self.url = _normalize_url(url)
         self._client = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
 
     async def close(self) -> None:
@@ -181,7 +181,7 @@ class _AsyncAPI:
         headers: dict[str, str] | None = None,
         timeout: httpx.Timeout | float | None = DEFAULT_TIMEOUT,
     ) -> httpx.Response:
-        url = f"{self.base_url}{path}"
+        url = f"{self.url}{path}"
         pos = _stream_pos(content)
         can_retry = pos is not None or content is None or isinstance(content, bytes)
 
@@ -275,28 +275,47 @@ class _AsyncAPI:
     ) -> AbstractAsyncContextManager[httpx.Response]:
         return self._client.stream(
             "GET",
-            f"{self.base_url}{path}",
+            f"{self.url}{path}",
             params=params,
             headers=headers,
             timeout=timeout,
         )
 
 
-def _normalize_base_url(base_url: str) -> str:
-    normalized = base_url.strip().rstrip("/")
+def _normalize_url(url: str) -> str:
+    normalized = url.strip().rstrip("/")
     if not normalized:
-        raise ValueError("base_url must not be empty")
+        raise ValueError("url must not be empty")
     return normalized
 
 
 class Isola:
-    def __init__(self, *, base_url: str | None = None) -> None:
-        base_url = base_url or os.environ.get("ISOLA_BASE_URL")
-        if not base_url:
+    """Synchronous client for the Isola API.
+
+    Example:
+
+        from isola import Isola
+
+        with Isola() as client:
+            with client.sandboxes.create(image="alpine:3.21") as sandbox:
+                result = sandbox.commands.run("echo", "hello")
+                print(result.stdout)
+
+    Args:
+        url: Isola API URL. If not provided, reads from the
+            ISOLA_URL environment variable.
+
+    Raises:
+        ValueError: If no URL is provided or found in environment.
+    """
+
+    def __init__(self, *, url: str | None = None) -> None:
+        url = url or os.environ.get("ISOLA_URL")
+        if not url:
             raise ValueError(
-                "base_url must be provided either as argument or via the ISOLA_BASE_URL environment variable"
+                "url must be provided either as argument or via the ISOLA_URL environment variable"
             )
-        self._api = _SyncAPI(base_url)
+        self._api = _SyncAPI(url)
         from ._rootfs_snapshot import RootfsSnapshots
         from ._sandbox import Sandboxes
 
@@ -304,6 +323,10 @@ class Isola:
         self.rootfs_snapshots = RootfsSnapshots(self._api)
 
     def close(self) -> None:
+        """Close the HTTP connection.
+
+        Called automatically when using the client as a context manager.
+        """
         self._api.close()
 
     def __enter__(self) -> Isola:
@@ -314,13 +337,33 @@ class Isola:
 
 
 class AsyncIsola:
-    def __init__(self, *, base_url: str | None = None) -> None:
-        base_url = base_url or os.environ.get("ISOLA_BASE_URL")
-        if not base_url:
+    """Asynchronous client for the Isola API.
+
+    Example:
+
+        from isola import AsyncIsola
+
+        async with AsyncIsola() as client:
+            sandbox = await client.sandboxes.create(image="alpine:3.21")
+            async with sandbox:
+                result = await sandbox.commands.run("echo", "hello")
+                print(result.stdout)
+
+    Args:
+        url: Isola API URL. If not provided, reads from the
+            ISOLA_URL environment variable.
+
+    Raises:
+        ValueError: If no URL is provided or found in environment.
+    """
+
+    def __init__(self, *, url: str | None = None) -> None:
+        url = url or os.environ.get("ISOLA_URL")
+        if not url:
             raise ValueError(
-                "base_url must be provided either as argument or via the ISOLA_BASE_URL environment variable"
+                "url must be provided either as argument or via the ISOLA_URL environment variable"
             )
-        self._api = _AsyncAPI(base_url)
+        self._api = _AsyncAPI(url)
         from ._rootfs_snapshot import AsyncRootfsSnapshots
         from ._sandbox import AsyncSandboxes
 
@@ -328,6 +371,11 @@ class AsyncIsola:
         self.rootfs_snapshots = AsyncRootfsSnapshots(self._api)
 
     async def close(self) -> None:
+        """Close the HTTP connection.
+
+        Called automatically when using the client as an async context
+        manager.
+        """
         await self._api.close()
 
     async def __aenter__(self) -> AsyncIsola:

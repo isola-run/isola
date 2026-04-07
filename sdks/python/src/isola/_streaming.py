@@ -54,7 +54,24 @@ class _AsyncStreamAPI(Protocol):
 
 
 class StreamReader:
-    """Single-use iterable stream with transparent reconnect."""
+    """A single-use reader for a streaming output.
+
+    Iterate over it to receive chunks as they arrive, or call read()
+    to collect everything into a string. Attempting to iterate a
+    second time raises RuntimeError.
+
+    The reader reconnects automatically on transient
+    network errors, resuming from where it left off.
+
+    Example:
+
+        cmd = sandbox.commands.spawn("ls", "-la")
+        for chunk in cmd.stdout:
+            print(chunk, end="")
+
+        # Or read everything at once:
+        output = cmd.stderr.read()
+    """
 
     def __init__(self, api: _SyncStreamAPI, path: str) -> None:
         self._api = api
@@ -75,6 +92,11 @@ class StreamReader:
         return self._generate()
 
     def read(self) -> str:
+        """Read the entire stream and return it as a string.
+
+        Raises:
+            RuntimeError: If the stream has already been consumed.
+        """
         return "".join(self)
 
     def _generate(self) -> Generator[str, None, None]:
@@ -112,7 +134,24 @@ class StreamReader:
 
 
 class AsyncStreamReader:
-    """Single-use async iterable stream with transparent reconnect."""
+    """A single-use reader for a streaming output.
+
+    Iterate over it with async for to receive chunks as they arrive,
+    or call await read() to collect everything into a string.
+    Attempting to iterate a second time raises RuntimeError.
+
+    The reader reconnects automatically on transient
+    network errors, resuming from where it left off.
+
+    Example:
+
+        cmd = await sandbox.commands.spawn("ls", "-la")
+        async for chunk in cmd.stdout:
+            print(chunk, end="")
+
+        # Or read everything at once:
+        output = await cmd.stderr.read()
+    """
 
     def __init__(self, api: _AsyncStreamAPI, path: str) -> None:
         self._api = api
@@ -164,4 +203,9 @@ class AsyncStreamReader:
                 await asyncio.sleep(RETRY_DELAY)
 
     async def read(self) -> str:
+        """Read the entire stream and return it as a string.
+
+        Raises:
+            RuntimeError: If the stream has already been consumed.
+        """
         return "".join([chunk async for chunk in self])

@@ -161,6 +161,8 @@ async def _async_wait_until_running(
 
 
 class Sandboxes:
+    """Create, list, and retrieve sandboxes."""
+
     def __init__(self, api: _SyncAPI) -> None:
         self._api = api
 
@@ -169,15 +171,15 @@ class Sandboxes:
         self,
         *,
         image: str,
+        rootfs_snapshot_name: str | None = ...,
         command: list[str] | None = ...,
         env: dict[str, str] | None = ...,
         cpu: float | None = ...,
         memory: int | None = ...,
         ephemeral_storage: int | None = ...,
-        rootfs_snapshot_name: str | None = ...,
+        network: Network | None = ...,
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
-        network: Network | None = ...,
         termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> Sandbox: ...
@@ -187,9 +189,9 @@ class Sandboxes:
         self,
         *,
         containers: list[Container],
+        network: Network | None = ...,
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
-        network: Network | None = ...,
         termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> Sandbox: ...
@@ -198,19 +200,89 @@ class Sandboxes:
         self,
         *,
         image: str | None = None,
-        containers: list[Container] | None = None,
+        rootfs_snapshot_name: str | None = None,
         command: list[str] | None = None,
         env: dict[str, str] | None = None,
         cpu: float | None = None,
         memory: int | None = None,
         ephemeral_storage: int | None = None,
-        rootfs_snapshot_name: str | None = None,
+        containers: list[Container] | None = None,
+        network: Network | None = None,
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
-        network: Network | None = None,
         termination_policy: SnapshotRootfs | None = None,
-        max_wait_seconds: int = 60,
+        max_wait_seconds: int = 65,
     ) -> Sandbox:
+        """Create a new sandbox and wait for it to be ready.
+
+        There are two ways to specify what to run:
+
+        Single container (common): pass image and optionally command,
+        env, cpu, memory, ephemeral_storage, and rootfs_snapshot_name.
+
+        Multiple containers: pass a containers list of Container objects.
+        Per-container options go on each Container.
+
+        The method blocks until the sandbox reaches the Running state,
+        up to max_wait_seconds. Set max_wait_seconds=0 to return
+        immediately without waiting.
+
+        Timeouts:
+
+        - max_wait_seconds (client-side): How long this method polls
+          before giving up. Does not affect the sandbox on the server
+        - startup_timeout_seconds (server-side): How long the server
+          waits for the sandbox pod to become ready. If it expires,
+          the sandbox is marked as Failed.
+        - timeout_seconds (server-side, no default): How long the
+          sandbox runs before the server begins the termination
+          process. None means no limit.
+
+        Args:
+            image: Container image to run (e.g. "python:3.12").
+                Required unless containers is provided.
+            rootfs_snapshot_name: Restore the container's filesystem
+                from this named snapshot.
+            command: Command and arguments to run in the container.
+                If not set, defaults to sleep infinity.
+            env: Environment variables as key-value pairs.
+            cpu: CPU limit in cores (e.g. 0.5, 2.0). Sets both the
+                Kubernetes request and limit. If omitted, no CPU
+                limit is applied.
+            memory: Memory limit in MiB (e.g. 256, 1024). Sets both
+                the Kubernetes request and limit. If omitted, no
+                memory limit is applied.
+            ephemeral_storage: Ephemeral storage limit in MiB. Sets
+                both the Kubernetes request and limit. If omitted,
+                no ephemeral storage limit is applied.
+            containers: List of Container specs for multi-container
+                sandboxes. Cannot be combined with image.
+            network: Network policy. Sandboxes have no network access
+                by default. See the Network class.
+            timeout_seconds: How long the sandbox runs before the
+                server begins the termination process, in seconds.
+                Enforced server-side. None means no limit.
+            startup_timeout_seconds: Maximum time for the sandbox pod
+                to become ready, in seconds. Enforced server-side.
+            termination_policy: Action to run before the sandbox pod
+                is removed. Defaults to immediate deletion if not
+                set. Pass a SnapshotRootfs to snapshot the
+                container's rootfs changes before removal.
+            max_wait_seconds: How long to wait for the sandbox to be
+                ready, in seconds. Client-side only. Set to 0 to return
+                immediately.
+
+        Returns:
+            A Sandbox instance. If max_wait_seconds is 0, the sandbox
+            may not be ready yet (check status).
+
+        Raises:
+            ValueError: If both image and containers are set, or if
+                per-container options are used with containers.
+            IsolaTimeoutError: If the sandbox is not ready within
+                max_wait_seconds.
+            IsolaError: If the sandbox reaches a terminal failed state.
+        """
         container_list = _validate_create_args(
             image,
             containers,
@@ -223,9 +295,9 @@ class Sandboxes:
         )
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(containers=container_list),
+            network=network,
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
-            network=network,
             termination_policy=TerminationPolicy(
                 type="SnapshotRootfs",
                 snapshot_rootfs=termination_policy,
@@ -246,15 +318,36 @@ class Sandboxes:
         return Sandbox(self._api, data)
 
     def list(self) -> list[SandboxSummary]:
+        """List sandboxes.
+
+        Results are eventually consistent.
+
+        Returns:
+            A list of SandboxSummary objects with id, status, and
+            creation_timestamp.
+        """
         response = self._api.request_model("GET", "/v1/sandboxes", ListSandboxesResponse)
         return response.sandboxes or []
 
     def get(self, sandbox_id: str) -> Sandbox:
+        """Get a sandbox by ID.
+
+        Args:
+            sandbox_id: The sandbox's unique identifier.
+
+        Returns:
+            A Sandbox instance with the current state.
+
+        Raises:
+            NotFoundError: If no sandbox with that ID exists.
+        """
         data = self._api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
         return Sandbox(self._api, data)
 
 
 class AsyncSandboxes:
+    """Async version of Sandboxes."""
+
     def __init__(self, api: _AsyncAPI) -> None:
         self._api = api
 
@@ -263,15 +356,15 @@ class AsyncSandboxes:
         self,
         *,
         image: str,
+        rootfs_snapshot_name: str | None = ...,
         command: list[str] | None = ...,
         env: dict[str, str] | None = ...,
         cpu: float | None = ...,
         memory: int | None = ...,
         ephemeral_storage: int | None = ...,
-        rootfs_snapshot_name: str | None = ...,
+        network: Network | None = ...,
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
-        network: Network | None = ...,
         termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> AsyncSandbox: ...
@@ -281,9 +374,9 @@ class AsyncSandboxes:
         self,
         *,
         containers: list[Container],
+        network: Network | None = ...,
         timeout_seconds: int | None = ...,
         startup_timeout_seconds: int = ...,
-        network: Network | None = ...,
         termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> AsyncSandbox: ...
@@ -292,19 +385,89 @@ class AsyncSandboxes:
         self,
         *,
         image: str | None = None,
-        containers: list[Container] | None = None,
+        rootfs_snapshot_name: str | None = None,
         command: list[str] | None = None,
         env: dict[str, str] | None = None,
         cpu: float | None = None,
         memory: int | None = None,
         ephemeral_storage: int | None = None,
-        rootfs_snapshot_name: str | None = None,
+        containers: list[Container] | None = None,
+        network: Network | None = None,
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int = 60,
-        network: Network | None = None,
         termination_policy: SnapshotRootfs | None = None,
-        max_wait_seconds: int = 60,
+        max_wait_seconds: int = 65,
     ) -> AsyncSandbox:
+        """Create a new sandbox and wait for it to be ready.
+
+        There are two ways to specify what to run:
+
+        Single container (common): pass image and optionally command,
+        env, cpu, memory, ephemeral_storage, and rootfs_snapshot_name.
+
+        Multiple containers: pass a containers list of Container objects.
+        Per-container options go on each Container.
+
+        The method blocks until the sandbox reaches the Running state,
+        up to max_wait_seconds. Set max_wait_seconds=0 to return
+        immediately without waiting.
+
+        Timeouts:
+
+        - max_wait_seconds (client-side): How long this method polls
+          before giving up. Does not affect the sandbox on the server
+        - startup_timeout_seconds (server-side): How long the server
+          waits for the sandbox pod to become ready. If it expires,
+          the sandbox is marked as Failed.
+        - timeout_seconds (server-side, no default): How long the
+          sandbox runs before the server begins the termination
+          process. None means no limit.
+
+        Args:
+            image: Container image to run (e.g. "python:3.12").
+                Required unless containers is provided.
+            rootfs_snapshot_name: Restore the container's filesystem
+                from this named snapshot.
+            command: Command and arguments to run in the container.
+                If not set, defaults to sleep infinity.
+            env: Environment variables as key-value pairs.
+            cpu: CPU limit in cores (e.g. 0.5, 2.0). Sets both the
+                Kubernetes request and limit. If omitted, no CPU
+                limit is applied.
+            memory: Memory limit in MiB (e.g. 256, 1024). Sets both
+                the Kubernetes request and limit. If omitted, no
+                memory limit is applied.
+            ephemeral_storage: Ephemeral storage limit in MiB. Sets
+                both the Kubernetes request and limit. If omitted,
+                no ephemeral storage limit is applied.
+            containers: List of Container specs for multi-container
+                sandboxes. Cannot be combined with image.
+            network: Network policy. Sandboxes have no network access
+                by default. See the Network class.
+            timeout_seconds: How long the sandbox runs before the
+                server begins the termination process, in seconds.
+                Enforced server-side. None means no limit.
+            startup_timeout_seconds: Maximum time for the sandbox pod
+                to become ready, in seconds. Enforced server-side.
+            termination_policy: Action to run before the sandbox pod
+                is removed. Defaults to immediate deletion if not
+                set. Pass a SnapshotRootfs to snapshot the
+                container's rootfs changes before removal.
+            max_wait_seconds: How long to wait for the sandbox to be
+                ready, in seconds. Client-side only. Set to 0 to return
+                immediately.
+
+        Returns:
+            An AsyncSandbox instance. If max_wait_seconds is 0, the
+            sandbox may not be ready yet (check status).
+
+        Raises:
+            ValueError: If both image and containers are set, or if
+                per-container options are used with containers.
+            IsolaTimeoutError: If the sandbox is not ready within
+                max_wait_seconds.
+            IsolaError: If the sandbox reaches a terminal failed state.
+        """
         container_list = _validate_create_args(
             image,
             containers,
@@ -317,9 +480,9 @@ class AsyncSandboxes:
         )
         payload = CreateSandboxPayload(
             pod_template=PodTemplate(containers=container_list),
+            network=network,
             timeout_seconds=timeout_seconds,
             startup_timeout_seconds=startup_timeout_seconds,
-            network=network,
             termination_policy=TerminationPolicy(
                 type="SnapshotRootfs",
                 snapshot_rootfs=termination_policy,
@@ -340,15 +503,48 @@ class AsyncSandboxes:
         return AsyncSandbox(self._api, data)
 
     async def list(self) -> list[SandboxSummary]:
+        """List sandboxes.
+
+        Results are eventually consistent.
+
+        Returns:
+            A list of SandboxSummary objects with id, status, and
+            creation_timestamp.
+        """
         response = await self._api.request_model("GET", "/v1/sandboxes", ListSandboxesResponse)
         return response.sandboxes or []
 
     async def get(self, sandbox_id: str) -> AsyncSandbox:
+        """Get a sandbox by ID.
+
+        Args:
+            sandbox_id: The sandbox's unique identifier.
+
+        Returns:
+            An AsyncSandbox instance with the current state.
+
+        Raises:
+            NotFoundError: If no sandbox with that ID exists.
+        """
         data = await self._api.request_model("GET", _sandbox_path(sandbox_id), SandboxData)
         return AsyncSandbox(self._api, data)
 
 
 class Sandbox:
+    """A running sandbox.
+
+    Use commands to execute processes and filesystem to read and write
+    files. Sandboxes are context managers: use with to automatically
+    delete the sandbox when you are done.
+
+    Example:
+
+        with client.sandboxes.create(image="alpine:3.21") as sandbox:
+            result = sandbox.commands.run("echo", "hello")
+            print(result.stdout)
+        # sandbox is deleted here
+    """
+
     def __init__(self, api: _SyncAPI, data: SandboxData) -> None:
         self._api = api
         self._data = data
@@ -357,36 +553,43 @@ class Sandbox:
 
     @property
     def id(self) -> str:
+        """Unique identifier of the sandbox."""
         return self._data.id
 
     @property
     def status(self) -> SandboxStatus:
+        """Current lifecycle status."""
         return self._data.status
 
     @property
     def creation_timestamp(self) -> datetime:
+        """When the sandbox was created."""
         return self._data.creation_timestamp
 
     @property
     def network(self) -> Network | None:
+        """Network configuration, or None if using defaults."""
         return self._data.network
 
     @property
     def timeout_seconds(self) -> int | None:
+        """How long the sandbox runs before the server begins the termination process, in seconds.
+
+        None means no limit.
+        """
         return self._data.timeout_seconds
 
     @property
     def startup_timeout_seconds(self) -> int | None:
+        """Maximum time for the sandbox pod to become ready, in seconds.
+
+        If exceeded, the sandbox is marked as Failed.
+        """
         return self._data.startup_timeout_seconds
 
     @property
-    def termination_policy(self) -> SnapshotRootfs | None:
-        if self._data.termination_policy and self._data.termination_policy.snapshot_rootfs:
-            return self._data.termination_policy.snapshot_rootfs
-        return None
-
-    @property
     def containers(self) -> list[ContainerInfo]:
+        """The sandbox's containers. Does not include init or ephemeral containers."""
         return self._data.pod_template.containers
 
     def __enter__(self) -> Sandbox:
@@ -396,10 +599,30 @@ class Sandbox:
         self.delete()
 
     def delete(self) -> None:
+        """Delete the sandbox.
+
+        Executes the termination policy and removes the pod. Called
+        automatically when using the sandbox as a context manager.
+        """
         self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
 
 
 class AsyncSandbox:
+    """Async version of Sandbox.
+
+    Use commands to execute processes and filesystem to read and write
+    files. Async sandboxes are async context managers: use async with
+    to automatically delete the sandbox when you are done.
+
+    Example:
+
+        sandbox = await client.sandboxes.create(image="alpine:3.21")
+        async with sandbox:
+            result = await sandbox.commands.run("echo", "hello")
+            print(result.stdout)
+        # sandbox is deleted here
+    """
+
     def __init__(self, api: _AsyncAPI, data: SandboxData) -> None:
         self._api = api
         self._data = data
@@ -408,36 +631,43 @@ class AsyncSandbox:
 
     @property
     def id(self) -> str:
+        """Unique identifier of the sandbox."""
         return self._data.id
 
     @property
     def status(self) -> SandboxStatus:
+        """Current lifecycle status."""
         return self._data.status
 
     @property
     def creation_timestamp(self) -> datetime:
+        """When the sandbox was created."""
         return self._data.creation_timestamp
 
     @property
     def network(self) -> Network | None:
+        """Network configuration, or None if using defaults."""
         return self._data.network
 
     @property
     def timeout_seconds(self) -> int | None:
+        """How long the sandbox runs before the server begins the termination process, in seconds.
+
+        None means no limit.
+        """
         return self._data.timeout_seconds
 
     @property
     def startup_timeout_seconds(self) -> int | None:
+        """Maximum time for the sandbox pod to become ready, in seconds.
+
+        If exceeded, the sandbox is marked as Failed.
+        """
         return self._data.startup_timeout_seconds
 
     @property
-    def termination_policy(self) -> SnapshotRootfs | None:
-        if self._data.termination_policy and self._data.termination_policy.snapshot_rootfs:
-            return self._data.termination_policy.snapshot_rootfs
-        return None
-
-    @property
     def containers(self) -> list[ContainerInfo]:
+        """The sandbox's containers. Does not include init or ephemeral containers."""
         return self._data.pod_template.containers
 
     async def __aenter__(self) -> AsyncSandbox:
@@ -447,4 +677,9 @@ class AsyncSandbox:
         await self.delete()
 
     async def delete(self) -> None:
+        """Delete the sandbox.
+
+        Executes the termination policy and removes the pod. Called
+        automatically when using the sandbox as an async context manager.
+        """
         await self._api.request_no_content("DELETE", _sandbox_path(self._data.id))

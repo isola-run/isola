@@ -31,7 +31,7 @@ def test_create_rootfs_snapshot_with_all_fields(rootfs_snapshot_response_copy: d
         return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         snapshot = client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -67,7 +67,7 @@ def test_create_rootfs_snapshot_without_snapshot_name_omits_key(
         return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
         )
@@ -86,7 +86,7 @@ def test_create_rootfs_snapshot_with_minimal_fields_sends_defaults(
         return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         snapshot = client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -111,7 +111,7 @@ def test_get_rootfs_snapshot(rootfs_snapshot_response_copy: dict[str, object]) -
         return_value=httpx.Response(200, json=rootfs_snapshot_response_copy)
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         snapshot = client.rootfs_snapshots.get("snapshot-123")
 
     assert snapshot.id == "snapshot-123"
@@ -148,7 +148,7 @@ def test_create_waits_until_complete(monkeypatch: pytest.MonkeyPatch) -> None:
         ]
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         snapshot = client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -165,7 +165,7 @@ def test_create_wait_zero_returns_immediately() -> None:
     )
     get_route = respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123")
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         snapshot = client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -182,7 +182,7 @@ def test_create_wait_zero_raises_on_already_failed() -> None:
         return_value=httpx.Response(201, json=_make_rootfs_snapshot_response("Failed"))
     )
 
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(IsolaError, match="terminal state"):
+    with Isola(url="http://localhost:8080") as client, pytest.raises(IsolaError, match="terminal state"):
         client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -201,7 +201,7 @@ def test_create_raises_on_failed_during_wait(monkeypatch: pytest.MonkeyPatch) ->
         return_value=httpx.Response(200, json=_make_rootfs_snapshot_response("Failed"))
     )
 
-    with Isola(base_url="http://localhost:8080") as client, pytest.raises(IsolaError, match="terminal state"):
+    with Isola(url="http://localhost:8080") as client, pytest.raises(IsolaError, match="terminal state"):
         client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -215,7 +215,7 @@ def test_create_skips_wait_if_already_complete() -> None:
     )
     get_route = respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123")
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         snapshot = client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -241,7 +241,7 @@ def test_wait_tolerates_transient_not_found(monkeypatch: pytest.MonkeyPatch) -> 
         ]
     )
 
-    with Isola(base_url="http://localhost:8080") as client:
+    with Isola(url="http://localhost:8080") as client:
         snapshot = client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -271,7 +271,7 @@ def test_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     with (
-        Isola(base_url="http://localhost:8080") as client,
+        Isola(url="http://localhost:8080") as client,
         pytest.raises(IsolaTimeoutError, match="did not reach complete state within 5s"),
     ):
         client.rootfs_snapshots.create(
@@ -306,7 +306,7 @@ def test_wait_raises_timeout_error_when_not_found_persists(monkeypatch: pytest.M
     )
 
     with (
-        Isola(base_url="http://localhost:8080") as client,
+        Isola(url="http://localhost:8080") as client,
         pytest.raises(IsolaTimeoutError, match="did not reach complete state within 5s"),
     ):
         client.rootfs_snapshots.create(
@@ -328,7 +328,7 @@ async def test_async_create_rootfs_snapshot_with_all_fields(rootfs_snapshot_resp
         return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         snapshot = await client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -365,7 +365,7 @@ async def test_async_create_rootfs_snapshot_without_snapshot_name_omits_key(
         return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         await client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
         )
@@ -385,7 +385,7 @@ async def test_async_create_rootfs_snapshot_with_minimal_fields_sends_defaults(
         return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         snapshot = await client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -411,7 +411,7 @@ async def test_async_get_rootfs_snapshot(rootfs_snapshot_response_copy: dict[str
         return_value=httpx.Response(200, json=rootfs_snapshot_response_copy)
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         snapshot = await client.rootfs_snapshots.get("snapshot-123")
 
     assert snapshot.id == "snapshot-123"
@@ -439,7 +439,7 @@ async def test_async_create_waits_until_complete(monkeypatch: pytest.MonkeyPatch
         ]
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         snapshot = await client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -457,7 +457,7 @@ async def test_async_create_wait_zero_returns_immediately() -> None:
     )
     get_route = respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123")
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         snapshot = await client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -475,7 +475,7 @@ async def test_async_create_wait_zero_raises_on_already_failed() -> None:
         return_value=httpx.Response(201, json=_make_rootfs_snapshot_response("Failed"))
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         with pytest.raises(IsolaError, match="terminal state"):
             await client.rootfs_snapshots.create(
                 sandbox_id="sandbox-123",
@@ -496,7 +496,7 @@ async def test_async_create_raises_on_failed_during_wait(monkeypatch: pytest.Mon
         return_value=httpx.Response(200, json=_make_rootfs_snapshot_response("Failed"))
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         with pytest.raises(IsolaError, match="terminal state"):
             await client.rootfs_snapshots.create(
                 sandbox_id="sandbox-123",
@@ -512,7 +512,7 @@ async def test_async_create_skips_wait_if_already_complete() -> None:
     )
     get_route = respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123")
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         snapshot = await client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -539,7 +539,7 @@ async def test_async_wait_tolerates_transient_not_found(monkeypatch: pytest.Monk
         ]
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         snapshot = await client.rootfs_snapshots.create(
             sandbox_id="sandbox-123",
             snapshot_name="my-snapshot",
@@ -569,7 +569,7 @@ async def test_async_wait_raises_timeout_error(monkeypatch: pytest.MonkeyPatch) 
         return_value=httpx.Response(200, json=_make_rootfs_snapshot_response("Running"))
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         with pytest.raises(IsolaTimeoutError, match="did not reach complete state within 5s"):
             await client.rootfs_snapshots.create(
                 sandbox_id="sandbox-123",
@@ -605,7 +605,7 @@ async def test_async_wait_raises_timeout_error_when_not_found_persists(
         ]
     )
 
-    async with AsyncIsola(base_url="http://localhost:8080") as client:
+    async with AsyncIsola(url="http://localhost:8080") as client:
         with pytest.raises(IsolaTimeoutError, match="did not reach complete state within 5s"):
             await client.rootfs_snapshots.create(
                 sandbox_id="sandbox-123",

@@ -20,48 +20,75 @@ import httpx
 
 
 class IsolaError(Exception):
+    """Base exception for all Isola SDK errors.
+
+    Attributes:
+        message: Human-readable error description.
+    """
+
     def __init__(self, message: str) -> None:
         self.message = message
         super().__init__(message)
 
 
 class APIError(IsolaError):
+    """An error response from the Isola API.
+
+    Attributes:
+        status_code: HTTP status code from the API.
+        message: Error detail from the response body.
+    """
+
     def __init__(self, *, status_code: int, message: str) -> None:
         self.status_code = status_code
         super().__init__(f"{status_code}: {message}")
 
 
 class BadRequestError(APIError):
+    """The request was malformed or invalid."""
+
     pass
 
 
 class NotFoundError(APIError):
+    """The requested resource does not exist."""
+
     pass
 
 
 class ConflictError(APIError):
+    """The request conflicts with current state."""
+
     pass
 
 
 class ValidationError(APIError):
+    """The request body failed validation."""
+
     pass
 
 
 class InternalError(APIError):
+    """An unexpected error on the server."""
+
     pass
 
 
 class BadGatewayError(APIError):
+    """The server received an invalid response from upstream."""
+
     pass
 
 
 class IsolaTimeoutError(IsolaError):
-    """Client-side timeout exceeded."""
+    """A timeout expired while waiting for an operation to complete."""
 
     pass
 
 
 class APIConnectionError(IsolaError, ConnectionError):
+    """An error occurred communicating with the Isola API."""
+
     pass
 
 

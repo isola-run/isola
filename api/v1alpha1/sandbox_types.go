@@ -106,8 +106,8 @@ type Network struct {
 	AllowedEgressCIDRs []string `json:"allowedEgressCIDRs,omitempty"`
 
 	// Nameservers are DNS server IPs to inject into the pod.
-	// When allowClusterDNS=false and allowedEgressCIDRs is empty: 127.0.0.1 sink (DNS fails fast).
-	// When allowClusterDNS=false and allowedEgressCIDRs is set: public resolvers are auto-injected.
+	// When allowClusterDNS=false and no egress is configured: 127.0.0.1 sink (DNS fails fast).
+	// When allowClusterDNS=false and allowInternetEgress or allowedEgressCIDRs is set: public resolvers are auto-injected.
 	// When allowClusterDNS=true: Combined with cluster DNS.
 	// Explicit nameservers override auto-injection in all cases.
 	// When allowInternetEgress is true, nameservers do not produce additional NetworkPolicy rules.
@@ -155,7 +155,7 @@ type SandboxSpec struct {
 	// +required
 	PodTemplate corev1.PodTemplateSpec `json:"podTemplate"`
 
-	// TimeoutSeconds defines how long the sandbox runs before being shut down
+	// TimeoutSeconds defines how long the sandbox runs before the termination process begins
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty"`
