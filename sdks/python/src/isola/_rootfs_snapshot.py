@@ -153,7 +153,7 @@ class RootfsSnapshots:
         _check_failed(data.id, data.status)
         if data.status != RootfsSnapshotStatus.SUCCEEDED and max_wait_seconds != 0:
             data = _wait_until_complete(data.id, self._api, max_wait_seconds)
-        return RootfsSnapshot(self._api, data)
+        return RootfsSnapshot(data)
 
     def get(self, snapshot_id: str) -> RootfsSnapshot:
         """Get a rootfs snapshot by ID.
@@ -168,7 +168,7 @@ class RootfsSnapshots:
             NotFoundError: If no snapshot with that ID exists.
         """
         data = self._api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
-        return RootfsSnapshot(self._api, data)
+        return RootfsSnapshot(data)
 
 
 class AsyncRootfsSnapshots:
@@ -232,7 +232,7 @@ class AsyncRootfsSnapshots:
         _check_failed(data.id, data.status)
         if data.status != RootfsSnapshotStatus.SUCCEEDED and max_wait_seconds != 0:
             data = await _async_wait_until_complete(data.id, self._api, max_wait_seconds)
-        return AsyncRootfsSnapshot(self._api, data)
+        return AsyncRootfsSnapshot(data)
 
     async def get(self, snapshot_id: str) -> AsyncRootfsSnapshot:
         """Get a rootfs snapshot by ID.
@@ -247,7 +247,7 @@ class AsyncRootfsSnapshots:
             NotFoundError: If no snapshot with that ID exists.
         """
         data = await self._api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
-        return AsyncRootfsSnapshot(self._api, data)
+        return AsyncRootfsSnapshot(data)
 
 
 class RootfsSnapshot:
@@ -258,8 +258,7 @@ class RootfsSnapshot:
     creating a new sandbox.
     """
 
-    def __init__(self, api: _SyncAPI, data: RootfsSnapshotData) -> None:
-        self._api = api
+    def __init__(self, data: RootfsSnapshotData) -> None:
         self._data = data
 
     @property
@@ -306,8 +305,7 @@ class RootfsSnapshot:
 class AsyncRootfsSnapshot:
     """Async version of RootfsSnapshot."""
 
-    def __init__(self, api: _AsyncAPI, data: RootfsSnapshotData) -> None:
-        self._api = api
+    def __init__(self, data: RootfsSnapshotData) -> None:
         self._data = data
 
     @property
