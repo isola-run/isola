@@ -31,7 +31,7 @@ def test_filesystem_write_and_read(sandbox_response_copy: dict[str, object]) -> 
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
     write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
-        return_value=httpx.Response(201, json={"absolutePath": "/workspace/file.txt", "bytesWritten": 7})
+        return_value=httpx.Response(204)
     )
     read_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(200, content=b"content")
@@ -39,11 +39,9 @@ def test_filesystem_write_and_read(sandbox_response_copy: dict[str, object]) -> 
 
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
-        result = sandbox.filesystem.write("/workspace/file.txt", b"content", container="worker")
+        sandbox.filesystem.write("/workspace/file.txt", b"content", container="worker")
         downloaded = sandbox.filesystem.read("/workspace/file.txt", container="worker")
 
-    assert result.absolute_path == "/workspace/file.txt"
-    assert result.bytes_written == 7
     assert downloaded == b"content"
 
     assert write_route.calls[0].request.url.params["path"] == "/workspace/file.txt"
@@ -60,7 +58,7 @@ def test_filesystem_write_from_file_like(sandbox_response_copy: dict[str, object
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
     write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
-        return_value=httpx.Response(201, json={"absolutePath": "/workspace/script.py", "bytesWritten": 6})
+        return_value=httpx.Response(204)
     )
 
     with Isola(base_url="http://localhost:8080") as client:
@@ -78,7 +76,7 @@ async def test_async_filesystem_write_and_read(sandbox_response_copy: dict[str, 
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
     write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
-        return_value=httpx.Response(201, json={"absolutePath": "/tmp/data.bin", "bytesWritten": 4})
+        return_value=httpx.Response(204)
     )
     read_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(200, content=b"data")
@@ -86,11 +84,9 @@ async def test_async_filesystem_write_and_read(sandbox_response_copy: dict[str, 
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
-        result = await sandbox.filesystem.write("/tmp/data.bin", b"data")
+        await sandbox.filesystem.write("/tmp/data.bin", b"data")
         downloaded = await sandbox.filesystem.read("/tmp/data.bin")
 
-    assert result.absolute_path == "/tmp/data.bin"
-    assert result.bytes_written == 4
     assert downloaded == b"data"
 
     assert write_route.calls[0].request.url.params["path"] == "/tmp/data.bin"
@@ -105,7 +101,7 @@ async def test_async_filesystem_with_container(sandbox_response_copy: dict[str, 
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
     write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
-        return_value=httpx.Response(201, json={"absolutePath": "/app/cfg.yaml", "bytesWritten": 3})
+        return_value=httpx.Response(204)
     )
     read_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(200, content=b"abc")
@@ -126,7 +122,7 @@ def test_filesystem_write_str(sandbox_response_copy: dict[str, object]) -> None:
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
     write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
-        return_value=httpx.Response(201, json={"absolutePath": "/workspace/hello.py", "bytesWritten": 14})
+        return_value=httpx.Response(204)
     )
 
     with Isola(base_url="http://localhost:8080") as client:
@@ -143,7 +139,7 @@ async def test_async_filesystem_write_str(sandbox_response_copy: dict[str, objec
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
     write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
-        return_value=httpx.Response(201, json={"absolutePath": "/workspace/hello.py", "bytesWritten": 14})
+        return_value=httpx.Response(204)
     )
 
     async with AsyncIsola(base_url="http://localhost:8080") as client:
@@ -179,7 +175,7 @@ def test_filesystem_write_streams_without_full_buffering(sandbox_response_copy: 
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
     respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
-        return_value=httpx.Response(201, json={"absolutePath": "/big.bin", "bytesWritten": 200_000})
+        return_value=httpx.Response(204)
     )
 
     # Payload larger than httpx's 64KB chunk size to ensure multiple reads
@@ -199,15 +195,14 @@ def test_filesystem_upload_real_file(sandbox_response_copy: dict[str, object], t
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
     write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
-        return_value=httpx.Response(201, json={"absolutePath": "/workspace/script.py", "bytesWritten": 15})
+        return_value=httpx.Response(204)
     )
 
     with Isola(base_url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with open(local_file, "rb") as f:
-            result = sandbox.filesystem.write("/workspace/script.py", f)
+            sandbox.filesystem.write("/workspace/script.py", f)
 
-    assert result.bytes_written == 15
     assert write_route.calls[0].request.content == b"print('hello')\n"
 
 

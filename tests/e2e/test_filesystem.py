@@ -18,7 +18,7 @@ import uuid
 
 import pytest
 
-from isola import BadRequestError, FileWriteResult, IsolaError, NotFoundError, Sandbox
+from isola import BadRequestError, IsolaError, NotFoundError, Sandbox
 
 
 
@@ -87,16 +87,6 @@ def test_large_file(session_sandbox: Sandbox) -> None:
     assert result == content
 
 
-def test_write_returns_metadata(session_sandbox: Sandbox) -> None:
-    path = _unique_path("metadata")
-    content = b"metadata test content"
-
-    result = session_sandbox.filesystem.write(path, content)
-
-    assert isinstance(result, FileWriteResult)
-    assert result.absolute_path == path
-    assert result.bytes_written == len(content)
-
 
 def test_special_characters_in_filename(session_sandbox: Sandbox) -> None:
     unique = uuid.uuid4().hex
@@ -131,21 +121,14 @@ def test_file_written_is_executable_by_command(session_sandbox: Sandbox) -> None
 
 
 def test_relative_path_resolved(session_sandbox: Sandbox) -> None:
-    """A relative path is resolved against the container's cwd.
-
-    The sidecar resolves relative paths via /proc/<pid>/cwd and the response
-    absolute_path should be a canonical absolute path.
-    """
+    """A relative path is resolved against the container's cwd."""
     unique = uuid.uuid4().hex
     filename = f"relative_{unique}.txt"
     content = b"relative path test"
 
-    result = session_sandbox.filesystem.write(filename, content)
+    session_sandbox.filesystem.write(filename, content)
 
-    assert result.absolute_path.startswith("/")
-    assert result.absolute_path.endswith(filename)
-    # The resolved absolute path must be readable
-    read_back = session_sandbox.filesystem.read(result.absolute_path)
+    read_back = session_sandbox.filesystem.read(filename)
     assert read_back == content
 
 
@@ -168,12 +151,11 @@ def test_write_parent_is_file_raises_error(session_sandbox: Sandbox) -> None:
 
 
 def test_empty_file_write(session_sandbox: Sandbox) -> None:
-    """Writing zero bytes creates an empty file; bytes_written should be 0."""
+    """Writing zero bytes creates an empty file."""
     path = _unique_path("empty")
 
-    result = session_sandbox.filesystem.write(path, b"")
+    session_sandbox.filesystem.write(path, b"")
 
-    assert result.bytes_written == 0
     assert session_sandbox.filesystem.read(path) == b""
 
 
@@ -222,8 +204,7 @@ def test_container_param_on_filesystem(session_sandbox: Sandbox) -> None:
     path = _unique_path("container_param")
     content = b"container param test"
 
-    result = session_sandbox.filesystem.write(path, content, container="sandbox0")
-    assert result.bytes_written == len(content)
+    session_sandbox.filesystem.write(path, content, container="sandbox0")
 
     read_back = session_sandbox.filesystem.read(path, container="sandbox0")
     assert read_back == content
