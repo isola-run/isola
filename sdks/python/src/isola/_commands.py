@@ -71,7 +71,11 @@ class Command:
 
     @property
     def stderr(self) -> StreamReader:
-        """Stream of the command's standard error."""
+        """Stream of the command's standard error.
+
+        Yields text chunks as they arrive. Single-use: iterate once
+        or call read() to collect everything.
+        """
         if self._stderr is None:
             path = f"{_command_path(self._sandbox_id, self._command_id)}/stderr"
             self._stderr = StreamReader(self._api, path)
@@ -175,7 +179,11 @@ class AsyncCommand:
 
     @property
     def stderr(self) -> AsyncStreamReader:
-        """Stream of the command's standard error."""
+        """Stream of the command's standard error.
+
+        Yields text chunks as they arrive. Single-use: iterate once
+        with async for or call await read() to collect everything.
+        """
         if self._stderr is None:
             path = f"{_command_path(self._sandbox_id, self._command_id)}/stderr"
             self._stderr = AsyncStreamReader(self._api, path)
