@@ -279,7 +279,7 @@ snapshot = client.rootfs_snapshots.create(
 print(snapshot.status)  # RootfsSnapshotStatus.SUCCEEDED
 ```
 
-`create()` blocks until the snapshot completes (up to 310 seconds by default). Pass `max_wait_seconds=0` to return immediately.
+`create()` blocks `max_wait_seconds` until the snapshot completes. Pass `max_wait_seconds=0` to return immediately.
 
 ### Restore from a snapshot
 
@@ -293,26 +293,38 @@ restored = client.sandboxes.create(
 ### Full round-trip example
 
 ```python
-from isola import Isola
+from isola import Isola, Network
 
 client = Isola()
 
-# 1. Create a sandbox and install something
-with client.sandboxes.create(image="python:3.12-slim") as sandbox:
-    sandbox.commands.run("pip", "install", "requests")
-
-    # 2. Snapshot the state
-    snapshot = client.rootfs_snapshots.create(
-        sandbox_id=sandbox.id,
-        snapshot_name="python-with-requests",
-    )
-
-# 3. Spin up a new sandbox from the snapshot
+# 1. Install a heavy stack once (~35s)
 with client.sandboxes.create(
     image="python:3.12-slim",
-    rootfs_snapshot_name="python-with-requests",
+    network=Network(allow_internet_egress=True),
+    ephemeral_storage=4096,
 ) as sandbox:
-    result = sandbox.commands.run("python", "-c", "import requests; print(requests.__version__)")
+    sandbox.commands.run("pip", "install", "numpy", "pandas", "scikit-learn")
+    snapshot = client.rootfs_snapshots.create(
+        sandbox_id=sandbox.id,
+        snapshot_name="datascience-base",
+    )
+
+# 2. Each sandbox restores in seconds — no reinstall
+with client.sandboxes.create(
+    image="python:3.12-slim",
+    ephemeral_storage=4096,
+    rootfs_snapshot_name="datascience-base",
+) as sandbox:
+    result = sandbox.commands.run("python3", "-c", """
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.datasets import load_iris
+
+data = load_iris()
+clf = RandomForestClassifier(n_estimators=10, random_state=42)
+clf.fit(data.data, data.target)
+print(f"accuracy: {clf.score(data.data, data.target):.2f}")
+""")
     print(result.stdout)
 ```
 
