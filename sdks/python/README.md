@@ -364,13 +364,13 @@ All exceptions inherit from `IsolaError`:
 
 ```
 IsolaError
-├── APIError (has .status_code and .message)
-│   ├── BadRequestError (400)
-│   ├── NotFoundError (404)
-│   ├── ConflictError (409)
-│   ├── ValidationError (422)
-│   ├── InternalError (500)
-│   └── BadGatewayError (502)
+├── APIError          status_code, message
+│   ├── BadRequestError    400
+│   ├── NotFoundError      404
+│   ├── ConflictError      409
+│   ├── ValidationError    422
+│   ├── InternalError      500
+│   └── BadGatewayError    502
 ├── IsolaTimeoutError
 └── APIConnectionError
 ```

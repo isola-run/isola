@@ -45,37 +45,37 @@ class APIError(IsolaError):
 
 
 class BadRequestError(APIError):
-    """HTTP 400: the request was malformed or invalid."""
+    """The request was malformed or invalid."""
 
     pass
 
 
 class NotFoundError(APIError):
-    """HTTP 404: the requested resource does not exist."""
+    """The requested resource does not exist."""
 
     pass
 
 
 class ConflictError(APIError):
-    """HTTP 409: the request conflicts with current state."""
+    """The request conflicts with current state."""
 
     pass
 
 
 class ValidationError(APIError):
-    """HTTP 422: the request body failed validation."""
+    """The request body failed validation."""
 
     pass
 
 
 class InternalError(APIError):
-    """HTTP 500: an unexpected error on the server."""
+    """An unexpected error on the server."""
 
     pass
 
 
 class BadGatewayError(APIError):
-    """HTTP 502: the server received an invalid response from upstream."""
+    """The server received an invalid response from upstream."""
 
     pass
 
