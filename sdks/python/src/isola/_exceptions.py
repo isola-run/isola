@@ -36,8 +36,7 @@ class APIError(IsolaError):
 
     Attributes:
         status_code: HTTP status code from the API.
-        message: Error detail from the response body, or a generic
-            message if the body could not be parsed.
+        message: Error detail from the response body.
     """
 
     def __init__(self, *, status_code: int, message: str) -> None:
