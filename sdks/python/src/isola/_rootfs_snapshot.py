@@ -91,8 +91,8 @@ class RootfsSnapshots:
     """Manage rootfs snapshots.
 
     Rootfs snapshots capture one container's root filesystem changes at
-    a point in time. Other mounts (e.g. /tmp) are not included. Restore
-    a snapshot when creating a new sandbox to pick up where you left off.
+    a point in time. Other mounts (e.g. tmpfs like /tmp) are not included.
+    Restore a snapshot when creating a new sandbox to pick up where you left off.
     """
 
     def __init__(self, api: _SyncAPI) -> None:
