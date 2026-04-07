@@ -164,7 +164,9 @@ class RootfsSnapshots:
             A RootfsSnapshot with the current state.
 
         Raises:
-            NotFoundError: If no snapshot with that ID exists.
+            NotFoundError: If the snapshot's Kubernetes resource no longer
+                exists. A completed snapshot's data remains in storage and
+                can still be restored by snapshot_name.
         """
         data = self._api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
         return RootfsSnapshot(data)
@@ -242,7 +244,9 @@ class AsyncRootfsSnapshots:
             An AsyncRootfsSnapshot with the current state.
 
         Raises:
-            NotFoundError: If no snapshot with that ID exists.
+            NotFoundError: If the snapshot's Kubernetes resource no longer
+                exists. A completed snapshot's data remains in storage and
+                can still be restored by snapshot_name.
         """
         data = await self._api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
         return AsyncRootfsSnapshot(data)
