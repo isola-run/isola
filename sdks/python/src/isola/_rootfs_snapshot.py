@@ -243,14 +243,24 @@ class RootfsSnapshot:
         return self._data.id
 
     @property
-    def sandbox_id(self) -> str:
-        """ID of the sandbox this snapshot was taken from."""
-        return self._data.sandbox_id
+    def status(self) -> RootfsSnapshotStatus:
+        """Current lifecycle status of the snapshot."""
+        return self._data.status
+
+    @property
+    def creation_timestamp(self) -> datetime:
+        """When the snapshot was created."""
+        return self._data.creation_timestamp
 
     @property
     def snapshot_name(self) -> str:
         """Name of the snapshot. Use this to restore from it."""
         return self._data.snapshot_name
+
+    @property
+    def sandbox_id(self) -> str:
+        """ID of the sandbox this snapshot was taken from."""
+        return self._data.sandbox_id
 
     @property
     def container_name(self) -> str | None:
@@ -266,16 +276,6 @@ class RootfsSnapshot:
     def ttl_seconds_after_finished(self) -> int | None:
         """How long the server keeps this resource after completion, in seconds."""
         return self._data.ttl_seconds_after_finished
-
-    @property
-    def status(self) -> RootfsSnapshotStatus:
-        """Current lifecycle status of the snapshot."""
-        return self._data.status
-
-    @property
-    def creation_timestamp(self) -> datetime:
-        """When the snapshot was created."""
-        return self._data.creation_timestamp
 
 
 class AsyncRootfsSnapshot:
@@ -291,14 +291,24 @@ class AsyncRootfsSnapshot:
         return self._data.id
 
     @property
-    def sandbox_id(self) -> str:
-        """ID of the sandbox this snapshot was taken from."""
-        return self._data.sandbox_id
+    def status(self) -> RootfsSnapshotStatus:
+        """Current lifecycle status of the snapshot."""
+        return self._data.status
+
+    @property
+    def creation_timestamp(self) -> datetime:
+        """When the snapshot was created."""
+        return self._data.creation_timestamp
 
     @property
     def snapshot_name(self) -> str:
         """Name of the snapshot. Use this to restore from it."""
         return self._data.snapshot_name
+
+    @property
+    def sandbox_id(self) -> str:
+        """ID of the sandbox this snapshot was taken from."""
+        return self._data.sandbox_id
 
     @property
     def container_name(self) -> str | None:
@@ -314,12 +324,3 @@ class AsyncRootfsSnapshot:
     def ttl_seconds_after_finished(self) -> int | None:
         """How long the server keeps this resource after completion, in seconds."""
         return self._data.ttl_seconds_after_finished
-
-    @property
-    def status(self) -> RootfsSnapshotStatus:
-        """Current lifecycle status of the snapshot."""
-        return self._data.status
-
-    @property
-    def creation_timestamp(self) -> datetime:
-        return self._data.creation_timestamp

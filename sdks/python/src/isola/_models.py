@@ -79,21 +79,21 @@ class Network(IsolaModel):
 
     Attributes:
         allow_internet_egress: Allow outbound traffic to the public internet.
-        allow_cluster_dns: Allow DNS resolution through the cluster's DNS
-            service. When False and allow_internet_egress or allowed_egress_cidrs are specified,
-            the sandbox uses public nameservers or the ones you provide in nameservers.
         allow_ipv6_egress: Allow outbound IPv6 traffic.
         allowed_egress_cidrs: List of CIDR blocks the sandbox can reach
             (e.g. ["10.0.0.0/8"]). Use this for fine-grained control
             instead of allowing all internet traffic.
+        allow_cluster_dns: Allow DNS resolution through the cluster's DNS
+            service. When False and allow_internet_egress or allowed_egress_cidrs are specified,
+            the sandbox uses public nameservers or the ones you provide in nameservers.
         nameservers: Custom DNS nameservers. Overrides the automatic
             public nameservers.
     """
 
     allow_internet_egress: bool | None = None
-    allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
     allow_ipv6_egress: bool | None = Field(None, alias="allowIPv6Egress")
     allowed_egress_cidrs: list[str] | None = Field(None, alias="allowedEgressCIDRs")
+    allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
     nameservers: list[str] | None = None
 
 
