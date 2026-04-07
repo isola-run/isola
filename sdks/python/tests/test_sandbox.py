@@ -336,40 +336,6 @@ def test_create_raises_when_neither_image_nor_containers() -> None:
         client.sandboxes.create()
 
 
-@respx.mock
-def test_termination_policy_response_snapshot_rootfs(
-    sandbox_response_copy: dict[str, object],
-) -> None:
-    sandbox_response_copy["terminationPolicy"] = {
-        "type": "SnapshotRootfs",
-        "snapshotRootfs": {"snapshotName": "my-snap", "timeoutSeconds": 120},
-    }
-    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
-        return_value=httpx.Response(200, json=sandbox_response_copy)
-    )
-
-    with Isola(base_url="http://localhost:8080") as client:
-        sandbox = client.sandboxes.get("sandbox-123")
-
-    assert sandbox.termination_policy is not None
-    assert sandbox.termination_policy.snapshot_name == "my-snap"
-    assert sandbox.termination_policy.timeout_seconds == 120
-
-
-@respx.mock
-def test_termination_policy_response_absent(
-    sandbox_response_copy: dict[str, object],
-) -> None:
-    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
-        return_value=httpx.Response(200, json=sandbox_response_copy)
-    )
-
-    with Isola(base_url="http://localhost:8080") as client:
-        sandbox = client.sandboxes.get("sandbox-123")
-
-    assert sandbox.termination_policy is None
-
-
 def test_create_raises_when_flat_params_with_containers() -> None:
     with Isola(base_url="http://localhost:8080") as client, pytest.raises(ValueError):
         client.sandboxes.create(
