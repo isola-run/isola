@@ -195,12 +195,12 @@ class PodTemplateInfo(IsolaModel):
 
 
 class SnapshotRootfs(IsolaModel):
-    """Termination policy that snapshots the sandbox filesystem on exit.
+    """Termination policy that snapshots a container's root filesystem changes on exit.
 
     Pass this as the termination_policy parameter of
-    Sandboxes.create() to automatically capture a rootfs snapshot
-    when the sandbox terminates. Restore the snapshot later by passing
-    its name as rootfs_snapshot_name.
+    Sandboxes.create() to automatically capture a rootfs snapshot of
+    the container's root filesystem changes when the sandbox terminates.
+    Restore the snapshot later by passing its name as rootfs_snapshot_name.
 
     Attributes:
         snapshot_name: Name for the snapshot. If not set, the server

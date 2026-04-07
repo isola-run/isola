@@ -90,9 +90,9 @@ async def _async_wait_until_complete(
 class RootfsSnapshots:
     """Manage rootfs snapshots.
 
-    Rootfs snapshots capture a sandbox container's filesystem at a point
-    in time. You can restore a snapshot into a new sandbox to pick up
-    where you left off.
+    Rootfs snapshots capture one container's root filesystem changes at
+    a point in time. Other mounts (e.g. /tmp) are not included. Restore
+    a snapshot when creating a new sandbox to pick up where you left off.
     """
 
     def __init__(self, api: _SyncAPI) -> None:
@@ -116,8 +116,8 @@ class RootfsSnapshots:
         Args:
             sandbox_id: ID of the sandbox to snapshot.
             snapshot_name: Name for the snapshot. The server generates
-                one if not provided. Use this name to restore later via
-                rootfs_snapshot_name on sandbox creation.
+                one if not provided. Use this name later as
+                rootfs_snapshot_name when creating a new sandbox.
             container_name: Which container to snapshot, for
                 multi-container sandboxes. Defaults to the first
                 container.
@@ -195,8 +195,8 @@ class AsyncRootfsSnapshots:
         Args:
             sandbox_id: ID of the sandbox to snapshot.
             snapshot_name: Name for the snapshot. The server generates
-                one if not provided. Use this name to restore later via
-                rootfs_snapshot_name on sandbox creation.
+                one if not provided. Use this name later as
+                rootfs_snapshot_name when creating a new sandbox.
             container_name: Which container to snapshot, for
                 multi-container sandboxes. Defaults to the first
                 container.
@@ -254,8 +254,8 @@ class RootfsSnapshot:
     """A rootfs snapshot.
 
     Inspect the snapshot's status and metadata. To restore from this
-    snapshot, pass its snapshot_name as the rootfs_snapshot_name
-    parameter when creating a new sandbox.
+    snapshot, pass its snapshot_name as rootfs_snapshot_name when
+    creating a new sandbox.
     """
 
     def __init__(self, api: _SyncAPI, data: RootfsSnapshotData) -> None:

@@ -259,7 +259,8 @@ class Sandboxes:
             startup_timeout_seconds: Maximum time for the container to
                 start, in seconds. Enforced server-side. Default: 60.
             termination_policy: A SnapshotRootfs to automatically
-                snapshot the filesystem when the sandbox terminates.
+                snapshot the container's root filesystem changes when
+                the sandbox terminates.
             max_wait_seconds: How long to wait for the sandbox to be
                 ready, in seconds. Client-side only. Set to 0 to return
                 immediately. Default: 60.
@@ -434,7 +435,8 @@ class AsyncSandboxes:
             startup_timeout_seconds: Maximum time for the container to
                 start, in seconds. Enforced server-side. Default: 60.
             termination_policy: A SnapshotRootfs to automatically
-                snapshot the filesystem when the sandbox terminates.
+                snapshot the container's root filesystem changes when
+                the sandbox terminates.
             max_wait_seconds: How long to wait for the sandbox to be
                 ready, in seconds. Client-side only. Set to 0 to return
                 immediately. Default: 60.
