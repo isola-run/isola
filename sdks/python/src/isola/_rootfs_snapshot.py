@@ -189,7 +189,32 @@ class AsyncRootfsSnapshots:
     ) -> AsyncRootfsSnapshot:
         """Create a rootfs snapshot from a running sandbox.
 
-        See RootfsSnapshots.create() for full documentation.
+        Blocks until the snapshot completes, up to max_wait_seconds.
+        Set max_wait_seconds=0 to return immediately.
+
+        Args:
+            sandbox_id: ID of the sandbox to snapshot.
+            snapshot_name: Name for the snapshot. The server generates
+                one if not provided. Use this name to restore later via
+                rootfs_snapshot_name on sandbox creation.
+            container_name: Which container to snapshot, for
+                multi-container sandboxes. Defaults to the first
+                container.
+            timeout_seconds: Maximum time for the snapshot operation,
+                in seconds. Enforced server-side. Default: 300.
+            ttl_seconds_after_finished: How long the server keeps the
+                snapshot resource after it completes, in seconds.
+                Default: 300.
+            max_wait_seconds: How long this method polls for completion,
+                in seconds. Client-side only. Default: 300.
+
+        Returns:
+            An AsyncRootfsSnapshot with the snapshot metadata and status.
+
+        Raises:
+            IsolaError: If the snapshot fails.
+            IsolaTimeoutError: If the snapshot does not complete within
+                max_wait_seconds.
         """
         payload = CreateRootfsSnapshotPayload(
             sandbox_id=sandbox_id,

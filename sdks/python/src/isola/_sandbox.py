@@ -390,7 +390,65 @@ class AsyncSandboxes:
     ) -> AsyncSandbox:
         """Create a new sandbox and wait for it to be ready.
 
-        See Sandboxes.create() for full documentation.
+        There are two ways to specify what to run:
+
+        Single container (common): pass image and optionally command,
+        env, cpu, memory, ephemeral_storage, and rootfs_snapshot_name.
+
+        Multiple containers: pass a containers list of Container objects.
+        Per-container options go on each Container. You cannot combine
+        image with containers.
+
+        The method blocks until the sandbox reaches the Running state,
+        up to max_wait_seconds. Set max_wait_seconds=0 to return
+        immediately without waiting.
+
+        Timeouts:
+
+        - max_wait_seconds (client-side, default 60): How long this
+          method polls before giving up. Does not affect the sandbox on
+          the server. Raises IsolaTimeoutError if it expires.
+        - startup_timeout_seconds (server-side, default 60): How long
+          the server waits for the container to start. If it expires, the
+          sandbox is marked as Failed.
+        - timeout_seconds (server-side, no default): Maximum lifetime
+          of the sandbox. The server terminates it after this duration.
+          None means no limit.
+
+        Args:
+            image: Container image to run (e.g. "python:3.12").
+                Required unless containers is provided.
+            rootfs_snapshot_name: Restore the container's filesystem
+                from this named snapshot.
+            command: Command and arguments to run in the container.
+            env: Environment variables as key-value pairs.
+            cpu: CPU limit in cores (e.g. 0.5, 2.0).
+            memory: Memory limit in MiB (e.g. 256, 1024).
+            ephemeral_storage: Ephemeral storage limit in MiB.
+            containers: List of Container specs for multi-container
+                sandboxes. Cannot be combined with image.
+            network: Network policy. Sandboxes have no network access
+                by default. See the Network class.
+            timeout_seconds: Maximum sandbox lifetime in seconds.
+                Enforced server-side. None means no limit.
+            startup_timeout_seconds: Maximum time for the container to
+                start, in seconds. Enforced server-side. Default: 60.
+            termination_policy: A SnapshotRootfs to automatically
+                snapshot the filesystem when the sandbox terminates.
+            max_wait_seconds: How long to wait for the sandbox to be
+                ready, in seconds. Client-side only. Set to 0 to return
+                immediately. Default: 60.
+
+        Returns:
+            An AsyncSandbox instance. If max_wait_seconds is 0, the
+            sandbox may not be ready yet (check status).
+
+        Raises:
+            ValueError: If both image and containers are set, or if
+                per-container options are used with containers.
+            IsolaTimeoutError: If the sandbox is not ready within
+                max_wait_seconds.
+            IsolaError: If the sandbox reaches a terminal failed state.
         """
         container_list = _validate_create_args(
             image,
