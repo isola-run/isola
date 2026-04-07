@@ -79,7 +79,9 @@ class Network(IsolaModel):
 
     Attributes:
         allow_internet_egress: Allow outbound traffic to the public internet.
-        allow_ipv6_egress: Allow outbound IPv6 traffic.
+        allow_ipv6_egress: Enable IPv6 across egress configuration.
+            Extends allow_internet_egress to cover IPv6, and allows
+            IPv6 addresses in allowed_egress_cidrs and nameservers.
         allowed_egress_cidrs: List of CIDR blocks the sandbox can reach
             (e.g. ["10.0.0.0/8"]). Use this for fine-grained control
             instead of allowing all internet traffic.

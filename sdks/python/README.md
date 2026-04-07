@@ -36,12 +36,14 @@ from isola import Isola
 with Isola() as client:
     sandbox = client.sandboxes.create(image="alpine:3.21")
     result = sandbox.commands.run("echo", "hello world")
-    print(result.stdout)      # "hello world\n"
-    print(result.exit_code)   # 0
-    sandbox.delete()  # or use "with ... as sandbox:" for automatic cleanup
+    print(result.stdout)    # "hello world\n"
+    print(result.exit_code) # 0
+    sandbox.delete()
 ```
 
-The `with` block closes the client automatically when it exits. You can also call `client.close()` instead.
+The `with` block closes the HTTP client automatically when it exits. You can also call `client.close()` instead.
+
+Call `sandbox.delete()` when you are done with a sandbox. Two alternatives: use `with sandbox:` to delete automatically on exit, or set `timeout_seconds` on `create()` to let the server delete the sandbox after a fixed duration.
 
 ## Async client
 
@@ -54,7 +56,7 @@ async with AsyncIsola() as client:
     sandbox = await client.sandboxes.create(image="alpine:3.21")
     result = await sandbox.commands.run("echo", "hello async")
     print(result.stdout)
-    await sandbox.delete()  # or use "async with ... as sandbox:" for automatic cleanup
+    await sandbox.delete()
 ```
 
 The async API is identical to the sync API. All examples below use the sync client.
@@ -117,6 +119,31 @@ result = sandbox.commands.run(
     timeout_seconds=30,
 )
 ```
+
+### Running scripts
+
+Pass a script as a single string to `sh -c` or `python3 -c`. This is the natural pattern
+when executing LLM-generated code blocks:
+
+```python
+code = """
+import json, os
+print(json.dumps({"cwd": os.getcwd(), "files": os.listdir(".")}))
+"""
+result = sandbox.commands.run("python3", "-c", code)
+print(result.stdout)
+
+script = """
+for f in /tmp/*.txt; do
+  echo "$f: $(wc -l < "$f") lines"
+done
+"""
+result = sandbox.commands.run("sh", "-c", script)
+```
+
+> Prefer separate args (`run("python3", "script.py")`) when you control the command —
+> it avoids shell quoting issues and keeps data separate from the command itself.
+> Use `sh -c` or `python3 -c` when you have a preformed script string.
 
 ### Spawn (non-blocking)
 

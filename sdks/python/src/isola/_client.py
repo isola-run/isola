@@ -296,10 +296,10 @@ class Isola:
 
         from isola import Isola
 
-        client = Isola()  # reads ISOLA_BASE_URL env var
-        with client.sandboxes.create(image="alpine:3.21") as sandbox:
-            result = sandbox.commands.run("echo", "hello")
-            print(result.stdout)
+        with Isola() as client:
+            with client.sandboxes.create(image="alpine:3.21") as sandbox:
+                result = sandbox.commands.run("echo", "hello")
+                print(result.stdout)
 
     Args:
         base_url: Isola API base URL. If not provided, reads from the
@@ -344,7 +344,8 @@ class AsyncIsola:
         from isola import AsyncIsola
 
         async with AsyncIsola() as client:
-            async with await client.sandboxes.create(image="alpine:3.21") as sandbox:
+            sandbox = await client.sandboxes.create(image="alpine:3.21")
+            async with sandbox:
                 result = await sandbox.commands.run("echo", "hello")
                 print(result.stdout)
 

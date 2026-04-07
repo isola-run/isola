@@ -599,7 +599,8 @@ class AsyncSandbox:
 
     Example:
 
-        async with await client.sandboxes.create(image="alpine:3.21") as sandbox:
+        sandbox = await client.sandboxes.create(image="alpine:3.21")
+        async with sandbox:
             result = await sandbox.commands.run("echo", "hello")
             print(result.stdout)
         # sandbox is deleted here
