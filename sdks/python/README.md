@@ -326,7 +326,7 @@ print(RandomForestClassifier(random_state=0).fit(X, y).score(X, y))
 
 ### Automatic snapshots on termination
 
-You can also configure a sandbox to snapshot automatically when it terminates:
+You can also configure a sandbox to snapshot automatically before it terminates:
 
 ```python
 from isola import SnapshotRootfs
@@ -372,8 +372,6 @@ Target a specific container when running commands or writing files:
 result = sandbox.commands.run("curl", "http://localhost:8080", container="worker")
 sandbox.filesystem.write("/tmp/data.txt", "hello", container="app")
 ```
-
-You cannot mix `image` with `containers`. Per-container options like `command`, `env`, `resources`, and `rootfs_snapshot_name` go on each `Container` object.
 
 ## Error handling
 
