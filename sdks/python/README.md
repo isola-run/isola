@@ -80,12 +80,12 @@ Customize resources, environment variables, and the startup command:
 ```python
 sandbox = client.sandboxes.create(
     image="python:3.12-slim",
-    command=["sleep", "infinity"],
-    env={"APP_ENV": "sandbox"},
+    command=["python", "-m", "http.server", "8080"],
+    env={"PORT": "8080", "DEBUG": "1"},
     cpu=0.5,            # CPU cores
     memory=256,         # MiB
     ephemeral_storage=1024,  # MiB
-    timeout_seconds=3600,
+    timeout_seconds=3600,   # auto-delete after 1 hour
 )
 ```
 
@@ -96,17 +96,15 @@ sandbox = client.sandboxes.create(image="alpine:3.21", max_wait_seconds=0)
 print(sandbox.status)  # might be SandboxStatus.PENDING
 ```
 
-### Timeouts
+> Sandboxes have **no network access by default**. See [Network configuration](#network-configuration) to enable it.
 
-There are three timeouts that control different things. They are easy to mix up, so here is what each one does:
+### Timeouts
 
 | Timeout | Side | Default | What it controls |
 |---------|------|---------|-----------------|
 | `max_wait_seconds` | Client | 65s | How long `create()` polls before returning. Set to 0 to return immediately. Raises `IsolaTimeoutError` if it expires. The sandbox keeps running on the server regardless. |
 | `startup_timeout_seconds` | Server | 60s | How long the server gives the container to start (image pull, scheduling). If it expires, the sandbox is marked Failed. |
 | `timeout_seconds` | Server | No limit | Maximum lifetime of the sandbox. The server begins the termination process after this duration. |
-
-> Sandboxes have **no network access by default**. See [Network configuration](#network-configuration) to enable it.
 
 ## Commands
 
@@ -355,7 +353,6 @@ sandbox = client.sandboxes.create(
         Container(
             name="worker",
             image="alpine:3.21",
-            command=["sleep", "infinity"],
         ),
     ],
 )
