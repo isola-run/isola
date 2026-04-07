@@ -90,7 +90,7 @@ There are three timeouts that control different things. They are easy to mix up,
 
 | Timeout | Side | Default | What it controls |
 |---------|------|---------|-----------------|
-| `max_wait_seconds` | Client | 60s | How long `create()` polls before returning. Set to 0 to return immediately. Raises `IsolaTimeoutError` if it expires. The sandbox keeps running on the server regardless. |
+| `max_wait_seconds` | Client | 65s | How long `create()` polls before returning. Set to 0 to return immediately. Raises `IsolaTimeoutError` if it expires. The sandbox keeps running on the server regardless. |
 | `startup_timeout_seconds` | Server | 60s | How long the server gives the container to start (image pull, scheduling). If it expires, the sandbox is marked Failed. |
 | `timeout_seconds` | Server | No limit | Maximum lifetime of the sandbox. The server terminates it after this duration. |
 
@@ -269,7 +269,7 @@ snapshot = client.rootfs_snapshots.create(
 print(snapshot.status)  # RootfsSnapshotStatus.SUCCEEDED
 ```
 
-`create()` blocks until the snapshot completes (up to 300 seconds by default). Pass `max_wait_seconds=0` to return immediately.
+`create()` blocks until the snapshot completes (up to 310 seconds by default). Pass `max_wait_seconds=0` to return immediately.
 
 ### Restore from a snapshot
 
