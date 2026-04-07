@@ -20,7 +20,7 @@ Before diving into code, here is a quick overview of the object model:
 - `client.sandboxes.create()` returns a `Sandbox`, an isolated container (or group of containers) where you run code.
 - A `Sandbox` exposes `.commands` for executing processes and `.filesystem` for reading and writing files.
 - Commands can be blocking (`run`, waits for completion) or non-blocking (`spawn`, streams output as it arrives).
-- Rootfs snapshots are separate resources managed through `client.rootfs_snapshots`. They let you capture and restore a sandbox's filesystem.
+- Rootfs snapshots are separate resources managed through `client.rootfs_snapshots`. They let you capture and restore a container's root filesystem changes.
 
 ## Quick start
 
@@ -225,7 +225,7 @@ Network(
 
 ## Rootfs snapshots
 
-Rootfs snapshots capture a sandbox's filesystem so you can restore it later in a new sandbox. This is useful for pre-warming environments: install dependencies once, snapshot, then spin up fresh sandboxes from that snapshot in seconds.
+Rootfs snapshots capture one container's root filesystem changes so you can restore them later in a new sandbox. This is useful for pre-warming environments: install dependencies once, snapshot, then spin up fresh sandboxes from that snapshot.
 
 ### Create a snapshot
 
