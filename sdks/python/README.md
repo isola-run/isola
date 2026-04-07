@@ -92,7 +92,7 @@ There are three timeouts that control different things. They are easy to mix up,
 |---------|------|---------|-----------------|
 | `max_wait_seconds` | Client | 65s | How long `create()` polls before returning. Set to 0 to return immediately. Raises `IsolaTimeoutError` if it expires. The sandbox keeps running on the server regardless. |
 | `startup_timeout_seconds` | Server | 60s | How long the server gives the container to start (image pull, scheduling). If it expires, the sandbox is marked Failed. |
-| `timeout_seconds` | Server | No limit | Maximum lifetime of the sandbox. The server terminates it after this duration. |
+| `timeout_seconds` | Server | No limit | Maximum lifetime of the sandbox. The server begins the termination process after this duration. |
 
 > Sandboxes have **no network access by default**. See [Network configuration](#network-configuration) to enable it.
 
