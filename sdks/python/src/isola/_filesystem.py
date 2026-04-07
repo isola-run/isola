@@ -42,8 +42,7 @@ class Filesystem:
             path: Absolute path inside the sandbox
                 (e.g. "/tmp/hello.txt").
             data: Content to write. Pass a str for text, bytes for
-                binary data, or an open file object to stream from
-                disk.
+                binary data, or any binary file-like object.
             container: Target container name. Only needed for
                 multi-container sandboxes.
 
@@ -100,8 +99,7 @@ class AsyncFilesystem:
             path: Absolute path inside the sandbox
                 (e.g. "/tmp/hello.txt").
             data: Content to write. Pass a str for text, bytes for
-                binary data, or an open file object to stream from
-                disk.
+                binary data, or any binary file-like object.
             container: Target container name. Only needed for
                 multi-container sandboxes.
 
