@@ -95,6 +95,9 @@ class StreamReader:
         """Read the entire stream and return it as a string.
 
         Consumes the stream. Cannot be called after iterating.
+
+        Raises:
+            RuntimeError: If the stream has already been consumed.
         """
         return "".join(self)
 
@@ -198,5 +201,8 @@ class AsyncStreamReader:
         """Read the entire stream and return it as a string.
 
         Consumes the stream. Cannot be called after iterating.
+
+        Raises:
+            RuntimeError: If the stream has already been consumed.
         """
         return "".join([chunk async for chunk in self])
