@@ -81,22 +81,13 @@ class BadGatewayError(APIError):
 
 
 class IsolaTimeoutError(IsolaError):
-    """A client-side timeout expired.
-
-    Raised when the SDK waited longer than max_wait_seconds for a
-    sandbox to become ready or a snapshot to complete. The resource
-    may still be progressing on the server.
-    """
+    """A timeout expired while waiting for an operation to complete."""
 
     pass
 
 
 class APIConnectionError(IsolaError, ConnectionError):
-    """Could not connect to the Isola API.
-
-    Raised after exhausting all retry attempts. Check that the base URL
-    is correct and the Isola API gateway is reachable.
-    """
+    """An error occurred communicating with the Isola API."""
 
     pass
 
