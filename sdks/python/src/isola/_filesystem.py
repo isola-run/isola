@@ -40,9 +40,9 @@ class Filesystem:
 
         Args:
             path: Absolute path inside the sandbox
-                (e.g. `"/tmp/hello.txt"`).
-            data: Content to write. Pass a `str` for text, `bytes`
-                for binary data, or an open file object to stream from
+                (e.g. "/tmp/hello.txt").
+            data: Content to write. Pass a str for text, bytes for
+                binary data, or an open file object to stream from
                 disk.
             container: Target container name. Only needed for
                 multi-container sandboxes.
@@ -74,7 +74,7 @@ class Filesystem:
                 multi-container sandboxes.
 
         Returns:
-            File contents as bytes. Decode with `.decode()` for text.
+            File contents as bytes. Decode with .decode() for text.
         """
         params = {"path": path}
         if container:
@@ -98,9 +98,9 @@ class AsyncFilesystem:
 
         Args:
             path: Absolute path inside the sandbox
-                (e.g. `"/tmp/hello.txt"`).
-            data: Content to write. Pass a `str` for text, `bytes`
-                for binary data, or an open file object to stream from
+                (e.g. "/tmp/hello.txt").
+            data: Content to write. Pass a str for text, bytes for
+                binary data, or an open file object to stream from
                 disk.
             container: Target container name. Only needed for
                 multi-container sandboxes.
@@ -132,7 +132,7 @@ class AsyncFilesystem:
                 multi-container sandboxes.
 
         Returns:
-            File contents as bytes. Decode with `.decode()` for text.
+            File contents as bytes. Decode with .decode() for text.
         """
         params = {"path": path}
         if container:

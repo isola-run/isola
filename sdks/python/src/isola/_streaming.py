@@ -57,13 +57,13 @@ class StreamReader:
     """Reads a command's output stream (stdout or stderr).
 
     StreamReader is single-use: you can iterate over it once, or call
-    `read()` to collect everything into a string. Attempting to iterate
-    a second time raises `RuntimeError`.
+    read() to collect everything into a string. Attempting to iterate
+    a second time raises RuntimeError.
 
     The reader reconnects automatically (up to 5 times) on transient
     network errors, resuming from the last received event.
 
-    Example::
+    Example:
 
         cmd = sandbox.commands.spawn("ls", "-la")
         for chunk in cmd.stdout:
@@ -135,10 +135,10 @@ class StreamReader:
 class AsyncStreamReader:
     """Async version of StreamReader.
 
-    Use `async for` to iterate, or `await reader.read()` to collect
+    Use async for to iterate, or await reader.read() to collect
     everything.
 
-    Example::
+    Example:
 
         cmd = await sandbox.commands.spawn("ls", "-la")
         async for chunk in cmd.stdout:

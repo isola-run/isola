@@ -292,7 +292,7 @@ def _normalize_base_url(base_url: str) -> str:
 class Isola:
     """Synchronous client for the Isola API.
 
-    Example::
+    Example:
 
         from isola import Isola
 
@@ -303,7 +303,7 @@ class Isola:
 
     Args:
         base_url: Isola API base URL. If not provided, reads from the
-            `ISOLA_BASE_URL` environment variable.
+            ISOLA_BASE_URL environment variable.
 
     Raises:
         ValueError: If no base URL is provided or found in environment.
@@ -339,7 +339,7 @@ class Isola:
 class AsyncIsola:
     """Asynchronous client for the Isola API.
 
-    Example::
+    Example:
 
         from isola import AsyncIsola
 
@@ -350,7 +350,7 @@ class AsyncIsola:
 
     Args:
         base_url: Isola API base URL. If not provided, reads from the
-            `ISOLA_BASE_URL` environment variable.
+            ISOLA_BASE_URL environment variable.
 
     Raises:
         ValueError: If no base URL is provided or found in environment.

@@ -84,7 +84,7 @@ class BadGatewayError(APIError):
 class IsolaTimeoutError(IsolaError):
     """A client-side timeout expired.
 
-    Raised when the SDK waited longer than `max_wait_seconds` for a
+    Raised when the SDK waited longer than max_wait_seconds for a
     sandbox to become ready or a snapshot to complete. The resource
     may still be progressing on the server.
     """

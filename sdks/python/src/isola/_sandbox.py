@@ -217,39 +217,38 @@ class Sandboxes:
 
         There are two ways to specify what to run:
 
-        **Single container (common):** pass `image` and optionally
-        `command`, `env`, `cpu`, `memory`, `ephemeral_storage`,
-        and `rootfs_snapshot_name`.
+        Single container (common): pass image and optionally command,
+        env, cpu, memory, ephemeral_storage, and rootfs_snapshot_name.
 
-        **Multiple containers:** pass a `containers` list of Container
-        objects. Per-container options go on each Container. You cannot
-        combine `image` with `containers`.
+        Multiple containers: pass a containers list of Container objects.
+        Per-container options go on each Container. You cannot combine
+        image with containers.
 
         The method blocks until the sandbox reaches the Running state,
-        up to `max_wait_seconds`. Set `max_wait_seconds=0` to return
+        up to max_wait_seconds. Set max_wait_seconds=0 to return
         immediately without waiting.
 
-        **Timeouts:**
+        Timeouts:
 
-        - `max_wait_seconds` (client-side, default 60): How long this
+        - max_wait_seconds (client-side, default 60): How long this
           method polls before giving up. Does not affect the sandbox on
-          the server. Raises `IsolaTimeoutError` if it expires.
-        - `startup_timeout_seconds` (server-side, default 60): How long
+          the server. Raises IsolaTimeoutError if it expires.
+        - startup_timeout_seconds (server-side, default 60): How long
           the server waits for the container to start. If it expires, the
           sandbox is marked as Failed.
-        - `timeout_seconds` (server-side, no default): Maximum lifetime
+        - timeout_seconds (server-side, no default): Maximum lifetime
           of the sandbox. The server terminates it after this duration.
           None means no limit.
 
         Args:
-            image: Container image to run (e.g. `"python:3.12"`).
-                Required unless `containers` is provided.
+            image: Container image to run (e.g. "python:3.12").
+                Required unless containers is provided.
             containers: List of Container specs for multi-container
-                sandboxes. Cannot be combined with `image`.
+                sandboxes. Cannot be combined with image.
             command: Command and arguments to run in the container.
             env: Environment variables as key-value pairs.
-            cpu: CPU limit in cores (e.g. `0.5`, `2.0`).
-            memory: Memory limit in MiB (e.g. `256`, `1024`).
+            cpu: CPU limit in cores (e.g. 0.5, 2.0).
+            memory: Memory limit in MiB (e.g. 256, 1024).
             ephemeral_storage: Ephemeral storage limit in MiB.
             rootfs_snapshot_name: Restore the container's filesystem
                 from this named snapshot.
@@ -266,14 +265,14 @@ class Sandboxes:
                 immediately. Default: 60.
 
         Returns:
-            A Sandbox instance. If `max_wait_seconds` is 0, the
-            sandbox may not be ready yet (check `.status`).
+            A Sandbox instance. If max_wait_seconds is 0, the sandbox
+            may not be ready yet (check status).
 
         Raises:
-            ValueError: If both `image` and `containers` are set,
-                or if per-container options are used with `containers`.
+            ValueError: If both image and containers are set, or if
+                per-container options are used with containers.
             IsolaTimeoutError: If the sandbox is not ready within
-                `max_wait_seconds`.
+                max_wait_seconds.
             IsolaError: If the sandbox reaches a terminal failed state.
         """
         container_list = _validate_create_args(
@@ -391,7 +390,7 @@ class AsyncSandboxes:
     ) -> AsyncSandbox:
         """Create a new sandbox and wait for it to be ready.
 
-        See `Sandboxes.create()` for full documentation.
+        See Sandboxes.create() for full documentation.
         """
         container_list = _validate_create_args(
             image,
@@ -456,11 +455,11 @@ class AsyncSandboxes:
 class Sandbox:
     """A running sandbox.
 
-    Use `commands` to execute processes and `filesystem` to read and
-    write files. Sandboxes are context managers: use `with` to
-    automatically delete the sandbox when you are done.
+    Use commands to execute processes and filesystem to read and write
+    files. Sandboxes are context managers: use with to automatically
+    delete the sandbox when you are done.
 
-    Example::
+    Example:
 
         with client.sandboxes.create(image="alpine:3.21") as sandbox:
             result = sandbox.commands.run("echo", "hello")
@@ -534,11 +533,11 @@ class Sandbox:
 class AsyncSandbox:
     """Async version of Sandbox.
 
-    Use `commands` to execute processes and `filesystem` to read and
-    write files. Async sandboxes are async context managers: use
-    `async with` to automatically delete the sandbox when you are done.
+    Use commands to execute processes and filesystem to read and write
+    files. Async sandboxes are async context managers: use async with
+    to automatically delete the sandbox when you are done.
 
-    Example::
+    Example:
 
         async with await client.sandboxes.create(image="alpine:3.21") as sandbox:
             result = await sandbox.commands.run("echo", "hello")

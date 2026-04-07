@@ -110,14 +110,14 @@ class RootfsSnapshots:
     ) -> RootfsSnapshot:
         """Create a rootfs snapshot from a running sandbox.
 
-        Blocks until the snapshot completes, up to `max_wait_seconds`.
-        Set `max_wait_seconds=0` to return immediately.
+        Blocks until the snapshot completes, up to max_wait_seconds.
+        Set max_wait_seconds=0 to return immediately.
 
         Args:
             sandbox_id: ID of the sandbox to snapshot.
             snapshot_name: Name for the snapshot. The server generates
                 one if not provided. Use this name to restore later via
-                `rootfs_snapshot_name` on sandbox creation.
+                rootfs_snapshot_name on sandbox creation.
             container_name: Which container to snapshot, for
                 multi-container sandboxes. Defaults to the first
                 container.
@@ -135,7 +135,7 @@ class RootfsSnapshots:
         Raises:
             IsolaError: If the snapshot fails.
             IsolaTimeoutError: If the snapshot does not complete within
-                `max_wait_seconds`.
+                max_wait_seconds.
         """
         payload = CreateRootfsSnapshotPayload(
             sandbox_id=sandbox_id,
@@ -189,7 +189,7 @@ class AsyncRootfsSnapshots:
     ) -> AsyncRootfsSnapshot:
         """Create a rootfs snapshot from a running sandbox.
 
-        See `RootfsSnapshots.create()` for full documentation.
+        See RootfsSnapshots.create() for full documentation.
         """
         payload = CreateRootfsSnapshotPayload(
             sandbox_id=sandbox_id,
@@ -229,7 +229,7 @@ class RootfsSnapshot:
     """A rootfs snapshot.
 
     Inspect the snapshot's status and metadata. To restore from this
-    snapshot, pass its `snapshot_name` as the `rootfs_snapshot_name`
+    snapshot, pass its snapshot_name as the rootfs_snapshot_name
     parameter when creating a new sandbox.
     """
 

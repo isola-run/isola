@@ -51,7 +51,7 @@ class IsolaModel(BaseModel):
 class SandboxStatus(str, Enum):
     """Lifecycle status of a sandbox.
 
-    Values:
+    Attributes:
         PENDING: Sandbox is being created (container pulling, scheduling).
         RUNNING: Sandbox is ready and accepting commands.
         TERMINATING: Sandbox is shutting down.
@@ -80,8 +80,8 @@ class Network(IsolaModel):
     Attributes:
         allow_internet_egress: Allow outbound traffic to the public internet.
         allow_cluster_dns: Allow DNS resolution through the cluster's DNS
-            service. When False, the sandbox uses public nameservers or
-            the ones you provide in nameservers.
+            service. When False and allow_internet_egress or allowed_egress_cidrs are specified,
+            the sandbox uses public nameservers or the ones you provide in nameservers.
         allow_ipv6_egress: Allow outbound IPv6 traffic.
         allowed_egress_cidrs: List of CIDR blocks the sandbox can reach
             (e.g. ["10.0.0.0/8"]). Use this for fine-grained control
@@ -154,7 +154,7 @@ class ContainerInfo(IsolaModel):
 class RootfsSnapshotStatus(str, Enum):
     """Lifecycle status of a rootfs snapshot.
 
-    Values:
+    Attributes:
         PENDING: Snapshot request accepted, not yet started.
         RUNNING: Snapshot is being captured.
         SUCCEEDED: Snapshot completed successfully.
