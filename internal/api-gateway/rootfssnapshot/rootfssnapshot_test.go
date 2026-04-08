@@ -104,13 +104,13 @@ var _ = Describe("RootfsSnapshot Endpoints", func() {
 			Expect(resp.Code).To(Equal(422))
 		})
 
-		It("accepts missing snapshotName", func() {
+		It("defaults snapshotName to sandboxId when omitted", func() {
 			resp := testAPI.Post("/v1/rootfs-snapshots", strings.NewReader(`{"sandboxId":"sb"}`))
 			Expect(resp.Code).To(Equal(201))
 
 			var body RootfsSnapshotResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body.SnapshotName).To(BeEmpty())
+			Expect(body.SnapshotName).To(Equal("sb"))
 			Expect(body.SandboxID).To(Equal("sb"))
 		})
 

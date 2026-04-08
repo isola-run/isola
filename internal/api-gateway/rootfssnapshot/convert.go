@@ -25,6 +25,12 @@ import (
 )
 
 func requestToRootfsSnapshotCR(req CreateRootfsSnapshotRequest, name, namespace string) *sandboxv1alpha1.RootfsSnapshot {
+	// snapshotName defaults to the sandbox ID if omitted. kubebuilder can't express
+	// cross-field defaults, so we set it explicitly before writing the CRD.
+	snapshotName := req.SnapshotName
+	if snapshotName == "" {
+		snapshotName = req.SandboxID
+	}
 	return &sandboxv1alpha1.RootfsSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -32,7 +38,7 @@ func requestToRootfsSnapshotCR(req CreateRootfsSnapshotRequest, name, namespace 
 		},
 		Spec: sandboxv1alpha1.RootfsSnapshotSpec{
 			SandboxName:             req.SandboxID,
-			SnapshotName:            req.SnapshotName,
+			SnapshotName:            snapshotName,
 			ContainerName:           req.ContainerName,
 			TimeoutSeconds:          req.TimeoutSeconds,
 			TTLSecondsAfterFinished: req.TTLSecondsAfterFinished,

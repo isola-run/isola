@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from isola import Isola, Network, Sandbox, SandboxStatus, SandboxSummary
+from isola import Isola, Network, Sandbox, SandboxStatus, SandboxSummary, SnapshotRootfs
 
 from utils import parse_k8s_quantity, wait_for_running
 
@@ -198,6 +198,28 @@ def test_server_defaults_are_present(
     sb = isola_client.sandboxes.get(session_sandbox.id)
     assert sb.startup_timeout_seconds == 60
     assert sb.containers[0].name == "sandbox0"
+
+
+@pytest.mark.timeout(30)
+def test_termination_policy_snapshot_name_defaults_to_sandbox_id(
+    isola_client: Isola,
+    sandbox_factory,
+) -> None:
+    """snapshotName in SnapshotRootfs termination policy defaults to the sandbox ID.
+
+    The server resolves this before writing the CRD (kubebuilder can't express
+    cross-field defaults), so both create and get responses should reflect it.
+    """
+    sb = sandbox_factory(
+        termination_policy=SnapshotRootfs(),
+        max_wait_seconds=0,
+    )
+    assert sb._data.termination_policy is not None
+    assert sb._data.termination_policy.snapshot_rootfs is not None
+    assert sb._data.termination_policy.snapshot_rootfs.snapshot_name == sb.id
+
+    fetched = isola_client.sandboxes.get(sb.id)
+    assert fetched._data.termination_policy.snapshot_rootfs.snapshot_name == sb.id
 
 
 def test_list_status_matches_get_status(
