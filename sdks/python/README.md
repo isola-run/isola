@@ -119,6 +119,8 @@ print(result.stderr)      # ""
 print(result.exit_code)   # 0
 ```
 
+`run()` does not raise on non-zero exit codes. Always check `result.exit_code`.
+
 ```python
 result = sandbox.commands.run(
     "ls", "-la",
@@ -255,7 +257,7 @@ Other network options:
 
 ```python
 Network(
-    allow_internet_egress=False,          # allow outbound internet traffic
+    allow_internet_egress=False,          # block outbound internet traffic (default)
     allowed_egress_cidrs=["10.0.0.0/8"],  # fine-grained CIDR allowlist
     allow_cluster_dns=False,              # use the cluster's DNS service
     nameservers=["8.8.8.8"],              # custom DNS nameservers
@@ -265,7 +267,7 @@ Network(
 
 ## Rootfs snapshots
 
-> Requires rootfs snapshots to be enabled and a storage bucket configured in your Helm values (`operator.rootfssnapshot`).
+> Requires rootfs snapshots to be enabled and a storage bucket configured in your Helm values (`operator.sandboxRuntime.rootfssnapshot`).
 
 Rootfs snapshots capture one container's root filesystem changes so you can restore them later in a new sandbox. This is useful for pre-warming environments: install dependencies once, snapshot, then spin up fresh sandboxes from that snapshot.
 
