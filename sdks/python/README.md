@@ -346,31 +346,67 @@ print(snapshot.status)  # RootfsSnapshotStatus.SUCCEEDED
 
 ## Multi-container sandboxes
 
-For advanced use cases, you can run multiple containers in a single sandbox. Use the `containers` parameter instead of `image`:
+Run multiple containers in a single sandbox when your workload needs supporting services. Containers share a network namespace, so they reach each other on `localhost`. Use the `containers` parameter instead of `image`.
+
+The example below runs an MCP tool server in one container and connects to it from another:
 
 ```python
-from isola import Container
+from isola import Container, Network
 
 sandbox = client.sandboxes.create(
     containers=[
-        Container(
-            name="app",
-            image="python:3.12-slim",
-            command=["python", "-m", "http.server", "8080"],
-        ),
-        Container(
-            name="worker",
-            image="alpine:3.21",
-        ),
+        Container(name="tools", image="python:3.12-slim"),
+        Container(name="agent", image="python:3.12-slim"),
     ],
+    network=Network(allow_internet_egress=True),
 )
+
+for name in ("tools", "agent"):
+    sandbox.commands.run("pip", "install", "mcp", container=name)
 ```
 
-Target a specific container when running commands or writing files:
+Write a tool server and start it in the background:
 
 ```python
-result = sandbox.commands.run("curl", "http://localhost:8080", container="worker")
-sandbox.filesystem.write("/tmp/data.txt", "hello", container="app")
+sandbox.filesystem.write("/app/server.py", '''
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("tools", host="0.0.0.0", port=8000, json_response=True)
+
+@mcp.tool()
+def lookup(query: str) -> str:
+    """Search the knowledge base."""
+    kb = {
+        "pricing": "Free: 1000 req/day. Pro: $49/mo.",
+        "auth": "Bearer tokens via POST /api/token.",
+        "limits": "Rate limit: 100 req/min. Max payload: 10MB.",
+    }
+    return next((v for k, v in kb.items() if k in query.lower()), "No results.")
+
+mcp.run(transport="streamable-http")
+''', container="tools")
+
+sandbox.commands.spawn("python3", "/app/server.py", container="tools")
+```
+
+Connect from the agent container and call a tool:
+
+```python
+result = sandbox.commands.run("python3", "-c", """
+import asyncio
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
+
+async def main():
+    async with streamable_http_client("http://localhost:8000/mcp") as (r, w, _):
+        async with ClientSession(r, w) as session:
+            await session.initialize()
+            result = await session.call_tool("lookup", {"query": "pricing"})
+            print(result.content[0].text)
+
+asyncio.run(main())
+""", container="agent")
+print(result.stdout)  # Free: 1000 req/day. Pro: $49/mo.
 ```
 
 ## Error handling
