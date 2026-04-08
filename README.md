@@ -259,7 +259,7 @@ flowchart LR
 
 ### Prerequisites
 
-- A Kubernetes cluster (vanilla, EKS, AKS, GKE, or similar). Kubernetes 1.30+ (1.34+ for rootfs snapshot restore).
+- A Kubernetes cluster (vanilla, EKS, AKS, GKE, or similar). Kubernetes 1.34+ if enabling rootfs snapshots support.
 - [Helm](https://helm.sh) v3.
 - A [gVisor](https://gvisor.dev) RuntimeClass configured in your cluster (see [gVisor setup](#gvisor-setup) below).
 - (Optional) An S3, GCS, or Azure Blob Storage bucket for rootfs snapshots.
