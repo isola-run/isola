@@ -230,14 +230,14 @@ class Sandboxes:
         Timeouts:
 
         - max_wait_seconds (client-side): How long this method polls
-          before giving up. Does not affect the sandbox on the server
+          before giving up. Does not affect the sandbox on the server.
         - startup_timeout_seconds (server-side): How long the server
           waits for the sandbox pod to become ready. If it expires,
           the sandbox is marked as Failed. The server defaults to
           60 seconds if not set.
         - timeout_seconds (server-side): How long the sandbox runs
-          before the server begins the termination process. None
-          means no limit.
+          before the server begins the termination process. If None
+          is provided, the server defaults to no limit.
 
         Args:
             image: Container image to run (e.g. "python:3.12").
@@ -417,14 +417,14 @@ class AsyncSandboxes:
         Timeouts:
 
         - max_wait_seconds (client-side): How long this method polls
-          before giving up. Does not affect the sandbox on the server
+          before giving up. Does not affect the sandbox on the server.
         - startup_timeout_seconds (server-side): How long the server
           waits for the sandbox pod to become ready. If it expires,
           the sandbox is marked as Failed. The server defaults to
           60 seconds if not set.
         - timeout_seconds (server-side): How long the sandbox runs
-          before the server begins the termination process. None
-          means no limit.
+          before the server begins the termination process. If None
+          is provided, the server defaults to no limit.
 
         Args:
             image: Container image to run (e.g. "python:3.12").
