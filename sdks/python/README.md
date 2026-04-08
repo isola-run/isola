@@ -24,7 +24,7 @@ Before diving into code, here is a quick overview of the object model:
 
 ## Quick start
 
-`ISOLA_URL` must point at your Isola api-gateway. There is no default - set it for every deployment:
+`ISOLA_URL` must point at your Isola api-gateway. There is no default; set it explicitly for each deployment:
 
 ```bash
 # Local development (kubectl port-forward)
@@ -118,6 +118,8 @@ print(result.stdout)      # "hello world\n"
 print(result.stderr)      # ""
 print(result.exit_code)   # 0
 ```
+
+`run()` does not raise on non-zero exit codes; always check `result.exit_code`.
 
 ```python
 result = sandbox.commands.run(
@@ -255,7 +257,7 @@ Other network options:
 
 ```python
 Network(
-    allow_internet_egress=False,          # allow outbound internet traffic
+    allow_internet_egress=False,          # block outbound internet traffic (default)
     allowed_egress_cidrs=["10.0.0.0/8"],  # fine-grained CIDR allowlist
     allow_cluster_dns=False,              # use the cluster's DNS service
     nameservers=["8.8.8.8"],              # custom DNS nameservers
@@ -265,7 +267,7 @@ Network(
 
 ## Rootfs snapshots
 
-> Requires rootfs snapshots to be enabled and a storage bucket configured in your Helm values (`operator.rootfssnapshot`).
+> Requires rootfs snapshots to be enabled and a storage bucket configured in your Helm values (`operator.sandboxRuntime.rootfssnapshot`).
 
 Rootfs snapshots capture one container's root filesystem changes so you can restore them later in a new sandbox. This is useful for pre-warming environments: install dependencies once, snapshot, then spin up fresh sandboxes from that snapshot.
 
@@ -406,5 +408,5 @@ except IsolaError:
     print("Something else went wrong")
 ```
 
-The SDK automatically retries on transient errors.
+The SDK automatically retries on transient errors (502, 503, 504) and connection failures, up to 5 times with a 1-second delay between attempts.
 
