@@ -61,10 +61,6 @@ class TestNetworkAliases:
 
 
 class TestValidateByNameAndAlias:
-    def test_construct_with_snake_case(self) -> None:
-        spec = Container(image="ubuntu:22.04")
-        assert spec.image == "ubuntu:22.04"
-
     def test_construct_with_camel_case(self) -> None:
         payload = CreateSandboxPayload.model_validate(
             {

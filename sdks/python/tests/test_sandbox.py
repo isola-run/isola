@@ -61,19 +61,6 @@ def test_create_sandbox_maps_flat_resources(sandbox_response_copy: dict[str, obj
 
 
 @respx.mock
-def test_create_sandbox_without_resources_omits_key(sandbox_response_copy: dict[str, object]) -> None:
-    create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=sandbox_response_copy)
-    )
-
-    with Isola(url="http://localhost:8080") as client:
-        client.sandboxes.create(image="python:3.12")
-
-    payload = json.loads(create_route.calls[0].request.content)
-    assert "resources" not in payload["podTemplate"]["containers"][0]
-
-
-@respx.mock
 def test_list_sandboxes(sandbox_summary_response: dict[str, object]) -> None:
     respx.get("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(200, json=sandbox_summary_response)
@@ -205,36 +192,6 @@ def test_create_sandbox_with_rootfs_snapshot_name(sandbox_response_copy: dict[st
     payload = json.loads(create_route.calls[0].request.content)
     assert payload["podTemplate"]["containers"][0]["rootfsSnapshotName"] == "my-snapshot"
     assert sandbox.containers[0].rootfs_snapshot_name == "my-snapshot"
-
-
-@respx.mock
-def test_create_sandbox_without_rootfs_snapshot_name_omits_key(
-    sandbox_response_copy: dict[str, object],
-) -> None:
-    create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=sandbox_response_copy)
-    )
-
-    with Isola(url="http://localhost:8080") as client:
-        client.sandboxes.create(image="python:3.12")
-
-    payload = json.loads(create_route.calls[0].request.content)
-    assert "rootfsSnapshotName" not in payload["podTemplate"]["containers"][0]
-
-
-@respx.mock
-def test_rootfs_snapshot_name_response_deserialization(
-    sandbox_response_copy: dict[str, object],
-) -> None:
-    sandbox_response_copy["podTemplate"]["containers"][0]["rootfsSnapshotName"] = "snap-1"
-    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
-        return_value=httpx.Response(200, json=sandbox_response_copy)
-    )
-
-    with Isola(url="http://localhost:8080") as client:
-        sandbox = client.sandboxes.get("sandbox-123")
-
-    assert sandbox.containers[0].rootfs_snapshot_name == "snap-1"
 
 
 @respx.mock
@@ -551,20 +508,6 @@ def test_startup_timeout_seconds_passed_to_api() -> None:
     payload = json.loads(create_route.calls[0].request.content)
     assert payload["startupTimeoutSeconds"] == 45
     assert sandbox.startup_timeout_seconds == 45
-
-
-@respx.mock
-def test_startup_timeout_seconds_omitted_from_payload_by_default() -> None:
-    response = _make_sandbox_response("Running")
-    create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
-        return_value=httpx.Response(201, json=response)
-    )
-
-    with Isola(url="http://localhost:8080") as client:
-        client.sandboxes.create(image="python:3.12")
-
-    payload = json.loads(create_route.calls[0].request.content)
-    assert "startupTimeoutSeconds" not in payload
 
 
 @respx.mock

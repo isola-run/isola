@@ -29,6 +29,25 @@ from utils import (
 
 
 @pytest.mark.timeout(120)
+def test_rootfs_snapshot_server_defaults_are_present(
+    isola_client: Isola, session_sandbox: Sandbox,
+) -> None:
+    """Server-defaulted fields must always be present in rootfs snapshot responses.
+
+    The SDK types these as required (non-Optional). If the server stops
+    returning defaults, this test and the SDK's Pydantic validation will
+    both fail, preventing a silent contract break.
+    """
+    snapshot = isola_client.rootfs_snapshots.create(
+        sandbox_id=session_sandbox.id,
+        max_wait_seconds=0,
+    )
+    assert snapshot.timeout_seconds == 300
+    assert snapshot.ttl_seconds_after_finished == 300
+    assert snapshot.snapshot_name == session_sandbox.id
+
+
+@pytest.mark.timeout(120)
 class TestRootfsSnapshotSourcesField:
     """Verify the per-container rootfsSnapshotName field round-trips through the API."""
 
