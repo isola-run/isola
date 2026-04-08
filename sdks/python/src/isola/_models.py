@@ -139,7 +139,7 @@ class ContainerInfo(IsolaModel):
         resources: Resource limits and requests.
     """
 
-    name: str | None = None
+    name: str
     image: str
     rootfs_snapshot_name: str | None = None
     command: list[str] | None = None
@@ -159,8 +159,8 @@ class CreateRootfsSnapshotPayload(IsolaModel):
     sandbox_id: str
     snapshot_name: str | None = None
     container_name: str | None = None
-    timeout_seconds: int
-    ttl_seconds_after_finished: int
+    timeout_seconds: int | None = None
+    ttl_seconds_after_finished: int | None = None
 
 
 class RootfsSnapshotData(IsolaModel):
@@ -168,8 +168,8 @@ class RootfsSnapshotData(IsolaModel):
     sandbox_id: str
     snapshot_name: str
     container_name: str | None = None
-    timeout_seconds: int | None = None
-    ttl_seconds_after_finished: int | None = None
+    timeout_seconds: int
+    ttl_seconds_after_finished: int
     status: RootfsSnapshotStatus
     creation_timestamp: datetime
 
@@ -195,11 +195,12 @@ class SnapshotRootfs(IsolaModel):
             the sandbox's ID on the server.
         timeout_seconds: Maximum time for the snapshot operation, in
             seconds. Enforced server-side. The server cancels the
-            snapshot if it takes longer than this.
+            snapshot if it takes longer than this. The server defaults
+            to 300 seconds if not set.
     """
 
     snapshot_name: str | None = None
-    timeout_seconds: int = 300
+    timeout_seconds: int | None = None
 
 
 class TerminationPolicy(IsolaModel):
@@ -210,7 +211,7 @@ class TerminationPolicy(IsolaModel):
 class CreateSandboxPayload(IsolaModel):
     pod_template: PodTemplate
     timeout_seconds: int | None = None
-    startup_timeout_seconds: int
+    startup_timeout_seconds: int | None = None
     network: Network | None = None
     termination_policy: TerminationPolicy | None = None
 
@@ -239,7 +240,7 @@ class SandboxData(IsolaModel):
     status: SandboxStatus
     creation_timestamp: datetime
     timeout_seconds: int | None = None
-    startup_timeout_seconds: int | None = None
+    startup_timeout_seconds: int
     network: Network | None = None
     termination_policy: TerminationPolicy | None = None
 

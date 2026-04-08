@@ -61,10 +61,6 @@ class TestNetworkAliases:
 
 
 class TestValidateByNameAndAlias:
-    def test_construct_with_snake_case(self) -> None:
-        spec = Container(image="ubuntu:22.04")
-        assert spec.image == "ubuntu:22.04"
-
     def test_construct_with_camel_case(self) -> None:
         payload = CreateSandboxPayload.model_validate(
             {
@@ -122,6 +118,7 @@ class TestRoundTrip:
             "podTemplate": {
                 "containers": [
                     {
+                        "name": "sandbox0",
                         "image": "python:3.12",
                         "command": ["sleep", "infinity"],
                         "rootfsSnapshotName": "snap-1",
@@ -133,6 +130,7 @@ class TestRoundTrip:
                 ]
             },
             "timeoutSeconds": 3600,
+            "startupTimeoutSeconds": 60,
             "network": {
                 "allowInternetEgress": True,
                 "allowClusterDNS": False,

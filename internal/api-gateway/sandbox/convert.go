@@ -197,6 +197,11 @@ func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sand
 
 	sb.Spec.Network = restNetworkToCRD(req.Network)
 	sb.Spec.TerminationPolicy = restTerminationPolicyToCRD(req.TerminationPolicy)
+	// snapshotName in the termination policy defaults to the sandbox name if omitted.
+	// kubebuilder can't express cross-field defaults, so we set it explicitly before writing the CRD.
+	if sb.Spec.TerminationPolicy != nil && sb.Spec.TerminationPolicy.SnapshotRootfs != nil && sb.Spec.TerminationPolicy.SnapshotRootfs.SnapshotName == "" {
+		sb.Spec.TerminationPolicy.SnapshotRootfs.SnapshotName = name
+	}
 
 	return sb, nil
 }

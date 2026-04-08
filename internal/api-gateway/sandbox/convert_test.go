@@ -239,7 +239,7 @@ var _ = Describe("Conversion functions", func() {
 			Expect(sb.Spec.RootfsSnapshotSources).To(BeNil())
 		})
 
-		It("passes termination policy through without defaulting snapshotName", func() {
+		It("defaults termination policy snapshotName to sandbox name when omitted", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
 					Containers: []Container{{Image: "alpine:latest"}},
@@ -254,7 +254,7 @@ var _ = Describe("Conversion functions", func() {
 			Expect(sb.Spec.TerminationPolicy).NotTo(BeNil())
 			Expect(sb.Spec.TerminationPolicy.Type).To(Equal(sandboxv1alpha1.TerminationTypeSnapshotRootfs))
 			Expect(sb.Spec.TerminationPolicy.SnapshotRootfs).NotTo(BeNil())
-			Expect(sb.Spec.TerminationPolicy.SnapshotRootfs.SnapshotName).To(BeEmpty())
+			Expect(sb.Spec.TerminationPolicy.SnapshotRootfs.SnapshotName).To(Equal("test-sb"))
 		})
 
 		It("passes explicit termination policy snapshotName through", func() {

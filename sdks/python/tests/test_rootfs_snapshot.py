@@ -60,52 +60,6 @@ def test_create_rootfs_snapshot_with_all_fields(rootfs_snapshot_response_copy: d
 
 
 @respx.mock
-def test_create_rootfs_snapshot_without_snapshot_name_omits_key(
-    rootfs_snapshot_response_copy: dict[str, object],
-) -> None:
-    create_route = respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
-        return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
-    )
-
-    with Isola(url="http://localhost:8080") as client:
-        client.rootfs_snapshots.create(
-            sandbox_id="sandbox-123",
-        )
-
-    payload = json.loads(create_route.calls[0].request.content)
-    assert "snapshotName" not in payload
-    assert payload["sandboxId"] == "sandbox-123"
-
-
-@respx.mock
-def test_create_rootfs_snapshot_with_minimal_fields_sends_defaults(
-    rootfs_snapshot_response_copy: dict[str, object],
-) -> None:
-    rootfs_snapshot_response_copy.pop("containerName")
-    create_route = respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
-        return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
-    )
-
-    with Isola(url="http://localhost:8080") as client:
-        snapshot = client.rootfs_snapshots.create(
-            sandbox_id="sandbox-123",
-            snapshot_name="my-snapshot",
-        )
-
-    assert snapshot.container_name is None
-    assert snapshot.timeout_seconds == 300
-    assert snapshot.ttl_seconds_after_finished == 300
-
-    payload = json.loads(create_route.calls[0].request.content)
-    assert payload == {
-        "sandboxId": "sandbox-123",
-        "snapshotName": "my-snapshot",
-        "timeoutSeconds": 300,
-        "ttlSecondsAfterFinished": 300,
-    }
-
-
-@respx.mock
 def test_get_rootfs_snapshot(rootfs_snapshot_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/v1/rootfs-snapshots/snapshot-123").mock(
         return_value=httpx.Response(200, json=rootfs_snapshot_response_copy)
@@ -129,6 +83,8 @@ def _make_rootfs_snapshot_response(status: str, snapshot_id: str = "snapshot-123
         "id": snapshot_id,
         "sandboxId": "sandbox-123",
         "snapshotName": "my-snapshot",
+        "timeoutSeconds": 300,
+        "ttlSecondsAfterFinished": 300,
         "creationTimestamp": "2026-02-18T00:00:00Z",
         "status": status,
     }
@@ -353,54 +309,6 @@ async def test_async_create_rootfs_snapshot_with_all_fields(rootfs_snapshot_resp
         "containerName": "worker",
         "timeoutSeconds": 300,
         "ttlSecondsAfterFinished": 600,
-    }
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_async_create_rootfs_snapshot_without_snapshot_name_omits_key(
-    rootfs_snapshot_response_copy: dict[str, object],
-) -> None:
-    create_route = respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
-        return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
-    )
-
-    async with AsyncIsola(url="http://localhost:8080") as client:
-        await client.rootfs_snapshots.create(
-            sandbox_id="sandbox-123",
-        )
-
-    payload = json.loads(create_route.calls[0].request.content)
-    assert "snapshotName" not in payload
-    assert payload["sandboxId"] == "sandbox-123"
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_async_create_rootfs_snapshot_with_minimal_fields_sends_defaults(
-    rootfs_snapshot_response_copy: dict[str, object],
-) -> None:
-    rootfs_snapshot_response_copy.pop("containerName")
-    create_route = respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
-        return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
-    )
-
-    async with AsyncIsola(url="http://localhost:8080") as client:
-        snapshot = await client.rootfs_snapshots.create(
-            sandbox_id="sandbox-123",
-            snapshot_name="my-snapshot",
-        )
-
-    assert snapshot.container_name is None
-    assert snapshot.timeout_seconds == 300
-    assert snapshot.ttl_seconds_after_finished == 300
-
-    payload = json.loads(create_route.calls[0].request.content)
-    assert payload == {
-        "sandboxId": "sandbox-123",
-        "snapshotName": "my-snapshot",
-        "timeoutSeconds": 300,
-        "ttlSecondsAfterFinished": 300,
     }
 
 

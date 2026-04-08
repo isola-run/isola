@@ -104,8 +104,8 @@ class RootfsSnapshots:
         sandbox_id: str,
         snapshot_name: str | None = None,
         container_name: str | None = None,
-        timeout_seconds: int = 300,
-        ttl_seconds_after_finished: int = 300,
+        timeout_seconds: int | None = None,
+        ttl_seconds_after_finished: int | None = None,
         max_wait_seconds: int = 310,
     ) -> RootfsSnapshot:
         """Create a rootfs snapshot from a running sandbox.
@@ -122,9 +122,11 @@ class RootfsSnapshots:
                 multi-container sandboxes. Defaults to the first
                 container.
             timeout_seconds: Maximum time for the snapshot operation,
-                in seconds. Enforced server-side.
+                in seconds. Enforced server-side. The server defaults
+                to 300 seconds if not set.
             ttl_seconds_after_finished: How long the Kubernetes resource is
                 retained after the snapshot completes, in seconds.
+                The server defaults to 300 seconds if not set.
             max_wait_seconds: How long this method polls for completion,
                 in seconds. Client-side only.
 
@@ -184,8 +186,8 @@ class AsyncRootfsSnapshots:
         sandbox_id: str,
         snapshot_name: str | None = None,
         container_name: str | None = None,
-        timeout_seconds: int = 300,
-        ttl_seconds_after_finished: int = 300,
+        timeout_seconds: int | None = None,
+        ttl_seconds_after_finished: int | None = None,
         max_wait_seconds: int = 310,
     ) -> AsyncRootfsSnapshot:
         """Create a rootfs snapshot from a running sandbox.
@@ -202,9 +204,11 @@ class AsyncRootfsSnapshots:
                 multi-container sandboxes. Defaults to the first
                 container.
             timeout_seconds: Maximum time for the snapshot operation,
-                in seconds. Enforced server-side.
+                in seconds. Enforced server-side. The server defaults
+                to 300 seconds if not set.
             ttl_seconds_after_finished: How long the Kubernetes resource is
                 retained after the snapshot completes, in seconds.
+                The server defaults to 300 seconds if not set.
             max_wait_seconds: How long this method polls for completion,
                 in seconds. Client-side only.
 
@@ -294,12 +298,12 @@ class RootfsSnapshot:
         return self._data.container_name
 
     @property
-    def timeout_seconds(self) -> int | None:
+    def timeout_seconds(self) -> int:
         """Server-side timeout for the snapshot operation, in seconds."""
         return self._data.timeout_seconds
 
     @property
-    def ttl_seconds_after_finished(self) -> int | None:
+    def ttl_seconds_after_finished(self) -> int:
         """How long the Kubernetes resource is retained after the snapshot completes, in seconds."""
         return self._data.ttl_seconds_after_finished
 
@@ -341,11 +345,11 @@ class AsyncRootfsSnapshot:
         return self._data.container_name
 
     @property
-    def timeout_seconds(self) -> int | None:
+    def timeout_seconds(self) -> int:
         """Server-side timeout for the snapshot operation, in seconds."""
         return self._data.timeout_seconds
 
     @property
-    def ttl_seconds_after_finished(self) -> int | None:
+    def ttl_seconds_after_finished(self) -> int:
         """How long the Kubernetes resource is retained after the snapshot completes, in seconds."""
         return self._data.ttl_seconds_after_finished

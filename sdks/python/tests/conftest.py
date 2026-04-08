@@ -28,6 +28,7 @@ def sandbox_response() -> dict[str, object]:
         "podTemplate": {
             "containers": [
                 {
+                    "name": "sandbox0",
                     "image": "python:3.12",
                     "command": ["sleep", "infinity"],
                     "resources": {
@@ -49,6 +50,7 @@ def sandbox_response() -> dict[str, object]:
             "allowInternetEgress": True,
         },
         "timeoutSeconds": 3600,
+        "startupTimeoutSeconds": 60,
     }
 
 
