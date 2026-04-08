@@ -294,7 +294,7 @@ def test_create_sandbox_with_termination_policy_omits_snapshot_name(
     payload = json.loads(create_route.calls[0].request.content)
     assert payload["terminationPolicy"] == {
         "type": "SnapshotRootfs",
-        "snapshotRootfs": {"timeoutSeconds": 300},
+        "snapshotRootfs": {},
     }
 
 
@@ -319,7 +319,7 @@ def test_create_sandbox_with_termination_policy_includes_snapshot_name(
     payload = json.loads(create_route.calls[0].request.content)
     assert payload["terminationPolicy"] == {
         "type": "SnapshotRootfs",
-        "snapshotRootfs": {"snapshotName": "my-snap", "timeoutSeconds": 300},
+        "snapshotRootfs": {"snapshotName": "my-snap"},
     }
 
 
@@ -553,9 +553,8 @@ def test_startup_timeout_seconds_passed_to_api() -> None:
 
 
 @respx.mock
-def test_startup_timeout_seconds_default_is_60() -> None:
+def test_startup_timeout_seconds_default_is_none() -> None:
     response = _make_sandbox_response("Running")
-    response["startupTimeoutSeconds"] = 60
     create_route = respx.post("http://localhost:8080/v1/sandboxes").mock(
         return_value=httpx.Response(201, json=response)
     )
@@ -564,8 +563,8 @@ def test_startup_timeout_seconds_default_is_60() -> None:
         sandbox = client.sandboxes.create(image="python:3.12")
 
     payload = json.loads(create_route.calls[0].request.content)
-    assert payload["startupTimeoutSeconds"] == 60
-    assert sandbox.startup_timeout_seconds == 60
+    assert "startupTimeoutSeconds" not in payload
+    assert sandbox.startup_timeout_seconds is None
 
 
 @respx.mock

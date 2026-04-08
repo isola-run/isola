@@ -78,10 +78,12 @@ def test_create_rootfs_snapshot_without_snapshot_name_omits_key(
 
 
 @respx.mock
-def test_create_rootfs_snapshot_with_minimal_fields_sends_defaults(
+def test_create_rootfs_snapshot_with_minimal_fields_omits_server_defaulted(
     rootfs_snapshot_response_copy: dict[str, object],
 ) -> None:
     rootfs_snapshot_response_copy.pop("containerName")
+    rootfs_snapshot_response_copy.pop("timeoutSeconds", None)
+    rootfs_snapshot_response_copy.pop("ttlSecondsAfterFinished", None)
     create_route = respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
         return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
     )
@@ -93,15 +95,13 @@ def test_create_rootfs_snapshot_with_minimal_fields_sends_defaults(
         )
 
     assert snapshot.container_name is None
-    assert snapshot.timeout_seconds == 300
-    assert snapshot.ttl_seconds_after_finished == 300
+    assert snapshot.timeout_seconds is None
+    assert snapshot.ttl_seconds_after_finished is None
 
     payload = json.loads(create_route.calls[0].request.content)
     assert payload == {
         "sandboxId": "sandbox-123",
         "snapshotName": "my-snapshot",
-        "timeoutSeconds": 300,
-        "ttlSecondsAfterFinished": 300,
     }
 
 
@@ -377,10 +377,12 @@ async def test_async_create_rootfs_snapshot_without_snapshot_name_omits_key(
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_async_create_rootfs_snapshot_with_minimal_fields_sends_defaults(
+async def test_async_create_rootfs_snapshot_with_minimal_fields_omits_server_defaulted(
     rootfs_snapshot_response_copy: dict[str, object],
 ) -> None:
     rootfs_snapshot_response_copy.pop("containerName")
+    rootfs_snapshot_response_copy.pop("timeoutSeconds", None)
+    rootfs_snapshot_response_copy.pop("ttlSecondsAfterFinished", None)
     create_route = respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(
         return_value=httpx.Response(201, json=rootfs_snapshot_response_copy)
     )
@@ -392,15 +394,13 @@ async def test_async_create_rootfs_snapshot_with_minimal_fields_sends_defaults(
         )
 
     assert snapshot.container_name is None
-    assert snapshot.timeout_seconds == 300
-    assert snapshot.ttl_seconds_after_finished == 300
+    assert snapshot.timeout_seconds is None
+    assert snapshot.ttl_seconds_after_finished is None
 
     payload = json.loads(create_route.calls[0].request.content)
     assert payload == {
         "sandboxId": "sandbox-123",
         "snapshotName": "my-snapshot",
-        "timeoutSeconds": 300,
-        "ttlSecondsAfterFinished": 300,
     }
 
 

@@ -179,7 +179,7 @@ class Sandboxes:
         ephemeral_storage: int | None = ...,
         network: Network | None = ...,
         timeout_seconds: int | None = ...,
-        startup_timeout_seconds: int = ...,
+        startup_timeout_seconds: int | None = ...,
         termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> Sandbox: ...
@@ -191,7 +191,7 @@ class Sandboxes:
         containers: list[Container],
         network: Network | None = ...,
         timeout_seconds: int | None = ...,
-        startup_timeout_seconds: int = ...,
+        startup_timeout_seconds: int | None = ...,
         termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> Sandbox: ...
@@ -209,7 +209,7 @@ class Sandboxes:
         containers: list[Container] | None = None,
         network: Network | None = None,
         timeout_seconds: int | None = None,
-        startup_timeout_seconds: int = 60,
+        startup_timeout_seconds: int | None = None,
         termination_policy: SnapshotRootfs | None = None,
         max_wait_seconds: int = 65,
     ) -> Sandbox:
@@ -233,10 +233,11 @@ class Sandboxes:
           before giving up. Does not affect the sandbox on the server
         - startup_timeout_seconds (server-side): How long the server
           waits for the sandbox pod to become ready. If it expires,
-          the sandbox is marked as Failed.
-        - timeout_seconds (server-side, no default): How long the
-          sandbox runs before the server begins the termination
-          process. None means no limit.
+          the sandbox is marked as Failed. The server defaults to
+          60 seconds if not set.
+        - timeout_seconds (server-side): How long the sandbox runs
+          before the server begins the termination process. None
+          means no limit.
 
         Args:
             image: Container image to run (e.g. "python:3.12").
@@ -264,6 +265,7 @@ class Sandboxes:
                 Enforced server-side. None means no limit.
             startup_timeout_seconds: Maximum time for the sandbox pod
                 to become ready, in seconds. Enforced server-side.
+                The server defaults to 60 seconds if not set.
             termination_policy: Action to run before the sandbox pod
                 is removed. Defaults to immediate deletion if not
                 set. Pass a SnapshotRootfs to snapshot the
@@ -364,7 +366,7 @@ class AsyncSandboxes:
         ephemeral_storage: int | None = ...,
         network: Network | None = ...,
         timeout_seconds: int | None = ...,
-        startup_timeout_seconds: int = ...,
+        startup_timeout_seconds: int | None = ...,
         termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> AsyncSandbox: ...
@@ -376,7 +378,7 @@ class AsyncSandboxes:
         containers: list[Container],
         network: Network | None = ...,
         timeout_seconds: int | None = ...,
-        startup_timeout_seconds: int = ...,
+        startup_timeout_seconds: int | None = ...,
         termination_policy: SnapshotRootfs | None = ...,
         max_wait_seconds: int = ...,
     ) -> AsyncSandbox: ...
@@ -394,7 +396,7 @@ class AsyncSandboxes:
         containers: list[Container] | None = None,
         network: Network | None = None,
         timeout_seconds: int | None = None,
-        startup_timeout_seconds: int = 60,
+        startup_timeout_seconds: int | None = None,
         termination_policy: SnapshotRootfs | None = None,
         max_wait_seconds: int = 65,
     ) -> AsyncSandbox:
@@ -418,10 +420,11 @@ class AsyncSandboxes:
           before giving up. Does not affect the sandbox on the server
         - startup_timeout_seconds (server-side): How long the server
           waits for the sandbox pod to become ready. If it expires,
-          the sandbox is marked as Failed.
-        - timeout_seconds (server-side, no default): How long the
-          sandbox runs before the server begins the termination
-          process. None means no limit.
+          the sandbox is marked as Failed. The server defaults to
+          60 seconds if not set.
+        - timeout_seconds (server-side): How long the sandbox runs
+          before the server begins the termination process. None
+          means no limit.
 
         Args:
             image: Container image to run (e.g. "python:3.12").
@@ -449,6 +452,7 @@ class AsyncSandboxes:
                 Enforced server-side. None means no limit.
             startup_timeout_seconds: Maximum time for the sandbox pod
                 to become ready, in seconds. Enforced server-side.
+                The server defaults to 60 seconds if not set.
             termination_policy: Action to run before the sandbox pod
                 is removed. Defaults to immediate deletion if not
                 set. Pass a SnapshotRootfs to snapshot the
