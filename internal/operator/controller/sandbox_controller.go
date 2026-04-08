@@ -1171,11 +1171,10 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 			return ctrl.Result{}, false, err
 		}
 
+		// RootfsSnapshot watch (via Owns) will trigger reconciliation when snapshot status changes
 		requeueAfter := r.clock().Until(snapshotDeadline)
 		if requeueAfter <= 0 {
 			requeueAfter = time.Second
-		} else if requeueAfter > 5*time.Second {
-			requeueAfter = 5 * time.Second
 		}
 		return ctrl.Result{RequeueAfter: requeueAfter}, false, nil
 	}
