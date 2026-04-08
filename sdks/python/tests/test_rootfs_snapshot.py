@@ -101,6 +101,8 @@ def _make_rootfs_snapshot_response(status: str, snapshot_id: str = "snapshot-123
         "id": snapshot_id,
         "sandboxId": "sandbox-123",
         "snapshotName": "my-snapshot",
+        "timeoutSeconds": 300,
+        "ttlSecondsAfterFinished": 300,
         "creationTimestamp": "2026-02-18T00:00:00Z",
         "status": status,
     }

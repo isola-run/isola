@@ -139,7 +139,7 @@ class ContainerInfo(IsolaModel):
         resources: Resource limits and requests.
     """
 
-    name: str | None = None
+    name: str
     image: str
     rootfs_snapshot_name: str | None = None
     command: list[str] | None = None
@@ -168,8 +168,8 @@ class RootfsSnapshotData(IsolaModel):
     sandbox_id: str
     snapshot_name: str
     container_name: str | None = None
-    timeout_seconds: int | None = None
-    ttl_seconds_after_finished: int | None = None
+    timeout_seconds: int
+    ttl_seconds_after_finished: int
     status: RootfsSnapshotStatus
     creation_timestamp: datetime
 
@@ -240,7 +240,7 @@ class SandboxData(IsolaModel):
     status: SandboxStatus
     creation_timestamp: datetime
     timeout_seconds: int | None = None
-    startup_timeout_seconds: int | None = None
+    startup_timeout_seconds: int
     network: Network | None = None
     termination_policy: TerminationPolicy | None = None
 

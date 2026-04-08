@@ -122,6 +122,7 @@ class TestRoundTrip:
             "podTemplate": {
                 "containers": [
                     {
+                        "name": "sandbox0",
                         "image": "python:3.12",
                         "command": ["sleep", "infinity"],
                         "rootfsSnapshotName": "snap-1",
@@ -133,6 +134,7 @@ class TestRoundTrip:
                 ]
             },
             "timeoutSeconds": 3600,
+            "startupTimeoutSeconds": 60,
             "network": {
                 "allowInternetEgress": True,
                 "allowClusterDNS": False,

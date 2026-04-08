@@ -185,6 +185,21 @@ def test_resource_limits_round_trip(
     assert parse_k8s_quantity(container.resources.limits.ephemeral_storage) == parse_k8s_quantity("1024Mi")
 
 
+def test_server_defaults_are_present(
+    isola_client: Isola,
+    session_sandbox: Sandbox,
+) -> None:
+    """Server-defaulted fields must always be present in responses.
+
+    The SDK types these as required (non-Optional). If the server stops
+    returning defaults, this test and the SDK's Pydantic validation will
+    both fail, preventing a silent contract break.
+    """
+    sb = isola_client.sandboxes.get(session_sandbox.id)
+    assert sb.startup_timeout_seconds == 60
+    assert sb.containers[0].name == "sandbox0"
+
+
 def test_list_status_matches_get_status(
     isola_client: Isola,
     session_sandbox: Sandbox,

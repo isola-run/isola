@@ -584,7 +584,7 @@ class Sandbox:
         return self._data.timeout_seconds
 
     @property
-    def startup_timeout_seconds(self) -> int | None:
+    def startup_timeout_seconds(self) -> int:
         """Maximum time for the sandbox pod to become ready, in seconds.
 
         If exceeded, the sandbox is marked as Failed.
@@ -662,7 +662,7 @@ class AsyncSandbox:
         return self._data.timeout_seconds
 
     @property
-    def startup_timeout_seconds(self) -> int | None:
+    def startup_timeout_seconds(self) -> int:
         """Maximum time for the sandbox pod to become ready, in seconds.
 
         If exceeded, the sandbox is marked as Failed.

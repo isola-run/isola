@@ -298,12 +298,12 @@ class RootfsSnapshot:
         return self._data.container_name
 
     @property
-    def timeout_seconds(self) -> int | None:
+    def timeout_seconds(self) -> int:
         """Server-side timeout for the snapshot operation, in seconds."""
         return self._data.timeout_seconds
 
     @property
-    def ttl_seconds_after_finished(self) -> int | None:
+    def ttl_seconds_after_finished(self) -> int:
         """How long the Kubernetes resource is retained after the snapshot completes, in seconds."""
         return self._data.ttl_seconds_after_finished
 
@@ -345,11 +345,11 @@ class AsyncRootfsSnapshot:
         return self._data.container_name
 
     @property
-    def timeout_seconds(self) -> int | None:
+    def timeout_seconds(self) -> int:
         """Server-side timeout for the snapshot operation, in seconds."""
         return self._data.timeout_seconds
 
     @property
-    def ttl_seconds_after_finished(self) -> int | None:
+    def ttl_seconds_after_finished(self) -> int:
         """How long the Kubernetes resource is retained after the snapshot completes, in seconds."""
         return self._data.ttl_seconds_after_finished
