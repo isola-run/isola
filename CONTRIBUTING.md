@@ -131,7 +131,7 @@ Run `make help` for the full list of targets.
 api/v1alpha1/          CRD type definitions (Sandbox, RootfsSnapshot)
 api/openapi/           Generated OpenAPI specs
 charts/isola/          Helm chart (CRDs, templates, values)
-cmd/                   Binary entry points (operator, api-gateway, sandbox-sidecar, snapshot-uploader)
+cmd/                   Binary entry points (operator, api-gateway, sandbox-sidecar, snapshot-uploader, snapshot-mounter)
 internal/              Implementation (operator controllers, gateway handlers, sidecar)
 hack/                  Development scripts
 sdks/python/           Python SDK

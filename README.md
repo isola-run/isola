@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="static/isola-logo.svg" alt="Isola" width="180" />
+  <img src="static/isola-logo.svg" alt="Isola" width="450" />
 </p>
 
 <p align="center">
@@ -9,104 +9,88 @@
 <p align="center">
   <a href="https://github.com/isola-run/isola/blob/main/LICENSE"><img src="https://img.shields.io/github/license/isola-run/isola" alt="License" /></a>
   <a href="https://github.com/isola-run/isola/actions"><img src="https://github.com/isola-run/isola/actions/workflows/test.yml/badge.svg" alt="CI" /></a>
-  <a href="https://goreportcard.com/report/github.com/isola-run/isola"><img src="https://goreportcard.com/badge/github.com/isola-run/isola" alt="Go Report Card" /></a>
 </p>
 
 ---
 
-Isola is an open-source platform for running untrusted and AI-generated code securely on your own Kubernetes cluster. It uses [gVisor](https://gvisor.dev) to isolate each sandbox behind its own application kernel, without requiring bare-metal machines or nested virtualization.
+Isola is an open-source platform for running untrusted and AI-generated code securely on your own Kubernetes cluster. It uses [gVisor](https://gvisor.dev) to isolate each pod behind its own application kernel.
 
-Create sandboxes from any OCI container image, execute commands with streaming output, read and write files, and snapshot the root filesystem for restore in new sandboxes. Isola provides a REST API and language SDKs so you can integrate sandboxing into your application in a few lines of code.
-
-Isola is self-hosted. You run it on your own infrastructure, you control where data goes, and you operate it with the Kubernetes tools you already know.
+Isola provides a REST API and SDKs for creating sandboxes, executing commands, reading and writing files, and snapshotting the root filesystem. It is self-hosted, runs on any cloud or on-prem Kubernetes cluster, and operates with the tools you already know.
 
 ## Quick start
 
-Install the Python SDK (requires Python 3.10+) and point it at your Isola API gateway:
-
 ```bash
-pip install isola
-export ISOLA_URL=http://localhost:8080  # or your API gateway address
+pip install isola   # requires Python 3.10+
 ```
 
-Create a sandbox, run a command, and read the output:
+Create a sandbox, run a command, and read files:
 
 ```python
 from isola import Isola
 
-with Isola() as client:
+with Isola() as client:   # reads ISOLA_URL from environment
     sandbox = client.sandboxes.create(image="python:3.12-slim")
+
     result = sandbox.commands.run("python3", "-c", "print('hello from the sandbox')")
     print(result.stdout)    # "hello from the sandbox\n"
-    print(result.exit_code) # 0
+
+    sandbox.filesystem.write("/tmp/hello.txt", "Hello, World!")
+    data = sandbox.filesystem.read("/tmp/hello.txt")
+    print(data.decode())    # "Hello, World!"
+
     sandbox.delete()
 ```
 
-Stream output from a long-running command:
-
-```python
-from isola import Isola
-
-with Isola() as client:
-    sandbox = client.sandboxes.create(image="alpine:3.21")
-    cmd = sandbox.commands.spawn("sh", "-c", "for i in 1 2 3; do echo step$i; sleep 1; done")
-    for chunk in cmd.stdout:
-        print(chunk, end="")
-    exit_code = cmd.wait()
-    sandbox.delete()
-```
-
-Snapshot the filesystem and restore it in new sandboxes. Install dependencies once, then reuse that environment every time:
+Snapshot the filesystem and restore it in new sandboxes. Set up an environment once, reuse it every time:
 
 ```python
 from isola import Isola, Network
 
 with Isola() as client:
-    # Install dependencies once, then snapshot
     sandbox = client.sandboxes.create(
         image="python:3.12-slim",
-        network=Network(allow_internet_egress=True),
+        network=Network(allow_internet_egress=True),  # enable internet for setup
     )
-    sandbox.commands.run("pip", "install", "numpy", "pandas", "scikit-learn")
+    sandbox.commands.run("pip", "install", "numpy", "pandas")
     client.rootfs_snapshots.create(sandbox_id=sandbox.id, snapshot_name="datascience")
     sandbox.delete()
 
-    # Every new sandbox starts with everything pre-installed
+    # Every new sandbox starts with packages pre-installed, no internet needed
     sandbox = client.sandboxes.create(
         image="python:3.12-slim",
         rootfs_snapshot_name="datascience",
     )
-    result = sandbox.commands.run("python3", "-c", "import sklearn; print(sklearn.__version__)")
+    result = sandbox.commands.run("python3", "-c", "import pandas; print(pandas.__version__)")
     print(result.stdout)
     sandbox.delete()
 ```
 
-See the [Python SDK documentation](sdks/python/README.md) for the full API reference.
+See the [Python SDK documentation](sdks/python/README.md) for the full API reference and the [OpenAPI spec](api/openapi/api-gateway.yaml) for the REST API.
 
 ## Why Isola?
 
 - **Open source.** Apache 2.0 licensed. The code is yours to audit, modify, and deploy.
 
-- **Self-hosted.** Sandboxes run on your Kubernetes nodes. You control your infrastructure and decide where data is stored.
+- **Self-hosted.** Sandboxes run on your Kubernetes nodes. You control your infrastructure and your data.
 
 - **Kubernetes-native.** Sandboxes and snapshots are Custom Resources managed by a Kubernetes operator. They integrate naturally with your existing RBAC, monitoring, and tooling.
 
 - **Simple to operate.** One Helm install. No database, no Redis, no message queue. The only dependencies are a Kubernetes cluster with gVisor and an optional object storage bucket for snapshots.
 
-- **gVisor isolation without infrastructure overhead.** [gVisor](https://gvisor.dev) intercepts application system calls in user space, providing a strong security boundary without requiring hardware virtualization. Unlike microVM-based solutions (Firecracker, Cloud Hypervisor), there is no need for bare-metal machines, nested virtualization support, or dedicated VM management infrastructure. Isola runs on any Kubernetes node pool, including spot and preemptible instances.
+- **gVisor isolation.** [gVisor](https://gvisor.dev) intercepts application system calls in user space, providing a strong security boundary without requiring hardware virtualization. Isola runs on any cloud VM or on-prem node, including spot and preemptible instances.
 
-- **Rootfs snapshot and restore.** Capture a sandbox's filesystem changes and restore them in a new sandbox on any node. Pre-warm environments once, reuse everywhere.
+- **Rootfs snapshot and restore.** Capture a sandbox's filesystem changes and restore them in a new sandbox on any node. Set up environments once, reuse everywhere.
 
-- **Configurable network isolation.** Sandboxes have no network access by default. Enable internet egress, restrict traffic to specific CIDRs, or control DNS resolution, all per sandbox.
+- **Configurable network isolation.** Sandboxes have no network access by default. Enable internet egress or restrict traffic to specific CIDRs, per sandbox.
 
 - **Developer-first SDKs.** Python SDK with sync and async clients. TypeScript SDK coming soon.
 
-- **Keep your existing stack.** Isola exposes Prometheus metrics and standard Kubernetes logs. It fits into the observability tools you already run.
+- **Keep your existing stack.** Isola runs as standard Kubernetes workloads. It integrates with your existing monitoring, network policies, and operational tooling.
 
 ## What Isola is not
 
 - **Not a hosted service.** There is no SaaS offering. You deploy and operate Isola on your own Kubernetes cluster.
-- **Not a VM-based sandbox.** Isola uses gVisor, an application kernel that runs in user space, not virtual machines like Firecracker. This means no KVM requirement and no need for dedicated VM infrastructure.
+- **Not a VM-based sandbox.** Isola uses gVisor, an application kernel that runs in user space, not virtual machines like Firecracker. No KVM or bare-metal machines required. It runs on any cloud VM.
 
 ## Features
 
@@ -143,7 +127,7 @@ result = sandbox.commands.run("cat", input="data from stdin\n")
 
 ### File I/O
 
-Read and write files inside sandboxes. Supports text, binary data, and streaming uploads from local files. Parent directories are created automatically.
+Read and write files inside sandboxes. Parent directories are created automatically.
 
 ```python
 sandbox.filesystem.write("/tmp/hello.txt", "Hello, World!")
@@ -155,7 +139,7 @@ print(data.decode())  # "Hello, World!"
 
 Capture a container's root filesystem changes to cloud storage (S3, GCS, or Azure Blob Storage) and restore them in new sandboxes on any node. Only the modified overlay layer is captured, not the full image.
 
-A DaemonSet on each node mounts the storage bucket via NFS, so all snapshots are available on every node without manual distribution. On Kubernetes 1.34+, restore is resilient: when a sandbox references a snapshot, it retries until the snapshot appears in the bucket or the startup timeout expires.
+A DaemonSet on each node mounts the storage bucket via NFS, so all snapshots are available on every node without manual distribution. On Kubernetes 1.35+ (or 1.34 with the `ContainerRestartRules` [feature gate](https://kubernetes.io/blog/2025/08/29/kubernetes-v1-34-per-container-restart-policy/) enabled), restore is resilient: when a sandbox references a snapshot, it retries until the snapshot appears in the bucket or the startup timeout expires.
 
 Sandboxes can also be configured to snapshot automatically before termination:
 
@@ -175,15 +159,16 @@ Sandboxes are isolated by default with a deny-all network policy. Network access
 ```python
 from isola import Network
 
+# Full internet access
 sandbox = client.sandboxes.create(
     image="alpine:3.21",
-    network=Network(
-        allow_internet_egress=True,           # outbound internet traffic
-        allowed_egress_cidrs=["10.0.0.0/8"],  # fine-grained CIDR allowlist
-        allow_cluster_dns=True,               # use the cluster's DNS
-        nameservers=["8.8.8.8"],              # custom DNS nameservers
-        allow_ipv6_egress=True,               # extend egress to IPv6
-    ),
+    network=Network(allow_internet_egress=True),
+)
+
+# Restricted to specific CIDRs only
+sandbox = client.sandboxes.create(
+    image="alpine:3.21",
+    network=Network(allowed_egress_cidrs=["10.0.0.0/8"]),
 )
 ```
 
@@ -191,18 +176,19 @@ Private IP ranges and cloud metadata endpoints are blocked automatically when in
 
 ### Multi-container sandboxes
 
-Run multiple containers in a single sandbox and target specific containers for commands and file operations:
+Run multiple containers in a single sandbox. Containers share a network namespace and can communicate over localhost:
 
 ```python
 from isola import Container
 
 sandbox = client.sandboxes.create(
     containers=[
-        Container(name="app", image="python:3.12-slim", command=["python", "-m", "http.server", "8080"]),
-        Container(name="worker", image="alpine:3.21"),
+        Container(name="web", image="nginx:alpine"),
+        Container(name="test", image="alpine:3.21"),
     ],
 )
-result = sandbox.commands.run("curl", "http://localhost:8080", container="worker")
+result = sandbox.commands.run("wget", "-qO-", "http://localhost", container="test")
+print(result.stdout)  # nginx welcome page
 ```
 
 ## Architecture
@@ -259,8 +245,8 @@ flowchart LR
 
 ### Prerequisites
 
-- A Kubernetes cluster (vanilla, EKS, AKS, GKE, or similar). Kubernetes 1.34+ if enabling rootfs snapshots support.
-- [Helm](https://helm.sh) v3.
+- A Kubernetes cluster (vanilla, EKS, AKS, GKE, or similar). 1.35+ recommended for rootfs snapshot support.
+- [Helm](https://helm.sh).
 - A [gVisor](https://gvisor.dev) RuntimeClass configured in your cluster (see [gVisor setup](#gvisor-setup) below).
 - (Optional) An S3, GCS, or Azure Blob Storage bucket for rootfs snapshots.
 
@@ -283,9 +269,30 @@ Or let the chart manage it by setting `sandboxNamespace.create: true` in your He
 
 Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) named `gvisor` in your cluster. If your cluster does not already have gVisor installed:
 
-1. Install the `runsc` binary and containerd shim on each node. See the [gVisor quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions.
+1. Install the `runsc` binary and `containerd-shim-runsc-v1` on each node. See the [gVisor quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions. Use gVisor `release-20260126.0` or later if you plan to use rootfs snapshots.
 
-2. Create the RuntimeClass:
+2. Configure the containerd runtime. Create `/etc/containerd/runsc.toml`:
+
+```toml
+[runsc_config]
+  allow-rootfs-tar-annotation = "true"
+```
+
+Add the runtime to your containerd config (typically `/etc/containerd/config.toml`):
+
+```toml
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+  runtime_type = "io.containerd.runsc.v1"
+  pod_annotations = ["dev.gvisor.*"]
+
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
+  TypeUrl = "io.containerd.runsc.v1.options"
+  ConfigPath = "/etc/containerd/runsc.toml"
+```
+
+The `pod_annotations` allowlist is required for Isola's gVisor annotations to pass through to `runsc`. The `allow-rootfs-tar-annotation` setting enables rootfs snapshot support. See the [gVisor containerd configuration guide](https://gvisor.dev/docs/user_guide/containerd/configuration/) for details.
+
+3. Restart containerd and create the RuntimeClass:
 
 ```yaml
 apiVersion: node.k8s.io/v1
@@ -295,7 +302,7 @@ metadata:
 handler: runsc
 ```
 
-For local development, `hack/setup.sh` automates gVisor installation in a Kind cluster.
+For local development, `hack/setup.sh` automates all of the above in a Kind cluster.
 
 ### Rootfs snapshots (optional)
 
@@ -313,8 +320,6 @@ operator:
           region: us-east-1
 ```
 
-Rootfs snapshot restore requires Kubernetes 1.34+ (for [ContainerRestartRules](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/#container-restart-rules)) and gVisor `release-20260126.0` or later (for [rootfs tar overlay support](https://github.com/google/gvisor/pull/12415)). On older versions, snapshot restore may not recover from transient errors.
-
 Credentials can be provided via workload identity (recommended), a pre-existing Kubernetes secret, or inline values. See [values.yaml](charts/isola/values.yaml) for all options.
 
 ## Documentation
@@ -322,9 +327,9 @@ Credentials can be provided via workload identity (recommended), a pre-existing 
 | Resource | Description |
 |----------|-------------|
 | [Python SDK](sdks/python/README.md) | Full SDK reference: sync/async clients, sandbox options, commands, files, snapshots, error handling |
+| [API spec](api/openapi/api-gateway.yaml) | OpenAPI specification for the REST API |
 | [Helm values](charts/isola/values.yaml) | All configuration options for the Isola Helm chart |
 | [isola.run](https://isola.run) | Project website |
-| [API spec](api/openapi/api-gateway.yaml) | OpenAPI specification for the REST API |
 
 ## Getting help
 
@@ -333,7 +338,7 @@ Credentials can be provided via workload identity (recommended), a pre-existing 
 
 ## Contributing
 
-Contributions are welcome. For local development, the quickest path is:
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. The quickest path to a local dev environment:
 
 ```bash
 ./hack/setup.sh   # one-time: Kind cluster, local registry, gVisor
