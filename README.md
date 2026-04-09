@@ -189,12 +189,11 @@ from isola import Container
 
 sandbox = client.sandboxes.create(
     containers=[
-        Container(name="web", image="nginx:alpine", command=["nginx", "-g", "daemon off;"]),
+        Container(name="api", image="python:3.12-slim", command=["python3", "-m", "http.server", "8080"]),
         Container(name="test", image="alpine:3.21"),
     ],
 )
-result = sandbox.commands.run("wget", "-qO-", "http://localhost", container="test")
-print(result.stdout)  # nginx welcome page
+result = sandbox.commands.run("wget", "-qO-", "http://localhost:8080", container="test")
 ```
 
 ## Architecture
