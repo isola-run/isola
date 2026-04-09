@@ -189,7 +189,7 @@ from isola import Container
 
 sandbox = client.sandboxes.create(
     containers=[
-        Container(name="web", image="nginx:alpine"),
+        Container(name="web", image="nginx:alpine", command=["nginx", "-g", "daemon off;"]),
         Container(name="test", image="alpine:3.21"),
     ],
 )
