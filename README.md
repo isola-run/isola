@@ -304,7 +304,7 @@ Add the runtime to your containerd config (typically `/etc/containerd/config.tom
   ConfigPath = "/etc/containerd/runsc.toml"
 ```
 
-See the [gVisor containerd configuration guide](https://gvisor.dev/docs/user_guide/containerd/configuration/) for details. The `pod_annotations` allowlist is required for Isola's gVisor annotations used by Isola to pass through, and `allow-rootfs-tar-annotation` enables rootfs snapshot support.
+See the [gVisor containerd configuration guide](https://gvisor.dev/docs/user_guide/containerd/configuration/) for details. The `pod_annotations` allowlist is required for Isola's gVisor annotations to pass through, and `allow-rootfs-tar-annotation` enables rootfs snapshot support.
 
 3. Restart containerd and create the RuntimeClass:
 
