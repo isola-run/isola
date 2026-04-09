@@ -15,7 +15,7 @@
 
 Isola is an open-source platform for running untrusted and AI-generated code securely on your own Kubernetes cluster. It uses [gVisor](https://gvisor.dev) to isolate each pod behind its own application kernel.
 
-Create sandboxes from any OCI image, execute commands, stream output, read and write files, and snapshot the root filesystem for reuse. Isola provides a REST API and SDKs for building AI agents, code interpreters, and other applications that need to run arbitrary code safely. It is self-hosted and operates with the tools you already know.
+Create sandboxes from any OCI image, execute commands, stream output, read and write files, and snapshot the root filesystem for reuse. Isola provides a REST API and SDKs for building AI agents, code interpreters, and other applications that need to run untrusted code safely. It is self-hosted and operates with the tools you already know.
 
 ## Quick start
 
@@ -43,7 +43,7 @@ with Isola() as client:   # reads ISOLA_URL from environment
     sandbox.delete()
 ```
 
-Snapshot the filesystem and restore it in new sandboxes. Set up an environment once, reuse it every time:
+Snapshot the filesystem and restore it in new sandboxes. Pre-warm an environment once and reuse it, or snapshot a working session and pick it up later:
 
 ```python
 from isola import Isola, Network
@@ -81,11 +81,11 @@ See the [Python SDK documentation](sdks/python/README.md) for the full API refer
 
 - **gVisor isolation.** [gVisor](https://gvisor.dev) intercepts application system calls in user space, providing a strong security boundary without requiring hardware virtualization.
 
-- **Rootfs snapshot and restore.** Capture a sandbox's filesystem changes and restore them in a new sandbox on any node. Set up environments once, reuse everywhere.
+- **Rootfs snapshot and restore.** Capture a sandbox's filesystem changes and restore them in a new sandbox on any node. Pre-warm environments or persist working sessions across sandbox lifetimes.
 
 - **Configurable network isolation.** Sandboxes have no network access by default. Enable internet egress or restrict traffic to specific CIDRs, per sandbox.
 
-- **Language SDKs.** Python SDK with sync and async clients. TypeScript SDK planned.
+- **Language SDKs.** Python SDK with sync and async clients. Any language can use the [REST API](api/openapi/api-gateway.yaml) directly. TypeScript SDK is on the roadmap.
 
 - **No per-sandbox billing.** Run sandboxes on your existing Kubernetes compute, including spot and preemptible instances. No usage-based fees.
 
@@ -141,9 +141,9 @@ print(data.decode())  # "Hello, World!"
 
 ### Rootfs snapshots
 
-Capture a container's root filesystem changes to cloud storage (S3, GCS, or Azure Blob Storage) and restore them in new sandboxes on any node. Only the modified overlay layer is captured, not the full image. Useful for pre-warming environments with dependencies, caching build artifacts, or saving agent workspace state between sessions.
+Capture a container's root filesystem changes to cloud storage (S3, GCS, or Azure Blob Storage) and restore them in new sandboxes on any node. Only the modified overlay layer is captured, not the full image, making it efficient to set up an environment once and reuse it, or preserve sandbox state between sessions.
 
-Snapshots are stored in a shared cloud storage bucket and made available on every node automatically. Restore is resilient: when a sandbox references a snapshot, it retries until the snapshot appears or the startup timeout expires.
+Snapshots are stored in a cloud storage bucket and made available on every node automatically. Restore is resilient: when a sandbox references a snapshot, it retries until the snapshot appears or the startup timeout expires.
 
 Sandboxes can also be configured to snapshot automatically before termination:
 
@@ -178,11 +178,11 @@ sandbox = client.sandboxes.create(
 
 Private IP ranges and cloud metadata endpoints are blocked automatically when internet egress is enabled.
 
-Network isolation relies on Kubernetes [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/) and requires a CNI plugin that enforces it, such as Cilium, Calico, or GKE Dataplane V2.
+Network isolation relies on Kubernetes [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/) and requires a CNI that enforces it. Most managed Kubernetes services (EKS, AKS, GKE) support this natively or through built-in options.
 
 ### Multi-container sandboxes
 
-Run multiple containers in a single sandbox. Containers share a network namespace and can communicate over localhost. Useful for running an application alongside its dependencies (databases, caches, tool servers) in one isolated environment:
+Run multiple containers in a single sandbox. Containers share a network namespace and can communicate over localhost. Useful for running an application alongside its dependencies (databases, MCPs, tool servers) in one isolated environment:
 
 ```python
 from isola import Container
@@ -251,7 +251,7 @@ flowchart LR
 
 ### Prerequisites
 
-- A Kubernetes cluster (vanilla, EKS, AKS, GKE, or similar). 1.35+ recommended for rootfs snapshot support.
+- A Kubernetes cluster (vanilla, EKS, AKS, GKE, or similar).
 - [Helm](https://helm.sh).
 - A [gVisor](https://gvisor.dev) RuntimeClass configured in your cluster (see [gVisor setup](#gvisor-setup) below).
 - (Optional) An S3, GCS, or Azure Blob Storage bucket for rootfs snapshots.
@@ -305,7 +305,7 @@ Add the runtime to your containerd config (typically `/etc/containerd/config.tom
   ConfigPath = "/etc/containerd/runsc.toml"
 ```
 
-See the [gVisor containerd configuration guide](https://gvisor.dev/docs/user_guide/containerd/configuration/) for details. The `pod_annotations` allowlist is required for Isola's gVisor annotations to pass through, and `allow-rootfs-tar-annotation` enables rootfs snapshot support.
+See the [gVisor containerd configuration guide](https://gvisor.dev/docs/user_guide/containerd/configuration/) for details. The `pod_annotations` allowlist is required for Isola's gVisor annotations used by Isola to pass through, and `allow-rootfs-tar-annotation` enables rootfs snapshot support.
 
 3. Restart containerd and create the RuntimeClass:
 
