@@ -17,6 +17,8 @@ on:
     tags:
       - 'v*'
 
+permissions: {}
+
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/isola-run
