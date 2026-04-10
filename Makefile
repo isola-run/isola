@@ -171,6 +171,18 @@ test-e2e-slow: ## Run E2E tests including slow tests
 test-e2e-verbose: ## Run E2E tests in parallel with verbose output
 	cd tests/e2e && uv run --frozen pytest -n $(E2E_WORKERS) --dist load -v $(if $(FOCUS),-k "$(FOCUS)")
 
+##@ Release
+
+CRD_BUNDLE ?= isola-crds.yaml
+
+.PHONY: crd-bundle
+crd-bundle: ## Generate concatenated CRD bundle for standalone installation
+	@: > $(CRD_BUNDLE)
+	@for f in $$(ls charts/isola/crds/*.yaml | sort); do \
+		cat "$$f" >> $(CRD_BUNDLE); \
+	done
+	@echo "Generated $(CRD_BUNDLE)"
+
 ##@ Build
 
 .PHONY: build

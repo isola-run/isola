@@ -217,6 +217,7 @@ coverage.html
 
 # Go
 bin/
+isola-crds.yaml
 *.exe
 *.test
 *.out
