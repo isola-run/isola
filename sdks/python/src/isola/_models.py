@@ -258,4 +258,3 @@ class CreateCommandResponse(IsolaModel):
 
 class CommandStatusResponse(IsolaModel):
     exit_code: int | None = None
-

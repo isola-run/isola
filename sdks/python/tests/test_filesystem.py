@@ -174,9 +174,7 @@ def test_filesystem_write_streams_without_full_buffering(sandbox_response_copy: 
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
     )
-    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(return_value=httpx.Response(204))
 
     # Payload larger than httpx's 64KB chunk size to ensure multiple reads
     stream = _ChunkedReadValidator(b"x" * 200_000, max_read_size=128 * 1024)
