@@ -30,7 +30,7 @@ Create a sandbox, run a command, and read files:
 ```python
 from isola import Isola
 
-with Isola() as client:   # reads ISOLA_URL from environment
+with Isola(url="http://localhost:8080") as client:  # or set ISOLA_URL env var
     sandbox = client.sandboxes.create(image="python:3.12-slim")
 
     result = sandbox.commands.run("python3", "-c", "print('hello from the sandbox')")
@@ -48,7 +48,7 @@ Snapshot the filesystem and restore it in new sandboxes. Pre-warm an environment
 ```python
 from isola import Isola, Network
 
-with Isola() as client:
+with Isola(url="http://localhost:8080") as client:
     sandbox = client.sandboxes.create(
         image="python:3.12-slim",
         network=Network(allow_internet_egress=True),  # enable internet for setup
@@ -197,45 +197,6 @@ result = sandbox.commands.run("wget", "-qO-", "http://localhost:8080", container
 ```
 
 ## Architecture
-
-```mermaid
-flowchart LR
-    SDK["User / SDK"]
-
-    subgraph gw["API Gateway"]
-        API["REST API"]
-    end
-
-    subgraph cp["Control Plane"]
-        K8s["K8s API Server"]
-        Op["Operator"]
-    end
-
-    subgraph node["Worker Node"]
-        subgraph pod["Sandbox Pod"]
-            Sidecar["Sidecar"]
-            Workload["User Container"]
-        end
-        Mounter["Snapshot Mounter"]
-    end
-
-    Uploader["Snapshot Uploader"]
-    Storage[("Cloud Storage")]
-
-    SDK -- "commands, files" --> API
-    API -- "proxy" --> Sidecar
-    Sidecar --> Workload
-
-    SDK -- "lifecycle, snapshots" --> API
-    API --> K8s
-    K8s -- "reconcile" --> Op
-    Op -- "manage pods" --> pod
-
-    Op -- "launch job" --> Uploader
-    Uploader -- "upload" --> Storage
-    Storage -- "restore" --> Mounter
-    Mounter --> pod
-```
 
 | Component | Role |
 |-----------|------|
