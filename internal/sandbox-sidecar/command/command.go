@@ -429,6 +429,16 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 			defer fw.Stop()
 
 			sse := sseutil.NewWriterAtOffset(fw, offset)
+			// Commit the 200 status immediately so the httplog middleware
+			// records the correct status even for empty streams.
+			if werr := sse.WriteKeepalive(); werr != nil {
+				if isClientDisconnect(werr) {
+					h.logger.Warn("client disconnected during command stream", "error", werr, "cmdID", cmdID)
+				} else {
+					h.logger.Error("failed to write initial SSE keepalive", "error", werr, "cmdID", cmdID)
+				}
+				return
+			}
 			buf := make([]byte, 32*1024)
 			keepaliveTicker := time.NewTicker(sseKeepaliveInterval)
 			defer keepaliveTicker.Stop()

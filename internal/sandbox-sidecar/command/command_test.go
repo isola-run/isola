@@ -598,6 +598,32 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
+	Describe("empty stream", func() {
+		It("writes a keepalive comment so the response status is committed", func() {
+			// A command that writes to stdout only — stderr is empty.
+			code, result := postCommand(`{"args": ["echo", "-n", "hello"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			// Wait for process to fully exit
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				return status.ExitCode
+			}).ShouldNot(BeNil())
+
+			// Stream stderr — it will be empty since the command wrote nothing to stderr.
+			// The response body must still be non-empty (at least a keepalive comment)
+			// so that WriteHeader(200) fires and the httplog middleware records the
+			// correct status code instead of "0 Unknown".
+			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stderr", result.ID), nil)
+			w := httptest.NewRecorder()
+			commandHandler.ServeHTTP(w, req)
+			Expect(w.Body.String()).To(ContainSubstring(": keepalive"))
+			Expect(extractSSEData(w.Body.String())).To(BeEmpty())
+		})
+	})
+
 	Describe("Immediate exit", func() {
 		It("output is available for already-exited commands", func() {
 			code, result := postCommand(`{"args": ["echo", "-n", "fast"]}`)
