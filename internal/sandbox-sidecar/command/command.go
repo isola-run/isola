@@ -201,10 +201,19 @@ func (h *Handlers) PostCommand(_ context.Context, input *CreateCommandInput) (*C
 // of file handles transfers to the returned entry (closed by waitForExit).
 func (h *Handlers) startCommand(pid int, input *CreateCommandInput) (*commandEntry, error) {
 	if cwd := input.Body.Cwd; cwd != "" {
-		hostPath := filepath.Join(h.procFS.GetRoot(pid), cwd)
+		// Clean as absolute to collapse ".." at the root (matching chroot resolution),
+		// then join under the container root so the stat can't escape it.
+		hostPath := filepath.Join(h.procFS.GetRoot(pid), filepath.Clean("/"+cwd))
 		info, err := os.Stat(hostPath)
-		if err != nil || !info.IsDir() {
-			return nil, huma.Error400BadRequest(fmt.Sprintf("working directory does not exist: %s", cwd))
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil, huma.Error400BadRequest(fmt.Sprintf("working directory does not exist: %s", cwd))
+			}
+			h.logger.Error("failed to stat working directory", "error", err, "cwd", cwd)
+			return nil, huma.Error500InternalServerError("failed to validate working directory")
+		}
+		if !info.IsDir() {
+			return nil, huma.Error400BadRequest(fmt.Sprintf("working directory is not a directory: %s", cwd))
 		}
 	}
 

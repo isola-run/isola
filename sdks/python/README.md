@@ -7,7 +7,7 @@ The SDK provides both synchronous and asynchronous clients.
 ## Install
 
 ```bash
-pip install isola
+pip install isola-run
 ```
 
 Requires Python 3.10 or later.
@@ -124,7 +124,7 @@ print(result.exit_code)   # 0
 ```python
 result = sandbox.commands.run(
     "ls", "-la",
-    cwd="/app",                   # working directory for this command
+    cwd="/tmp",                   # working directory for this command
     env={"LANG": "en_US.UTF-8"},  # merged with sandbox env
     timeout_seconds=30,           # SIGKILL after 30s
 )
@@ -371,7 +371,7 @@ sandbox = client.sandboxes.create(
 Target a specific container when running commands or writing files:
 
 ```python
-result = sandbox.commands.run("curl", "http://localhost:8080", container="worker")
+result = sandbox.commands.run("wget", "-qO-", "http://127.0.0.1:8080", container="worker")
 sandbox.filesystem.write("/tmp/data.txt", "hello", container="app")
 ```
 

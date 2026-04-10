@@ -3,7 +3,7 @@ requires = ["uv_build"]
 build-backend = "uv_build"
 
 [project]
-name = "isola"
+name = "isola-run"
 version = "0.1.0"
 description = "Python SDK for the Isola sandbox platform"
 readme = "README.md"

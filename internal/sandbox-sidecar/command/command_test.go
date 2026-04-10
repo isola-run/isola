@@ -904,6 +904,46 @@ var _ = Describe("Command Handlers", func() {
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
 			Expect(resp.Body.String()).To(ContainSubstring("working directory does not exist"))
 		})
+
+		It("returns 400 with distinct message when cwd is a file", func() {
+			f, err := os.Create(filepath.Join(testRootDir, "afile"))
+			Expect(err).NotTo(HaveOccurred())
+			_ = f.Close()
+			DeferCleanup(func() { _ = os.Remove(filepath.Join(testRootDir, "afile")) })
+
+			resp := commandAPI.Post("/v1/commands", "Content-Type: application/json",
+				strings.NewReader(`{"args": ["pwd"], "cwd": "/afile"}`))
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+			Expect(resp.Body.String()).To(ContainSubstring("not a directory"))
+		})
+
+		It("returns 500 when cwd stat fails for reasons other than not-exist", func() {
+			isolatedRoot, err := os.MkdirTemp("", "sidecar-test-stat-fail-*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(isolatedRoot) })
+
+			// Symlink loop: stat returns ELOOP, not ENOENT.
+			Expect(os.Symlink("loop", filepath.Join(isolatedRoot, "loop"))).To(Succeed())
+
+			_, isolatedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Stat Fail API", "0.1.0"))
+			isolatedV1 := huma.NewGroup(isolatedAPI, "/v1")
+			isolatedMock := &MockProcFS{rootDir: isolatedRoot, cwd: testCwd}
+			isolatedHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, sandboxsidecar.NewPIDResolver(isolatedMock), &DirectCommandBuilder{})
+			Register(isolatedV1, isolatedHandlers)
+
+			resp := isolatedAPI.Post("/v1/commands", "Content-Type: application/json",
+				strings.NewReader(`{"args": ["pwd"], "cwd": "/loop/sub"}`))
+			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
+		})
+
+		It("resolves .. in cwd against the container root, not the sidecar filesystem", func() {
+			// /usr exists on the sidecar but not under testRootDir. Without cleaning,
+			// filepath.Join(testRootDir, "../../../../../../usr") escapes testRootDir
+			// and hits the sidecar's /usr, making validation pass incorrectly.
+			resp := commandAPI.Post("/v1/commands", "Content-Type: application/json",
+				strings.NewReader(`{"args": ["pwd"], "cwd": "../../../../../../usr"}`))
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
 	})
 
 	Describe("environment variables", func() {

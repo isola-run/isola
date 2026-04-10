@@ -22,7 +22,7 @@ Create sandboxes from any OCI image, execute commands, stream output, read and w
 These examples assume a running Isola cluster. See [Deployment](#deployment) for production setup, or run `hack/setup.sh` to get a local development cluster with Kind.
 
 ```bash
-pip install isola   # requires Python 3.10+
+pip install isola-run   # requires Python 3.10+
 ```
 
 Create a sandbox, run a command, and read files:
@@ -192,7 +192,7 @@ sandbox = client.sandboxes.create(
         Container(name="test", image="alpine:3.21"),
     ],
 )
-result = sandbox.commands.run("wget", "-qO-", "http://localhost:8080", container="test")
+result = sandbox.commands.run("wget", "-qO-", "http://127.0.0.1:8080", container="test")
 ```
 
 ## Architecture

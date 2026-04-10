@@ -191,7 +191,6 @@ def test_isola_container_name_stripped(session_sandbox: Sandbox) -> None:
 
 
 def test_command_with_nonexistent_cwd(session_sandbox: Sandbox) -> None:
-    """Running a command with a cwd that does not exist should raise BadRequestError."""
     with pytest.raises(BadRequestError) as exc_info:
         session_sandbox.commands.run("pwd", cwd="/nonexistent_path")
     assert exc_info.value.status_code == 400
