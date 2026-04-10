@@ -312,9 +312,7 @@ class Isola:
     def __init__(self, *, url: str | None = None) -> None:
         url = url or os.environ.get("ISOLA_URL")
         if not url:
-            raise ValueError(
-                "url must be provided either as argument or via the ISOLA_URL environment variable"
-            )
+            raise ValueError("url must be provided either as argument or via the ISOLA_URL environment variable")
         self._api = _SyncAPI(url)
         from ._rootfs_snapshot import RootfsSnapshots
         from ._sandbox import Sandboxes
@@ -360,9 +358,7 @@ class AsyncIsola:
     def __init__(self, *, url: str | None = None) -> None:
         url = url or os.environ.get("ISOLA_URL")
         if not url:
-            raise ValueError(
-                "url must be provided either as argument or via the ISOLA_URL environment variable"
-            )
+            raise ValueError("url must be provided either as argument or via the ISOLA_URL environment variable")
         self._api = _AsyncAPI(url)
         from ._rootfs_snapshot import AsyncRootfsSnapshots
         from ._sandbox import AsyncSandboxes

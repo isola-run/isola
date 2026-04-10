@@ -139,28 +139,32 @@ func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 		Image:           r.SandboxSidecarImage,
 		ImagePullPolicy: r.SandboxSidecarImagePullPolicy,
 		RestartPolicy:   &rp,
-		// CPU & memory: gVisor runs one sentry process in the pod cgroup, and
-		// per-container cgroups are compat-only (not enforced).
-		// sandbox-sidecar container requests/limits are summed together with the user containers'
-		// and so not setting them would effectively unbound the user pod (+ infinity),
-		// and setting them to anything bigger than 1 would just add them on top of the user-defined
-		// requests/limits, surprising the user. We'll just piggy-back the user containers' requests/limits.
+		// CPU & memory: gVisor runs one sentry process in the pod cgroup.
+		// The pod cgroup's CPU/memory limits are the sum of all container limits in the spec,
+		// but only if ALL containers declare limits (kubelet cpuLimitsDeclared/memoryLimitsDeclared).
+		// If any container is missing a limit, the missing limit is effectively infinite,
+		// so not setting the sidecar's would unbound the pod. Setting them to anything bigger
+		// would add on top of the user-defined values, surprising the user.
+		// Requests work the same way (summed across containers) but a missing request is 0,
+		// not infinite. We keep near-zero requests for the same reason as limits.
+		// A side effect is that the pod is never classified as BestEffort (first to be evicted
+		// under node pressure) even when the user sets nothing, since QoS only considers
+		// CPU and memory.
+		// Near-zero values so the effective pod budget ~= user containers.
 		//
-		// Ephemeral storage: not cgroup-based, but gVisor still lumps all of the storage
-		// under a single filestore, so the requests/limits are summed across all containers
-		// instead of being enforced-individually, just like for CPU and memory.
-		//
-		// All three use near-zero values so the effective pod budget ~= user containers.
+		// Ephemeral storage: deliberately omitted. Unlike CPU/memory, a missing ephemeral
+		// storage limit contributes 0 to the pod total (not infinity). Kubelet eviction sums
+		// only defined limits, so a 1Mi sidecar limit would cap the entire pod at 1Mi when
+		// the user sets no limit. If the user does set a limit, the sidecar's 1Mi adds
+		// nothing useful. Same applies to requests.
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:              resource.MustParse("1m"),
-				corev1.ResourceMemory:           resource.MustParse("1Mi"),
-				corev1.ResourceEphemeralStorage: resource.MustParse("1Mi"),
+				corev1.ResourceCPU:    resource.MustParse("1m"),
+				corev1.ResourceMemory: resource.MustParse("1Mi"),
 			},
 			Limits: corev1.ResourceList{
-				corev1.ResourceCPU:              resource.MustParse("1m"),
-				corev1.ResourceMemory:           resource.MustParse("1Mi"),
-				corev1.ResourceEphemeralStorage: resource.MustParse("1Mi"),
+				corev1.ResourceCPU:    resource.MustParse("1m"),
+				corev1.ResourceMemory: resource.MustParse("1Mi"),
 			},
 		},
 		// CAP_SYS_PTRACE is required by gVisor's ContextCanTrace check (task_files.go)
@@ -784,7 +788,7 @@ func (r *SandboxReconciler) determineSucceededCondition(sandbox *sandboxv1alpha1
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=sandboxes/finalizers,verbs=update
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=node.k8s.io,resources=runtimeclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 

@@ -52,7 +52,7 @@ def sandbox_factory(isola_client: Isola):
     created: list[str] = []
 
     def _create(**kwargs) -> Sandbox:
-        if "image" not in kwargs:
+        if "image" not in kwargs and "containers" not in kwargs:
             kwargs["image"] = "alpine:3.21"
         sb = isola_client.sandboxes.create(**kwargs)
         created.append(sb.id)
@@ -90,7 +90,7 @@ async def async_sandbox_factory(async_isola_client: AsyncIsola):
     created: list[str] = []
 
     async def _create(**kwargs) -> AsyncSandbox:
-        if "image" not in kwargs:
+        if "image" not in kwargs and "containers" not in kwargs:
             kwargs["image"] = "alpine:3.21"
         sb = await async_isola_client.sandboxes.create(**kwargs)
         created.append(sb.id)

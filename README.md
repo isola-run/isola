@@ -22,7 +22,7 @@ Create sandboxes from any OCI image, execute commands, stream output, read and w
 These examples assume a running Isola cluster. See [Deployment](#deployment) for production setup, or run `hack/setup.sh` to get a local development cluster with Kind.
 
 ```bash
-pip install isola   # requires Python 3.10+
+pip install isola-run   # requires Python 3.10+
 ```
 
 Create a sandbox, run a command, and read files:
@@ -30,7 +30,7 @@ Create a sandbox, run a command, and read files:
 ```python
 from isola import Isola
 
-with Isola() as client:   # reads ISOLA_URL from environment
+with Isola(url="http://localhost:8080") as client:  # or set ISOLA_URL env var
     sandbox = client.sandboxes.create(image="python:3.12-slim")
 
     result = sandbox.commands.run("python3", "-c", "print('hello from the sandbox')")
@@ -48,7 +48,7 @@ Snapshot the filesystem and restore it in new sandboxes. Pre-warm an environment
 ```python
 from isola import Isola, Network
 
-with Isola() as client:
+with Isola(url="http://localhost:8080") as client:
     sandbox = client.sandboxes.create(
         image="python:3.12-slim",
         network=Network(allow_internet_egress=True),  # enable internet for setup
@@ -75,7 +75,7 @@ See the [Python SDK documentation](sdks/python/README.md) for the full API refer
 
 - **Self-hosted.** Sandboxes run on your Kubernetes nodes. You control your infrastructure and your data.
 
-- **Kubernetes-native.** Sandboxes and snapshots are Custom Resources managed by a Kubernetes operator. They integrate naturally with your existing RBAC, monitoring, and tooling.
+- **Kubernetes-native.** Sandboxes and snapshots are Custom Resources managed by a Kubernetes operator. They integrate naturally with your existing RBAC, observability, and cluster operations.
 
 - **Simple to operate.** One Helm install. No database, no Redis, no message queue. The only dependencies are a Kubernetes cluster with gVisor and an optional object storage bucket for snapshots. Use any OCI container image as a sandbox base, no custom templates or build steps required.
 
@@ -87,9 +87,6 @@ See the [Python SDK documentation](sdks/python/README.md) for the full API refer
 
 - **Language SDKs.** Python SDK with sync and async clients. Any language can use the [REST API](api/openapi/api-gateway.yaml) directly. TypeScript SDK is on the roadmap.
 
-- **No per-sandbox billing.** Run sandboxes on your existing Kubernetes compute, including spot and preemptible instances. No usage-based fees.
-
-- **Keep your existing stack.** Isola runs as standard Kubernetes workloads. It integrates with your existing monitoring, network policies, and operational tooling.
 
 ## What Isola is not
 
@@ -112,31 +109,33 @@ sandbox = client.sandboxes.create(
 )
 ```
 
-### Command execution
-
-Run commands and wait for completion, or spawn non-blocking commands and stream stdout/stderr as output arrives. Send input to stdin for interactive processes. Useful for AI agents that need to execute code, run shell commands, or drive interactive tools.
-
-```python
-# Blocking
-result = sandbox.commands.run("ls", "-la", cwd="/app", timeout_seconds=30)
-
-# Non-blocking with streaming
-cmd = sandbox.commands.spawn("python3", "train.py")
-for chunk in cmd.stdout:
-    print(chunk, end="")
-
-# Stdin
-result = sandbox.commands.run("cat", input="data from stdin\n")
-```
-
 ### File I/O
 
 Read and write files inside sandboxes. Parent directories are created automatically.
 
 ```python
-sandbox.filesystem.write("/tmp/hello.txt", "Hello, World!")
-data = sandbox.filesystem.read("/tmp/hello.txt")
-print(data.decode())  # "Hello, World!"
+sandbox.filesystem.write("/app/main.py", "print('hello from the sandbox')")
+data = sandbox.filesystem.read("/app/main.py")
+print(data.decode())  # "print('hello from the sandbox')"
+```
+
+### Command execution
+
+Run commands and wait for completion, or spawn non-blocking commands and stream stdout/stderr as output arrives. Send input to stdin for interactive processes. Useful for AI agents that need to execute code, run shell commands, or drive interactive tools.
+
+```python
+# Run the script we just uploaded
+result = sandbox.commands.run("python3", "/app/main.py")
+print(result.stdout)  # "hello from the sandbox\n"
+
+# Non-blocking with streaming
+cmd = sandbox.commands.spawn("python3", "/app/main.py")
+for chunk in cmd.stdout:
+    print(chunk, end="")
+
+# Stdin
+result = sandbox.commands.run("python3", input="print('hello from stdin')\n")
+print(result.stdout)  # "hello from stdin\n"
 ```
 
 ### Rootfs snapshots
@@ -172,7 +171,7 @@ sandbox = client.sandboxes.create(
 # Restricted to specific CIDRs only
 sandbox = client.sandboxes.create(
     image="alpine:3.21",
-    network=Network(allowed_egress_cidrs=["10.0.0.0/8"]),
+    network=Network(allowed_egress_cidrs=["104.16.0.0/12"]),
 )
 ```
 
@@ -193,49 +192,10 @@ sandbox = client.sandboxes.create(
         Container(name="test", image="alpine:3.21"),
     ],
 )
-result = sandbox.commands.run("wget", "-qO-", "http://localhost:8080", container="test")
+result = sandbox.commands.run("wget", "-qO-", "http://127.0.0.1:8080", container="test")
 ```
 
 ## Architecture
-
-```mermaid
-flowchart LR
-    SDK["User / SDK"]
-
-    subgraph gw["API Gateway"]
-        API["REST API"]
-    end
-
-    subgraph cp["Control Plane"]
-        K8s["K8s API Server"]
-        Op["Operator"]
-    end
-
-    subgraph node["Worker Node"]
-        subgraph pod["Sandbox Pod"]
-            Sidecar["Sidecar"]
-            Workload["User Container"]
-        end
-        Mounter["Snapshot Mounter"]
-    end
-
-    Uploader["Snapshot Uploader"]
-    Storage[("Cloud Storage")]
-
-    SDK -- "commands, files" --> API
-    API -- "proxy" --> Sidecar
-    Sidecar --> Workload
-
-    SDK -- "lifecycle, snapshots" --> API
-    API --> K8s
-    K8s -- "reconcile" --> Op
-    Op -- "manage pods" --> pod
-
-    Op -- "launch job" --> Uploader
-    Uploader -- "upload" --> Storage
-    Storage -- "restore" --> Mounter
-    Mounter --> pod
-```
 
 | Component | Role |
 |-----------|------|
