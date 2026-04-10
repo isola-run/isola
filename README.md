@@ -217,18 +217,15 @@ result = sandbox.commands.run("wget", "-qO-", "http://127.0.0.1:8080", container
 
 ### Install with Helm
 
+Sandbox pods run in a separate namespace from the control plane (`isola-sandboxes` by default, configurable via `sandboxNamespace.name`). Create it before installing:
+
 ```bash
+kubectl create namespace isola-sandboxes
 helm repo add isola https://charts.isola.run
 helm install isola isola/isola --namespace isola-system --create-namespace
 ```
 
-The control plane (operator, API gateway) runs in the install namespace. Sandbox pods run in a separate namespace (`isola-sandboxes` by default). Create it:
-
-```bash
-kubectl create namespace isola-sandboxes
-```
-
-Or let the chart manage it by setting `sandboxNamespace.create: true` in your Helm values.
+Alternatively, set `sandboxNamespace.create: true` in your Helm values to let the chart create the namespace. Note that `helm uninstall` will then cascade-delete the namespace and all sandboxes inside it.
 
 The API gateway service is cluster-internal by default. For quick access, use port-forwarding:
 
