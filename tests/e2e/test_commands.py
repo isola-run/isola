@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from isola import ConflictError, Sandbox
+from isola import BadRequestError, ConflictError, Sandbox
 
 
 def test_echo_stdout(session_sandbox: Sandbox) -> None:
@@ -188,6 +188,13 @@ def test_isola_container_name_stripped(session_sandbox: Sandbox) -> None:
     result = session_sandbox.commands.run("sh", "-c", 'echo "${ISOLA_CONTAINER_NAME}"')
 
     assert result.stdout.strip() == ""
+
+
+def test_command_with_nonexistent_cwd(session_sandbox: Sandbox) -> None:
+    """Running a command with a cwd that does not exist should raise BadRequestError."""
+    with pytest.raises(BadRequestError) as exc_info:
+        session_sandbox.commands.run("pwd", cwd="/nonexistent_path")
+    assert exc_info.value.status_code == 400
 
 
 def test_container_param_on_command(session_sandbox: Sandbox) -> None:

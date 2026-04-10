@@ -897,6 +897,13 @@ var _ = Describe("Command Handlers", func() {
 				return strings.TrimSpace(extractSSEData(resp.Body.String()))
 			}).Should(Equal("/tmp"))
 		})
+
+		It("returns 400 when cwd does not exist", func() {
+			resp := commandAPI.Post("/v1/commands", "Content-Type: application/json",
+				strings.NewReader(`{"args": ["pwd"], "cwd": "/nonexistent_path"}`))
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+			Expect(resp.Body.String()).To(ContainSubstring("working directory does not exist"))
+		})
 	})
 
 	Describe("environment variables", func() {

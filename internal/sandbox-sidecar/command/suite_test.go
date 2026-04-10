@@ -106,7 +106,10 @@ var _ = BeforeSuite(func() {
 	DeferCleanup(func() { _ = os.RemoveAll(testRootDir) })
 
 	testCwd = "/workspace"
-	// Create the cwd directory in the mock root
+	// Create directories in the mock root. The cwd validation stats paths here,
+	// so any cwd used in tests must exist under the mock root.
 	err = os.MkdirAll(testRootDir+testCwd, 0750)
+	Expect(err).NotTo(HaveOccurred())
+	err = os.MkdirAll(testRootDir+"/tmp", 0750)
 	Expect(err).NotTo(HaveOccurred())
 })

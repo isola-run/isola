@@ -115,7 +115,7 @@ Run commands and wait for completion, or spawn non-blocking commands and stream 
 
 ```python
 # Blocking
-result = sandbox.commands.run("ls", "-la", cwd="/app", timeout_seconds=30)
+result = sandbox.commands.run("ls", "-la", cwd="/tmp", timeout_seconds=30)
 
 # Non-blocking with streaming
 cmd = sandbox.commands.spawn("python3", "train.py")

@@ -200,6 +200,14 @@ func (h *Handlers) PostCommand(_ context.Context, input *CreateCommandInput) (*C
 // On error, all resources are cleaned up via defer. On success, ownership
 // of file handles transfers to the returned entry (closed by waitForExit).
 func (h *Handlers) startCommand(pid int, input *CreateCommandInput) (*commandEntry, error) {
+	if cwd := input.Body.Cwd; cwd != "" {
+		hostPath := filepath.Join(h.procFS.GetRoot(pid), cwd)
+		info, err := os.Stat(hostPath)
+		if err != nil || !info.IsDir() {
+			return nil, huma.Error400BadRequest(fmt.Sprintf("working directory does not exist: %s", cwd))
+		}
+	}
+
 	cmdID := uuid.New().String()
 
 	// Create output directory on the target container rootfs, so the logs count against its ephemeral storage calculation.
