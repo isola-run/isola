@@ -129,12 +129,13 @@ result = sandbox.commands.run("python3", "/app/main.py")
 print(result.stdout)  # "hello from the sandbox\n"
 
 # Non-blocking with streaming
-cmd = sandbox.commands.spawn("python3", "train.py")
+cmd = sandbox.commands.spawn("python3", "/app/main.py")
 for chunk in cmd.stdout:
     print(chunk, end="")
 
 # Stdin
-result = sandbox.commands.run("cat", input="data from stdin\n")
+result = sandbox.commands.run("python3", input="print('hello from stdin')\n")
+print(result.stdout)  # "hello from stdin\n"
 ```
 
 ### Rootfs snapshots
