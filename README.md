@@ -75,7 +75,7 @@ See the [Python SDK documentation](sdks/python/README.md) for the full API refer
 
 - **Self-hosted.** Sandboxes run on your Kubernetes nodes. You control your infrastructure and your data.
 
-- **Kubernetes-native.** Sandboxes and snapshots are Custom Resources managed by a Kubernetes operator. They integrate naturally with your existing RBAC, monitoring, and tooling.
+- **Kubernetes-native.** Sandboxes and snapshots are Custom Resources managed by a Kubernetes operator. They integrate naturally with your existing RBAC, observability, and cluster operations.
 
 - **Simple to operate.** One Helm install. No database, no Redis, no message queue. The only dependencies are a Kubernetes cluster with gVisor and an optional object storage bucket for snapshots. Use any OCI container image as a sandbox base, no custom templates or build steps required.
 
@@ -87,9 +87,6 @@ See the [Python SDK documentation](sdks/python/README.md) for the full API refer
 
 - **Language SDKs.** Python SDK with sync and async clients. Any language can use the [REST API](api/openapi/api-gateway.yaml) directly. TypeScript SDK is on the roadmap.
 
-- **No per-sandbox billing.** Run sandboxes on your existing Kubernetes compute, including spot and preemptible instances. No usage-based fees.
-
-- **Keep your existing stack.** Isola runs as standard Kubernetes workloads. It integrates with your existing monitoring, network policies, and operational tooling.
 
 ## What Isola is not
 
