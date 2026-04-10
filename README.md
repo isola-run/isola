@@ -170,7 +170,7 @@ sandbox = client.sandboxes.create(
 # Restricted to specific CIDRs only
 sandbox = client.sandboxes.create(
     image="alpine:3.21",
-    network=Network(allowed_egress_cidrs=["10.0.0.0/8"]),
+    network=Network(allowed_egress_cidrs=["104.16.0.0/12"]),
 )
 ```
 
