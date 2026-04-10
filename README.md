@@ -109,13 +109,24 @@ sandbox = client.sandboxes.create(
 )
 ```
 
+### File I/O
+
+Read and write files inside sandboxes. Parent directories are created automatically.
+
+```python
+sandbox.filesystem.write("/app/main.py", "print('hello from the sandbox')")
+data = sandbox.filesystem.read("/app/main.py")
+print(data.decode())  # "print('hello from the sandbox')"
+```
+
 ### Command execution
 
 Run commands and wait for completion, or spawn non-blocking commands and stream stdout/stderr as output arrives. Send input to stdin for interactive processes. Useful for AI agents that need to execute code, run shell commands, or drive interactive tools.
 
 ```python
-# Blocking
-result = sandbox.commands.run("ls", "-la", cwd="/tmp", timeout_seconds=30)
+# Run the script we just uploaded
+result = sandbox.commands.run("python3", "/app/main.py")
+print(result.stdout)  # "hello from the sandbox\n"
 
 # Non-blocking with streaming
 cmd = sandbox.commands.spawn("python3", "train.py")
@@ -124,16 +135,6 @@ for chunk in cmd.stdout:
 
 # Stdin
 result = sandbox.commands.run("cat", input="data from stdin\n")
-```
-
-### File I/O
-
-Read and write files inside sandboxes. Parent directories are created automatically.
-
-```python
-sandbox.filesystem.write("/tmp/hello.txt", "Hello, World!")
-data = sandbox.filesystem.read("/tmp/hello.txt")
-print(data.decode())  # "Hello, World!"
 ```
 
 ### Rootfs snapshots
