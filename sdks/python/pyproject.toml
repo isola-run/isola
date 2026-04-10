@@ -2,6 +2,9 @@
 requires = ["uv_build"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend]
+module-name = "isola"
+
 [project]
 name = "isola-run"
 version = "0.1.0"
