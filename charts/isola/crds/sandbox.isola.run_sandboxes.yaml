@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: sandboxes.sandbox.isola.run
 spec:
   group: sandbox.isola.run
@@ -245,6 +245,11 @@ spec:
             - message: terminationPolicy is immutable once set
               rule: '!has(self.terminationPolicy) || !has(oldSelf.terminationPolicy)
                 || self.terminationPolicy == oldSelf.terminationPolicy'
+            - message: timeoutSeconds cannot be removed once set
+              rule: '!has(oldSelf.timeoutSeconds) || has(self.timeoutSeconds)'
+            - message: timeoutSeconds is immutable once set
+              rule: '!has(self.timeoutSeconds) || !has(oldSelf.timeoutSeconds) ||
+                self.timeoutSeconds == oldSelf.timeoutSeconds'
           status:
             description: status defines the observed state of Sandbox
             properties:

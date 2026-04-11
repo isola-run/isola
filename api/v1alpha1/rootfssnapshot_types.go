@@ -30,6 +30,13 @@ const (
 )
 
 // RootfsSnapshotSpec defines the desired state of RootfsSnapshot
+// +kubebuilder:validation:XValidation:rule="self.sandboxName == oldSelf.sandboxName",message="sandboxName is immutable"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.snapshotName) || has(self.snapshotName)",message="snapshotName cannot be removed once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.snapshotName) || !has(oldSelf.snapshotName) || self.snapshotName == oldSelf.snapshotName",message="snapshotName is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.containerName) || has(self.containerName)",message="containerName cannot be removed once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.containerName) || !has(oldSelf.containerName) || self.containerName == oldSelf.containerName",message="containerName is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.timeoutSeconds) || has(self.timeoutSeconds)",message="timeoutSeconds cannot be removed once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.timeoutSeconds) || !has(oldSelf.timeoutSeconds) || self.timeoutSeconds == oldSelf.timeoutSeconds",message="timeoutSeconds is immutable once set"
 type RootfsSnapshotSpec struct {
 	// SandboxName is the name of the sandbox to snapshot.
 	// The sandbox must be in the same namespace as this RootfsSnapshot.

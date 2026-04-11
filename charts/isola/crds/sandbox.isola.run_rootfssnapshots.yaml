@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: rootfssnapshots.sandbox.isola.run
 spec:
   group: sandbox.isola.run
@@ -105,6 +105,24 @@ spec:
             required:
             - sandboxName
             type: object
+            x-kubernetes-validations:
+            - message: sandboxName is immutable
+              rule: self.sandboxName == oldSelf.sandboxName
+            - message: snapshotName cannot be removed once set
+              rule: '!has(oldSelf.snapshotName) || has(self.snapshotName)'
+            - message: snapshotName is immutable once set
+              rule: '!has(self.snapshotName) || !has(oldSelf.snapshotName) || self.snapshotName
+                == oldSelf.snapshotName'
+            - message: containerName cannot be removed once set
+              rule: '!has(oldSelf.containerName) || has(self.containerName)'
+            - message: containerName is immutable once set
+              rule: '!has(self.containerName) || !has(oldSelf.containerName) || self.containerName
+                == oldSelf.containerName'
+            - message: timeoutSeconds cannot be removed once set
+              rule: '!has(oldSelf.timeoutSeconds) || has(self.timeoutSeconds)'
+            - message: timeoutSeconds is immutable once set
+              rule: '!has(self.timeoutSeconds) || !has(oldSelf.timeoutSeconds) ||
+                self.timeoutSeconds == oldSelf.timeoutSeconds'
           status:
             description: status defines the observed state
             properties:

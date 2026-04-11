@@ -146,6 +146,8 @@ type RootfsSnapshotSource struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.rootfsSnapshotSources) || !has(oldSelf.rootfsSnapshotSources) || self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources",message="rootfsSnapshotSources is immutable once set"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.terminationPolicy) || has(self.terminationPolicy)",message="terminationPolicy cannot be removed once set"
 // +kubebuilder:validation:XValidation:rule="!has(self.terminationPolicy) || !has(oldSelf.terminationPolicy) || self.terminationPolicy == oldSelf.terminationPolicy",message="terminationPolicy is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.timeoutSeconds) || has(self.timeoutSeconds)",message="timeoutSeconds cannot be removed once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.timeoutSeconds) || !has(oldSelf.timeoutSeconds) || self.timeoutSeconds == oldSelf.timeoutSeconds",message="timeoutSeconds is immutable once set"
 type SandboxSpec struct {
 	// PodTemplate describes the pod that will be created to run the sandbox.
 	// The Sandbox controller will override specific security settings (runtimeClassName, etc.)
