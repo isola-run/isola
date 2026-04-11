@@ -236,6 +236,18 @@ export ISOLA_URL=http://localhost:8080
 
 For local development with Kind, `hack/setup.sh` automates the full cluster setup.
 
+### Upgrading
+
+Helm does not upgrade CRDs from the chart's `crds/` directory. Before upgrading Isola, apply the CRD bundle for the target version:
+
+```bash
+kubectl apply --server-side --force-conflicts \
+  -f https://github.com/isola-run/isola/releases/download/vX.Y.Z/isola-crds.yaml
+helm upgrade isola isola/isola --namespace isola-system --version X.Y.Z
+```
+
+The `isola-crds.yaml` bundle is published as a GitHub release asset for every tagged version. Always pin both the CRD bundle URL and the chart version to the same tag.
+
 ### gVisor setup
 
 Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) named `gvisor` in your cluster. If your cluster does not already have gVisor installed:
