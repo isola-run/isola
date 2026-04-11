@@ -149,7 +149,9 @@ components:
           type: string
         sandboxId:
           description: ID of the sandbox to snapshot (as returned by POST /v1/sandboxes)
-          minLength: 1
+          maxLength: 22
+          minLength: 22
+          pattern: ^[a-z][a-z0-9]{21}$
           type: string
         snapshotName:
           description: Snapshot storage key and restore reference. Defaults to the sandbox ID if omitted. To restore, pass this value as rootfsSnapshotName on a container when creating a sandbox.
