@@ -6,7 +6,7 @@
     <title>Isola</title>
     <meta
       name="description"
-      content="Isola brings Kubernetes-native sandboxing together with gVisor, snapshotting, open source foundations, and developer-first SDKs."
+      content="Open-source platform for running untrusted and AI-generated code securely on your own Kubernetes cluster, with gVisor isolation, rootfs snapshots, and developer SDKs."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -33,8 +33,8 @@
         <section class="hero">
           <div class="hero-copy">
             <h1>Secure Sandboxing for Kubernetes</h1>
-            <p class="hero-meta">gVisor · Snapshotting · Open source · Developer-first SDKs</p>
-            <p class="hero-text">Run untrusted code in gVisor-isolated containers with instant snapshot and restore. Kubernetes-native, open source, Python SDK.</p>
+            <p class="hero-meta">gVisor · Snapshotting · Self-hosted · Open source</p>
+            <p class="hero-text">Run untrusted and AI-generated code securely on your own Kubernetes cluster. gVisor isolation, rootfs snapshots, REST API and Python SDK.</p>
           </div>
 
           <div class="hero-visual">
@@ -45,19 +45,19 @@
         <section class="features">
           <div class="card">
             <h2 class="card-title">gVisor Isolation</h2>
-            <p class="card-desc">Hardware-virtualized sandboxing via gVisor with Kubernetes-native pod scheduling</p>
+            <p class="card-desc">Each sandbox runs behind gVisor's application-level kernel, intercepting system calls in user space. No hardware virtualization required.</p>
           </div>
           <div class="card">
             <h2 class="card-title">Rootfs Snapshots</h2>
-            <p class="card-desc">Snapshot filesystem changes and restore instantly. Snapshots are stored in a shared bucket, accessible on demand from any node.</p>
+            <p class="card-desc">Capture only the modified filesystem layer to cloud storage and restore it in new sandboxes on any node. Pre-warm environments once and reuse them.</p>
           </div>
           <div class="card">
-            <h2 class="card-title">Python SDK</h2>
-            <p class="card-desc">Create sandboxes, run commands, and manage snapshots in a few lines of code</p>
+            <h2 class="card-title">Self-Hosted</h2>
+            <p class="card-desc">Runs on your Kubernetes cluster. One Helm install, no database or message queue. Use any OCI image as a sandbox base.</p>
           </div>
           <div class="card">
             <h2 class="card-title">Open Source</h2>
-            <p class="card-desc">Apache 2.0 licensed, built on Kubernetes primitives, no vendor lock-in</p>
+            <p class="card-desc">Apache 2.0 licensed. REST API and Python SDK. Built on Kubernetes primitives, yours to audit and deploy.</p>
           </div>
         </section>
 
@@ -94,7 +94,7 @@ client = Isola()
           <div class="step">
             <span class="step-num" style="color: var(--indigo)">02</span>
             <h3 class="step-title">Execute</h2>
-            <p class="step-desc">Run commands, read and write files via the Python SDK</p>
+            <p class="step-desc">Run commands, stream output, read and write files via the REST API or Python SDK</p>
           </div>
           <div class="step">
             <span class="step-num" style="color: var(--cyan)">03</span>
