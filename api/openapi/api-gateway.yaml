@@ -684,6 +684,7 @@ paths:
           required: true
           schema:
             description: RootfsSnapshot identifier
+            pattern: ^[a-z][a-z0-9]{21}$
             type: string
       responses:
         "200":
@@ -785,6 +786,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            pattern: ^[a-z][a-z0-9]{21}$
             type: string
       responses:
         "204":
@@ -808,6 +810,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            pattern: ^[a-z][a-z0-9]{21}$
             type: string
       responses:
         "200":
@@ -848,6 +851,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            pattern: ^[a-z][a-z0-9]{21}$
             type: string
         - description: Container name. Defaults to the only container if there is one, otherwise it's required.
           explode: false
@@ -920,6 +924,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            pattern: ^[a-z][a-z0-9]{21}$
             type: string
         - description: Command identifier
           in: path
@@ -977,6 +982,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            pattern: ^[a-z][a-z0-9]{21}$
             type: string
         - description: Command identifier
           in: path
@@ -1048,6 +1054,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            pattern: ^[a-z][a-z0-9]{21}$
             type: string
         - description: Command identifier
           in: path
@@ -1115,6 +1122,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            pattern: ^[a-z][a-z0-9]{21}$
             type: string
         - description: Command identifier
           in: path
@@ -1180,6 +1188,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            pattern: ^[a-z][a-z0-9]{21}$
             type: string
         - description: Command identifier
           in: path
@@ -1237,6 +1246,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            pattern: ^[a-z][a-z0-9]{21}$
             type: string
         - description: Command identifier
           in: path
@@ -1304,6 +1314,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            pattern: ^[a-z][a-z0-9]{21}$
             type: string
         - description: Source path (absolute or relative to container cwd)
           explode: false
@@ -1380,6 +1391,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            pattern: ^[a-z][a-z0-9]{21}$
             type: string
         - description: Destination path (absolute or relative to container cwd)
           explode: false

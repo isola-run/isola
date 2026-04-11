@@ -42,7 +42,7 @@ type CreateRootfsSnapshotRequest struct {
 }
 
 type GetRootfsSnapshotInput struct {
-	ID string `path:"id" doc:"RootfsSnapshot identifier"`
+	ID string `path:"id" pattern:"^[a-z][a-z0-9]{21}$" doc:"RootfsSnapshot identifier"`
 }
 
 type CreateRootfsSnapshotOutput struct {
