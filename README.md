@@ -241,8 +241,7 @@ For local development with Kind, `hack/setup.sh` automates the full cluster setu
 Helm does not upgrade CRDs from the chart's `crds/` directory. Before upgrading Isola, apply the CRD bundle for the target version:
 
 ```bash
-kubectl apply --server-side --force-conflicts \
-  -f https://github.com/isola-run/isola/releases/download/vX.Y.Z/isola-crds.yaml
+kubectl apply -f https://github.com/isola-run/isola/releases/download/vX.Y.Z/isola-crds.yaml
 helm upgrade isola isola/isola --namespace isola-system --version X.Y.Z
 ```
 
