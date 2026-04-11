@@ -138,7 +138,30 @@ wheels = [
 ]
 
 [[package]]
-name = "isola"
+name = "isola-e2e-tests"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "isola-run" },
+    { name = "prometheus-client" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "isola-run", editable = "../../sdks/python" },
+    { name = "prometheus-client", specifier = ">=0.20" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "pytest-timeout", specifier = ">=2.0" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
+]
+
+[[package]]
+name = "isola-run"
 version = "0.1.0"
 source = { editable = "../../sdks/python" }
 dependencies = [
@@ -159,29 +182,6 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4.0" },
 ]
 provides-extras = ["dev"]
-
-[[package]]
-name = "isola-e2e-tests"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "isola" },
-    { name = "prometheus-client" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-timeout" },
-    { name = "pytest-xdist" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "isola", editable = "../../sdks/python" },
-    { name = "prometheus-client", specifier = ">=0.20" },
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "pytest-timeout", specifier = ">=2.0" },
-    { name = "pytest-xdist", specifier = ">=3.8.0" },
-]
 
 [[package]]
 name = "packaging"
