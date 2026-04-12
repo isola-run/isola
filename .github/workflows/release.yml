@@ -9,6 +9,17 @@
 #   - ghcr.io/isola-run/isola-snapshot-uploader:<tag>
 #   - ghcr.io/isola-run/api-gateway:<tag>
 #   - ghcr.io/isola-run/snapshot-mounter:<tag>
+#
+# This workflow is intentionally build-only. It does not write back to the
+# repository. The Helm chart's appVersion must be bumped in a PR *before* the
+# tag is created (see .github/workflows/prepare-release.yml). Release flow:
+#   1. Run the "Prepare Release" workflow with the target version.
+#   2. Review and merge the PR it opens.
+#   3. Tag the merge commit locally and push the tag:
+#        git checkout main && git pull
+#        git tag -a vX.Y.Z -m "Release vX.Y.Z"
+#        git push origin vX.Y.Z
+#   4. This workflow then builds and publishes the images.
 
 name: Release
 
@@ -80,31 +91,3 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
           platforms: linux/amd64,linux/arm64
-
-  update-chart-versions:
-    name: Update Helm Chart appVersion
-    runs-on: ubuntu-latest
-    needs: release-images
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: main
-
-      - name: Update Chart.yaml appVersion
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}  # Strip 'v' prefix
-
-          # Update isola Chart.yaml (unified chart)
-          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" charts/isola/Chart.yaml
-
-      - name: Commit and push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add charts/*/Chart.yaml
-          git diff --staged --quiet || git commit -m "chore: update appVersion to ${GITHUB_REF_NAME#v}"
-          git push

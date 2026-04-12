@@ -1,0 +1,116 @@
+# Prepare Release workflow - opens a PR that bumps the Helm chart version for a release.
+#
+# This workflow is run manually via the "Run workflow" button. It never pushes
+# directly to main - it opens a pull request that must be reviewed and merged.
+# After the PR is merged, tag the merge commit locally (vX.Y.Z) and push the
+# tag to trigger .github/workflows/release.yml.
+#
+# Why the chart bump must happen before tagging:
+#   charts/isola/templates/_helpers.tpl defaults each image tag to
+#   Chart.AppVersion, so the chart committed at the tagged SHA must already
+#   reference the images the tag will build.
+
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version without v prefix (e.g. 0.2.0, 1.0.0-rc.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    name: Open release prep PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::version must be semver without 'v' prefix (e.g. 0.2.0, 1.0.0-rc.1), got: '$VERSION'"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Bump chart version and appVersion
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          sed -i "s/^version:.*/version: ${VERSION}/" charts/isola/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" charts/isola/Chart.yaml
+          echo "--- charts/isola/Chart.yaml (head) ---"
+          head -10 charts/isola/Chart.yaml
+
+      - name: Create branch, commit, and open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          BRANCH="release/v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- charts/isola/Chart.yaml; then
+            echo "::error::charts/isola/Chart.yaml is already at version ${VERSION} - nothing to do"
+            exit 1
+          fi
+
+          git checkout -b "$BRANCH"
+          git add charts/isola/Chart.yaml
+          git commit -m "chore: prepare release v${VERSION}"
+          # Force is safe: branch name is deterministic per version, any
+          # pre-existing branch is a prior run of this same prep.
+          git push -u origin "$BRANCH" --force
+
+          # Reuse an existing PR for the same branch if present, otherwise create one.
+          existing=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            echo "Updated existing PR #$existing"
+            gh pr view "$existing" --json url --jq '.url'
+            exit 0
+          fi
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "chore: prepare release v${VERSION}" \
+            --body "$(cat <<EOF
+          Prepares release **v${VERSION}** by bumping the Helm chart version and appVersion.
+
+          ## After merging
+
+          Tag the merge commit on \`main\` and push the tag:
+
+          \`\`\`
+          git checkout main
+          git pull
+          git tag -a v${VERSION} -m "Release v${VERSION}"
+          git push origin v${VERSION}
+          \`\`\`
+
+          Pushing the tag triggers \`.github/workflows/release.yml\`, which
+          builds and publishes the container images under this version.
+
+          ## Note on CI
+
+          Pull requests opened by \`GITHUB_TOKEN\` do not trigger other
+          workflows. If you want lint/test/codegen to run on this PR, push an
+          empty commit to the branch (or close and reopen the PR):
+
+          \`\`\`
+          git fetch origin ${BRANCH} && git checkout ${BRANCH}
+          git commit --allow-empty -m "ci: trigger checks" && git push
+          \`\`\`
+          EOF
+          )"
