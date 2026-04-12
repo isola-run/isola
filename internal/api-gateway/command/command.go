@@ -52,7 +52,7 @@ type CommandStatusResponse struct {
 }
 
 type CreateSandboxCommandInput struct {
-	SandboxID string `path:"sandboxId" pattern:"^[a-z][a-z0-9]{21}$" doc:"Sandbox identifier"`
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Sandbox identifier"`
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 	Body      CreateCommandRequest
 }
@@ -62,7 +62,7 @@ type CreateSandboxCommandOutput struct {
 }
 
 type GetSandboxCommandStatusInput struct {
-	SandboxID string `path:"sandboxId" pattern:"^[a-z][a-z0-9]{21}$" doc:"Sandbox identifier"`
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Sandbox identifier"`
 	ID        string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	// Lower than the sandbox-sidecar's max (30 seconds) so the gateway always terminates first
 	// also aligns with the safe (assuming possible proxies etc) long polling value according to https://datatracker.ietf.org/doc/html/rfc6202
@@ -75,24 +75,24 @@ type GetSandboxCommandStatusOutput struct {
 }
 
 type GetSandboxCommandStreamInput struct {
-	SandboxID   string `path:"sandboxId" pattern:"^[a-z][a-z0-9]{21}$" doc:"Sandbox identifier"`
+	SandboxID   string `path:"sandboxId" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Sandbox identifier"`
 	ID          string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	LastEventID string `header:"Last-Event-ID" doc:"Byte offset to resume from (SSE Last-Event-ID)"`
 }
 
 type PostSandboxCommandStdinInput struct {
-	SandboxID string `path:"sandboxId" pattern:"^[a-z][a-z0-9]{21}$" doc:"Sandbox identifier"`
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Sandbox identifier"`
 	ID        string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 	apigateway.BodyStream
 }
 
 type CloseSandboxCommandStdinInput struct {
-	SandboxID string `path:"sandboxId" pattern:"^[a-z][a-z0-9]{21}$" doc:"Sandbox identifier"`
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Sandbox identifier"`
 	ID        string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
 
 type DeleteSandboxCommandInput struct {
-	SandboxID string `path:"sandboxId" pattern:"^[a-z][a-z0-9]{21}$" doc:"Sandbox identifier"`
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Sandbox identifier"`
 	ID        string `path:"id" pattern:"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" doc:"Command identifier"`
 }
 

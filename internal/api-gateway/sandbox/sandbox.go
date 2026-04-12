@@ -86,11 +86,11 @@ type Network struct {
 }
 
 type GetSandboxInput struct {
-	ID string `path:"id" pattern:"^[a-z][a-z0-9]{21}$" doc:"Sandbox identifier"`
+	ID string `path:"id" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Sandbox identifier"`
 }
 
 type DeleteSandboxInput struct {
-	ID string `path:"id" pattern:"^[a-z][a-z0-9]{21}$" doc:"Sandbox identifier"`
+	ID string `path:"id" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Sandbox identifier"`
 }
 
 // Response types omit env vars (write-only) to avoid leaking secrets.
