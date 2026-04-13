@@ -1,0 +1,196 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: rootfssnapshots.sandbox.isola.run
+spec:
+  group: sandbox.isola.run
+  names:
+    kind: RootfsSnapshot
+    listKind: RootfsSnapshotList
+    plural: rootfssnapshots
+    shortNames:
+    - rfs
+    singular: rootfssnapshot
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Snapshot succeeded
+      jsonPath: .status.conditions[?(@.type=='Succeeded')].status
+      name: Succeeded
+      type: string
+    - description: Sandbox being snapshotted
+      jsonPath: .spec.sandboxName
+      name: Sandbox
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          RootfsSnapshot represents a request to snapshot a sandbox's root filesystem.
+          The controller creates a Job that uses gvisor's runsc to tar the overlay2 upper layer.
+
+          Only changes to the overlay rootfs upper layer are captured. Files on separately-mounted
+          filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included.
+          To persist data across snapshots, write to directories on the root filesystem
+          (e.g. /root, /home).
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the snapshot request
+            properties:
+              containerName:
+                description: |-
+                  ContainerName is the name of the container to snapshot.
+                  If empty, defaults to the first container in the sandbox pod.
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              sandboxName:
+                description: |-
+                  SandboxName is the name of the sandbox to snapshot.
+                  The sandbox must be in the same namespace as this RootfsSnapshot.
+                minLength: 1
+                type: string
+              snapshotName:
+                description: |-
+                  SnapshotName is the name used for the snapshot storage key.
+                  This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
+                  If omitted, the operator defaults it to the sandbox name.
+                maxLength: 63
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              timeoutSeconds:
+                default: 300
+                description: |-
+                  TimeoutSeconds specifies the duration in seconds for the snapshot job.
+                  If the job does not complete within this time, it will be terminated.
+                format: int64
+                minimum: 1
+                type: integer
+              ttlSecondsAfterFinished:
+                default: 300
+                description: |-
+                  TTLSecondsAfterFinished limits the lifetime of a RootfsSnapshot that has
+                  finished execution (succeeded or failed).
+                  If set, the RootfsSnapshot will be automatically deleted after this many
+                  seconds after it finishes.
+                  If not set, the RootfsSnapshot will be deleted after a default value.
+                  0 means immediate deletion upon completion.
+                format: int32
+                minimum: 0
+                type: integer
+            required:
+            - sandboxName
+            type: object
+          status:
+            description: status defines the observed state
+            properties:
+              completionTime:
+                description: |-
+                  CompletionTime is when the snapshot finished (success or failure).
+                  Set on both success and failure (unlike K8s Job which only sets it on success)
+                  because it is used for TTL calculation.
+                format: date-time
+                type: string
+              conditions:
+                description: Conditions represent the overall RootfsSnapshot state
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              containerID:
+                description: ContainerID is the container ID that was snapshotted
+                type: string
+              snapshotKey:
+                description: SnapshotKey is the object key within the bucket (e.g.
+                  "rootfssnapshots/<namespace>/<name>.tar")
+                type: string
+              startTime:
+                description: StartTime is when the snapshot job was created
+                format: date-time
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
