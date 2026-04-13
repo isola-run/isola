@@ -21,13 +21,18 @@ help: ## Display this help
 generate: ## Generate CRD DeepCopy methods
 	controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 
+CRD_STAGING := bin/crd-staging
+
 .PHONY: manifests
-manifests: ## Generate CRD and RBAC manifests directly to Helm chart
-	@mkdir -p charts/isola/generated
+manifests: ## Generate CRD and RBAC manifests
+	@rm -rf $(CRD_STAGING)
+	@mkdir -p $(CRD_STAGING) charts/isola/generated
 	controller-gen rbac:roleName=isola-operator crd webhook \
 		paths="./api/..." paths="./internal/operator/controller/..." \
-		output:crd:artifacts:config=charts/isola/crds \
+		output:crd:artifacts:config=$(CRD_STAGING) \
 		output:rbac:artifacts:config=charts/isola/generated
+	./hack/generate-crd-templates.sh $(CRD_STAGING) charts/isola/templates/crd
+	@rm -rf $(CRD_STAGING)
 
 .PHONY: openapi
 openapi: ## Generate OpenAPI specs for HTTP services
@@ -70,10 +75,10 @@ tidy: ## Run go mod tidy
 
 .PHONY: check-manifests
 check-manifests: manifests ## Verify generated manifests are up-to-date
-	@if ! git diff --quiet -- charts/isola/crds/ charts/isola/generated/; then \
+	@if ! git diff --quiet -- charts/isola/templates/crd/ charts/isola/generated/; then \
 		echo "ERROR: Generated manifests are out of sync"; \
 		echo "Run 'make manifests' and commit the changes"; \
-		git diff --stat -- charts/isola/crds/ charts/isola/generated/; \
+		git diff --stat -- charts/isola/templates/crd/ charts/isola/generated/; \
 		exit 1; \
 	fi
 

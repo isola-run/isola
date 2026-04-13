@@ -4,6 +4,17 @@ nameOverride: ""
 fullnameOverride: ""
 
 
+# CRD installation and lifecycle configuration.
+crds:
+  # Whether to install CRDs as part of the chart.
+  # Set to false if CRDs are managed externally (e.g., applied via kubectl).
+  enabled: true
+  # When true, CRDs are annotated with "helm.sh/resource-policy: keep" so they
+  # survive `helm uninstall`. Strongly recommended to prevent accidental deletion
+  # of all Sandbox and RootfsSnapshot resources when uninstalling the chart.
+  keep: true
+
+
 global:
   # Override registry for all images (operator, sandbox-sidecar, snapshot-uploader, api-gateway)
   # Useful for air-gapped environments or private registries.
