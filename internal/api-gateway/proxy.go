@@ -136,7 +136,7 @@ func HandleSidecarError(resp *http.Response, sandboxID string, logger *slog.Logg
 
 	if resp.StatusCode >= 500 {
 		logger.Error("sidecar returned server error", "id", sandboxID, "status", resp.StatusCode, "detail", detail)
-		return huma.Error502BadGateway("sidecar internal error")
+		return huma.Error502BadGateway(detail)
 	}
 
 	logger.Debug("forwarding sidecar client error", "id", sandboxID, "status", resp.StatusCode, "detail", detail)
