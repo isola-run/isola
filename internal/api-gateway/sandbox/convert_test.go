@@ -585,7 +585,7 @@ var _ = Describe("Conversion functions", func() {
 	Describe("handleSidecarError", func() {
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-		It("returns 502 for 5xx and reads the body", func() {
+		It("returns 502 for 5xx and forwards the sidecar detail", func() {
 			body := `{"status":500,"title":"Internal Server Error","detail":"failed to start command: exec: not found"}`
 			resp := &http.Response{
 				StatusCode: http.StatusInternalServerError,
@@ -593,7 +593,7 @@ var _ = Describe("Conversion functions", func() {
 			}
 			err := apigateway.HandleSidecarError(resp, "sb-123", logger)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("sidecar internal error"))
+			Expect(err.Error()).To(ContainSubstring("failed to start command: exec: not found"))
 
 			// Body should be fully consumed
 			remaining, _ := io.ReadAll(resp.Body)
