@@ -33,8 +33,8 @@
         <section class="hero">
           <div class="hero-copy">
             <h1>Secure Sandboxing for Kubernetes</h1>
-            <p class="hero-meta">gVisor · Snapshotting · Self-hosted · Open source</p>
-            <p class="hero-text">Run untrusted and AI-generated code securely on your own Kubernetes cluster. gVisor isolation, rootfs snapshots, REST API and Python SDK.</p>
+            <p class="hero-meta">gVisor · Rootfs snapshots · Self&#8209;hosted · Apache 2.0</p>
+            <p class="hero-text">Run untrusted and AI-generated code on your own Kubernetes cluster. Every sandbox is gVisor-isolated, snapshotable, and restorable on any node.</p>
           </div>
 
           <div class="hero-visual">
@@ -45,19 +45,19 @@
         <section class="features">
           <div class="card">
             <h2 class="card-title">gVisor Isolation</h2>
-            <p class="card-desc">Each sandbox runs behind gVisor's application-level kernel, intercepting system calls in user space. No hardware virtualization required.</p>
+            <p class="card-desc">Every sandbox runs behind gVisor's application kernel. Strong isolation in user space, no VMs required.</p>
           </div>
           <div class="card">
             <h2 class="card-title">Rootfs Snapshots</h2>
-            <p class="card-desc">Capture only the modified filesystem layer to cloud storage and restore it in new sandboxes on any node. Pre-warm environments once and reuse them.</p>
+            <p class="card-desc">Capture a sandbox's filesystem and restore it in new sandboxes on any node.</p>
           </div>
           <div class="card">
-            <h2 class="card-title">Self-Hosted</h2>
-            <p class="card-desc">Runs on your Kubernetes cluster. One Helm install, no database or message queue. Use any OCI image as a sandbox base.</p>
+            <h2 class="card-title">Self&#8209;Hosted</h2>
+            <p class="card-desc">One Helm install on your own cluster. You control the infrastructure and the data.</p>
           </div>
           <div class="card">
             <h2 class="card-title">Open Source</h2>
-            <p class="card-desc">Apache 2.0 licensed. REST API and Python SDK. Built on Kubernetes primitives, yours to audit and deploy.</p>
+            <p class="card-desc">Apache 2.0 licensed. REST API and Python SDK, built on Kubernetes primitives you already know.</p>
           </div>
         </section>
 
@@ -65,41 +65,31 @@
           <span class="code-label">Python</span>
           <pre class="code-block"><code><span class="kw">from</span> isola <span class="kw">import</span> Isola
 
-client = Isola()
+<span class="kw">with</span> Isola() <span class="kw">as</span> client:
+    sandbox = client.sandboxes.create(image=<span class="str">"python:3.12-slim"</span>)
 
-<span class="kw">with</span> client.sandboxes.create(image=<span class="str">"alpine:3.21"</span>) <span class="kw">as</span> sandbox:
-    result = sandbox.commands.run(<span class="str">"echo"</span>, <span class="str">"hello world"</span>)
-    <span class="kw">print</span>(result.stdout)  <span class="comment"># "hello world\n"</span>
+    result = sandbox.commands.run(<span class="str">"python3"</span>, <span class="str">"-c"</span>, <span class="str">"print('hello from a sandbox')"</span>)
+    <span class="kw">print</span>(result.stdout)  <span class="comment"># "hello from a sandbox\n"</span>
 
-    <span class="comment"># Snapshot the filesystem changes</span>
-    client.rootfs_snapshots.create(
-        sandbox_id=sandbox.id,
-        snapshot_name=<span class="str">"my-snapshot"</span>,
-    )
-
-<span class="comment"># Restore from snapshot on any node</span>
-<span class="kw">with</span> client.sandboxes.create(
-    image=<span class="str">"alpine:3.21"</span>,
-    rootfs_snapshot_name=<span class="str">"my-snapshot"</span>,
-) <span class="kw">as</span> restored:
-    restored.commands.run(<span class="str">"cat"</span>, <span class="str">"/data/results.json"</span>)</code></pre>
+    <span class="comment"># Snapshot the rootfs to restore it in new sandboxes on any node</span>
+    client.rootfs_snapshots.create(sandbox_id=sandbox.id, snapshot_name=<span class="str">"demo"</span>)</code></pre>
         </section>
 
         <section class="steps">
           <div class="step">
             <span class="step-num" style="color: var(--purple)">01</span>
-            <h3 class="step-title">Create</h2>
-            <p class="step-desc">Spin up a gVisor-isolated sandbox from any container image</p>
+            <h3 class="step-title">Create</h3>
+            <p class="step-desc">Spin up a gVisor-isolated sandbox from any OCI image</p>
           </div>
           <div class="step">
             <span class="step-num" style="color: var(--indigo)">02</span>
-            <h3 class="step-title">Execute</h2>
-            <p class="step-desc">Run commands, stream output, read and write files via the REST API or Python SDK</p>
+            <h3 class="step-title">Execute</h3>
+            <p class="step-desc">Run commands, stream output, read and write files over REST or the Python SDK</p>
           </div>
           <div class="step">
             <span class="step-num" style="color: var(--cyan)">03</span>
-            <h3 class="step-title">Snapshot &amp; Restore</h2>
-            <p class="step-desc">Capture rootfs changes, restore instantly on any node</p>
+            <h3 class="step-title">Snapshot &amp; Restore</h3>
+            <p class="step-desc">Capture rootfs changes and restore them on any node</p>
           </div>
         </section>
       </main>
