@@ -149,7 +149,9 @@ components:
           type: string
         sandboxId:
           description: ID of the sandbox to snapshot (as returned by POST /v1/sandboxes)
+          maxLength: 63
           minLength: 1
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
           type: string
         snapshotName:
           description: Snapshot storage key and restore reference. Defaults to the sandbox ID if omitted. To restore, pass this value as rootfsSnapshotName on a container when creating a sandbox.
@@ -684,6 +686,9 @@ paths:
           required: true
           schema:
             description: RootfsSnapshot identifier
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
       responses:
         "200":
@@ -785,6 +790,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
       responses:
         "204":
@@ -808,6 +816,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
       responses:
         "200":
@@ -848,6 +859,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
         - description: Container name. Defaults to the only container if there is one, otherwise it's required.
           explode: false
@@ -920,6 +934,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
         - description: Command identifier
           in: path
@@ -977,6 +994,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
         - description: Command identifier
           in: path
@@ -1048,6 +1068,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
         - description: Command identifier
           in: path
@@ -1115,6 +1138,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
         - description: Command identifier
           in: path
@@ -1180,6 +1206,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
         - description: Command identifier
           in: path
@@ -1237,6 +1266,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
         - description: Command identifier
           in: path
@@ -1304,6 +1336,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
         - description: Source path (absolute or relative to container cwd)
           explode: false
@@ -1380,6 +1415,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
         - description: Destination path (absolute or relative to container cwd)
           explode: false

@@ -34,7 +34,7 @@ type CreateRootfsSnapshotInput struct {
 }
 
 type CreateRootfsSnapshotRequest struct {
-	SandboxID               string `json:"sandboxId" required:"true" minLength:"1" doc:"ID of the sandbox to snapshot (as returned by POST /v1/sandboxes)"`
+	SandboxID               string `json:"sandboxId" required:"true" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"ID of the sandbox to snapshot (as returned by POST /v1/sandboxes)"`
 	SnapshotName            string `json:"snapshotName,omitempty" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Snapshot storage key and restore reference. Defaults to the sandbox ID if omitted. To restore, pass this value as rootfsSnapshotName on a container when creating a sandbox."`
 	ContainerName           string `json:"containerName,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container to snapshot. Defaults to the first container if omitted."`
 	TimeoutSeconds          *int64 `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Max duration in seconds for the snapshot job. Defaults to 300 if omitted."`
@@ -42,7 +42,7 @@ type CreateRootfsSnapshotRequest struct {
 }
 
 type GetRootfsSnapshotInput struct {
-	ID string `path:"id" doc:"RootfsSnapshot identifier"`
+	ID string `path:"id" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"RootfsSnapshot identifier"`
 }
 
 type CreateRootfsSnapshotOutput struct {
