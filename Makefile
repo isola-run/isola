@@ -21,6 +21,10 @@ help: ## Display this help
 generate: ## Generate CRD DeepCopy methods
 	controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 
+# CRDs are staged here, then wrapped with Helm conditionals (.Values.crds.enabled
+# and .Values.crds.keep) by hack/generate-crd-templates.sh before landing in
+# charts/isola/templates/crd/. This lets CRDs be upgraded via `helm upgrade`
+# (unlike CRDs in Helm's special crds/ directory, which aren't upgraded).
 CRD_STAGING := bin/crd-staging
 
 .PHONY: manifests
