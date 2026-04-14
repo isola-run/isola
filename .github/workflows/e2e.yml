@@ -83,7 +83,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=snapshot-mounter
 
       - name: Create Kind cluster
-        uses: helm/kind-action@0b5c88445f37b7e12a2ce1ecca7805b9046a74db # v1
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1
         with:
           cluster_name: ${{ env.KIND_CLUSTER_NAME }}
           config: hack/kind-config.yaml
