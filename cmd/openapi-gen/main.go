@@ -27,12 +27,14 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
+	k8sversion "k8s.io/apimachinery/pkg/version"
 
 	"github.com/isola-run/isola/internal/api-gateway/command"
 	"github.com/isola-run/isola/internal/api-gateway/filesystem"
 	"github.com/isola-run/isola/internal/api-gateway/health"
 	"github.com/isola-run/isola/internal/api-gateway/rootfssnapshot"
 	"github.com/isola-run/isola/internal/api-gateway/sandbox"
+	"github.com/isola-run/isola/internal/api-gateway/version"
 	sidecarCmd "github.com/isola-run/isola/internal/sandbox-sidecar/command"
 	sidecarFs "github.com/isola-run/isola/internal/sandbox-sidecar/filesystem"
 	sidecarHealth "github.com/isola-run/isola/internal/sandbox-sidecar/health"
@@ -84,6 +86,7 @@ func setupAPIGateway() huma.API {
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected
 	health.Register(api, health.New(nil, nil))
+	version.Register(api, version.New("", &k8sversion.Info{}))
 
 	v1 := huma.NewGroup(api, "/v1")
 	sandbox.Register(v1, sandbox.New(nil, "", nil))

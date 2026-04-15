@@ -33,7 +33,10 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	k8sversion "k8s.io/apimachinery/pkg/version"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -46,9 +49,12 @@ import (
 	"github.com/isola-run/isola/internal/api-gateway/health"
 	"github.com/isola-run/isola/internal/api-gateway/rootfssnapshot"
 	"github.com/isola-run/isola/internal/api-gateway/sandbox"
+	"github.com/isola-run/isola/internal/api-gateway/version"
 	"github.com/isola-run/isola/internal/env"
 	"github.com/isola-run/isola/internal/logging"
 )
+
+const gatewayVersion = "0.1.0"
 
 const (
 	shutdownGracePeriod        = 25 * time.Second // < default k8s terminationGracePeriodSeconds (30 seconds)
@@ -121,6 +127,18 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 	return mgr, nil
 }
 
+func fetchK8sServerVersion(restConfig *rest.Config) (*k8sversion.Info, error) {
+	dc, err := discovery.NewDiscoveryClientForConfig(rest.CopyConfig(restConfig))
+	if err != nil {
+		return nil, fmt.Errorf("build discovery client: %w", err)
+	}
+	info, err := dc.ServerVersion()
+	if err != nil {
+		return nil, fmt.Errorf("discover server version: %w", err)
+	}
+	return info, nil
+}
+
 func initSandboxClient() *http.Client {
 	// currently no Timeout set as it's hard to expect the size of the files
 	// for different usecases, and no demand for making it configurable atm
@@ -155,6 +173,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	k8sServerVersion, err := fetchK8sServerVersion(mgr.GetConfig())
+	if err != nil {
+		logger.Error("unable to discover kubernetes server version", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("discovered kubernetes server version",
+		"gitVersion", k8sServerVersion.GitVersion,
+		"platform", k8sServerVersion.Platform,
+	)
+
 	r := chi.NewRouter()
 	// httplog.RequestLogger automatically includes chi's RequestID and Recoverer middleware
 	r.Use(httplog.RequestLogger(&httplog.Logger{
@@ -166,11 +194,12 @@ func main() {
 		},
 	}))
 
-	humaConfig := huma.DefaultConfig("Isola Sandbox API", "0.1.0")
+	humaConfig := huma.DefaultConfig("Isola Sandbox API", gatewayVersion)
 	humaConfig.Info.Description = "API for managing sandboxes"
 	api := humachi.New(r, humaConfig)
 
 	health.Register(api, health.New(logger, mgr.GetClient()))
+	version.Register(api, version.New(gatewayVersion, k8sServerVersion))
 
 	v1 := huma.NewGroup(api, "/v1")
 	sandbox.Register(v1, sandbox.New(logger, cfg.sandboxNamespace, mgr.GetClient()))

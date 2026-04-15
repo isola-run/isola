@@ -260,6 +260,17 @@ components:
           format: uri
           type: string
       type: object
+    GatewayInfo:
+      additionalProperties: false
+      properties:
+        version:
+          description: API gateway version
+          examples:
+            - 0.1.0
+          type: string
+      required:
+        - version
+      type: object
     HealthResponse:
       additionalProperties: false
       properties:
@@ -277,6 +288,35 @@ components:
           type: string
       required:
         - status
+      type: object
+    KubernetesInfo:
+      additionalProperties: false
+      properties:
+        gitVersion:
+          description: Kubernetes git version reported by the apiserver
+          examples:
+            - v1.34.0
+          type: string
+        major:
+          description: Major Kubernetes version
+          examples:
+            - "1"
+          type: string
+        minor:
+          description: Minor Kubernetes version
+          examples:
+            - "34"
+          type: string
+        platform:
+          description: Kubernetes apiserver platform
+          examples:
+            - linux/amd64
+          type: string
+      required:
+        - gitVersion
+        - major
+        - minor
+        - platform
       type: object
     ListSandboxesResponse:
       additionalProperties: false
@@ -530,6 +570,24 @@ components:
             - Delete
             - SnapshotRootfs
           type: string
+      type: object
+    VersionResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/VersionResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        gateway:
+          $ref: "#/components/schemas/GatewayInfo"
+        kubernetes:
+          $ref: "#/components/schemas/KubernetesInfo"
+      required:
+        - gateway
+        - kubernetes
       type: object
 info:
   description: API for managing sandboxes
@@ -1448,3 +1506,23 @@ paths:
       tags:
         - sandboxes
         - filesystem
+  /version:
+    get:
+      description: Returns the API gateway version and the Kubernetes apiserver version observed when the gateway started.
+      operationId: getVersion
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Version info
+      tags:
+        - version
