@@ -179,6 +179,9 @@ func main() {
 	// Injected by the Helm chart from .Chart.AppVersion; "dev" when running
 	// outside the chart (e.g. `go run` locally).
 	isolaVersion := env.GetOrDefault(constants.IsolaVersionEnv, "dev")
+	if isolaVersion == "dev" {
+		logger.Warn("ISOLA_VERSION is not set; /version will report \"dev\". This is expected for local dev runs and unexpected in chart-installed deployments.")
+	}
 
 	humaConfig := huma.DefaultConfig("Isola Sandbox API", isolaVersion)
 	humaConfig.Info.Description = "API for managing sandboxes"

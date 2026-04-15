@@ -176,6 +176,7 @@ func newTestReconciler(clock Clock) *SandboxReconciler {
 		Scheme:              scheme.Scheme,
 		Recorder:            rec,
 		SandboxSidecarImage: "sandbox-sidecar:test",
+		IsolaVersion:        "test-version",
 		Clock:               clock,
 		RuntimeClassName:    "gvisor",
 		// ControllerNamespace not set - defaults to sandbox namespace

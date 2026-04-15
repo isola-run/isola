@@ -78,6 +78,9 @@ func main() {
 	// Injected by the operator from its own ISOLA_VERSION env, which the Helm
 	// chart sets to .Chart.AppVersion. "dev" when running outside the chart.
 	isolaVersion := env.GetOrDefault(constants.IsolaVersionEnv, "dev")
+	if isolaVersion == "dev" {
+		logger.Warn("ISOLA_VERSION is not set; /version will report \"dev\". This is expected for local dev runs and unexpected when the sidecar is injected by the operator.")
+	}
 
 	humaConfig := huma.DefaultConfig("Isola Sandbox Sidecar API", isolaVersion)
 	humaConfig.Info.Description = "Internal API for sandbox operations"
