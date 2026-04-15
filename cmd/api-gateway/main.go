@@ -33,7 +33,6 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	k8sversion "k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -127,18 +126,6 @@ func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config)
 	return mgr, nil
 }
 
-func fetchK8sServerVersion(restConfig *rest.Config) (*k8sversion.Info, error) {
-	dc, err := discovery.NewDiscoveryClientForConfig(rest.CopyConfig(restConfig))
-	if err != nil {
-		return nil, fmt.Errorf("build discovery client: %w", err)
-	}
-	info, err := dc.ServerVersion()
-	if err != nil {
-		return nil, fmt.Errorf("discover server version: %w", err)
-	}
-	return info, nil
-}
-
 func initSandboxClient() *http.Client {
 	// currently no Timeout set as it's hard to expect the size of the files
 	// for different usecases, and no demand for making it configurable atm
@@ -173,15 +160,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	k8sServerVersion, err := fetchK8sServerVersion(mgr.GetConfig())
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(rest.CopyConfig(mgr.GetConfig()))
 	if err != nil {
-		logger.Error("unable to discover kubernetes server version", "error", err)
+		logger.Error("unable to build discovery client", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("discovered kubernetes server version",
-		"gitVersion", k8sServerVersion.GitVersion,
-		"platform", k8sServerVersion.Platform,
-	)
 
 	r := chi.NewRouter()
 	// httplog.RequestLogger automatically includes chi's RequestID and Recoverer middleware
@@ -199,7 +182,7 @@ func main() {
 	api := humachi.New(r, humaConfig)
 
 	health.Register(api, health.New(logger, mgr.GetClient()))
-	version.Register(api, version.New(gatewayVersion, k8sServerVersion))
+	version.Register(api, version.New(logger, gatewayVersion, discoveryClient))
 
 	v1 := huma.NewGroup(api, "/v1")
 	sandbox.Register(v1, sandbox.New(logger, cfg.sandboxNamespace, mgr.GetClient()))

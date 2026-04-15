@@ -146,6 +146,32 @@ components:
       required:
         - status
       type: object
+    SidecarInfo:
+      additionalProperties: false
+      properties:
+        version:
+          description: Sandbox sidecar version
+          examples:
+            - 0.1.0
+          type: string
+      required:
+        - version
+      type: object
+    VersionResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/VersionResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        sidecar:
+          $ref: "#/components/schemas/SidecarInfo"
+      required:
+        - sidecar
+      type: object
 info:
   description: Internal API for sandbox filesystem operations
   title: Isola Sandbox Sidecar API
@@ -623,3 +649,23 @@ paths:
       summary: Write a file to the sandbox filesystem
       tags:
         - filesystem
+  /version:
+    get:
+      description: Returns the sandbox sidecar version.
+      operationId: getVersion
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Version info
+      tags:
+        - version

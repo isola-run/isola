@@ -1508,7 +1508,7 @@ paths:
         - filesystem
   /version:
     get:
-      description: Returns the API gateway version and the Kubernetes apiserver version observed when the gateway started.
+      description: Returns the API gateway version and the Kubernetes apiserver version (queried on each request).
       operationId: getVersion
       responses:
         "200":
@@ -1517,12 +1517,18 @@ paths:
               schema:
                 $ref: "#/components/schemas/VersionResponse"
           description: OK
-        default:
+        "500":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
-          description: Error
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Service Unavailable
       summary: Version info
       tags:
         - version

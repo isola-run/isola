@@ -16,6 +16,9 @@ package version_test
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -25,14 +28,35 @@ import (
 	"github.com/isola-run/isola/internal/api-gateway/version"
 )
 
-func TestGetVersion(t *testing.T) {
+type fakeDiscovery struct {
+	info *k8sversion.Info
+	err  error
+	// calls records how many times ServerVersion was invoked, so we can assert
+	// per-request semantics.
+	calls int
+}
+
+func (f *fakeDiscovery) ServerVersion() (*k8sversion.Info, error) {
+	f.calls++
+	return f.info, f.err
+}
+
+func newTestAPI(t *testing.T, d version.ServerVersionGetter) humatest.TestAPI {
+	t.Helper()
 	_, api := humatest.New(t, huma.DefaultConfig("Test API", "0.1.0"))
-	version.Register(api, version.New("1.2.3", &k8sversion.Info{
+	h := version.New(slog.New(slog.NewTextHandler(io.Discard, nil)), "1.2.3", d)
+	version.Register(api, h)
+	return api
+}
+
+func TestGetVersion_Success(t *testing.T) {
+	d := &fakeDiscovery{info: &k8sversion.Info{
 		GitVersion: "v1.34.0",
 		Major:      "1",
 		Minor:      "34",
 		Platform:   "linux/amd64",
-	}))
+	}}
+	api := newTestAPI(t, d)
 
 	resp := api.Get("/version")
 	if resp.Code != 200 {
@@ -55,5 +79,30 @@ func TestGetVersion(t *testing.T) {
 	}
 	if got.Kubernetes.Platform != "linux/amd64" {
 		t.Errorf("k8s platform: got %q, want %q", got.Kubernetes.Platform, "linux/amd64")
+	}
+}
+
+func TestGetVersion_PerRequest(t *testing.T) {
+	d := &fakeDiscovery{info: &k8sversion.Info{GitVersion: "v1.34.0"}}
+	api := newTestAPI(t, d)
+
+	for i := 0; i < 3; i++ {
+		resp := api.Get("/version")
+		if resp.Code != 200 {
+			t.Fatalf("call %d: expected status 200, got %d", i, resp.Code)
+		}
+	}
+	if d.calls != 3 {
+		t.Errorf("expected 3 discovery calls, got %d", d.calls)
+	}
+}
+
+func TestGetVersion_ApiserverUnavailable(t *testing.T) {
+	d := &fakeDiscovery{err: errors.New("connection refused")}
+	api := newTestAPI(t, d)
+
+	resp := api.Get("/version")
+	if resp.Code != 503 {
+		t.Fatalf("expected status 503, got %d", resp.Code)
 	}
 }

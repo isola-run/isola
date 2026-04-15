@@ -16,6 +16,7 @@ package version
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -42,39 +43,59 @@ type VersionOutput struct {
 	Body VersionResponse
 }
 
-// Handlers serves a snapshot of the gateway's own version and the Kubernetes
-// apiserver version observed at startup. The Kubernetes version is captured
-// once when the process starts; a control-plane upgrade is not reflected until
-// the gateway restarts.
-type Handlers struct {
-	response VersionResponse
+// ServerVersionGetter is the subset of k8s.io/client-go/discovery.DiscoveryInterface
+// that this handler needs. It is satisfied by *discovery.DiscoveryClient.
+type ServerVersionGetter interface {
+	ServerVersion() (*k8sversion.Info, error)
 }
 
-func New(gatewayVersion string, k8sVersion *k8sversion.Info) *Handlers {
+// Handlers serves the gateway's own version and the Kubernetes apiserver
+// version. The apiserver version is fetched from the discovery API on every
+// request, so a control-plane upgrade is reflected immediately; the trade-off
+// is that /version returns 503 if the apiserver is unreachable.
+type Handlers struct {
+	logger         *slog.Logger
+	gatewayVersion string
+	discovery      ServerVersionGetter
+}
+
+func New(logger *slog.Logger, gatewayVersion string, discovery ServerVersionGetter) *Handlers {
 	return &Handlers{
-		response: VersionResponse{
-			Gateway: GatewayInfo{Version: gatewayVersion},
-			Kubernetes: KubernetesInfo{
-				GitVersion: k8sVersion.GitVersion,
-				Major:      k8sVersion.Major,
-				Minor:      k8sVersion.Minor,
-				Platform:   k8sVersion.Platform,
-			},
-		},
+		logger:         logger,
+		gatewayVersion: gatewayVersion,
+		discovery:      discovery,
 	}
 }
 
 func (h *Handlers) GetVersion(ctx context.Context, input *struct{}) (*VersionOutput, error) {
-	return &VersionOutput{Body: h.response}, nil
+	info, err := h.discovery.ServerVersion()
+	if err != nil {
+		h.logger.Error("failed to discover kubernetes server version", "error", err)
+		return nil, huma.Error503ServiceUnavailable("kubernetes apiserver unavailable")
+	}
+
+	return &VersionOutput{
+		Body: VersionResponse{
+			Gateway: GatewayInfo{Version: h.gatewayVersion},
+			Kubernetes: KubernetesInfo{
+				GitVersion: info.GitVersion,
+				Major:      info.Major,
+				Minor:      info.Minor,
+				Platform:   info.Platform,
+			},
+		},
+	}, nil
 }
 
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
-		OperationID: "getVersion",
-		Method:      http.MethodGet,
-		Path:        "/version",
-		Summary:     "Version info",
-		Description: "Returns the API gateway version and the Kubernetes apiserver version observed when the gateway started.",
-		Tags:        []string{"version"},
+		OperationID:   "getVersion",
+		Method:        http.MethodGet,
+		Path:          "/version",
+		Summary:       "Version info",
+		Description:   "Returns the API gateway version and the Kubernetes apiserver version (queried on each request).",
+		Tags:          []string{"version"},
+		DefaultStatus: http.StatusOK,
+		Errors:        []int{http.StatusServiceUnavailable},
 	}, h.GetVersion)
 }
