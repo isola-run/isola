@@ -39,8 +39,6 @@ import (
 	"github.com/isola-run/isola/internal/sandbox-sidecar/version"
 )
 
-const sidecarVersion = "0.1.0"
-
 const (
 	serverReadHeaderTimeout = 10 * time.Second
 	serverReadTimeout       = 60 * time.Second
@@ -77,7 +75,11 @@ func main() {
 		},
 	}))
 
-	humaConfig := huma.DefaultConfig("Isola Sandbox Sidecar API", sidecarVersion)
+	// Injected by the operator from its own ISOLA_VERSION env, which the Helm
+	// chart sets to .Chart.AppVersion. "dev" when running outside the chart.
+	isolaVersion := env.GetOrDefault(constants.IsolaVersionEnv, "dev")
+
+	humaConfig := huma.DefaultConfig("Isola Sandbox Sidecar API", isolaVersion)
 	humaConfig.Info.Description = "Internal API for sandbox operations"
 	// the sandbox-sidecar is internal api, so we don't want to expose the docs
 	humaConfig.DocsPath = ""
@@ -89,7 +91,7 @@ func main() {
 	pidResolver := sandboxsidecar.NewPIDResolver(procFS)
 
 	health.Register(api, health.New())
-	version.Register(api, version.New(sidecarVersion))
+	version.Register(api, version.New(isolaVersion))
 
 	v1 := huma.NewGroup(api, "/v1")
 	filesystem.Register(v1, filesystem.New(logger, procFS, pidResolver))

@@ -49,11 +49,10 @@ import (
 	"github.com/isola-run/isola/internal/api-gateway/rootfssnapshot"
 	"github.com/isola-run/isola/internal/api-gateway/sandbox"
 	"github.com/isola-run/isola/internal/api-gateway/version"
+	"github.com/isola-run/isola/internal/constants"
 	"github.com/isola-run/isola/internal/env"
 	"github.com/isola-run/isola/internal/logging"
 )
-
-const gatewayVersion = "0.1.0"
 
 const (
 	shutdownGracePeriod        = 25 * time.Second // < default k8s terminationGracePeriodSeconds (30 seconds)
@@ -177,12 +176,16 @@ func main() {
 		},
 	}))
 
-	humaConfig := huma.DefaultConfig("Isola Sandbox API", gatewayVersion)
+	// Injected by the Helm chart from .Chart.AppVersion; "dev" when running
+	// outside the chart (e.g. `go run` locally).
+	isolaVersion := env.GetOrDefault(constants.IsolaVersionEnv, "dev")
+
+	humaConfig := huma.DefaultConfig("Isola Sandbox API", isolaVersion)
 	humaConfig.Info.Description = "API for managing sandboxes"
 	api := humachi.New(r, humaConfig)
 
 	health.Register(api, health.New(logger, mgr.GetClient()))
-	version.Register(api, version.New(logger, gatewayVersion, discoveryClient))
+	version.Register(api, version.New(logger, isolaVersion, discoveryClient))
 
 	v1 := huma.NewGroup(api, "/v1")
 	sandbox.Register(v1, sandbox.New(logger, cfg.sandboxNamespace, mgr.GetClient()))

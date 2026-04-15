@@ -94,6 +94,7 @@ type SandboxReconciler struct {
 	ImagePullSecrets              []corev1.LocalObjectReference // ImagePullSecrets for pulling sandbox-sidecar images from private registries.
 	Clock                         Clock                         // Clock interface for time operations, allows mocking in tests
 	RootfsSnapshotHostMountPath   string                        // Host path where rootfs snapshot tars are NFS-mounted (e.g., /mnt/isola-snapshots)
+	IsolaVersion                  string                        // Isola release version (Chart.AppVersion), propagated to the sidecar for its /version endpoint.
 }
 
 const (
@@ -139,6 +140,9 @@ func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 		Image:           r.SandboxSidecarImage,
 		ImagePullPolicy: r.SandboxSidecarImagePullPolicy,
 		RestartPolicy:   &rp,
+		Env: []corev1.EnvVar{
+			{Name: constants.IsolaVersionEnv, Value: r.IsolaVersion},
+		},
 		// CPU & memory: gVisor runs one sentry process in the pod cgroup.
 		// The pod cgroup's CPU/memory limits are the sum of all container limits in the spec,
 		// but only if ALL containers declare limits (kubelet cpuLimitsDeclared/memoryLimitsDeclared).
