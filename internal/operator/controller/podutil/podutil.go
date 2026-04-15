@@ -57,19 +57,19 @@ func IsPodTerminated(pod *corev1.Pod) bool {
 }
 
 func GetSandboxPodName(sandboxName string) string {
-	return sandboxName + "-pod"
+	return ChildName(sandboxName, "-pod")
 }
 
 func GetCustomNetworkPolicyName(sandboxName string) string {
-	return sandboxName + "-custom-netpol"
+	return ChildName(sandboxName, "-custom-netpol")
 }
 
 func GetTerminationSnapshotName(sandboxName string) string {
-	return sandboxName + "-termination"
+	return ChildName(sandboxName, "-termination")
 }
 
 func GetSnapshotJobName(snapshotName string) string {
-	return snapshotName + "-job"
+	return ChildName(snapshotName, "-job")
 }
 
 // ExtractContainerID gets the container ID for a named container.
