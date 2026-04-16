@@ -21,13 +21,19 @@ help: ## Display this help
 generate: ## Generate CRD DeepCopy methods
 	controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 
+# Raw CRDs are generated to config/crd/bases/ (kubebuilder convention). They're
+# the source envtest points at for controller/gateway tests. hack/generate-crd-templates.sh
+# then wraps them with Helm conditionals (.Values.crds.enabled / .Values.crds.keep)
+# into charts/isola/templates/crd/ so `helm upgrade` keeps CRDs in sync (unlike
+# Helm's special crds/ directory, which is install-only).
 .PHONY: manifests
-manifests: ## Generate CRD and RBAC manifests directly to Helm chart
-	@mkdir -p charts/isola/generated
+manifests: ## Generate CRD and RBAC manifests
+	@mkdir -p config/crd/bases charts/isola/generated
 	controller-gen rbac:roleName=isola-operator crd webhook \
 		paths="./api/..." paths="./internal/operator/controller/..." \
-		output:crd:artifacts:config=charts/isola/crds \
+		output:crd:artifacts:config=config/crd/bases \
 		output:rbac:artifacts:config=charts/isola/generated
+	./hack/generate-crd-templates.sh config/crd/bases charts/isola/templates/crd
 
 .PHONY: openapi
 openapi: ## Generate OpenAPI specs for HTTP services
@@ -70,10 +76,10 @@ tidy: ## Run go mod tidy
 
 .PHONY: check-manifests
 check-manifests: manifests ## Verify generated manifests are up-to-date
-	@if ! git diff --quiet -- charts/isola/crds/ charts/isola/generated/; then \
+	@if ! git diff --quiet -- config/crd/bases/ charts/isola/templates/crd/ charts/isola/generated/; then \
 		echo "ERROR: Generated manifests are out of sync"; \
 		echo "Run 'make manifests' and commit the changes"; \
-		git diff --stat -- charts/isola/crds/ charts/isola/generated/; \
+		git diff --stat -- config/crd/bases/ charts/isola/templates/crd/ charts/isola/generated/; \
 		exit 1; \
 	fi
 
