@@ -32,7 +32,18 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Sandbox is the Schema for the sandboxes API
+        description: |-
+          We cap metadata.name at 63 characters because the operator writes
+          sandbox.Name verbatim into label values like app.kubernetes.io/instance,
+          and Kubernetes caps label values at 63. We do not need our own charset
+          rule. Kubernetes already validates CR names as DNS-1123 subdomain by
+          default, which permits lowercase alphanumerics, hyphens, and dots.
+
+          If we want to remove the 63-character cap in the future, the operator
+          would have to fold long names into a 63-char hash before writing them
+          as label values. knative.dev/pkg/kmeta.ChildName is the standard pattern
+          for this kind of deterministic shortening.
+          Sandbox is the Schema for the sandboxes API
         properties:
           apiVersion:
             description: |-
@@ -150,10 +161,10 @@ spec:
                       description: |-
                         SnapshotName is the name of the rootfs snapshot to restore from.
                         This matches the snapshotName field from the RootfsSnapshot CR that created it.
-                        Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
+                        Must be a valid RFC 1123 DNS subdomain (lowercase alphanumeric, hyphens, dots), max 63 chars.
                       maxLength: 63
                       minLength: 1
-                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                       type: string
                   required:
                   - snapshotName
@@ -190,8 +201,9 @@ spec:
                           This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
                           Same semantic as RootfsSnapshotSpec.SnapshotName.
                           If omitted, the operator defaults it to the sandbox name.
+                          Pattern matches DNS-1123 subdomain so dotted sandbox names (also subdomain-shaped) can default cleanly.
                         maxLength: 63
-                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                         type: string
                       timeoutSeconds:
                         description: |-
@@ -331,6 +343,10 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: metadata.name must be at most 63 characters because the operator
+            writes it as a Kubernetes label value
+          rule: size(self.metadata.name) <= 63
     served: true
     storage: true
     subresources:

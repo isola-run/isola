@@ -42,9 +42,10 @@ type SnapshotRootfsTermination struct {
 	// This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
 	// Same semantic as RootfsSnapshotSpec.SnapshotName.
 	// If omitted, the operator defaults it to the sandbox name.
+	// Pattern matches DNS-1123 subdomain so dotted sandbox names (also subdomain-shaped) can default cleanly.
 	// +optional
 	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	SnapshotName string `json:"snapshotName,omitempty"`
 
 	// TimeoutSeconds specifies the duration in seconds for the snapshot job.
@@ -122,11 +123,11 @@ type Network struct {
 type RootfsSnapshotSource struct {
 	// SnapshotName is the name of the rootfs snapshot to restore from.
 	// This matches the snapshotName field from the RootfsSnapshot CR that created it.
-	// Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
+	// Must be a valid RFC 1123 DNS subdomain (lowercase alphanumeric, hyphens, dots), max 63 chars.
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	SnapshotName string `json:"snapshotName"`
 
 	// ContainerName is the name of the container to apply the rootfs restore to.
@@ -224,6 +225,17 @@ type SandboxStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status",description="Aggregate readiness"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason",priority=1,description="Reason for Ready condition"
+// We cap metadata.name at 63 characters because the operator writes
+// sandbox.Name verbatim into label values like app.kubernetes.io/instance,
+// and Kubernetes caps label values at 63. We do not need our own charset
+// rule. Kubernetes already validates CR names as DNS-1123 subdomain by
+// default, which permits lowercase alphanumerics, hyphens, and dots.
+//
+// If we want to remove the 63-character cap in the future, the operator
+// would have to fold long names into a 63-char hash before writing them
+// as label values. knative.dev/pkg/kmeta.ChildName is the standard pattern
+// for this kind of deterministic shortening.
+// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 63",message="metadata.name must be at most 63 characters because the operator writes it as a Kubernetes label value"
 // Sandbox is the Schema for the sandboxes API
 type Sandbox struct {
 	metav1.TypeMeta `json:",inline"`
