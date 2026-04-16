@@ -869,6 +869,9 @@ paths:
           name: container
           schema:
             description: Container name. Defaults to the only container if there is one, otherwise it's required.
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
       requestBody:
         content:
@@ -1355,6 +1358,9 @@ paths:
           name: container
           schema:
             description: Container name. Defaults to the only container if there is one, otherwise it's required.
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
       responses:
         "200":
@@ -1434,6 +1440,9 @@ paths:
           name: container
           schema:
             description: Container name. Defaults to the only container if there is one, otherwise it's required.
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
       requestBody:
         content:

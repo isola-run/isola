@@ -127,12 +127,17 @@ type RootfsSnapshotStatus struct {
 // metadata.name is capped at 59 characters. The reason is one level deeper
 // than the label-value cap that constrains Sandbox. The operator creates a
 // snapshot Job named "<rootfsSnapshot.Name>-job", and Kubernetes auto-injects
-// labels like batch.kubernetes.io/job-name on the Job's pod template whose
+// the batch.kubernetes.io/job-name label on the Job's pod template whose
 // value is the Job name. Label values are capped at 63 characters, so the
 // Job name must be at most 63, which means rootfsSnapshot.Name must be at
 // most 63 - 4 = 59. Charset is already enforced by Kubernetes' default
 // DNS-1123 subdomain validation. See the equivalent comment on Sandbox for
 // the kmeta-based path that would let us lift this cap.
+//
+// This 59-char cap also indirectly constrains Sandbox.metadata.name to 47,
+// because the operator derives a "<sandbox.Name>-termination" RootfsSnapshot
+// when terminationPolicy.type is SnapshotRootfs. If you raise this cap,
+// re-derive the Sandbox cap as well.
 // +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 59",message="metadata.name must be at most 59 characters because the operator creates a Job named <name>-job whose name is auto-injected as a Kubernetes label value"
 type RootfsSnapshot struct {
 	metav1.TypeMeta `json:",inline"`
