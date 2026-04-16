@@ -38,6 +38,7 @@ func newTestReconcilerWithRestore(clock Clock, runtimeClassName, hostMountPath s
 		Clock:                       clock,
 		RuntimeClassName:            runtimeClassName,
 		RootfsSnapshotHostMountPath: hostMountPath,
+		IsolaVersion:                "test-version",
 	}
 }
 

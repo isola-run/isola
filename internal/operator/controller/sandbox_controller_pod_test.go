@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	"github.com/isola-run/isola/internal/constants"
 )
 
 var _ = Describe("Sandbox Controller", func() {
@@ -94,6 +95,14 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(sidecarResources.Requests.Memory().String()).To(Equal("1Mi"))
 			Expect(sidecarResources.Limits.Cpu().String()).To(Equal("1m"))
 			Expect(sidecarResources.Limits.Memory().String()).To(Equal("1Mi"))
+
+			// The operator propagates its own Chart.AppVersion-derived env into
+			// the sidecar container so the sidecar's /version endpoint reports
+			// the Isola release it was installed with.
+			Expect(pod.Spec.InitContainers[0].Env).To(ContainElement(corev1.EnvVar{
+				Name:  constants.IsolaVersionEnv,
+				Value: "test-version",
+			}))
 		})
 
 		It("should set sidecar ImagePullPolicy from reconciler config", func() {

@@ -178,6 +178,7 @@ func newTestReconciler(clock Clock) *SandboxReconciler {
 		SandboxSidecarImage: "sandbox-sidecar:test",
 		Clock:               clock,
 		RuntimeClassName:    "gvisor",
+		IsolaVersion:        "test-version",
 		// ControllerNamespace not set - defaults to sandbox namespace
 		// ControllerLabels not set - defaults to {"app.kubernetes.io/name": "isola-controller"}
 	}
@@ -193,5 +194,6 @@ func newTestReconcilerWithRecorder(clock Clock, recorder events.EventRecorder) *
 		SandboxSidecarImage: "sandbox-sidecar:test",
 		Clock:               clock,
 		RuntimeClassName:    "gvisor",
+		IsolaVersion:        "test-version",
 	}
 }

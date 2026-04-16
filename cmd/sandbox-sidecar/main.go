@@ -36,6 +36,7 @@ import (
 	"github.com/isola-run/isola/internal/sandbox-sidecar/filesystem"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/health"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/proc"
+	"github.com/isola-run/isola/internal/sandbox-sidecar/version"
 )
 
 const (
@@ -74,7 +75,14 @@ func main() {
 		},
 	}))
 
-	humaConfig := huma.DefaultConfig("Isola Sandbox Sidecar API", "0.1.0")
+	// Injected by the operator from its own ISOLA_VERSION env, which the Helm
+	// chart sets to .Chart.AppVersion. "dev" when running outside the chart.
+	isolaVersion := env.GetOrDefault(constants.IsolaVersionEnv, "dev")
+	if isolaVersion == "dev" {
+		logger.Warn("ISOLA_VERSION is not set; /version will report \"dev\". This is expected for local dev runs and unexpected when the sidecar is injected by the operator.")
+	}
+
+	humaConfig := huma.DefaultConfig("Isola Sandbox Sidecar API", isolaVersion)
 	humaConfig.Info.Description = "Internal API for sandbox operations"
 	// the sandbox-sidecar is internal api, so we don't want to expose the docs
 	humaConfig.DocsPath = ""
@@ -86,6 +94,7 @@ func main() {
 	pidResolver := sandboxsidecar.NewPIDResolver(procFS)
 
 	health.Register(api, health.New())
+	version.Register(api, version.New(isolaVersion))
 
 	v1 := huma.NewGroup(api, "/v1")
 	filesystem.Register(v1, filesystem.New(logger, procFS, pidResolver))

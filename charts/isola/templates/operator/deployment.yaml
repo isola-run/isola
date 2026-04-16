@@ -74,6 +74,8 @@ spec:
               value: "{{ include "isola.operator.sandboxSidecarImage" . }}"
             - name: ISOLA_SNAPSHOT_UPLOADER_IMAGE
               value: "{{ include "isola.operator.uploaderImage" . }}"
+            - name: ISOLA_VERSION
+              value: {{ .Chart.AppVersion | quote }}
           ports:
             - name: health
               containerPort: 8081
