@@ -36,7 +36,33 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Sandbox is the Schema for the sandboxes API
+        description: |-
+          Sandbox is the Schema for the sandboxes API.
+
+          metadata.name is capped at 47 characters. The cap comes from a chain of
+          downstream constraints, each of which limits some derived name or label
+          value to 63 characters (the Kubernetes label-value cap):
+
+           1. The operator writes sandbox.Name verbatim into label values like
+              app.kubernetes.io/instance, which already requires sandbox.Name to
+              be at most 63 characters.
+           2. When terminationPolicy.type is SnapshotRootfs the operator derives
+              a RootfsSnapshot named "<sandbox.Name>-termination" (see
+              podutil.GetTerminationSnapshotName). That derived RootfsSnapshot
+              is itself constrained to 59 characters (see RootfsSnapshot's own
+              cap), and the suffix is 12 characters, so sandbox.Name must fit
+              within 59 - 12 = 47 characters.
+
+          The tighter of the two limits wins, so the cap is 47.
+
+          We do not need our own charset rule. Kubernetes already validates CR
+          names as DNS-1123 subdomain by default, which permits lowercase
+          alphanumerics, hyphens, and dots.
+
+          To lift this cap in the future, the operator would need to fold long
+          names into a bounded hash for label-value writes and for every derived
+          child resource name. knative.dev/pkg/kmeta.ChildName is the standard
+          pattern for that kind of deterministic shortening.
         properties:
           apiVersion:
             description: |-
@@ -154,10 +180,10 @@ spec:
                       description: |-
                         SnapshotName is the name of the rootfs snapshot to restore from.
                         This matches the snapshotName field from the RootfsSnapshot CR that created it.
-                        Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
-                      maxLength: 63
+                        Must be a valid RFC 1123 DNS subdomain (lowercase alphanumeric, hyphens, dots), max 59 chars.
+                      maxLength: 59
                       minLength: 1
-                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                       type: string
                   required:
                   - snapshotName
@@ -194,8 +220,9 @@ spec:
                           This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
                           Same semantic as RootfsSnapshotSpec.SnapshotName.
                           If omitted, the operator defaults it to the sandbox name.
-                        maxLength: 63
-                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          Length and pattern are aligned with RootfsSnapshot.metadata.name (DNS-1123 subdomain, max 59).
+                        maxLength: 59
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                         type: string
                       timeoutSeconds:
                         description: |-
@@ -249,6 +276,11 @@ spec:
             - message: terminationPolicy is immutable once set
               rule: '!has(self.terminationPolicy) || !has(oldSelf.terminationPolicy)
                 || self.terminationPolicy == oldSelf.terminationPolicy'
+            - message: timeoutSeconds cannot be removed once set
+              rule: '!has(oldSelf.timeoutSeconds) || has(self.timeoutSeconds)'
+            - message: timeoutSeconds is immutable once set
+              rule: '!has(self.timeoutSeconds) || !has(oldSelf.timeoutSeconds) ||
+                self.timeoutSeconds == oldSelf.timeoutSeconds'
           status:
             description: status defines the observed state of Sandbox
             properties:
@@ -330,6 +362,10 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: metadata.name must be at most 47 characters because the operator
+            writes it into label values and derives child resource names from it
+          rule: size(self.metadata.name) <= 47
     served: true
     storage: true
     subresources:
