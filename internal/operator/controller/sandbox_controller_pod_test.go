@@ -96,9 +96,6 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(sidecarResources.Limits.Cpu().String()).To(Equal("1m"))
 			Expect(sidecarResources.Limits.Memory().String()).To(Equal("1Mi"))
 
-			// The operator propagates its own Chart.AppVersion-derived env into
-			// the sidecar container so the sidecar's /version endpoint reports
-			// the Isola release it was installed with.
 			Expect(pod.Spec.InitContainers[0].Env).To(ContainElement(corev1.EnvVar{
 				Name:  constants.IsolaVersionEnv,
 				Value: "test-version",

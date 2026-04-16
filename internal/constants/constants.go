@@ -18,11 +18,9 @@ package constants
 // with their name for discovery by the sidecar via /proc/<pid>/environ.
 const IsolaContainerNameEnv = "ISOLA_CONTAINER_NAME"
 
-// IsolaVersionEnv is the environment variable set by the Helm chart (to
-// .Chart.AppVersion) on the api-gateway and operator deployments, and
-// propagated by the operator onto the sandbox-sidecar container. It is
-// reported by the /version endpoint on both the api-gateway and the
-// sandbox-sidecar.
+// IsolaVersionEnv carries .Chart.AppVersion into the gateway and operator
+// pods, and is propagated by the operator onto sandbox-sidecar containers.
+// Reported by /version on both the gateway and the sidecar.
 const IsolaVersionEnv = "ISOLA_VERSION"
 
 // SidecarPort is the HTTP port the sandbox-sidecar listens on.

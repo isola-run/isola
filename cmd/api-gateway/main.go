@@ -159,9 +159,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Log the cluster's Kubernetes version for debuggability/support. Non-fatal
-	// if discovery fails: cache sync already proved the apiserver is reachable,
-	// so failure here is rare and not worth blocking startup for a log line.
+	// Non-fatal: cache sync already proved the apiserver is reachable.
 	if dc, err := discovery.NewDiscoveryClientForConfig(rest.CopyConfig(mgr.GetConfig())); err != nil {
 		logger.Warn("unable to build discovery client for kubernetes version log", "error", err)
 	} else if info, err := dc.ServerVersion(); err != nil {
@@ -181,11 +179,9 @@ func main() {
 		},
 	}))
 
-	// Injected by the Helm chart from .Chart.AppVersion; "dev" when running
-	// outside the chart (e.g. `go run` locally).
 	isolaVersion := env.GetOrDefault(constants.IsolaVersionEnv, "dev")
 	if isolaVersion == "dev" {
-		logger.Warn("ISOLA_VERSION is not set; /version will report \"dev\". This is expected for local dev runs and unexpected in chart-installed deployments.")
+		logger.Warn("ISOLA_VERSION unset; /version will report \"dev\"")
 	}
 
 	humaConfig := huma.DefaultConfig("Isola Sandbox API", isolaVersion)
