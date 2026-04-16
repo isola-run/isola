@@ -1336,7 +1336,7 @@ func (r *SandboxReconciler) injectRootfsRestore(sources []sandboxv1alpha1.Rootfs
 				"container %q not found in sandbox pod", name))
 		}
 
-		// Defense in depth: CRD validation enforces the DNS label pattern, but verify here
+		// Defense in depth: CRD validation enforces the DNS-1123 subdomain pattern, but verify here
 		// as well since SnapshotName is used to construct a host file path.
 		if !filepath.IsLocal(src.SnapshotName) {
 			return reconcile.TerminalError(fmt.Errorf(

@@ -48,7 +48,7 @@ components:
           description: Resource requests and limits
         rootfsSnapshotName:
           description: Rootfs snapshot to restore into this container. Files on separately-mounted filesystems (e.g. /tmp) are excluded.
-          maxLength: 63
+          maxLength: 59
           minLength: 1
           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
           type: string
@@ -149,13 +149,13 @@ components:
           type: string
         sandboxId:
           description: ID of the sandbox to snapshot (as returned by POST /v1/sandboxes)
-          maxLength: 63
+          maxLength: 47
           minLength: 1
           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
           type: string
         snapshotName:
           description: Snapshot storage key and restore reference. Defaults to the sandbox ID if omitted. To restore, pass this value as rootfsSnapshotName on a container when creating a sandbox.
-          maxLength: 63
+          maxLength: 59
           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
           type: string
         timeoutSeconds:
@@ -510,7 +510,7 @@ components:
       properties:
         snapshotName:
           description: Snapshot storage key. Defaults to sandbox ID if omitted.
-          maxLength: 63
+          maxLength: 59
           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
           type: string
         timeoutSeconds:
@@ -686,7 +686,7 @@ paths:
           required: true
           schema:
             description: RootfsSnapshot identifier
-            maxLength: 63
+            maxLength: 59
             minLength: 1
             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
@@ -790,7 +790,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
-            maxLength: 63
+            maxLength: 47
             minLength: 1
             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
@@ -816,7 +816,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
-            maxLength: 63
+            maxLength: 47
             minLength: 1
             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
@@ -859,7 +859,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
-            maxLength: 63
+            maxLength: 47
             minLength: 1
             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
@@ -934,7 +934,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
-            maxLength: 63
+            maxLength: 47
             minLength: 1
             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
@@ -994,7 +994,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
-            maxLength: 63
+            maxLength: 47
             minLength: 1
             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
@@ -1068,7 +1068,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
-            maxLength: 63
+            maxLength: 47
             minLength: 1
             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
@@ -1138,7 +1138,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
-            maxLength: 63
+            maxLength: 47
             minLength: 1
             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
@@ -1206,7 +1206,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
-            maxLength: 63
+            maxLength: 47
             minLength: 1
             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
@@ -1266,7 +1266,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
-            maxLength: 63
+            maxLength: 47
             minLength: 1
             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
@@ -1336,7 +1336,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
-            maxLength: 63
+            maxLength: 47
             minLength: 1
             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
@@ -1415,7 +1415,7 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
-            maxLength: 63
+            maxLength: 47
             minLength: 1
             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string

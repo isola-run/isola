@@ -39,7 +39,7 @@ type Container struct {
 	Image              string            `json:"image" required:"true" minLength:"1" doc:"Container image"`
 	Command            []string          `json:"command,omitempty" doc:"Override the container entrypoint. Defaults to sleep infinity if omitted."`
 	Env                map[string]string `json:"env,omitempty" doc:"Environment variables"`
-	RootfsSnapshotName string            `json:"rootfsSnapshotName,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Rootfs snapshot to restore into this container. Files on separately-mounted filesystems (e.g. /tmp) are excluded."`
+	RootfsSnapshotName string            `json:"rootfsSnapshotName,omitempty" minLength:"1" maxLength:"59" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Rootfs snapshot to restore into this container. Files on separately-mounted filesystems (e.g. /tmp) are excluded."`
 	// todo benl: those are enforced in gvisor only on the sandbox container, consider moving this to podtemplate and setting pod limits (though they don't support ephemeral storage limits)
 	Resources *ResourceRequirements `json:"resources,omitempty" doc:"Resource requests and limits"`
 }
@@ -49,7 +49,7 @@ type PodTemplate struct {
 }
 
 type SnapshotRootfsTermination struct {
-	SnapshotName   string `json:"snapshotName,omitempty" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Snapshot storage key. Defaults to sandbox ID if omitted."`
+	SnapshotName   string `json:"snapshotName,omitempty" maxLength:"59" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Snapshot storage key. Defaults to sandbox ID if omitted."`
 	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty" minimum:"1" doc:"Snapshot operation deadline in seconds. Defaults to 300."`
 }
 
@@ -86,11 +86,11 @@ type Network struct {
 }
 
 type GetSandboxInput struct {
-	ID string `path:"id" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
+	ID string `path:"id" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
 }
 
 type DeleteSandboxInput struct {
-	ID string `path:"id" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
+	ID string `path:"id" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
 }
 
 // Response types omit env vars (write-only) to avoid leaking secrets.
