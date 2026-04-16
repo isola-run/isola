@@ -236,6 +236,14 @@ export ISOLA_URL=http://localhost:8080
 
 For local development with Kind, `hack/setup.sh` automates the full cluster setup.
 
+### Upgrading
+
+```bash
+helm upgrade isola isola/isola --namespace isola-system
+```
+
+CRDs are upgraded automatically as part of the Helm chart. To manage CRDs externally, install with `--set crds.enabled=false`.
+
 ### gVisor setup
 
 Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) named `gvisor` in your cluster. If your cluster does not already have gVisor installed:
