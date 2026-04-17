@@ -103,6 +103,7 @@ type Network struct {
 	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:validation:items:MaxLength=43
 	// +kubebuilder:validation:XValidation:rule="self.all(s, isCIDR(s))",message="must be valid CIDR notation (e.g. 10.0.0.0/8 or 2001:db8::/32)"
+	// +listType=atomic
 	// +optional
 	AllowedEgressCIDRs []string `json:"allowedEgressCIDRs,omitempty"`
 
@@ -115,6 +116,7 @@ type Network struct {
 	// MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
 	// +kubebuilder:validation:MaxItems=3
 	// +kubebuilder:validation:XValidation:rule="self.all(s, isIP(s))",message="must be valid IP addresses"
+	// +listType=atomic
 	// +optional
 	Nameservers []string `json:"nameservers,omitempty"`
 }
@@ -247,7 +249,7 @@ type SandboxStatus struct {
 // names into a bounded hash for label-value writes and for every derived
 // child resource name. knative.dev/pkg/kmeta.ChildName is the standard
 // pattern for that kind of deterministic shortening.
-// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 47",message="metadata.name must be at most 47 characters: the operator writes it into label values (capped at 63) and derives <name>-termination RootfsSnapshot from it (itself capped at 59)",reason="FieldValueInvalid",fieldPath=".metadata.name"
+// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 47",message="metadata.name must be at most 47 characters: the operator writes it into label values (capped at 63) and derives <name>-termination RootfsSnapshot from it (itself capped at 59)",reason="FieldValueInvalid"
 type Sandbox struct {
 	metav1.TypeMeta `json:",inline"`
 

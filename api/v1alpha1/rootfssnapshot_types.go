@@ -135,7 +135,7 @@ type RootfsSnapshotStatus struct {
 // because the operator derives a "<sandbox.Name>-termination" RootfsSnapshot
 // when terminationPolicy.type is SnapshotRootfs. If you raise this cap,
 // re-derive the Sandbox cap as well.
-// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 59",message="metadata.name must be at most 59 characters: the operator creates a Job named <name>-job whose name is auto-injected into the batch.kubernetes.io/job-name label (capped at 63)",reason="FieldValueInvalid",fieldPath=".metadata.name"
+// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 59",message="metadata.name must be at most 59 characters: the operator creates a Job named <name>-job whose name is auto-injected into the batch.kubernetes.io/job-name label (capped at 63)",reason="FieldValueInvalid"
 type RootfsSnapshot struct {
 	metav1.TypeMeta `json:",inline"`
 

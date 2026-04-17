@@ -234,8 +234,7 @@ spec:
         - spec
         type: object
         x-kubernetes-validations:
-        - fieldPath: .metadata.name
-          message: 'metadata.name must be at most 59 characters: the operator creates
+        - message: 'metadata.name must be at most 59 characters: the operator creates
             a Job named <name>-job whose name is auto-injected into the batch.kubernetes.io/job-name
             label (capped at 63)'
           reason: FieldValueInvalid

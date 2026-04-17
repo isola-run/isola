@@ -121,6 +121,7 @@ spec:
                       type: string
                     maxItems: 16
                     type: array
+                    x-kubernetes-list-type: atomic
                     x-kubernetes-validations:
                     - message: must be valid CIDR notation (e.g. 10.0.0.0/8 or 2001:db8::/32)
                       rule: self.all(s, isCIDR(s))
@@ -137,6 +138,7 @@ spec:
                       type: string
                     maxItems: 3
                     type: array
+                    x-kubernetes-list-type: atomic
                     x-kubernetes-validations:
                     - message: must be valid IP addresses
                       rule: self.all(s, isIP(s))
@@ -369,8 +371,7 @@ spec:
         - spec
         type: object
         x-kubernetes-validations:
-        - fieldPath: .metadata.name
-          message: 'metadata.name must be at most 47 characters: the operator writes
+        - message: 'metadata.name must be at most 47 characters: the operator writes
             it into label values (capped at 63) and derives <name>-termination RootfsSnapshot
             from it (itself capped at 59)'
           reason: FieldValueInvalid
