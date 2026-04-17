@@ -1,0 +1,52 @@
+// Copyright The Isola Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package version
+
+import (
+	"fmt"
+	"runtime"
+	"testing"
+)
+
+func TestInfoString(t *testing.T) {
+	tests := []struct {
+		name string
+		info Info
+		want string
+	}{
+		{"clean", Info{GitVersion: "0.1.0", GitTreeState: "clean"}, "0.1.0"},
+		{"dirty", Info{GitVersion: "0.1.0", GitTreeState: "dirty"}, "0.1.0-dirty"},
+		{"unknown", Info{GitVersion: "0.1.0", GitTreeState: "unknown"}, "0.1.0"},
+		{"empty state", Info{GitVersion: "0.1.0"}, "0.1.0"},
+		{"dev dirty", Info{GitVersion: "dev", GitTreeState: "dirty"}, "dev-dirty"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.info.String(); got != tc.want {
+				t.Errorf("String() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGetRuntimeFields(t *testing.T) {
+	info := Get()
+	if got, want := info.GoVersion, runtime.Version(); got != want {
+		t.Errorf("GoVersion = %q, want %q", got, want)
+	}
+	if got, want := info.Platform, fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH); got != want {
+		t.Errorf("Platform = %q, want %q", got, want)
+	}
+}

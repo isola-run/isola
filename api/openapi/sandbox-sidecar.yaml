@@ -146,23 +146,44 @@ components:
       required:
         - status
       type: object
-    VersionResponse:
+    Info:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/schemas/VersionResponse.json
+            - https://example.com/schemas/Info.json
           format: uri
           readOnly: true
           type: string
-        version:
-          description: Isola release version
+        buildDate:
+          examples:
+            - "2026-04-17T12:00:00Z"
+          type: string
+        gitCommit:
+          examples:
+            - abc1234
+          type: string
+        gitTreeState:
+          examples:
+            - clean
+          type: string
+        gitVersion:
           examples:
             - 0.1.0
           type: string
+        goVersion:
+          examples:
+            - go1.26.2
+          type: string
+        platform:
+          examples:
+            - linux/amd64
+          type: string
       required:
-        - version
+        - gitVersion
+        - goVersion
+        - platform
       type: object
 info:
   description: Internal API for sandbox filesystem operations
@@ -643,14 +664,14 @@ paths:
         - filesystem
   /version:
     get:
-      description: Returns the Isola release version.
+      description: Returns build-time version and VCS metadata.
       operationId: getVersion
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/VersionResponse"
+                $ref: "#/components/schemas/Info"
           description: OK
         default:
           content:

@@ -49,9 +49,9 @@ import (
 	"github.com/isola-run/isola/internal/api-gateway/rootfssnapshot"
 	"github.com/isola-run/isola/internal/api-gateway/sandbox"
 	"github.com/isola-run/isola/internal/api-gateway/version"
-	"github.com/isola-run/isola/internal/constants"
 	"github.com/isola-run/isola/internal/env"
 	"github.com/isola-run/isola/internal/logging"
+	internalversion "github.com/isola-run/isola/internal/version"
 )
 
 const (
@@ -179,17 +179,14 @@ func main() {
 		},
 	}))
 
-	isolaVersion := env.GetOrDefault(constants.IsolaVersionEnv, "dev")
-	if isolaVersion == "dev" {
-		logger.Warn("ISOLA_VERSION unset; /version will report \"dev\"")
-	}
+	logger.Info("starting api-gateway", "version", internalversion.Get())
 
-	humaConfig := huma.DefaultConfig("Isola Sandbox API", isolaVersion)
+	humaConfig := huma.DefaultConfig("Isola Sandbox API", internalversion.Get().GitVersion)
 	humaConfig.Info.Description = "API for managing sandboxes"
 	api := humachi.New(r, humaConfig)
 
 	health.Register(api, health.New(logger, mgr.GetClient()))
-	version.Register(api, version.New(isolaVersion))
+	version.Register(api, version.New())
 
 	v1 := huma.NewGroup(api, "/v1")
 	sandbox.Register(v1, sandbox.New(logger, cfg.sandboxNamespace, mgr.GetClient()))

@@ -34,10 +34,9 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
-	"github.com/isola-run/isola/internal/constants"
-	"github.com/isola-run/isola/internal/env"
 	"github.com/isola-run/isola/internal/logging"
 	"github.com/isola-run/isola/internal/operator/controller"
+	"github.com/isola-run/isola/internal/version"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -103,6 +102,8 @@ func main() {
 	logrLogger := logr.FromSlogHandler(logger.Handler())
 	ctrl.SetLogger(logrLogger)
 	klog.SetLogger(logrLogger)
+
+	setupLog.Info("starting operator", "version", version.Get())
 
 	// Fall back to env vars for image refs so Tilt's match_in_env_vars can rewrite them.
 	if sandboxSidecarImage == "" {
@@ -178,7 +179,6 @@ func main() {
 		ImagePullSecrets:              imagePullSecrets,
 		Clock:                         controller.RealClock{},
 		RootfsSnapshotHostMountPath:   rootfssnapshotHostMountPath,
-		IsolaVersion:                  env.GetOrDefault(constants.IsolaVersionEnv, "dev"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Sandbox")
 		os.Exit(1)

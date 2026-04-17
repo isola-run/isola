@@ -38,6 +38,7 @@ import (
 	sidecarFs "github.com/isola-run/isola/internal/sandbox-sidecar/filesystem"
 	sidecarHealth "github.com/isola-run/isola/internal/sandbox-sidecar/health"
 	sidecarVersion "github.com/isola-run/isola/internal/sandbox-sidecar/version"
+	internalversion "github.com/isola-run/isola/internal/version"
 )
 
 func main() {
@@ -80,13 +81,13 @@ func main() {
 
 func setupAPIGateway() huma.API {
 	r := chi.NewRouter()
-	config := huma.DefaultConfig("Isola Sandbox API", "0.1.0")
+	config := huma.DefaultConfig("Isola Sandbox API", internalversion.Get().GitVersion)
 	config.Info.Description = "API for managing sandboxes"
 	api := humachi.New(r, config)
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected
 	health.Register(api, health.New(nil, nil))
-	version.Register(api, version.New(""))
+	version.Register(api, version.New())
 
 	v1 := huma.NewGroup(api, "/v1")
 	sandbox.Register(v1, sandbox.New(nil, "", nil))
@@ -99,13 +100,13 @@ func setupAPIGateway() huma.API {
 
 func setupSandboxSidecar() huma.API {
 	r := chi.NewRouter()
-	config := huma.DefaultConfig("Isola Sandbox Sidecar API", "0.1.0")
+	config := huma.DefaultConfig("Isola Sandbox Sidecar API", internalversion.Get().GitVersion)
 	config.Info.Description = "Internal API for sandbox filesystem operations"
 	api := humachi.New(r, config)
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected
 	sidecarHealth.Register(api, sidecarHealth.New())
-	sidecarVersion.Register(api, sidecarVersion.New(""))
+	sidecarVersion.Register(api, sidecarVersion.New())
 
 	v1 := huma.NewGroup(api, "/v1")
 	sidecarFs.Register(v1, sidecarFs.New(nil, nil, nil))

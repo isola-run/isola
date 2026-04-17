@@ -47,6 +47,7 @@ import (
 
 	"github.com/isola-run/isola/internal/logging"
 	"github.com/isola-run/isola/internal/snapshot"
+	"github.com/isola-run/isola/internal/version"
 	"gocloud.dev/blob"
 
 	// Import blob drivers - they register themselves via init()
@@ -101,6 +102,8 @@ func main() {
 		Level:   getEnv(EnvLogLevel, "info"),
 		DevMode: false, // Always JSON for job logs
 	})
+
+	logger.Info("starting snapshot-uploader", "version", version.Get())
 
 	if err := run(logger); err != nil {
 		logger.Error("upload failed", "error", err)

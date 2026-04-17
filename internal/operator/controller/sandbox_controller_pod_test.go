@@ -26,7 +26,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
-	"github.com/isola-run/isola/internal/constants"
 )
 
 var _ = Describe("Sandbox Controller", func() {
@@ -95,11 +94,6 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(sidecarResources.Requests.Memory().String()).To(Equal("1Mi"))
 			Expect(sidecarResources.Limits.Cpu().String()).To(Equal("1m"))
 			Expect(sidecarResources.Limits.Memory().String()).To(Equal("1Mi"))
-
-			Expect(pod.Spec.InitContainers[0].Env).To(ContainElement(corev1.EnvVar{
-				Name:  constants.IsolaVersionEnv,
-				Value: "test-version",
-			}))
 		})
 
 		It("should set sidecar ImagePullPolicy from reconciler config", func() {

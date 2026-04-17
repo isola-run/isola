@@ -9,6 +9,31 @@ GO_VERSION ?= 1.26.2
 GOTOOLCHAIN = go$(GO_VERSION)
 export GOTOOLCHAIN
 
+##@ Version metadata
+
+# VERSION sourced from the VERSION file at the repo root (argo-cd pattern).
+# Release workflow bumps it; dev builds just read it in place.
+VERSION        ?= $(shell cat VERSION)
+GIT_COMMIT     ?= $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
+# BUILD_DATE uses committer ISO 8601 date: same commit -> same timestamp -> reproducible.
+# Falls back to wall-clock only when git is unavailable (tarball builds).
+BUILD_DATE     ?= $(shell git log -1 --format=%cI 2>/dev/null || date -u +'%Y-%m-%dT%H:%M:%SZ')
+# git status --porcelain catches both modified-tracked AND untracked files that would
+# land in the Docker build context. Matches argo-cd / k8s / cert-manager / cluster-api / velero.
+GIT_TREE_STATE ?= $(shell if [ -z "$$(git status --porcelain 2>/dev/null)" ]; then echo clean; else echo dirty; fi)
+
+LDFLAGS := -s -w \
+	-X github.com/isola-run/isola/internal/version.gitVersion=$(VERSION) \
+	-X github.com/isola-run/isola/internal/version.gitCommit=$(GIT_COMMIT) \
+	-X github.com/isola-run/isola/internal/version.buildDate=$(BUILD_DATE) \
+	-X github.com/isola-run/isola/internal/version.gitTreeState=$(GIT_TREE_STATE)
+
+# Shared between `build` and `openapi` so -trimpath + ldflags apply identically in
+# both paths — avoids info.version drift between the built binary and the
+# `go run`-invoked openapi-gen on the same checkout.
+GO_FLAGS := -trimpath -ldflags='$(LDFLAGS)'
+GO_BUILD := CGO_ENABLED=0 go build $(GO_FLAGS)
+
 ##@ General
 
 .PHONY: help
@@ -38,8 +63,8 @@ manifests: ## Generate CRD and RBAC manifests
 .PHONY: openapi
 openapi: ## Generate OpenAPI specs for HTTP services
 	@mkdir -p api/openapi
-	go run ./cmd/openapi-gen -service api-gateway > api/openapi/api-gateway.yaml
-	go run ./cmd/openapi-gen -service sandbox-sidecar > api/openapi/sandbox-sidecar.yaml
+	go run $(GO_FLAGS) ./cmd/openapi-gen -service api-gateway > api/openapi/api-gateway.yaml
+	go run $(GO_FLAGS) ./cmd/openapi-gen -service sandbox-sidecar > api/openapi/sandbox-sidecar.yaml
 
 .PHONY: check-openapi
 check-openapi: openapi ## Verify OpenAPI specs are up-to-date
@@ -181,10 +206,10 @@ test-e2e-verbose: ## Run E2E tests in parallel with verbose output
 
 .PHONY: build
 build: ## Build all binaries
-	go build -o bin/operator ./cmd/operator
-	go build -o bin/sandbox-sidecar ./cmd/sandbox-sidecar
-	go build -o bin/snapshot-uploader ./cmd/snapshot-uploader
-	go build -o bin/api-gateway ./cmd/api-gateway
+	$(GO_BUILD) -o bin/operator ./cmd/operator
+	$(GO_BUILD) -o bin/sandbox-sidecar ./cmd/sandbox-sidecar
+	$(GO_BUILD) -o bin/snapshot-uploader ./cmd/snapshot-uploader
+	$(GO_BUILD) -o bin/api-gateway ./cmd/api-gateway
 
 .PHONY: run-operator
 run-operator: ## Run operator from your host

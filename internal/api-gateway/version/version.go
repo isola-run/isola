@@ -19,26 +19,20 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	internalversion "github.com/isola-run/isola/internal/version"
 )
 
-type VersionResponse struct {
-	Version string `json:"version" example:"0.1.0" doc:"Isola release version"`
-}
-
 type VersionOutput struct {
-	Body VersionResponse
+	Body internalversion.Info
 }
 
-type Handlers struct {
-	version string
-}
+type Handlers struct{}
 
-func New(version string) *Handlers {
-	return &Handlers{version: version}
-}
+func New() *Handlers { return &Handlers{} }
 
 func (h *Handlers) GetVersion(ctx context.Context, input *struct{}) (*VersionOutput, error) {
-	return &VersionOutput{Body: VersionResponse{Version: h.version}}, nil
+	return &VersionOutput{Body: internalversion.Get()}, nil
 }
 
 func Register(api huma.API, h *Handlers) {
@@ -47,7 +41,7 @@ func Register(api huma.API, h *Handlers) {
 		Method:      http.MethodGet,
 		Path:        "/version",
 		Summary:     "Version info",
-		Description: "Returns the Isola release version.",
+		Description: "Returns build-time version and VCS metadata.",
 		Tags:        []string{"version"},
 	}, h.GetVersion)
 }

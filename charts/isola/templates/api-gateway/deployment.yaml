@@ -38,8 +38,6 @@ spec:
           env:
             - name: ISOLA_SANDBOX_NAMESPACE
               value: {{ include "isola.sandboxNamespace" . | quote }}
-            - name: ISOLA_VERSION
-              value: {{ .Chart.AppVersion | quote }}
           ports:
             - name: http
               containerPort: 8080

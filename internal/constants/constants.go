@@ -18,10 +18,5 @@ package constants
 // with their name for discovery by the sidecar via /proc/<pid>/environ.
 const IsolaContainerNameEnv = "ISOLA_CONTAINER_NAME"
 
-// IsolaVersionEnv carries .Chart.AppVersion into the gateway and operator
-// pods, and is propagated by the operator onto sandbox-sidecar containers.
-// Reported by /version on both the gateway and the sidecar.
-const IsolaVersionEnv = "ISOLA_VERSION"
-
 // SidecarPort is the HTTP port the sandbox-sidecar listens on.
 const SidecarPort = 10032

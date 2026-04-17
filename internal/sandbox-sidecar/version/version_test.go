@@ -22,22 +22,29 @@ import (
 	"github.com/danielgtaylor/huma/v2/humatest"
 
 	"github.com/isola-run/isola/internal/sandbox-sidecar/version"
+	internalversion "github.com/isola-run/isola/internal/version"
 )
 
 func TestGetVersion(t *testing.T) {
 	_, api := humatest.New(t, huma.DefaultConfig("Test API", "0.1.0"))
-	version.Register(api, version.New("1.2.3"))
+	version.Register(api, version.New())
 
 	resp := api.Get("/version")
 	if resp.Code != 200 {
 		t.Fatalf("expected status 200, got %d", resp.Code)
 	}
 
-	var got version.VersionResponse
+	var got internalversion.Info
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.Version != "1.2.3" {
-		t.Errorf("version: got %q, want %q", got.Version, "1.2.3")
+	if got.GitVersion == "" {
+		t.Errorf("GitVersion is empty; expected ldflags default or value")
+	}
+	if got.GoVersion == "" {
+		t.Errorf("GoVersion is empty; runtime block did not populate it")
+	}
+	if got.Platform == "" {
+		t.Errorf("Platform is empty; runtime block did not populate it")
 	}
 }

@@ -37,6 +37,7 @@ import (
 	"github.com/isola-run/isola/internal/sandbox-sidecar/health"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/proc"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/version"
+	internalversion "github.com/isola-run/isola/internal/version"
 )
 
 const (
@@ -75,12 +76,9 @@ func main() {
 		},
 	}))
 
-	isolaVersion := env.GetOrDefault(constants.IsolaVersionEnv, "dev")
-	if isolaVersion == "dev" {
-		logger.Warn("ISOLA_VERSION unset; /version will report \"dev\"")
-	}
+	logger.Info("starting sandbox-sidecar", "version", internalversion.Get())
 
-	humaConfig := huma.DefaultConfig("Isola Sandbox Sidecar API", isolaVersion)
+	humaConfig := huma.DefaultConfig("Isola Sandbox Sidecar API", internalversion.Get().GitVersion)
 	humaConfig.Info.Description = "Internal API for sandbox operations"
 	// the sandbox-sidecar is internal api, so we don't want to expose the docs
 	humaConfig.DocsPath = ""
@@ -92,7 +90,7 @@ func main() {
 	pidResolver := sandboxsidecar.NewPIDResolver(procFS)
 
 	health.Register(api, health.New())
-	version.Register(api, version.New(isolaVersion))
+	version.Register(api, version.New())
 
 	v1 := huma.NewGroup(api, "/v1")
 	filesystem.Register(v1, filesystem.New(logger, procFS, pidResolver))
