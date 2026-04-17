@@ -52,6 +52,7 @@ manifests: ## Generate CRD and RBAC manifests
 		output:rbac:artifacts:config=charts/isola/generated
 	./hack/generate-crd-templates.sh config/crd/bases charts/isola/templates/crd
 
+# $(GO_FLAGS) bakes VERSION into openapi-gen so info.version matches the built binaries.
 .PHONY: openapi
 openapi: ## Generate OpenAPI specs for HTTP services
 	@mkdir -p api/openapi
