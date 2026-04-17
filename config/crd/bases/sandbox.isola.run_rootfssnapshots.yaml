@@ -115,15 +115,15 @@ spec:
               reason: FieldValueForbidden
               rule: self.sandboxName == oldSelf.sandboxName
             - fieldPath: .snapshotName
-              message: snapshotName is immutable once set
+              message: snapshotName is immutable
               reason: FieldValueForbidden
-              rule: '!has(oldSelf.snapshotName) || (has(self.snapshotName) && self.snapshotName
-                == oldSelf.snapshotName)'
+              rule: has(self.snapshotName) == has(oldSelf.snapshotName) && (!has(self.snapshotName)
+                || self.snapshotName == oldSelf.snapshotName)
             - fieldPath: .containerName
-              message: containerName is immutable once set
+              message: containerName is immutable
               reason: FieldValueForbidden
-              rule: '!has(oldSelf.containerName) || (has(self.containerName) && self.containerName
-                == oldSelf.containerName)'
+              rule: has(self.containerName) == has(oldSelf.containerName) && (!has(self.containerName)
+                || self.containerName == oldSelf.containerName)
             - fieldPath: .timeoutSeconds
               message: timeoutSeconds is immutable
               reason: FieldValueForbidden

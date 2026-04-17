@@ -477,6 +477,11 @@ func (r *SandboxReconciler) getSandboxPod(ctx context.Context, sandbox *sandboxv
 	return sandboxPod, nil
 }
 
+// getTerminationRootfssnapshot looks up the termination RootfsSnapshot by its
+// derived name. Theoretical collision: a user-created RootfsSnapshot of the
+// same name would be adopted here without an ownerRef check, letting its
+// status drive the sandbox's termination outcome. Tackle later if it bites
+// (e.g. verify controller ownerRef points back at this sandbox).
 func (r *SandboxReconciler) getTerminationRootfssnapshot(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox) (*sandboxv1alpha1.RootfsSnapshot, error) {
 	snap := &sandboxv1alpha1.RootfsSnapshot{}
 	err := r.Get(ctx, types.NamespacedName{

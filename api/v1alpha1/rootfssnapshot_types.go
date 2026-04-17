@@ -31,8 +31,8 @@ const (
 
 // RootfsSnapshotSpec defines the desired state of RootfsSnapshot
 // +kubebuilder:validation:XValidation:rule="self.sandboxName == oldSelf.sandboxName",message="sandboxName is immutable",reason="FieldValueForbidden",fieldPath=".sandboxName"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.snapshotName) || (has(self.snapshotName) && self.snapshotName == oldSelf.snapshotName)",message="snapshotName is immutable once set",reason="FieldValueForbidden",fieldPath=".snapshotName"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.containerName) || (has(self.containerName) && self.containerName == oldSelf.containerName)",message="containerName is immutable once set",reason="FieldValueForbidden",fieldPath=".containerName"
+// +kubebuilder:validation:XValidation:rule="has(self.snapshotName) == has(oldSelf.snapshotName) && (!has(self.snapshotName) || self.snapshotName == oldSelf.snapshotName)",message="snapshotName is immutable",reason="FieldValueForbidden",fieldPath=".snapshotName"
+// +kubebuilder:validation:XValidation:rule="has(self.containerName) == has(oldSelf.containerName) && (!has(self.containerName) || self.containerName == oldSelf.containerName)",message="containerName is immutable",reason="FieldValueForbidden",fieldPath=".containerName"
 // +kubebuilder:validation:XValidation:rule="has(self.timeoutSeconds) == has(oldSelf.timeoutSeconds) && (!has(self.timeoutSeconds) || self.timeoutSeconds == oldSelf.timeoutSeconds)",message="timeoutSeconds is immutable",reason="FieldValueForbidden",fieldPath=".timeoutSeconds"
 type RootfsSnapshotSpec struct {
 	// SandboxName is the name of the sandbox to snapshot.

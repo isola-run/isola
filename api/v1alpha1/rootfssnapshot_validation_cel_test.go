@@ -55,12 +55,12 @@ var _ = Describe("RootfsSnapshot CRD validation", func() {
 		})
 	})
 
-	Describe("spec.snapshotName is immutable once set", func() {
-		It("accepts unset to set", func() {
+	Describe("spec.snapshotName is fully immutable", func() {
+		It("rejects unset to set", func() {
 			rfs := minimalRootfsSnapshot("rfs", "sb")
 			Expect(k8sClient.Create(ctx, rfs)).To(Succeed())
 			rfs.Spec.SnapshotName = "snap1"
-			Expect(k8sClient.Update(ctx, rfs)).To(Succeed())
+			Expect(k8sClient.Update(ctx, rfs)).ToNot(Succeed())
 		})
 		It("rejects set to different", func() {
 			rfs := minimalRootfsSnapshot("rfs", "sb")
@@ -85,12 +85,12 @@ var _ = Describe("RootfsSnapshot CRD validation", func() {
 		})
 	})
 
-	Describe("spec.containerName is immutable once set", func() {
-		It("accepts unset to set", func() {
+	Describe("spec.containerName is fully immutable", func() {
+		It("rejects unset to set", func() {
 			rfs := minimalRootfsSnapshot("rfs", "sb")
 			Expect(k8sClient.Create(ctx, rfs)).To(Succeed())
 			rfs.Spec.ContainerName = "c1"
-			Expect(k8sClient.Update(ctx, rfs)).To(Succeed())
+			Expect(k8sClient.Update(ctx, rfs)).ToNot(Succeed())
 		})
 		It("rejects set to different", func() {
 			rfs := minimalRootfsSnapshot("rfs", "sb")

@@ -240,20 +240,21 @@ spec:
             type: object
             x-kubernetes-validations:
             - fieldPath: .network
-              message: network is immutable once set
+              message: network is immutable
               reason: FieldValueForbidden
-              rule: '!has(oldSelf.network) || (has(self.network) && self.network ==
-                oldSelf.network)'
+              rule: has(self.network) == has(oldSelf.network) && (!has(self.network)
+                || self.network == oldSelf.network)
             - fieldPath: .rootfsSnapshotSources
-              message: rootfsSnapshotSources is immutable once set
+              message: rootfsSnapshotSources is immutable
               reason: FieldValueForbidden
-              rule: '!has(oldSelf.rootfsSnapshotSources) || (has(self.rootfsSnapshotSources)
-                && self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources)'
+              rule: has(self.rootfsSnapshotSources) == has(oldSelf.rootfsSnapshotSources)
+                && (!has(self.rootfsSnapshotSources) || self.rootfsSnapshotSources
+                == oldSelf.rootfsSnapshotSources)
             - fieldPath: .terminationPolicy
-              message: terminationPolicy is immutable once set
+              message: terminationPolicy is immutable
               reason: FieldValueForbidden
-              rule: '!has(oldSelf.terminationPolicy) || (has(self.terminationPolicy)
-                && self.terminationPolicy == oldSelf.terminationPolicy)'
+              rule: has(self.terminationPolicy) == has(oldSelf.terminationPolicy)
+                && (!has(self.terminationPolicy) || self.terminationPolicy == oldSelf.terminationPolicy)
             - fieldPath: .timeoutSeconds
               message: timeoutSeconds is immutable
               reason: FieldValueForbidden

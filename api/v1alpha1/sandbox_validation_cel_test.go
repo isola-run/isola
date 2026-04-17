@@ -77,12 +77,12 @@ var _ = Describe("Sandbox CRD validation", func() {
 		})
 	})
 
-	Describe("spec.network is immutable once set", func() {
-		It("accepts unset to set", func() {
+	Describe("spec.network is fully immutable", func() {
+		It("rejects unset to set", func() {
 			sb := minimalSandbox("sb")
 			Expect(k8sClient.Create(ctx, sb)).To(Succeed())
 			sb.Spec.Network = &sandboxv1alpha1.Network{AllowClusterDNS: ptr.To(true)}
-			Expect(k8sClient.Update(ctx, sb)).To(Succeed())
+			Expect(k8sClient.Update(ctx, sb)).ToNot(Succeed())
 		})
 		It("rejects set to different", func() {
 			sb := minimalSandbox("sb")
@@ -107,14 +107,14 @@ var _ = Describe("Sandbox CRD validation", func() {
 		})
 	})
 
-	Describe("spec.rootfsSnapshotSources is immutable once set", func() {
-		It("accepts unset to set", func() {
+	Describe("spec.rootfsSnapshotSources is fully immutable", func() {
+		It("rejects unset to set", func() {
 			sb := minimalSandbox("sb")
 			Expect(k8sClient.Create(ctx, sb)).To(Succeed())
 			sb.Spec.RootfsSnapshotSources = []sandboxv1alpha1.RootfsSnapshotSource{
 				{SnapshotName: "snap1"},
 			}
-			Expect(k8sClient.Update(ctx, sb)).To(Succeed())
+			Expect(k8sClient.Update(ctx, sb)).ToNot(Succeed())
 		})
 		It("rejects set to different", func() {
 			sb := minimalSandbox("sb")
@@ -147,14 +147,14 @@ var _ = Describe("Sandbox CRD validation", func() {
 		})
 	})
 
-	Describe("spec.terminationPolicy is immutable once set", func() {
-		It("accepts unset to set", func() {
+	Describe("spec.terminationPolicy is fully immutable", func() {
+		It("rejects unset to set", func() {
 			sb := minimalSandbox("sb")
 			Expect(k8sClient.Create(ctx, sb)).To(Succeed())
 			sb.Spec.TerminationPolicy = &sandboxv1alpha1.TerminationPolicy{
 				Type: sandboxv1alpha1.TerminationTypeDelete,
 			}
-			Expect(k8sClient.Update(ctx, sb)).To(Succeed())
+			Expect(k8sClient.Update(ctx, sb)).ToNot(Succeed())
 		})
 		It("rejects change to a nested snapshotRootfs field", func() {
 			sb := minimalSandbox("sb")
