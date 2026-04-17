@@ -1,7 +1,15 @@
-# Root Makefile for isola
-
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
+
+##@ Version metadata
+
+VERSION        ?= $(shell cat VERSION)
+GIT_COMMIT     ?= $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
+# BUILD_DATE honors SOURCE_DATE_EPOCH (https://reproducible-builds.org/docs/source-date-epoch/).
+BUILD_DATE     ?= $(shell date $${SOURCE_DATE_EPOCH:+"--date=@$${SOURCE_DATE_EPOCH}"} -u +'%Y-%m-%dT%H:%M:%SZ')
+GIT_TREE_STATE ?= $(shell if [ -z "$$(git status --porcelain 2>/dev/null)" ]; then echo clean; else echo dirty; fi)
+
+##@ Go toolchain
 
 # Go toolchain version — auto-downloads the correct Go toolchain regardless of
 # what's installed locally (requires Go 1.21+). Must match go.mod `go` directive.
@@ -9,29 +17,12 @@ GO_VERSION ?= 1.26.2
 GOTOOLCHAIN = go$(GO_VERSION)
 export GOTOOLCHAIN
 
-##@ Version metadata
-
-# VERSION sourced from the VERSION file at the repo root (argo-cd pattern).
-# Release workflow bumps it; dev builds just read it in place.
-VERSION        ?= $(shell cat VERSION)
-GIT_COMMIT     ?= $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
-# BUILD_DATE honors SOURCE_DATE_EPOCH (reproducible-builds.org spec). Set it to the
-# commit epoch via `SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)` to produce
-# byte-identical release builds from the same commit. Default is wall-clock.
-BUILD_DATE     ?= $(shell date $${SOURCE_DATE_EPOCH:+"--date=@$${SOURCE_DATE_EPOCH}"} -u +'%Y-%m-%dT%H:%M:%SZ')
-# git status --porcelain catches both modified-tracked AND untracked files that would
-# land in the Docker build context. Matches argo-cd / k8s / cert-manager / cluster-api / velero.
-GIT_TREE_STATE ?= $(shell if [ -z "$$(git status --porcelain 2>/dev/null)" ]; then echo clean; else echo dirty; fi)
-
 LDFLAGS := -s -w \
 	-X github.com/isola-run/isola/internal/version.gitVersion=$(VERSION) \
 	-X github.com/isola-run/isola/internal/version.gitCommit=$(GIT_COMMIT) \
 	-X github.com/isola-run/isola/internal/version.buildDate=$(BUILD_DATE) \
 	-X github.com/isola-run/isola/internal/version.gitTreeState=$(GIT_TREE_STATE)
 
-# Shared between `build` and `openapi` so -trimpath + ldflags apply identically in
-# both paths — avoids info.version drift between the built binary and the
-# `go run`-invoked openapi-gen on the same checkout.
 GO_FLAGS := -trimpath -ldflags='$(LDFLAGS)'
 GO_BUILD := CGO_ENABLED=0 go build $(GO_FLAGS)
 
