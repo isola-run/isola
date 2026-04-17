@@ -20,27 +20,6 @@ import (
 	"testing"
 )
 
-func TestInfoString(t *testing.T) {
-	tests := []struct {
-		name string
-		info Info
-		want string
-	}{
-		{"clean", Info{GitVersion: "0.1.0", GitTreeState: "clean"}, "0.1.0"},
-		{"dirty", Info{GitVersion: "0.1.0", GitTreeState: "dirty"}, "0.1.0-dirty"},
-		{"unknown", Info{GitVersion: "0.1.0", GitTreeState: "unknown"}, "0.1.0"},
-		{"empty state", Info{GitVersion: "0.1.0"}, "0.1.0"},
-		{"dev dirty", Info{GitVersion: "dev", GitTreeState: "dirty"}, "dev-dirty"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.info.String(); got != tc.want {
-				t.Errorf("String() = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestGetRuntimeFields(t *testing.T) {
 	info := Get()
 	if got, want := info.GoVersion, runtime.Version(); got != want {

@@ -39,17 +39,6 @@ type Info struct {
 	Platform     string `json:"platform"               example:"linux/amd64"`
 }
 
-// String returns a compact, self-describing version string suitable for logs
-// and CLI output. Dirty-tree state is appended as "-dirty" so the single token
-// captures both semver and local-modification state.
-func (i Info) String() string {
-	if i.GitTreeState == "dirty" {
-		return i.GitVersion + "-dirty"
-	}
-	return i.GitVersion
-}
-
-// Get returns build-time version metadata.
 func Get() Info {
 	return Info{
 		GitVersion:   gitVersion,
@@ -60,6 +49,3 @@ func Get() Info {
 		Platform:     fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
 	}
 }
-
-// Short returns the compact String() form — convenient for one-argument log fields.
-func Short() string { return Get().String() }
