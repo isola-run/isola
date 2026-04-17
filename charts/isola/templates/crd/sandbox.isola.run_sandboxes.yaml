@@ -194,8 +194,10 @@ spec:
                 x-kubernetes-validations:
                 - message: containerName is required when multiple rootfsSnapshotSources
                     are specified
+                  reason: FieldValueRequired
                   rule: self.size() <= 1 || self.all(s, s.containerName != '')
                 - message: each rootfsSnapshotSource must target a different container
+                  reason: FieldValueDuplicate
                   rule: self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName
                     != j.containerName))
               startupTimeoutSeconds:
@@ -247,9 +249,13 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-validations:
-                - message: snapshotRootfs config is required when type is SnapshotRootfs
+                - fieldPath: .snapshotRootfs
+                  message: snapshotRootfs is required when type is SnapshotRootfs
+                  reason: FieldValueRequired
                   rule: self.type != 'SnapshotRootfs' || has(self.snapshotRootfs)
-                - message: snapshotRootfs config is only valid when type is SnapshotRootfs
+                - fieldPath: .snapshotRootfs
+                  message: snapshotRootfs is only valid when type is SnapshotRootfs
+                  reason: FieldValueForbidden
                   rule: self.type == 'SnapshotRootfs' || !has(self.snapshotRootfs)
               timeoutSeconds:
                 description: TimeoutSeconds defines how long the sandbox runs before
@@ -261,26 +267,26 @@ spec:
             - podTemplate
             type: object
             x-kubernetes-validations:
-            - message: network cannot be removed once set
-              rule: '!has(oldSelf.network) || has(self.network)'
-            - message: network is immutable once set
-              rule: '!has(self.network) || !has(oldSelf.network) || self.network ==
-                oldSelf.network'
-            - message: rootfsSnapshotSources cannot be removed once set
-              rule: '!has(oldSelf.rootfsSnapshotSources) || has(self.rootfsSnapshotSources)'
-            - message: rootfsSnapshotSources is immutable once set
-              rule: '!has(self.rootfsSnapshotSources) || !has(oldSelf.rootfsSnapshotSources)
-                || self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources'
-            - message: terminationPolicy cannot be removed once set
-              rule: '!has(oldSelf.terminationPolicy) || has(self.terminationPolicy)'
-            - message: terminationPolicy is immutable once set
-              rule: '!has(self.terminationPolicy) || !has(oldSelf.terminationPolicy)
-                || self.terminationPolicy == oldSelf.terminationPolicy'
-            - message: timeoutSeconds cannot be removed once set
-              rule: '!has(oldSelf.timeoutSeconds) || has(self.timeoutSeconds)'
-            - message: timeoutSeconds is immutable once set
-              rule: '!has(self.timeoutSeconds) || !has(oldSelf.timeoutSeconds) ||
-                self.timeoutSeconds == oldSelf.timeoutSeconds'
+            - fieldPath: .network
+              message: network is immutable once set
+              reason: FieldValueForbidden
+              rule: '!has(oldSelf.network) || (has(self.network) && self.network ==
+                oldSelf.network)'
+            - fieldPath: .rootfsSnapshotSources
+              message: rootfsSnapshotSources is immutable once set
+              reason: FieldValueForbidden
+              rule: '!has(oldSelf.rootfsSnapshotSources) || (has(self.rootfsSnapshotSources)
+                && self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources)'
+            - fieldPath: .terminationPolicy
+              message: terminationPolicy is immutable once set
+              reason: FieldValueForbidden
+              rule: '!has(oldSelf.terminationPolicy) || (has(self.terminationPolicy)
+                && self.terminationPolicy == oldSelf.terminationPolicy)'
+            - fieldPath: .timeoutSeconds
+              message: timeoutSeconds is immutable
+              reason: FieldValueForbidden
+              rule: has(self.timeoutSeconds) == has(oldSelf.timeoutSeconds) && (!has(self.timeoutSeconds)
+                || self.timeoutSeconds == oldSelf.timeoutSeconds)
           status:
             description: status defines the observed state of Sandbox
             properties:
@@ -363,8 +369,11 @@ spec:
         - spec
         type: object
         x-kubernetes-validations:
-        - message: metadata.name must be at most 47 characters because the operator
-            writes it into label values and derives child resource names from it
+        - fieldPath: .metadata.name
+          message: 'metadata.name must be at most 47 characters: the operator writes
+            it into label values (capped at 63) and derives <name>-termination RootfsSnapshot
+            from it (itself capped at 59)'
+          reason: FieldValueInvalid
           rule: size(self.metadata.name) <= 47
     served: true
     storage: true

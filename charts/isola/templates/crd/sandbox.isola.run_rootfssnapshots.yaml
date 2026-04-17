@@ -129,23 +129,25 @@ spec:
             - sandboxName
             type: object
             x-kubernetes-validations:
-            - message: sandboxName is immutable
+            - fieldPath: .sandboxName
+              message: sandboxName is immutable
+              reason: FieldValueForbidden
               rule: self.sandboxName == oldSelf.sandboxName
-            - message: snapshotName cannot be removed once set
-              rule: '!has(oldSelf.snapshotName) || has(self.snapshotName)'
-            - message: snapshotName is immutable once set
-              rule: '!has(self.snapshotName) || !has(oldSelf.snapshotName) || self.snapshotName
-                == oldSelf.snapshotName'
-            - message: containerName cannot be removed once set
-              rule: '!has(oldSelf.containerName) || has(self.containerName)'
-            - message: containerName is immutable once set
-              rule: '!has(self.containerName) || !has(oldSelf.containerName) || self.containerName
-                == oldSelf.containerName'
-            - message: timeoutSeconds cannot be removed once set
-              rule: '!has(oldSelf.timeoutSeconds) || has(self.timeoutSeconds)'
-            - message: timeoutSeconds is immutable once set
-              rule: '!has(self.timeoutSeconds) || !has(oldSelf.timeoutSeconds) ||
-                self.timeoutSeconds == oldSelf.timeoutSeconds'
+            - fieldPath: .snapshotName
+              message: snapshotName is immutable once set
+              reason: FieldValueForbidden
+              rule: '!has(oldSelf.snapshotName) || (has(self.snapshotName) && self.snapshotName
+                == oldSelf.snapshotName)'
+            - fieldPath: .containerName
+              message: containerName is immutable once set
+              reason: FieldValueForbidden
+              rule: '!has(oldSelf.containerName) || (has(self.containerName) && self.containerName
+                == oldSelf.containerName)'
+            - fieldPath: .timeoutSeconds
+              message: timeoutSeconds is immutable
+              reason: FieldValueForbidden
+              rule: has(self.timeoutSeconds) == has(oldSelf.timeoutSeconds) && (!has(self.timeoutSeconds)
+                || self.timeoutSeconds == oldSelf.timeoutSeconds)
           status:
             description: status defines the observed state
             properties:
@@ -232,9 +234,11 @@ spec:
         - spec
         type: object
         x-kubernetes-validations:
-        - message: metadata.name must be at most 59 characters because the operator
-            creates a Job named <name>-job whose name is auto-injected as a Kubernetes
-            label value
+        - fieldPath: .metadata.name
+          message: 'metadata.name must be at most 59 characters: the operator creates
+            a Job named <name>-job whose name is auto-injected into the batch.kubernetes.io/job-name
+            label (capped at 63)'
+          reason: FieldValueInvalid
           rule: size(self.metadata.name) <= 59
     served: true
     storage: true

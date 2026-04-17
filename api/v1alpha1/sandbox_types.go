@@ -57,8 +57,8 @@ type SnapshotRootfsTermination struct {
 }
 
 // TerminationPolicy controls how the sandbox is handled before termination.
-// +kubebuilder:validation:XValidation:rule="self.type != 'SnapshotRootfs' || has(self.snapshotRootfs)",message="snapshotRootfs config is required when type is SnapshotRootfs"
-// +kubebuilder:validation:XValidation:rule="self.type == 'SnapshotRootfs' || !has(self.snapshotRootfs)",message="snapshotRootfs config is only valid when type is SnapshotRootfs"
+// +kubebuilder:validation:XValidation:rule="self.type != 'SnapshotRootfs' || has(self.snapshotRootfs)",message="snapshotRootfs is required when type is SnapshotRootfs",reason="FieldValueRequired",fieldPath=".snapshotRootfs"
+// +kubebuilder:validation:XValidation:rule="self.type == 'SnapshotRootfs' || !has(self.snapshotRootfs)",message="snapshotRootfs is only valid when type is SnapshotRootfs",reason="FieldValueForbidden",fieldPath=".snapshotRootfs"
 type TerminationPolicy struct {
 	// Type determines the action taken when the sandbox terminates
 	// +optional
@@ -141,14 +141,10 @@ type RootfsSnapshotSource struct {
 }
 
 // SandboxSpec defines the desired state of Sandbox
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.network) || has(self.network)",message="network cannot be removed once set"
-// +kubebuilder:validation:XValidation:rule="!has(self.network) || !has(oldSelf.network) || self.network == oldSelf.network",message="network is immutable once set"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.rootfsSnapshotSources) || has(self.rootfsSnapshotSources)",message="rootfsSnapshotSources cannot be removed once set"
-// +kubebuilder:validation:XValidation:rule="!has(self.rootfsSnapshotSources) || !has(oldSelf.rootfsSnapshotSources) || self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources",message="rootfsSnapshotSources is immutable once set"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.terminationPolicy) || has(self.terminationPolicy)",message="terminationPolicy cannot be removed once set"
-// +kubebuilder:validation:XValidation:rule="!has(self.terminationPolicy) || !has(oldSelf.terminationPolicy) || self.terminationPolicy == oldSelf.terminationPolicy",message="terminationPolicy is immutable once set"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.timeoutSeconds) || has(self.timeoutSeconds)",message="timeoutSeconds cannot be removed once set"
-// +kubebuilder:validation:XValidation:rule="!has(self.timeoutSeconds) || !has(oldSelf.timeoutSeconds) || self.timeoutSeconds == oldSelf.timeoutSeconds",message="timeoutSeconds is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.network) || (has(self.network) && self.network == oldSelf.network)",message="network is immutable once set",reason="FieldValueForbidden",fieldPath=".network"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.rootfsSnapshotSources) || (has(self.rootfsSnapshotSources) && self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources)",message="rootfsSnapshotSources is immutable once set",reason="FieldValueForbidden",fieldPath=".rootfsSnapshotSources"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.terminationPolicy) || (has(self.terminationPolicy) && self.terminationPolicy == oldSelf.terminationPolicy)",message="terminationPolicy is immutable once set",reason="FieldValueForbidden",fieldPath=".terminationPolicy"
+// +kubebuilder:validation:XValidation:rule="has(self.timeoutSeconds) == has(oldSelf.timeoutSeconds) && (!has(self.timeoutSeconds) || self.timeoutSeconds == oldSelf.timeoutSeconds)",message="timeoutSeconds is immutable",reason="FieldValueForbidden",fieldPath=".timeoutSeconds"
 type SandboxSpec struct {
 	// PodTemplate describes the pod that will be created to run the sandbox.
 	// The Sandbox controller will override specific security settings (runtimeClassName, etc.)
@@ -190,8 +186,8 @@ type SandboxSpec struct {
 	// +optional
 	// +listType=atomic
 	// +kubebuilder:validation:MaxItems=16
-	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(s, s.containerName != '')",message="containerName is required when multiple rootfsSnapshotSources are specified"
-	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName != j.containerName))",message="each rootfsSnapshotSource must target a different container"
+	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(s, s.containerName != '')",message="containerName is required when multiple rootfsSnapshotSources are specified",reason="FieldValueRequired"
+	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName != j.containerName))",message="each rootfsSnapshotSource must target a different container",reason="FieldValueDuplicate"
 	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty"`
 }
 
@@ -251,7 +247,7 @@ type SandboxStatus struct {
 // names into a bounded hash for label-value writes and for every derived
 // child resource name. knative.dev/pkg/kmeta.ChildName is the standard
 // pattern for that kind of deterministic shortening.
-// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 47",message="metadata.name must be at most 47 characters because the operator writes it into label values and derives child resource names from it"
+// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 47",message="metadata.name must be at most 47 characters: the operator writes it into label values (capped at 63) and derives <name>-termination RootfsSnapshot from it (itself capped at 59)",reason="FieldValueInvalid",fieldPath=".metadata.name"
 type Sandbox struct {
 	metav1.TypeMeta `json:",inline"`
 
