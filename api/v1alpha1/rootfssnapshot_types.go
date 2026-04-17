@@ -37,7 +37,7 @@ const (
 type RootfsSnapshotSpec struct {
 	// SandboxName is the name of the sandbox to snapshot.
 	// The sandbox must be in the same namespace as this RootfsSnapshot.
-	// Pattern and length match Sandbox metadata.name (DNS-1123 subdomain, max 47).
+	// Must be a valid RFC 1123 DNS subdomain (lowercase alphanumeric, hyphens, dots), max 47 chars.
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=47
@@ -47,7 +47,7 @@ type RootfsSnapshotSpec struct {
 	// SnapshotName is the name used for the snapshot storage key.
 	// This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
 	// If omitted, the operator defaults it to the sandbox name.
-	// Length and pattern are aligned with RootfsSnapshot.metadata.name (DNS-1123 subdomain, max 59).
+	// Must be a valid RFC 1123 DNS subdomain (lowercase alphanumeric, hyphens, dots), max 59 chars.
 	// +optional
 	// +kubebuilder:validation:MaxLength=59
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
@@ -113,6 +113,7 @@ type RootfsSnapshotStatus struct {
 // +kubebuilder:printcolumn:name="Succeeded",type="string",JSONPath=".status.conditions[?(@.type=='Succeeded')].status",description="Snapshot succeeded"
 // +kubebuilder:printcolumn:name="Sandbox",type="string",JSONPath=".spec.sandboxName",description="Sandbox being snapshotted"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 59",message="metadata.name must be at most 59 characters: the operator creates a Job named <name>-job whose name is auto-injected into the batch.kubernetes.io/job-name label (capped at 63)",reason="FieldValueInvalid"
 // RootfsSnapshot represents a request to snapshot a sandbox's root filesystem.
 // The controller creates a Job that uses gvisor's runsc to tar the overlay2 upper layer.
 //
@@ -120,22 +121,6 @@ type RootfsSnapshotStatus struct {
 // filesystems (e.g. /tmp, which gVisor mounts as a separate tmpfs) are not included.
 // To persist data across snapshots, write to directories on the root filesystem
 // (e.g. /root, /home).
-//
-// metadata.name is capped at 59 characters. The reason is one level deeper
-// than the label-value cap that constrains Sandbox. The operator creates a
-// snapshot Job named "<rootfsSnapshot.Name>-job", and Kubernetes auto-injects
-// the batch.kubernetes.io/job-name label on the Job's pod template whose
-// value is the Job name. Label values are capped at 63 characters, so the
-// Job name must be at most 63, which means rootfsSnapshot.Name must be at
-// most 63 - 4 = 59. Charset is already enforced by Kubernetes' default
-// DNS-1123 subdomain validation. See the equivalent comment on Sandbox for
-// the kmeta-based path that would let us lift this cap.
-//
-// This 59-char cap also indirectly constrains Sandbox.metadata.name to 47,
-// because the operator derives a "<sandbox.Name>-termination" RootfsSnapshot
-// when terminationPolicy.type is SnapshotRootfs. If you raise this cap,
-// re-derive the Sandbox cap as well.
-// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 59",message="metadata.name must be at most 59 characters: the operator creates a Job named <name>-job whose name is auto-injected into the batch.kubernetes.io/job-name label (capped at 63)",reason="FieldValueInvalid"
 type RootfsSnapshot struct {
 	metav1.TypeMeta `json:",inline"`
 

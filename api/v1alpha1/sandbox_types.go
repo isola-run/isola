@@ -175,7 +175,7 @@ type SandboxSpec struct {
 
 	// Network specifies the network isolation configuration for this sandbox.
 	// If not specified, the sandbox has deny-all egress.
-	// Network configuration is immutable after sandbox creation.
+	// Once set, network configuration is immutable.
 	// +optional
 	Network *Network `json:"network,omitempty"`
 
@@ -223,33 +223,8 @@ type SandboxStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status",description="Aggregate readiness"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason",priority=1,description="Reason for Ready condition"
-// Sandbox is the Schema for the sandboxes API.
-//
-// metadata.name is capped at 47 characters. The cap comes from a chain of
-// downstream constraints, each of which limits some derived name or label
-// value to 63 characters (the Kubernetes label-value cap):
-//
-//  1. The operator writes sandbox.Name verbatim into label values like
-//     app.kubernetes.io/instance, which already requires sandbox.Name to
-//     be at most 63 characters.
-//  2. When terminationPolicy.type is SnapshotRootfs the operator derives
-//     a RootfsSnapshot named "<sandbox.Name>-termination" (see
-//     podutil.GetTerminationSnapshotName). That derived RootfsSnapshot
-//     is itself constrained to 59 characters (see RootfsSnapshot's own
-//     cap), and the suffix is 12 characters, so sandbox.Name must fit
-//     within 59 - 12 = 47 characters.
-//
-// The tighter of the two limits wins, so the cap is 47.
-//
-// We do not need our own charset rule. Kubernetes already validates CR
-// names as DNS-1123 subdomain by default, which permits lowercase
-// alphanumerics, hyphens, and dots.
-//
-// To lift this cap in the future, the operator would need to fold long
-// names into a bounded hash for label-value writes and for every derived
-// child resource name. knative.dev/pkg/kmeta.ChildName is the standard
-// pattern for that kind of deterministic shortening.
 // +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 47",message="metadata.name must be at most 47 characters: the operator writes it into label values (capped at 63) and derives <name>-termination RootfsSnapshot from it (itself capped at 59)",reason="FieldValueInvalid"
+// Sandbox is the Schema for the sandboxes API.
 type Sandbox struct {
 	metav1.TypeMeta `json:",inline"`
 
