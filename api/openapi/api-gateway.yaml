@@ -278,6 +278,45 @@ components:
       required:
         - status
       type: object
+    Info:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/Info.json
+          format: uri
+          readOnly: true
+          type: string
+        buildDate:
+          examples:
+            - "2026-04-17T12:00:00Z"
+          type: string
+        gitCommit:
+          examples:
+            - abc1234
+          type: string
+        gitTreeState:
+          examples:
+            - clean
+          type: string
+        gitVersion:
+          examples:
+            - 0.1.0
+          type: string
+        goVersion:
+          examples:
+            - go1.26.2
+          type: string
+        platform:
+          examples:
+            - linux/amd64
+          type: string
+      required:
+        - gitVersion
+        - goVersion
+        - platform
+      type: object
     ListSandboxesResponse:
       additionalProperties: false
       properties:
@@ -1448,3 +1487,23 @@ paths:
       tags:
         - sandboxes
         - filesystem
+  /version:
+    get:
+      description: Returns build-time version and VCS metadata.
+      operationId: getVersion
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Info"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Version info
+      tags:
+        - version

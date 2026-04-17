@@ -36,6 +36,7 @@ import (
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 	"github.com/isola-run/isola/internal/logging"
 	"github.com/isola-run/isola/internal/operator/controller"
+	"github.com/isola-run/isola/internal/version"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -101,6 +102,8 @@ func main() {
 	logrLogger := logr.FromSlogHandler(logger.Handler())
 	ctrl.SetLogger(logrLogger)
 	klog.SetLogger(logrLogger)
+
+	setupLog.Info("starting operator", "version", version.Get())
 
 	// Fall back to env vars for image refs so Tilt's match_in_env_vars can rewrite them.
 	if sandboxSidecarImage == "" {

@@ -15,6 +15,10 @@
 FROM golang:1.26.2-bookworm AS builder
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+ARG GIT_TREE_STATE=unknown
 
 WORKDIR /workspace
 
@@ -28,7 +32,14 @@ COPY cmd/operator/ cmd/operator/
 COPY internal/ internal/
 
 # Build
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o operator ./cmd/operator/main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -trimpath \
+      -ldflags="-w -s \
+        -X github.com/isola-run/isola/internal/version.gitVersion=${VERSION} \
+        -X github.com/isola-run/isola/internal/version.gitCommit=${GIT_COMMIT} \
+        -X github.com/isola-run/isola/internal/version.buildDate=${BUILD_DATE} \
+        -X github.com/isola-run/isola/internal/version.gitTreeState=${GIT_TREE_STATE}" \
+      -o operator ./cmd/operator/main.go
 
 # Use distroless as minimal base image
 FROM gcr.io/distroless/static:nonroot

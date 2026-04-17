@@ -33,7 +33,9 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -46,8 +48,10 @@ import (
 	"github.com/isola-run/isola/internal/api-gateway/health"
 	"github.com/isola-run/isola/internal/api-gateway/rootfssnapshot"
 	"github.com/isola-run/isola/internal/api-gateway/sandbox"
+	"github.com/isola-run/isola/internal/api-gateway/version"
 	"github.com/isola-run/isola/internal/env"
 	"github.com/isola-run/isola/internal/logging"
+	internalversion "github.com/isola-run/isola/internal/version"
 )
 
 const (
@@ -155,6 +159,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Non-fatal: cache sync already proved the apiserver is reachable.
+	if dc, err := discovery.NewDiscoveryClientForConfig(rest.CopyConfig(mgr.GetConfig())); err != nil {
+		logger.Warn("unable to build discovery client for kubernetes version log", "error", err)
+	} else if info, err := dc.ServerVersion(); err != nil {
+		logger.Warn("unable to fetch kubernetes server version", "error", err)
+	} else {
+		logger.Info("connected to kubernetes", "gitVersion", info.GitVersion, "platform", info.Platform)
+	}
+
 	r := chi.NewRouter()
 	// httplog.RequestLogger automatically includes chi's RequestID and Recoverer middleware
 	r.Use(httplog.RequestLogger(&httplog.Logger{
@@ -166,11 +179,14 @@ func main() {
 		},
 	}))
 
-	humaConfig := huma.DefaultConfig("Isola Sandbox API", "0.1.0")
+	logger.Info("starting api-gateway", "version", internalversion.Get())
+
+	humaConfig := huma.DefaultConfig("Isola Sandbox API", internalversion.Get().GitVersion)
 	humaConfig.Info.Description = "API for managing sandboxes"
 	api := humachi.New(r, humaConfig)
 
 	health.Register(api, health.New(logger, mgr.GetClient()))
+	version.Register(api, version.New())
 
 	v1 := huma.NewGroup(api, "/v1")
 	sandbox.Register(v1, sandbox.New(logger, cfg.sandboxNamespace, mgr.GetClient()))

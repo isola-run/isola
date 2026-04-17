@@ -71,6 +71,18 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=
 
+      - name: Compute build metadata
+        id: buildmeta
+        run: |
+          echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date --date=@$(git show -s --format=%ct HEAD) -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+          echo "commit_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "tree_state=clean" >> "$GITHUB_OUTPUT"
+          else
+            echo "tree_state=dirty" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
         with:
@@ -82,6 +94,11 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ steps.buildmeta.outputs.version }}
+            GIT_COMMIT=${{ steps.buildmeta.outputs.commit_short }}
+            BUILD_DATE=${{ steps.buildmeta.outputs.build_date }}
+            GIT_TREE_STATE=${{ steps.buildmeta.outputs.tree_state }}
 
   update-chart-versions:
     name: Update Helm Chart appVersion

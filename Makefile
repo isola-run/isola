@@ -1,13 +1,30 @@
-# Root Makefile for isola
-
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
+
+##@ Version metadata
+
+VERSION        ?= $(shell cat VERSION)
+GIT_COMMIT     ?= $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
+# BUILD_DATE honors SOURCE_DATE_EPOCH (https://reproducible-builds.org/docs/source-date-epoch/).
+BUILD_DATE     ?= $(shell date $${SOURCE_DATE_EPOCH:+"--date=@$${SOURCE_DATE_EPOCH}"} -u +'%Y-%m-%dT%H:%M:%SZ')
+GIT_TREE_STATE ?= $(shell if [ -z "$$(git status --porcelain 2>/dev/null)" ]; then echo clean; else echo dirty; fi)
+
+##@ Go toolchain
 
 # Go toolchain version — auto-downloads the correct Go toolchain regardless of
 # what's installed locally (requires Go 1.21+). Must match go.mod `go` directive.
 GO_VERSION ?= 1.26.2
 GOTOOLCHAIN = go$(GO_VERSION)
 export GOTOOLCHAIN
+
+LDFLAGS := -s -w \
+	-X github.com/isola-run/isola/internal/version.gitVersion=$(VERSION) \
+	-X github.com/isola-run/isola/internal/version.gitCommit=$(GIT_COMMIT) \
+	-X github.com/isola-run/isola/internal/version.buildDate=$(BUILD_DATE) \
+	-X github.com/isola-run/isola/internal/version.gitTreeState=$(GIT_TREE_STATE)
+
+GO_FLAGS := -trimpath -ldflags='$(LDFLAGS)'
+GO_BUILD := CGO_ENABLED=0 go build $(GO_FLAGS)
 
 ##@ General
 
@@ -35,11 +52,12 @@ manifests: ## Generate CRD and RBAC manifests
 		output:rbac:artifacts:config=charts/isola/generated
 	./hack/generate-crd-templates.sh config/crd/bases charts/isola/templates/crd
 
+# $(GO_FLAGS) bakes VERSION into openapi-gen so info.version matches the built binaries.
 .PHONY: openapi
 openapi: ## Generate OpenAPI specs for HTTP services
 	@mkdir -p api/openapi
-	go run ./cmd/openapi-gen -service api-gateway > api/openapi/api-gateway.yaml
-	go run ./cmd/openapi-gen -service sandbox-sidecar > api/openapi/sandbox-sidecar.yaml
+	go run $(GO_FLAGS) ./cmd/openapi-gen -service api-gateway > api/openapi/api-gateway.yaml
+	go run $(GO_FLAGS) ./cmd/openapi-gen -service sandbox-sidecar > api/openapi/sandbox-sidecar.yaml
 
 .PHONY: check-openapi
 check-openapi: openapi ## Verify OpenAPI specs are up-to-date
@@ -181,10 +199,10 @@ test-e2e-verbose: ## Run E2E tests in parallel with verbose output
 
 .PHONY: build
 build: ## Build all binaries
-	go build -o bin/operator ./cmd/operator
-	go build -o bin/sandbox-sidecar ./cmd/sandbox-sidecar
-	go build -o bin/snapshot-uploader ./cmd/snapshot-uploader
-	go build -o bin/api-gateway ./cmd/api-gateway
+	$(GO_BUILD) -o bin/operator ./cmd/operator
+	$(GO_BUILD) -o bin/sandbox-sidecar ./cmd/sandbox-sidecar
+	$(GO_BUILD) -o bin/snapshot-uploader ./cmd/snapshot-uploader
+	$(GO_BUILD) -o bin/api-gateway ./cmd/api-gateway
 
 .PHONY: run-operator
 run-operator: ## Run operator from your host
