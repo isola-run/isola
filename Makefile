@@ -15,9 +15,10 @@ export GOTOOLCHAIN
 # Release workflow bumps it; dev builds just read it in place.
 VERSION        ?= $(shell cat VERSION)
 GIT_COMMIT     ?= $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
-# BUILD_DATE uses committer ISO 8601 date: same commit -> same timestamp -> reproducible.
-# Falls back to wall-clock only when git is unavailable (tarball builds).
-BUILD_DATE     ?= $(shell git log -1 --format=%cI 2>/dev/null || date -u +'%Y-%m-%dT%H:%M:%SZ')
+# BUILD_DATE honors SOURCE_DATE_EPOCH (reproducible-builds.org spec). Set it to the
+# commit epoch via `SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)` to produce
+# byte-identical release builds from the same commit. Default is wall-clock.
+BUILD_DATE     ?= $(shell date $${SOURCE_DATE_EPOCH:+"--date=@$${SOURCE_DATE_EPOCH}"} -u +'%Y-%m-%dT%H:%M:%SZ')
 # git status --porcelain catches both modified-tracked AND untracked files that would
 # land in the Docker build context. Matches argo-cd / k8s / cert-manager / cluster-api / velero.
 GIT_TREE_STATE ?= $(shell if [ -z "$$(git status --porcelain 2>/dev/null)" ]; then echo clean; else echo dirty; fi)
