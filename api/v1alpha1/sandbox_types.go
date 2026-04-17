@@ -42,9 +42,10 @@ type SnapshotRootfsTermination struct {
 	// This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
 	// Same semantic as RootfsSnapshotSpec.SnapshotName.
 	// If omitted, the operator defaults it to the sandbox name.
+	// Length and pattern are aligned with RootfsSnapshot.metadata.name (DNS-1123 subdomain, max 59).
 	// +optional
-	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:MaxLength=59
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	SnapshotName string `json:"snapshotName,omitempty"`
 
 	// TimeoutSeconds specifies the duration in seconds for the snapshot job.
@@ -56,8 +57,8 @@ type SnapshotRootfsTermination struct {
 }
 
 // TerminationPolicy controls how the sandbox is handled before termination.
-// +kubebuilder:validation:XValidation:rule="self.type != 'SnapshotRootfs' || has(self.snapshotRootfs)",message="snapshotRootfs config is required when type is SnapshotRootfs"
-// +kubebuilder:validation:XValidation:rule="self.type == 'SnapshotRootfs' || !has(self.snapshotRootfs)",message="snapshotRootfs config is only valid when type is SnapshotRootfs"
+// +kubebuilder:validation:XValidation:rule="self.type != 'SnapshotRootfs' || has(self.snapshotRootfs)",message="snapshotRootfs is required when type is SnapshotRootfs",reason="FieldValueRequired",fieldPath=".snapshotRootfs"
+// +kubebuilder:validation:XValidation:rule="self.type == 'SnapshotRootfs' || !has(self.snapshotRootfs)",message="snapshotRootfs is only valid when type is SnapshotRootfs",reason="FieldValueForbidden",fieldPath=".snapshotRootfs"
 type TerminationPolicy struct {
 	// Type determines the action taken when the sandbox terminates
 	// +optional
@@ -102,6 +103,7 @@ type Network struct {
 	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:validation:items:MaxLength=43
 	// +kubebuilder:validation:XValidation:rule="self.all(s, isCIDR(s))",message="must be valid CIDR notation (e.g. 10.0.0.0/8 or 2001:db8::/32)"
+	// +listType=atomic
 	// +optional
 	AllowedEgressCIDRs []string `json:"allowedEgressCIDRs,omitempty"`
 
@@ -114,6 +116,7 @@ type Network struct {
 	// MaxItems=3 because Kubernetes allows at most 3 nameservers in pod DNS config.
 	// +kubebuilder:validation:MaxItems=3
 	// +kubebuilder:validation:XValidation:rule="self.all(s, isIP(s))",message="must be valid IP addresses"
+	// +listType=atomic
 	// +optional
 	Nameservers []string `json:"nameservers,omitempty"`
 }
@@ -122,11 +125,11 @@ type Network struct {
 type RootfsSnapshotSource struct {
 	// SnapshotName is the name of the rootfs snapshot to restore from.
 	// This matches the snapshotName field from the RootfsSnapshot CR that created it.
-	// Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
+	// Must be a valid RFC 1123 DNS subdomain (lowercase alphanumeric, hyphens, dots), max 59 chars.
 	// +required
 	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:MaxLength=59
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	SnapshotName string `json:"snapshotName"`
 
 	// ContainerName is the name of the container to apply the rootfs restore to.
@@ -140,12 +143,10 @@ type RootfsSnapshotSource struct {
 }
 
 // SandboxSpec defines the desired state of Sandbox
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.network) || has(self.network)",message="network cannot be removed once set"
-// +kubebuilder:validation:XValidation:rule="!has(self.network) || !has(oldSelf.network) || self.network == oldSelf.network",message="network is immutable once set"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.rootfsSnapshotSources) || has(self.rootfsSnapshotSources)",message="rootfsSnapshotSources cannot be removed once set"
-// +kubebuilder:validation:XValidation:rule="!has(self.rootfsSnapshotSources) || !has(oldSelf.rootfsSnapshotSources) || self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources",message="rootfsSnapshotSources is immutable once set"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.terminationPolicy) || has(self.terminationPolicy)",message="terminationPolicy cannot be removed once set"
-// +kubebuilder:validation:XValidation:rule="!has(self.terminationPolicy) || !has(oldSelf.terminationPolicy) || self.terminationPolicy == oldSelf.terminationPolicy",message="terminationPolicy is immutable once set"
+// +kubebuilder:validation:XValidation:rule="has(self.network) == has(oldSelf.network) && (!has(self.network) || self.network == oldSelf.network)",message="network is immutable",reason="FieldValueForbidden",fieldPath=".network"
+// +kubebuilder:validation:XValidation:rule="has(self.rootfsSnapshotSources) == has(oldSelf.rootfsSnapshotSources) && (!has(self.rootfsSnapshotSources) || self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources)",message="rootfsSnapshotSources is immutable",reason="FieldValueForbidden",fieldPath=".rootfsSnapshotSources"
+// +kubebuilder:validation:XValidation:rule="has(self.terminationPolicy) == has(oldSelf.terminationPolicy) && (!has(self.terminationPolicy) || self.terminationPolicy == oldSelf.terminationPolicy)",message="terminationPolicy is immutable",reason="FieldValueForbidden",fieldPath=".terminationPolicy"
+// +kubebuilder:validation:XValidation:rule="has(self.timeoutSeconds) == has(oldSelf.timeoutSeconds) && (!has(self.timeoutSeconds) || self.timeoutSeconds == oldSelf.timeoutSeconds)",message="timeoutSeconds is immutable",reason="FieldValueForbidden",fieldPath=".timeoutSeconds"
 type SandboxSpec struct {
 	// PodTemplate describes the pod that will be created to run the sandbox.
 	// The Sandbox controller will override specific security settings (runtimeClassName, etc.)
@@ -174,7 +175,7 @@ type SandboxSpec struct {
 
 	// Network specifies the network isolation configuration for this sandbox.
 	// If not specified, the sandbox has deny-all egress.
-	// Network configuration is immutable after sandbox creation.
+	// Once set, network configuration is immutable.
 	// +optional
 	Network *Network `json:"network,omitempty"`
 
@@ -187,8 +188,8 @@ type SandboxSpec struct {
 	// +optional
 	// +listType=atomic
 	// +kubebuilder:validation:MaxItems=16
-	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(s, s.containerName != '')",message="containerName is required when multiple rootfsSnapshotSources are specified"
-	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName != j.containerName))",message="each rootfsSnapshotSource must target a different container"
+	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(s, s.containerName != '')",message="containerName is required when multiple rootfsSnapshotSources are specified",reason="FieldValueRequired"
+	// +kubebuilder:validation:XValidation:rule="self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName != j.containerName))",message="each rootfsSnapshotSource must target a different container",reason="FieldValueDuplicate"
 	RootfsSnapshotSources []RootfsSnapshotSource `json:"rootfsSnapshotSources,omitempty"`
 }
 
@@ -222,7 +223,8 @@ type SandboxStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status",description="Aggregate readiness"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].reason",priority=1,description="Reason for Ready condition"
-// Sandbox is the Schema for the sandboxes API
+// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 47",message="metadata.name must be at most 47 characters: the operator writes it into label values (capped at 63) and derives <name>-termination RootfsSnapshot from it (itself capped at 59)",reason="FieldValueInvalid"
+// Sandbox is the Schema for the sandboxes API.
 type Sandbox struct {
 	metav1.TypeMeta `json:",inline"`
 

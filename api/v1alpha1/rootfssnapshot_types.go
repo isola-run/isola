@@ -30,19 +30,27 @@ const (
 )
 
 // RootfsSnapshotSpec defines the desired state of RootfsSnapshot
+// +kubebuilder:validation:XValidation:rule="self.sandboxName == oldSelf.sandboxName",message="sandboxName is immutable",reason="FieldValueForbidden",fieldPath=".sandboxName"
+// +kubebuilder:validation:XValidation:rule="has(self.snapshotName) == has(oldSelf.snapshotName) && (!has(self.snapshotName) || self.snapshotName == oldSelf.snapshotName)",message="snapshotName is immutable",reason="FieldValueForbidden",fieldPath=".snapshotName"
+// +kubebuilder:validation:XValidation:rule="has(self.containerName) == has(oldSelf.containerName) && (!has(self.containerName) || self.containerName == oldSelf.containerName)",message="containerName is immutable",reason="FieldValueForbidden",fieldPath=".containerName"
+// +kubebuilder:validation:XValidation:rule="has(self.timeoutSeconds) == has(oldSelf.timeoutSeconds) && (!has(self.timeoutSeconds) || self.timeoutSeconds == oldSelf.timeoutSeconds)",message="timeoutSeconds is immutable",reason="FieldValueForbidden",fieldPath=".timeoutSeconds"
 type RootfsSnapshotSpec struct {
 	// SandboxName is the name of the sandbox to snapshot.
 	// The sandbox must be in the same namespace as this RootfsSnapshot.
+	// Must be a valid RFC 1123 DNS subdomain (lowercase alphanumeric, hyphens, dots), max 47 chars.
 	// +required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=47
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	SandboxName string `json:"sandboxName"`
 
 	// SnapshotName is the name used for the snapshot storage key.
 	// This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
 	// If omitted, the operator defaults it to the sandbox name.
+	// Must be a valid RFC 1123 DNS subdomain (lowercase alphanumeric, hyphens, dots), max 59 chars.
 	// +optional
-	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:MaxLength=59
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	SnapshotName string `json:"snapshotName,omitempty"`
 
 	// ContainerName is the name of the container to snapshot.
@@ -105,7 +113,7 @@ type RootfsSnapshotStatus struct {
 // +kubebuilder:printcolumn:name="Succeeded",type="string",JSONPath=".status.conditions[?(@.type=='Succeeded')].status",description="Snapshot succeeded"
 // +kubebuilder:printcolumn:name="Sandbox",type="string",JSONPath=".spec.sandboxName",description="Sandbox being snapshotted"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-
+// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 59",message="metadata.name must be at most 59 characters: the operator creates a Job named <name>-job whose name is auto-injected into the batch.kubernetes.io/job-name label (capped at 63)",reason="FieldValueInvalid"
 // RootfsSnapshot represents a request to snapshot a sandbox's root filesystem.
 // The controller creates a Job that uses gvisor's runsc to tar the overlay2 upper layer.
 //

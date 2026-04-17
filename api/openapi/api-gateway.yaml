@@ -48,9 +48,9 @@ components:
           description: Resource requests and limits
         rootfsSnapshotName:
           description: Rootfs snapshot to restore into this container. Files on separately-mounted filesystems (e.g. /tmp) are excluded.
-          maxLength: 63
+          maxLength: 59
           minLength: 1
-          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
           type: string
       required:
         - image
@@ -149,12 +149,14 @@ components:
           type: string
         sandboxId:
           description: ID of the sandbox to snapshot (as returned by POST /v1/sandboxes)
+          maxLength: 47
           minLength: 1
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
           type: string
         snapshotName:
           description: Snapshot storage key and restore reference. Defaults to the sandbox ID if omitted. To restore, pass this value as rootfsSnapshotName on a container when creating a sandbox.
-          maxLength: 63
-          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          maxLength: 59
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
           type: string
         timeoutSeconds:
           description: Max duration in seconds for the snapshot job. Defaults to 300 if omitted.
@@ -547,8 +549,8 @@ components:
       properties:
         snapshotName:
           description: Snapshot storage key. Defaults to sandbox ID if omitted.
-          maxLength: 63
-          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          maxLength: 59
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
           type: string
         timeoutSeconds:
           description: Snapshot operation deadline in seconds. Defaults to 300.
@@ -723,6 +725,9 @@ paths:
           required: true
           schema:
             description: RootfsSnapshot identifier
+            maxLength: 59
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
       responses:
         "200":
@@ -824,6 +829,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 47
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
       responses:
         "204":
@@ -847,6 +855,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 47
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
       responses:
         "200":
@@ -887,6 +898,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 47
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
         - description: Container name. Defaults to the only container if there is one, otherwise it's required.
           explode: false
@@ -894,6 +908,9 @@ paths:
           name: container
           schema:
             description: Container name. Defaults to the only container if there is one, otherwise it's required.
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
       requestBody:
         content:
@@ -959,6 +976,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 47
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
         - description: Command identifier
           in: path
@@ -1016,6 +1036,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 47
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
         - description: Command identifier
           in: path
@@ -1087,6 +1110,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 47
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
         - description: Command identifier
           in: path
@@ -1154,6 +1180,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 47
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
         - description: Command identifier
           in: path
@@ -1219,6 +1248,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 47
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
         - description: Command identifier
           in: path
@@ -1276,6 +1308,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 47
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
         - description: Command identifier
           in: path
@@ -1343,6 +1378,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 47
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
         - description: Source path (absolute or relative to container cwd)
           explode: false
@@ -1359,6 +1397,9 @@ paths:
           name: container
           schema:
             description: Container name. Defaults to the only container if there is one, otherwise it's required.
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
       responses:
         "200":
@@ -1419,6 +1460,9 @@ paths:
           required: true
           schema:
             description: Sandbox identifier
+            maxLength: 47
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
             type: string
         - description: Destination path (absolute or relative to container cwd)
           explode: false
@@ -1435,6 +1479,9 @@ paths:
           name: container
           schema:
             description: Container name. Defaults to the only container if there is one, otherwise it's required.
+            maxLength: 63
+            minLength: 1
+            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
             type: string
       requestBody:
         content:

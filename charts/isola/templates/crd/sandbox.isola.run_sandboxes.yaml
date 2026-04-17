@@ -36,7 +36,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Sandbox is the Schema for the sandboxes API
+        description: Sandbox is the Schema for the sandboxes API.
         properties:
           apiVersion:
             description: |-
@@ -62,7 +62,7 @@ spec:
                 description: |-
                   Network specifies the network isolation configuration for this sandbox.
                   If not specified, the sandbox has deny-all egress.
-                  Network configuration is immutable after sandbox creation.
+                  Once set, network configuration is immutable.
                 properties:
                   allowClusterDNS:
                     description: |-
@@ -95,6 +95,7 @@ spec:
                       type: string
                     maxItems: 16
                     type: array
+                    x-kubernetes-list-type: atomic
                     x-kubernetes-validations:
                     - message: must be valid CIDR notation (e.g. 10.0.0.0/8 or 2001:db8::/32)
                       rule: self.all(s, isCIDR(s))
@@ -111,6 +112,7 @@ spec:
                       type: string
                     maxItems: 3
                     type: array
+                    x-kubernetes-list-type: atomic
                     x-kubernetes-validations:
                     - message: must be valid IP addresses
                       rule: self.all(s, isIP(s))
@@ -154,10 +156,10 @@ spec:
                       description: |-
                         SnapshotName is the name of the rootfs snapshot to restore from.
                         This matches the snapshotName field from the RootfsSnapshot CR that created it.
-                        Must be a valid RFC 1123 DNS label (lowercase alphanumeric and hyphens only).
-                      maxLength: 63
+                        Must be a valid RFC 1123 DNS subdomain (lowercase alphanumeric, hyphens, dots), max 59 chars.
+                      maxLength: 59
                       minLength: 1
-                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                       type: string
                   required:
                   - snapshotName
@@ -168,8 +170,10 @@ spec:
                 x-kubernetes-validations:
                 - message: containerName is required when multiple rootfsSnapshotSources
                     are specified
+                  reason: FieldValueRequired
                   rule: self.size() <= 1 || self.all(s, s.containerName != '')
                 - message: each rootfsSnapshotSource must target a different container
+                  reason: FieldValueDuplicate
                   rule: self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName
                     != j.containerName))
               startupTimeoutSeconds:
@@ -194,8 +198,9 @@ spec:
                           This is the value callers must pass as rootfsSnapshotSources[].snapshotName to restore from this snapshot.
                           Same semantic as RootfsSnapshotSpec.SnapshotName.
                           If omitted, the operator defaults it to the sandbox name.
-                        maxLength: 63
-                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          Length and pattern are aligned with RootfsSnapshot.metadata.name (DNS-1123 subdomain, max 59).
+                        maxLength: 59
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                         type: string
                       timeoutSeconds:
                         description: |-
@@ -220,9 +225,13 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-validations:
-                - message: snapshotRootfs config is required when type is SnapshotRootfs
+                - fieldPath: .snapshotRootfs
+                  message: snapshotRootfs is required when type is SnapshotRootfs
+                  reason: FieldValueRequired
                   rule: self.type != 'SnapshotRootfs' || has(self.snapshotRootfs)
-                - message: snapshotRootfs config is only valid when type is SnapshotRootfs
+                - fieldPath: .snapshotRootfs
+                  message: snapshotRootfs is only valid when type is SnapshotRootfs
+                  reason: FieldValueForbidden
                   rule: self.type == 'SnapshotRootfs' || !has(self.snapshotRootfs)
               timeoutSeconds:
                 description: TimeoutSeconds defines how long the sandbox runs before
@@ -234,21 +243,27 @@ spec:
             - podTemplate
             type: object
             x-kubernetes-validations:
-            - message: network cannot be removed once set
-              rule: '!has(oldSelf.network) || has(self.network)'
-            - message: network is immutable once set
-              rule: '!has(self.network) || !has(oldSelf.network) || self.network ==
-                oldSelf.network'
-            - message: rootfsSnapshotSources cannot be removed once set
-              rule: '!has(oldSelf.rootfsSnapshotSources) || has(self.rootfsSnapshotSources)'
-            - message: rootfsSnapshotSources is immutable once set
-              rule: '!has(self.rootfsSnapshotSources) || !has(oldSelf.rootfsSnapshotSources)
-                || self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources'
-            - message: terminationPolicy cannot be removed once set
-              rule: '!has(oldSelf.terminationPolicy) || has(self.terminationPolicy)'
-            - message: terminationPolicy is immutable once set
-              rule: '!has(self.terminationPolicy) || !has(oldSelf.terminationPolicy)
-                || self.terminationPolicy == oldSelf.terminationPolicy'
+            - fieldPath: .network
+              message: network is immutable
+              reason: FieldValueForbidden
+              rule: has(self.network) == has(oldSelf.network) && (!has(self.network)
+                || self.network == oldSelf.network)
+            - fieldPath: .rootfsSnapshotSources
+              message: rootfsSnapshotSources is immutable
+              reason: FieldValueForbidden
+              rule: has(self.rootfsSnapshotSources) == has(oldSelf.rootfsSnapshotSources)
+                && (!has(self.rootfsSnapshotSources) || self.rootfsSnapshotSources
+                == oldSelf.rootfsSnapshotSources)
+            - fieldPath: .terminationPolicy
+              message: terminationPolicy is immutable
+              reason: FieldValueForbidden
+              rule: has(self.terminationPolicy) == has(oldSelf.terminationPolicy)
+                && (!has(self.terminationPolicy) || self.terminationPolicy == oldSelf.terminationPolicy)
+            - fieldPath: .timeoutSeconds
+              message: timeoutSeconds is immutable
+              reason: FieldValueForbidden
+              rule: has(self.timeoutSeconds) == has(oldSelf.timeoutSeconds) && (!has(self.timeoutSeconds)
+                || self.timeoutSeconds == oldSelf.timeoutSeconds)
           status:
             description: status defines the observed state of Sandbox
             properties:
@@ -330,6 +345,12 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: 'metadata.name must be at most 47 characters: the operator writes
+            it into label values (capped at 63) and derives <name>-termination RootfsSnapshot
+            from it (itself capped at 59)'
+          reason: FieldValueInvalid
+          rule: size(self.metadata.name) <= 47
     served: true
     storage: true
     subresources:
