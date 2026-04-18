@@ -28,6 +28,7 @@ SETUP_ENVTEST_VERSION="release-0.23"
 CONTROLLER_GEN_VERSION="v0.20.0"
 LEFTHOOK_VERSION="v2.0.15"
 GVISOR_VERSION="20260302"
+ZIZMOR_VERSION="1.24.1"
 
 GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/${GVISOR_VERSION}"
 
@@ -135,6 +136,12 @@ if check_optional_tool "govulncheck" "Install: go install golang.org/x/vuln/cmd/
     installed_version=$(govulncheck -version 2>&1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
     if [ "$installed_version" != "$GOVULNCHECK_VERSION" ]; then
         echo "    [WARN] Version mismatch: installed $installed_version, expected $GOVULNCHECK_VERSION"
+    fi
+fi
+if check_optional_tool "zizmor" "Install: uv tool install zizmor==${ZIZMOR_VERSION}  (or: cargo install --locked zizmor@${ZIZMOR_VERSION})"; then
+    installed_version=$(zizmor --version 2>/dev/null | awk '{print $2}' || echo "unknown")
+    if [ "$installed_version" != "$ZIZMOR_VERSION" ]; then
+        echo "    [WARN] Version mismatch: installed $installed_version, expected $ZIZMOR_VERSION"
     fi
 fi
 check_optional_tool "lefthook" "Install: go install github.com/evilmartians/lefthook/v2@${LEFTHOOK_VERSION}" && HAS_LEFTHOOK=1

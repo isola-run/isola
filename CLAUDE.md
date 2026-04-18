@@ -71,6 +71,7 @@ Tool versions are pinned and must be kept in sync across locations:
 | Go | `Makefile` (`GO_VERSION`), `go.mod` | Dockerfile `FROM golang:` tags |
 | golangci-lint | `hack/setup.sh` | `.github/workflows/lint.yml` |
 | govulncheck | `hack/setup.sh` | - |
+| zizmor | `hack/setup.sh` (`ZIZMOR_VERSION`) | `.github/workflows/security.yml` (`version:` input on zizmor-action) |
 | lefthook | `hack/setup.sh` | - |
 | setup-envtest | `hack/setup.sh` | `.github/workflows/test.yml` |
 | envtest K8s | `Makefile` | k8s.io/api in go.mod |

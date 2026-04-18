@@ -88,6 +88,10 @@ lint-fix: ## Run golangci-lint --fix
 vulncheck: ## Run govulncheck
 	govulncheck ./...
 
+.PHONY: vulncheck-workflows
+vulncheck-workflows: ## Run zizmor on GitHub Actions workflows
+	zizmor ./.github/
+
 .PHONY: tidy
 tidy: ## Run go mod tidy
 	go mod tidy
@@ -102,7 +106,7 @@ check-manifests: manifests ## Verify generated manifests are up-to-date
 	fi
 
 .PHONY: check-all
-check-all: vet lint vulncheck check-openapi check-manifests sdk-python-check-all ## Run all checks (read-only, CI-safe)
+check-all: vet lint vulncheck vulncheck-workflows check-openapi check-manifests sdk-python-check-all ## Run all checks (read-only, CI-safe)
 
 .PHONY: fix-all
 fix-all: fmt lint-fix sdk-python-fix-all ## Fix all auto-fixable issues

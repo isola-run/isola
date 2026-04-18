@@ -1,0 +1,17 @@
+# zizmor configuration — https://docs.zizmor.sh/configuration/
+#
+# Any suppression added here MUST include a comment explaining why the finding
+# is either a false positive or intentional. Prefer inline `# zizmor: ignore[...]`
+# comments in workflow files when placement allows; fall back to this file when
+# it does not (e.g. when the finding points at a `uses:` line where the version
+# pin comment already occupies the trailing YAML comment slot).
+
+rules:
+  cache-poisoning:
+    ignore:
+      # e2e.yml is a test-only workflow: docker/build-push-action uses
+      # `load: true` (not `push: true`) and no release artifacts are published
+      # here. Releases go through .github/workflows/release.yml, which does not
+      # enable action caching. The astral-sh/setup-uv cache only affects pytest
+      # execution inside this test job.
+      - e2e.yml
