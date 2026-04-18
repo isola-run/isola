@@ -12,25 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.26.2-bookworm AS builder
-ARG TARGETARCH
+# syntax=docker/dockerfile:1.4
+
+FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
+
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown
 ARG BUILD_DATE=unknown
 ARG GIT_TREE_STATE=unknown
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /workspace
 
-# Copy go mod files first for caching
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 # Copy required source
 COPY cmd/sandbox-sidecar/ cmd/sandbox-sidecar/
 COPY internal/ internal/
 
-# Build
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath \
       -ldflags="-w -s \
         -X github.com/isola-run/isola/internal/version.gitVersion=${VERSION} \
@@ -39,10 +43,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
         -X github.com/isola-run/isola/internal/version.gitTreeState=${GIT_TREE_STATE}" \
       -o sandbox-sidecar ./cmd/sandbox-sidecar/main.go
 
+# Sidecar runs as root to read /proc/<pid>/environ of user processes (see CLAUDE.md).
+# Base image stays `gcr.io/distroless/static` (no :nonroot suffix) and no USER directive
+# is set -- both intentional deviations from the other Go Dockerfiles in this repo.
 FROM gcr.io/distroless/static
 
-WORKDIR /
-COPY --from=builder /workspace/sandbox-sidecar .
+LABEL org.opencontainers.image.source="https://github.com/isola-run/isola"
+
+COPY --from=builder /workspace/sandbox-sidecar /sandbox-sidecar
 
 EXPOSE 10032
 

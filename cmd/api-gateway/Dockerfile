@@ -12,27 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.26.2-bookworm AS builder
-ARG TARGETOS
-ARG TARGETARCH
+# syntax=docker/dockerfile:1.4
+
+FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
+
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown
 ARG BUILD_DATE=unknown
 ARG GIT_TREE_STATE=unknown
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /workspace
 
-# Copy go mod files first for caching
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 # Copy required source
 COPY api/ api/
 COPY cmd/api-gateway/ cmd/api-gateway/
 COPY internal/ internal/
 
-# Build
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath \
       -ldflags="-w -s \
         -X github.com/isola-run/isola/internal/version.gitVersion=${VERSION} \
@@ -41,11 +44,11 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
         -X github.com/isola-run/isola/internal/version.gitTreeState=${GIT_TREE_STATE}" \
       -o api-gateway ./cmd/api-gateway/main.go
 
-# Use distroless as minimal base image
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 
-WORKDIR /
-COPY --from=builder /workspace/api-gateway .
+LABEL org.opencontainers.image.source="https://github.com/isola-run/isola"
+
+COPY --from=builder /workspace/api-gateway /api-gateway
 USER 65532:65532
 
 EXPOSE 8080

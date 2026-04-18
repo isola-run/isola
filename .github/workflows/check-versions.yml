@@ -1,0 +1,22 @@
+name: check-versions
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Run check-versions.sh
+        run: ./hack/check-versions.sh
+        # check-versions.sh uses awk (pre-installed on ubuntu-latest).
+        # If we ever switch the script to yq, install it here.
