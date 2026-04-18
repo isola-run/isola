@@ -1,16 +1,72 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
 
-  version: 2
-  updates:
-    - package-ecosystem: "gomod"
-      directory: "/"
-      schedule:
-        interval: "weekly"
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      gomod-minor-patch:
+        update-types: ["minor", "patch"]
 
-    - package-ecosystem: "github-actions"
-      directory: "/"
-      schedule:
-        interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "uv"
+    directory: "/sdks/python"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      python-sdk-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "uv"
+    directory: "/tests/e2e"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      e2e-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # Dockerfile `FROM golang:` tags must be kept in sync with Makefile GO_VERSION
+  # and go.mod (see CLAUDE.md) -- a Dependabot bump here will require a matching
+  # bump in both of those before CI passes.
+  - package-ecosystem: "docker"
+    directories:
+      - "/cmd/operator"
+      - "/cmd/sandbox-sidecar"
+      - "/cmd/snapshot-uploader"
+      - "/cmd/api-gateway"
+      - "/cmd/snapshot-mounter"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      docker-base-images:
+        patterns: ["*"]
