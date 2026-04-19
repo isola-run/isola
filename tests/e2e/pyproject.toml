@@ -1,8 +1,14 @@
+# Internal end-to-end test harness. NEVER PUBLISHED to PyPI.
+# Version is frozen at 0.0.0 and does not track the release version.
+
 [project]
 name = "isola-e2e-tests"
-version = "0.1.0"
+version = "0.0.0"
 description = "End-to-end tests for the Isola sandbox platform"
 requires-python = ">=3.10"
+# PyPI rejects uploads with any classifier starting with "Private ::" --
+# server-side guarantee that this package can never accidentally publish.
+classifiers = ["Private :: Do Not Upload"]
 dependencies = [
     "isola-run",
     "prometheus-client>=0.20",
@@ -11,6 +17,9 @@ dependencies = [
     "pytest-timeout>=2.0",
     "pytest-xdist>=3.8.0",
 ]
+
+[tool.uv]
+package = false
 
 [tool.uv.sources]
 isola-run = { path = "../../sdks/python", editable = true }

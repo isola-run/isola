@@ -59,6 +59,13 @@ openapi: ## Generate OpenAPI specs for HTTP services
 	go run $(GO_FLAGS) ./cmd/openapi-gen -service api-gateway > api/openapi/api-gateway.yaml
 	go run $(GO_FLAGS) ./cmd/openapi-gen -service sandbox-sidecar > api/openapi/sandbox-sidecar.yaml
 
+.PHONY: print-buildmeta
+print-buildmeta: ## Print build metadata as KEY=VALUE lines (for $GITHUB_OUTPUT)
+	@echo "version=$(VERSION)"
+	@echo "build_date=$(BUILD_DATE)"
+	@echo "commit_short=$(GIT_COMMIT)"
+	@echo "tree_state=$(GIT_TREE_STATE)"
+
 .PHONY: check-openapi
 check-openapi: openapi ## Verify OpenAPI specs are up-to-date
 	@if ! git diff --quiet -- api/openapi/; then \

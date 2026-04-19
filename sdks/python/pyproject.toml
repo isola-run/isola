@@ -1,13 +1,10 @@
 [build-system]
-requires = ["uv_build"]
-build-backend = "uv_build"
-
-[tool.uv.build-backend]
-module-name = "isola"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "isola-run"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Python SDK for the Isola sandbox platform"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -26,6 +23,16 @@ dev = [
     "respx>=0.22.0",
     "ruff>=0.4.0",
 ]
+
+# Version is bumped by hack/bump-version.sh; hatchling reads __version__ from the file.
+[tool.hatch.version]
+path = "src/isola/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/isola"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/isola", "README.md"]
 
 [tool.ruff]
 target-version = "py310"

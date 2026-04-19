@@ -12,24 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.26.2-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
+
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown
 ARG BUILD_DATE=unknown
 ARG GIT_TREE_STATE=unknown
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /workspace
 
-# Copy go mod files first for caching
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 # Copy required source
 COPY cmd/snapshot-uploader/ cmd/snapshot-uploader/
 COPY internal/ internal/
 
-# Build
-RUN CGO_ENABLED=0 GOOS=linux \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath \
       -ldflags="-w -s \
         -X github.com/isola-run/isola/internal/version.gitVersion=${VERSION} \
@@ -38,11 +41,9 @@ RUN CGO_ENABLED=0 GOOS=linux \
         -X github.com/isola-run/isola/internal/version.gitTreeState=${GIT_TREE_STATE}" \
       -o snapshot-uploader ./cmd/snapshot-uploader/main.go
 
-# Use distroless as minimal base image
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 
 COPY --from=builder /workspace/snapshot-uploader /snapshot-uploader
-
 USER 65532:65532
 
 ENTRYPOINT ["/snapshot-uploader"]
