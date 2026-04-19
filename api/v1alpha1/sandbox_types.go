@@ -215,6 +215,16 @@ type SandboxStatus struct {
 	// PodIP is the IP address of the sandbox pod.
 	// +optional
 	PodIP string `json:"podIP,omitempty"`
+
+	// SidecarVersion mirrors the isola.run/sidecar-version annotation on the
+	// sandbox pod, which is stamped with the isola-operator GitVersion at pod
+	// creation time. It is a proxy for the sandbox-sidecar build shipped into
+	// the pod: isola-operator and sandbox-sidecar are released together, so the
+	// operator's own version identifies the sidecar build. Consumers (api-gateway)
+	// use this for capability checks against long-running sandboxes whose sidecar
+	// image predates later operator upgrades.
+	// +optional
+	SidecarVersion string `json:"sidecarVersion,omitempty"`
 }
 
 // +kubebuilder:object:root=true
