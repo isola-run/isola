@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# syntax=docker/dockerfile:1.4
-
 FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
 
 ARG VERSION=dev
@@ -45,8 +43,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
       -o api-gateway ./cmd/api-gateway/main.go
 
 FROM gcr.io/distroless/static-debian13:nonroot
-
-LABEL org.opencontainers.image.source="https://github.com/isola-run/isola"
 
 COPY --from=builder /workspace/api-gateway /api-gateway
 USER 65532:65532

@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# syntax=docker/dockerfile:1.4
-
 FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
 
 ARG VERSION=dev
@@ -47,8 +45,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Base image stays `gcr.io/distroless/static` (no :nonroot suffix) and no USER directive
 # is set -- both intentional deviations from the other Go Dockerfiles in this repo.
 FROM gcr.io/distroless/static
-
-LABEL org.opencontainers.image.source="https://github.com/isola-run/isola"
 
 COPY --from=builder /workspace/sandbox-sidecar /sandbox-sidecar
 
