@@ -144,7 +144,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ needs.validate.outputs.is_prerelease == 'false' }}
 
       - name: Build and push
         id: build
@@ -201,12 +200,6 @@ jobs:
           subject-name: ${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
-
-      - name: Upload SBOM for aggregator
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: sbom-${{ matrix.image.name }}
-          path: ./sbom-${{ matrix.image.name }}.spdx.json
 
   # -------------------------------------------------------------------
   # STAGE 3 — release-chart
