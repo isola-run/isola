@@ -1,5 +1,4 @@
-# Isola release workflow. Triggered on tag push (v*). Sequential spine:
-# validate -> release-images -> release-chart -> release-pypi -> github-release.
+# Isola release workflow. Triggered on tag push (v*)
 
 name: release
 
@@ -9,9 +8,6 @@ on:
 
 permissions: {}  # Each job declares its own minimum-necessary permissions.
 
-# Serialize all release runs. With cancel-in-progress: false the in-flight run
-# keeps running; new triggers wait as `pending` (cap 1 running + 1 pending;
-# a third trigger cancels the pending second).
 concurrency:
   group: release
   cancel-in-progress: false
