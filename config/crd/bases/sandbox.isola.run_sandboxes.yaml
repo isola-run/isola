@@ -325,6 +325,14 @@ spec:
               podIP:
                 description: PodIP is the IP address of the sandbox pod.
                 type: string
+              sidecarVersion:
+                description: |-
+                  SidecarVersion records the isola-operator GitVersion at the time the sandbox
+                  pod was created, as a proxy for the sandbox-sidecar build shipped into the pod.
+                  Set once at pod creation and never updated afterwards, so consumers can reason
+                  about which sidecar capabilities are available for a long-running sandbox even
+                  after the operator/sidecar images have been upgraded.
+                type: string
               terminationDeadlineAt:
                 description: |-
                   TerminationDeadlineAt is the absolute time by which the termination policy must complete.

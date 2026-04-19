@@ -41,6 +41,7 @@ import (
 	netbuilder "github.com/isola-run/isola/internal/operator/controller/network"
 	"github.com/isola-run/isola/internal/operator/controller/podutil"
 	"github.com/isola-run/isola/internal/operator/controller/snapshot"
+	internalversion "github.com/isola-run/isola/internal/version"
 	"k8s.io/client-go/tools/events"
 )
 
@@ -398,6 +399,12 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	sandboxCreatedTotal.Inc()
 
 	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "PodCreated", "Created", "Sandbox Pod created")
+
+	// Capture the sidecar version at pod creation time so consumers (api-gateway)
+	// can do capability checks against long-running sandboxes whose sidecar image
+	// predates later operator upgrades. Operator and sidecar are released together,
+	// so the operator's own version stands in for the sidecar build.
+	sandbox.Status.SidecarVersion = internalversion.Get().GitVersion
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{

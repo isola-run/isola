@@ -681,5 +681,21 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(sandbox.Status.PodIP).To(Equal("10.244.0.42"))
 		})
+
+		It("should record sidecar version in sandbox status on pod creation", func() {
+			sandboxName := "sandbox-sidecar-version"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox.Status.SidecarVersion).NotTo(BeEmpty())
+		})
 	})
 })
