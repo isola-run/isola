@@ -73,7 +73,17 @@ operator:
   podAnnotations: {}
 
   # Sandbox sidecar image injected into sandbox pods to facilitate control
-  # from api-gateway to the sandbox (e.g. exec commands, copy files)
+  # from api-gateway to the sandbox (e.g. exec commands, copy files).
+  #
+  # IMPORTANT: the sidecar image MUST correspond to the same build as the
+  # isola-operator image above. The operator and sandbox-sidecar are released
+  # together, and the operator records its own version as
+  # Sandbox.Status.SidecarVersion at pod creation time as a proxy for the
+  # sidecar build. If you override these values to point at different builds
+  # (e.g. operator 1.3 with sandbox-sidecar 1.2), Status.SidecarVersion will
+  # lie and any future capability checks based on it will make wrong decisions
+  # for running sandboxes. Only override registry/digest to pin specific
+  # mirrors or digests of the same version that ships with this chart.
   sandboxSidecar:
     image:
       registry: ghcr.io/isola-run

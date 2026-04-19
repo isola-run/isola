@@ -77,7 +77,7 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.StringVar(&sandboxSidecarImage, "sidecar-image", "", "Container image for the sandbox-sidecar (required)")
+	flag.StringVar(&sandboxSidecarImage, "sidecar-image", "", "Container image for the sandbox-sidecar (required). Must correspond to the same build as this operator binary: the operator's own version is recorded as Sandbox.Status.SidecarVersion at pod creation, so supplying a mismatched image will silently make capability checks wrong for running sandboxes.")
 	flag.StringVar(&runtimeClassName, "runtime-class", "", "Required. Must reference a gVisor/runsc RuntimeClass (e.g. 'gvisor').")
 	flag.StringVar(&priorityClassName, "priority-class", "", "PriorityClassName to use for sandbox pods. Empty means use cluster default.")
 	flag.StringVar(&rootfssnapshotBucketURL, "rootfssnapshot-bucket-url", "", "Bucket URL for rootfs snapshot storage (e.g., s3://bucket?region=us-east-1)")
