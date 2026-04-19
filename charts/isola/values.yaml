@@ -202,7 +202,7 @@ operator:
           image:
             registry: docker.io
             repository: rclone/rclone
-            tag: "1.73.2"
+            tag: "1.73.4"
             digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
             pullPolicy: IfNotPresent
 
