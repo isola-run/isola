@@ -37,7 +37,6 @@ import (
 	sidecarCmd "github.com/isola-run/isola/internal/sandbox-sidecar/command"
 	sidecarFs "github.com/isola-run/isola/internal/sandbox-sidecar/filesystem"
 	sidecarHealth "github.com/isola-run/isola/internal/sandbox-sidecar/health"
-	sidecarVersion "github.com/isola-run/isola/internal/sandbox-sidecar/version"
 	internalversion "github.com/isola-run/isola/internal/version"
 )
 
@@ -106,7 +105,6 @@ func setupSandboxSidecar() huma.API {
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected
 	sidecarHealth.Register(api, sidecarHealth.New())
-	sidecarVersion.Register(api, sidecarVersion.New())
 
 	v1 := huma.NewGroup(api, "/v1")
 	sidecarFs.Register(v1, sidecarFs.New(nil, nil, nil))

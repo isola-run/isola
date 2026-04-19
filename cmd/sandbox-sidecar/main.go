@@ -36,7 +36,6 @@ import (
 	"github.com/isola-run/isola/internal/sandbox-sidecar/filesystem"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/health"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/proc"
-	"github.com/isola-run/isola/internal/sandbox-sidecar/version"
 	internalversion "github.com/isola-run/isola/internal/version"
 )
 
@@ -90,7 +89,6 @@ func main() {
 	pidResolver := sandboxsidecar.NewPIDResolver(procFS)
 
 	health.Register(api, health.New())
-	version.Register(api, version.New())
 
 	v1 := huma.NewGroup(api, "/v1")
 	filesystem.Register(v1, filesystem.New(logger, procFS, pidResolver))

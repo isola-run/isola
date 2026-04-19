@@ -41,6 +41,7 @@ import (
 	netbuilder "github.com/isola-run/isola/internal/operator/controller/network"
 	"github.com/isola-run/isola/internal/operator/controller/podutil"
 	"github.com/isola-run/isola/internal/operator/controller/snapshot"
+	internalversion "github.com/isola-run/isola/internal/version"
 	"k8s.io/client-go/tools/events"
 )
 
@@ -106,6 +107,12 @@ const (
 	LabelAllowIPv4Internet = "isola.run/allow-ipv4-internet-egress"
 	LabelAllowIPv6Internet = "isola.run/allow-ipv6-internet-egress"
 	LabelAllowClusterDNS   = "isola.run/allow-cluster-dns"
+
+	// SidecarVersionAnnotation records on the sandbox pod the isola-operator
+	// GitVersion at the moment the pod was created. Sandbox.Status.SidecarVersion
+	// is a mirror of this annotation; the pod is the durable source of truth so
+	// the field survives operator upgrades and transient status-patch failures.
+	SidecarVersionAnnotation = "isola.run/sidecar-version"
 )
 
 func (r *SandboxReconciler) clock() Clock {
@@ -364,6 +371,11 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	r.injectSandboxSidecar(sandboxPod)
 
+	if sandboxPod.Annotations == nil {
+		sandboxPod.Annotations = map[string]string{}
+	}
+	sandboxPod.Annotations[SidecarVersionAnnotation] = internalversion.Get().GitVersion
+
 	if err := controllerutil.SetControllerReference(sandbox, sandboxPod, r.Scheme); err != nil {
 		log.Error(err, "Failed to set controller reference")
 		return err
@@ -596,6 +608,7 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 
 	if sandboxPod != nil {
 		sandbox.Status.PodIP = sandboxPod.Status.PodIP
+		sandbox.Status.SidecarVersion = sandboxPod.Annotations[SidecarVersionAnnotation]
 	}
 
 	networkCondition := r.determineNetworkCondition(sandbox)

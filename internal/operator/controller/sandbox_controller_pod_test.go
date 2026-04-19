@@ -681,5 +681,72 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(sandbox.Status.PodIP).To(Equal("10.244.0.42"))
 		})
+
+		It("should stamp sidecar version annotation on pod and mirror to status", func() {
+			sandboxName := "sandbox-sidecar-version"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile creates the pod (stamping the annotation).
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			annotationValue := pod.Annotations[SidecarVersionAnnotation]
+			Expect(annotationValue).NotTo(BeEmpty(), "pod must carry the sidecar-version annotation")
+
+			// Second reconcile runs reconcileSandboxStatus, mirroring annotation → status.
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox.Status.SidecarVersion).To(Equal(annotationValue),
+				"Status.SidecarVersion must mirror the pod annotation")
+		})
+
+		It("should restore Status.SidecarVersion from pod annotation after status is lost", func() {
+			// Regression test: if Status.SidecarVersion is ever lost (transient
+			// apiserver error, manual edit, etc.), the next reconcile must re-derive
+			// it from the pod annotation rather than leaving it empty for the
+			// sandbox's lifetime. The pod annotation is the durable source of
+			// truth; status is a cache.
+			sandboxName := "sandbox-sidecar-version-recover"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// Reconcile twice: once to create the pod+annotation, once to mirror.
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			annotationValue := pod.Annotations[SidecarVersionAnnotation]
+			Expect(annotationValue).NotTo(BeEmpty())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox.Status.SidecarVersion).To(Equal(annotationValue))
+
+			sandbox.Status.SidecarVersion = ""
+			Expect(k8sClient.Status().Update(ctx, sandbox)).To(Succeed())
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(sandbox.Status.SidecarVersion).To(Equal(annotationValue),
+				"Status.SidecarVersion must be restored from the pod annotation")
+		})
 	})
 })
