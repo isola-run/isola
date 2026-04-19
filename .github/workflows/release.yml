@@ -11,12 +11,9 @@ on:
 
 permissions: {}  # Each job declares its own minimum-necessary permissions.
 
-# Serialize releases for the same tag (e.g. force-pushed retag while the
-# first run is still executing). Per GitHub concurrency docs: with
-# cancel-in-progress: false, the in-flight run is NOT cancelled; the
-# second run waits as `pending` and executes after the first completes.
-# A third trigger would cancel the pending second and take its place
-# (the group is capped at 1 running + 1 pending).
+# Serialize releases for the same tag. With cancel-in-progress: false the
+# in-flight run keeps running; new triggers wait as `pending` (cap 1 running +
+# 1 pending; a third trigger cancels the pending second).
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -41,8 +38,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          fetch-depth: 0
 
       - name: Parse tag
         id: parse
@@ -114,10 +109,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with: { fetch-depth: 0 }
 
-      - name: Set up QEMU (needed for arm64 cross-build of alpine-based snapshot-mounter; Go Dockerfiles cross-compile natively and don't need QEMU, but setting it here is the simplest correct behavior for the matrix)
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4 (matches cloudnative-pg pin)
+      # Only snapshot-mounter (alpine, no Go) needs QEMU for arm64 emulation.
+      # The Go Dockerfiles cross-compile natively via $BUILDPLATFORM.
+      - name: Set up QEMU
+        if: matrix.image.name == 'snapshot-mounter'
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4
 
       - name: Set up buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
@@ -129,17 +126,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Build metadata is sourced from the Makefile so LDFLAGS and OCI labels
+      # stay in sync with `make build`. SOURCE_DATE_EPOCH ties BUILD_DATE to
+      # the commit timestamp (deterministic across re-runs).
       - name: Compute build metadata
         id: buildmeta
         run: |
-          echo "version=${{ needs.validate.outputs.version }}" >> "$GITHUB_OUTPUT"
-          echo "build_date=$(date --date=@$(git show -s --format=%ct HEAD) -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
-          echo "commit_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          if [ -z "$(git status --porcelain)" ]; then
-              echo "tree_state=clean" >> "$GITHUB_OUTPUT"
-          else
-              echo "tree_state=dirty" >> "$GITHUB_OUTPUT"
-          fi
+          set -euo pipefail
+          export SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)
+          make -s print-buildmeta >> "$GITHUB_OUTPUT"
 
       - name: Docker metadata
         id: meta
@@ -228,7 +223,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with: { fetch-depth: 0 }
 
       - name: Set up Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5 (matches e2e.yml pin)

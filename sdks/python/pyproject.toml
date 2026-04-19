@@ -24,9 +24,7 @@ dev = [
     "ruff>=0.4.0",
 ]
 
-# Hatchling extracts __version__ from this committed file at build time.
-# Mirrors the pattern used by httpx, openai-python, stripe-python, modal-client.
-# Kept in sync with /VERSION and charts/isola/Chart.yaml by hack/bump-version.sh.
+# Version is bumped by hack/bump-version.sh; hatchling reads __version__ from the file.
 [tool.hatch.version]
 path = "src/isola/_version.py"
 

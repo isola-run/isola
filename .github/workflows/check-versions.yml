@@ -18,5 +18,3 @@ jobs:
 
       - name: Run check-versions.sh
         run: ./hack/check-versions.sh
-        # check-versions.sh uses awk (pre-installed on ubuntu-latest).
-        # If we ever switch the script to yq, install it here.

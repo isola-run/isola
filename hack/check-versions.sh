@@ -13,27 +13,34 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-VERSION="$(cat VERSION | tr -d '[:space:]')"
+VERSION="$(tr -d '[:space:]' < VERSION)"
 CHART_FILE="charts/isola/Chart.yaml"
 PYSDK_VERSION_FILE="sdks/python/src/isola/_version.py"
 
-chart_version=$(awk '/^version:/ {print $2; exit}' "$CHART_FILE")
-chart_app_version=$(awk '/^appVersion:/ {print $2; exit}' "$CHART_FILE" | tr -d '"')
+# Use yq (YAML-aware) to read Chart.yaml — same parser hack/bump-version.sh uses
+# to write it. Avoids awk/yq asymmetry that would silently drift if Chart.yaml
+# gained quoted values, comments, or nested fields.
+if ! command -v yq >/dev/null; then
+    echo "ERROR: yq not found on PATH. Install mikefarah/yq v4 (https://github.com/mikefarah/yq)." >&2
+    exit 3
+fi
+
+chart_version=$(yq '.version' "$CHART_FILE")
+chart_app_version=$(yq '.appVersion' "$CHART_FILE")
 pysdk_version=$(awk -F'"' '/^__version__/ {print $2; exit}' "$PYSDK_VERSION_FILE")
 
 fail=0
-if [[ "$VERSION" != "$chart_version" ]]; then
-    echo "ERROR: VERSION ($VERSION) != $CHART_FILE version ($chart_version)" >&2
-    fail=1
-fi
-if [[ "$VERSION" != "$chart_app_version" ]]; then
-    echo "ERROR: VERSION ($VERSION) != $CHART_FILE appVersion ($chart_app_version)" >&2
-    fail=1
-fi
-if [[ "$VERSION" != "$pysdk_version" ]]; then
-    echo "ERROR: VERSION ($VERSION) != $PYSDK_VERSION_FILE __version__ ($pysdk_version)" >&2
-    fail=1
-fi
+for pair in \
+    "$CHART_FILE version|$chart_version" \
+    "$CHART_FILE appVersion|$chart_app_version" \
+    "$PYSDK_VERSION_FILE __version__|$pysdk_version"; do
+    label="${pair%%|*}"
+    val="${pair##*|}"
+    if [[ "$VERSION" != "$val" ]]; then
+        echo "ERROR: VERSION ($VERSION) != $label ($val)" >&2
+        fail=1
+    fi
+done
 
 if [[ $fail -ne 0 ]]; then
     echo "Hint: run ./hack/bump-version.sh <X.Y.Z[-rc.N]> to realign all version files." >&2
