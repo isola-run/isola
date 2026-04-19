@@ -1,15 +1,6 @@
 # Internal end-to-end test harness. NEVER PUBLISHED to PyPI.
 # Version is frozen at 0.0.0 and does not track the release version.
 
-[build-system]
-# A minimal [build-system] is required; without it uv marks this project as
-# fully virtual in the lockfile, which has caused editable path sources under
-# [tool.uv.sources] to be dropped on sync (see astral-sh/uv#9518 and related).
-# [tool.uv] package = false still prevents this project from being built or
-# installed.
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "isola-e2e-tests"
 version = "0.0.0"

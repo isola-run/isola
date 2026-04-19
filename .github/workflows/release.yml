@@ -97,13 +97,12 @@ jobs:
             dockerfile: cmd/snapshot-uploader/Dockerfile
           - name: snapshot-mounter
             dockerfile: cmd/snapshot-mounter/Dockerfile
-            context: cmd/snapshot-mounter
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      # Only snapshot-mounter (alpine, no Go) needs QEMU for arm64 emulation.
-      # The Go Dockerfiles cross-compile natively via $BUILDPLATFORM.
+      # snapshot-mounter runs apk in the target arch (no cross-compile), so arm64 needs QEMU.
+      # The Go Dockerfiles cross-compile via $BUILDPLATFORM and don't.
       - name: Set up QEMU
         if: matrix.image.name == 'snapshot-mounter'
         uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4

@@ -40,9 +40,10 @@ from ._models import (
 from ._rootfs_snapshot import AsyncRootfsSnapshot, AsyncRootfsSnapshots, RootfsSnapshot, RootfsSnapshots
 from ._sandbox import AsyncSandbox, AsyncSandboxes, Sandbox, Sandboxes
 from ._streaming import AsyncStreamReader, StreamReader
-from ._version import __version__ as __version__
+from ._version import __version__
 
 __all__ = [
+    "__version__",
     "Isola",
     "AsyncIsola",
     "Sandbox",
