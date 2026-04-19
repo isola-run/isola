@@ -268,6 +268,10 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
+        with:
+          # Disable cache in release: a poisoned cache from a PR run could taint the
+          # published wheel. https://docs.zizmor.sh/audits/#cache-poisoning
+          enable-cache: false
 
       - name: Build SDK
         working-directory: sdks/python
@@ -277,7 +281,7 @@ jobs:
         run: ls -la sdks/python/dist/
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
         with:
           packages-dir: sdks/python/dist/
           # Tolerate re-runs after a partial release: PyPI uploads are immutable, so retrying
