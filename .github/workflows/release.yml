@@ -1,5 +1,5 @@
 # Isola release workflow. Triggered on tag push (v*). Sequential spine:
-# validate -> release-images -> release-chart -> render-manifests -> release-pypi -> github-release.
+# validate -> release-images -> release-chart -> release-pypi -> github-release.
 #
 # See docs/superpowers/specs/2026-04-17-first-release-design.md §4 for the full design.
 
@@ -281,69 +281,11 @@ jobs:
           push-to-registry: true
 
   # -------------------------------------------------------------------
-  # STAGE 4 — render-manifests
-  # -------------------------------------------------------------------
-  render-manifests:
-    name: Render standalone manifests
-    needs: [validate, release-chart]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Set up Helm
-        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5 (matches e2e.yml pin)
-        with:
-          version: v3.20.2
-
-      - name: Install yq
-        env:
-          # Pin yq to an explicit version (NOT `latest`) for reproducibility
-          # and supply-chain hygiene. Bump as needed; verify the sha256 from
-          # the mikefarah/yq release notes before updating.
-          YQ_VERSION: v4.45.4
-          YQ_SHA256: b96de04645707e14a12f52c37e6266832e03c29e95b9b139cddcae7314466e69
-        run: |
-          set -euo pipefail
-          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
-          echo "${YQ_SHA256}  /usr/local/bin/yq" | sha256sum -c -
-          sudo chmod +x /usr/local/bin/yq
-          yq --version
-
-      - name: Render isola.yaml (full install)
-        run: |
-          set -euo pipefail
-          helm template isola charts/isola \
-            --kube-version "1.34.0" \
-            --namespace isola-system \
-            --set crds.enabled=true --set crds.keep=true \
-            > isola.yaml
-          sed -i '1{/^---$/d;}' isola.yaml
-          test -s isola.yaml
-
-      - name: Render isola.crds.yaml (CRDs only)
-        run: |
-          set -euo pipefail
-          yq 'select(.kind == "CustomResourceDefinition")' isola.yaml > isola.crds.yaml
-          sed -i '1{/^---$/d;}' isola.crds.yaml
-          test -s isola.crds.yaml
-
-      - name: Upload manifests
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: isola-manifests
-          path: |
-            isola.yaml
-            isola.crds.yaml
-
-  # -------------------------------------------------------------------
-  # STAGE 5 — release-pypi
+  # STAGE 4 — release-pypi
   # -------------------------------------------------------------------
   release-pypi:
     name: Release Python SDK
-    needs: [validate, render-manifests]
+    needs: [validate, release-chart]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -376,7 +318,7 @@ jobs:
           skip-existing: true
 
   # -------------------------------------------------------------------
-  # STAGE 6 — github-release (aggregator)
+  # STAGE 5 — github-release (aggregator)
   # -------------------------------------------------------------------
   github-release:
     name: Create GitHub Release
@@ -395,19 +337,13 @@ jobs:
           path: sboms
           merge-multiple: true
 
-      - name: Download manifests
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8
-        with:
-          name: isola-manifests
-          path: .
-
       - name: Build SBOM tarball + checksums
         env:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
           tar czf "isola-sboms-${VERSION}.tar.gz" -C sboms .
-          sha256sum "isola-sboms-${VERSION}.tar.gz" isola.yaml isola.crds.yaml > checksums.txt
+          sha256sum "isola-sboms-${VERSION}.tar.gz" > checksums.txt
           cat checksums.txt
 
       - name: Create GitHub Release
@@ -417,6 +353,4 @@ jobs:
           prerelease: ${{ needs.validate.outputs.is_prerelease == 'true' }}
           files: |
             isola-sboms-${{ needs.validate.outputs.version }}.tar.gz
-            isola.yaml
-            isola.crds.yaml
             checksums.txt
