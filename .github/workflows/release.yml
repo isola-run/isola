@@ -11,10 +11,12 @@ on:
 
 permissions: {}  # Each job declares its own minimum-necessary permissions.
 
-# Prevent concurrent releases from the same tag (e.g. force-pushed retag
-# while the first run is still executing). Does NOT cancel the in-flight
-# run — let it finish, then reject the second. Mirrors the pattern in
-# /home/ben/others/kagent/.github/workflows/tag.yaml.
+# Serialize releases for the same tag (e.g. force-pushed retag while the
+# first run is still executing). Per GitHub concurrency docs: with
+# cancel-in-progress: false, the in-flight run is NOT cancelled; the
+# second run waits as `pending` and executes after the first completes.
+# A third trigger would cancel the pending second and take its place
+# (the group is capped at 1 running + 1 pending).
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -59,6 +61,19 @@ jobs:
 
       - name: Check version alignment
         run: ./hack/check-versions.sh
+
+      - name: Verify tag matches VERSION
+        env:
+          TAG_VERSION: ${{ steps.parse.outputs.version }}
+        run: |
+          set -euo pipefail
+          FILE_VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [[ "$TAG_VERSION" != "$FILE_VERSION" ]]; then
+              echo "ERROR: tag version ($TAG_VERSION) does not match VERSION file ($FILE_VERSION)." >&2
+              echo "A tag must be pushed from a commit where ./hack/bump-version.sh has already been run." >&2
+              exit 1
+          fi
+          echo "OK: tag $GITHUB_REF_NAME aligns with VERSION=$FILE_VERSION"
 
       - name: Verify CHANGELOG entry exists
         run: |
@@ -339,8 +354,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          fetch-depth: 0   # hatch-vcs needs full tag history
 
       - name: Set up uv
         uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1

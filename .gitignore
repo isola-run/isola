@@ -228,7 +228,3 @@ go.work.sum
 /sandbox-sidecar
 /snapshot-mounter
 /snapshot-uploader
-
-# hatch-vcs build artifact — generated at build time from the git tag (see sdks/python/pyproject.toml).
-# Never commit; regenerated on every `uv build`.
-sdks/python/src/isola/_version.py

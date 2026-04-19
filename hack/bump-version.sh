@@ -2,13 +2,14 @@
 # Bump all version-holding files to the given semver.
 #
 # Writes:
-#   VERSION                          (plaintext)
-#   charts/isola/Chart.yaml          (version + appVersion)
+#   VERSION                            (plaintext)
+#   charts/isola/Chart.yaml            (version + appVersion)
+#   sdks/python/src/isola/_version.py  (__version__ constant; hatchling reads it)
 # Then runs:
-#   make openapi                     (regenerates api/openapi/*.yaml)
+#   make openapi                       (regenerates api/openapi/*.yaml)
 #
 # Does NOT touch:
-#   sdks/python/pyproject.toml       (version is `dynamic` via hatch-vcs)
+#   sdks/python/pyproject.toml       (no version string; hatchling reads src/isola/_version.py)
 #   tests/e2e/pyproject.toml         (frozen at 0.0.0, see §3.4 of the design doc)
 #
 # Usage:
@@ -52,11 +53,22 @@ yq -i ".version = \"$NEW_VERSION\"" charts/isola/Chart.yaml
 yq -i ".appVersion = \"$NEW_VERSION\"" charts/isola/Chart.yaml
 echo "wrote charts/isola/Chart.yaml version=$NEW_VERSION, appVersion=$NEW_VERSION"
 
-# 3. Regenerate OpenAPI specs so info.version matches.
+# 3. Python SDK _version.py (committed; hatchling reads __version__ from it at build time).
+PYSDK_VERSION_FILE="sdks/python/src/isola/_version.py"
+cat > "$PYSDK_VERSION_FILE" <<EOF
+# Single source of truth for the Python SDK version at runtime.
+# Kept in sync with /VERSION and charts/isola/Chart.yaml by hack/bump-version.sh
+# (and verified by hack/check-versions.sh). Hatchling reads __version__ from
+# this file at build time via [tool.hatch.version] path = "src/isola/_version.py".
+__version__ = "$NEW_VERSION"
+EOF
+echo "wrote $PYSDK_VERSION_FILE __version__=$NEW_VERSION"
+
+# 4. Regenerate OpenAPI specs so info.version matches.
 make openapi
 echo "regenerated api/openapi/*.yaml"
 
-# 4. Self-check.
+# 5. Self-check.
 ./hack/check-versions.sh
 
 echo
