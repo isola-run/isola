@@ -337,9 +337,7 @@ spec:
                   the pod: isola-operator and sandbox-sidecar are released together, so the
                   operator's own version identifies the sidecar build. Consumers (api-gateway)
                   use this for capability checks against long-running sandboxes whose sidecar
-                  image predates later operator upgrades. Empty when the sandbox pod does not
-                  carry the annotation (e.g. pods created before this field existed); consumers
-                  should treat empty as "unknown" and fall back to conservative behavior.
+                  image predates later operator upgrades.
                 type: string
               terminationDeadlineAt:
                 description: |-
