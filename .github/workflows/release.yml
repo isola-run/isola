@@ -80,7 +80,7 @@ jobs:
       id-token: write
       attestations: write
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         image:
           - name: isola-operator
