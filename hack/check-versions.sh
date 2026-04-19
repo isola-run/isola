@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 # Verify that VERSION, Chart.yaml (version + appVersion), and the Python SDK
-# _version.py all agree. Runs in CI on every PR (via
-# .github/workflows/check-versions.yml) and as the first step of the release
-# workflow's validate job.
-#
-# The e2e test harness is frozen at 0.0.0 (see tests/e2e/pyproject.toml) and
-# is not checked here.
-#
-# See docs/superpowers/specs/2026-04-17-first-release-design.md §2.
+# _version.py all agree.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,9 +10,6 @@ VERSION="$(tr -d '[:space:]' < VERSION)"
 CHART_FILE="charts/isola/Chart.yaml"
 PYSDK_VERSION_FILE="sdks/python/src/isola/_version.py"
 
-# Use yq (YAML-aware) to read Chart.yaml — same parser hack/bump-version.sh uses
-# to write it. Avoids awk/yq asymmetry that would silently drift if Chart.yaml
-# gained quoted values, comments, or nested fields.
 if ! command -v yq >/dev/null; then
     echo "ERROR: yq not found on PATH. Install mikefarah/yq v4 (https://github.com/mikefarah/yq)." >&2
     exit 3

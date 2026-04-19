@@ -41,9 +41,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -X github.com/isola-run/isola/internal/version.gitTreeState=${GIT_TREE_STATE}" \
       -o sandbox-sidecar ./cmd/sandbox-sidecar/main.go
 
-# Sidecar runs as root to read /proc/<pid>/environ of user processes (see CLAUDE.md).
-# Base image stays `gcr.io/distroless/static` (no :nonroot suffix) and no USER directive
-# is set -- both intentional deviations from the other Go Dockerfiles in this repo.
+# Sidecar runs as root to read /proc/<pid>/environ of user processes.
 FROM gcr.io/distroless/static
 
 COPY --from=builder /workspace/sandbox-sidecar /sandbox-sidecar

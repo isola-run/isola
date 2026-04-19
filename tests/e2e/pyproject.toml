@@ -1,12 +1,12 @@
 # Internal end-to-end test harness. NEVER PUBLISHED to PyPI.
 # Version is frozen at 0.0.0 and does not track the release version.
-# hack/bump-version.sh does not touch this file.
 
 [build-system]
-# A minimal build-system is REQUIRED to avoid astral-sh/uv#9518 (without
-# [build-system], uv's lockfile treats the project as fully virtual and
-# can drop the editable `isola-run` path source). `[tool.uv] package = false`
-# still keeps the e2e project itself from being built/installed.
+# A minimal [build-system] is required; without it uv marks this project as
+# fully virtual in the lockfile, which has caused editable path sources under
+# [tool.uv.sources] to be dropped on sync (see astral-sh/uv#9518 and related).
+# [tool.uv] package = false still prevents this project from being built or
+# installed.
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
