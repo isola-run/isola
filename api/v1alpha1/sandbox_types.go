@@ -165,7 +165,7 @@ type SandboxSpec struct {
 	// after pod creation. If the pod hasn't reached Ready within this time,
 	// the sandbox is marked as failed.
 	// +optional
-	// +kubebuilder:default=60
+	// +kubebuilder:default=90
 	// +kubebuilder:validation:Minimum=1
 	StartupTimeoutSeconds *int64 `json:"startupTimeoutSeconds,omitempty"`
 

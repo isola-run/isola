@@ -42,7 +42,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
       -o sandbox-sidecar ./cmd/sandbox-sidecar/main.go
 
 # Sidecar runs as root to read /proc/<pid>/environ of user processes.
-FROM gcr.io/distroless/static
+FROM gcr.io/distroless/static-debian13
 
 COPY --from=builder /workspace/sandbox-sidecar /sandbox-sidecar
 

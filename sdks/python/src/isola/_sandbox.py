@@ -211,7 +211,7 @@ class Sandboxes:
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int | None = None,
         termination_policy: SnapshotRootfs | None = None,
-        max_wait_seconds: int = 65,
+        max_wait_seconds: int = 120,
     ) -> Sandbox:
         """Create a new sandbox and wait for it to be ready.
 
@@ -234,7 +234,7 @@ class Sandboxes:
         - startup_timeout_seconds (server-side): How long the server
           waits for the sandbox pod to become ready. If it expires,
           the sandbox is marked as Failed. The server defaults to
-          60 seconds if not set.
+          90 seconds if not set.
         - timeout_seconds (server-side): How long the sandbox runs
           before the server begins the termination process. If None
           is provided, the server defaults to no limit.
@@ -265,7 +265,7 @@ class Sandboxes:
                 Enforced server-side. None means no limit.
             startup_timeout_seconds: Maximum time for the sandbox pod
                 to become ready, in seconds. Enforced server-side.
-                The server defaults to 60 seconds if not set.
+                The server defaults to 90 seconds if not set.
             termination_policy: Action to run before the sandbox pod
                 is removed. Defaults to immediate deletion if not
                 set. Pass a SnapshotRootfs to snapshot the
@@ -398,7 +398,7 @@ class AsyncSandboxes:
         timeout_seconds: int | None = None,
         startup_timeout_seconds: int | None = None,
         termination_policy: SnapshotRootfs | None = None,
-        max_wait_seconds: int = 65,
+        max_wait_seconds: int = 120,
     ) -> AsyncSandbox:
         """Create a new sandbox and wait for it to be ready.
 
@@ -421,7 +421,7 @@ class AsyncSandboxes:
         - startup_timeout_seconds (server-side): How long the server
           waits for the sandbox pod to become ready. If it expires,
           the sandbox is marked as Failed. The server defaults to
-          60 seconds if not set.
+          90 seconds if not set.
         - timeout_seconds (server-side): How long the sandbox runs
           before the server begins the termination process. If None
           is provided, the server defaults to no limit.
@@ -452,7 +452,7 @@ class AsyncSandboxes:
                 Enforced server-side. None means no limit.
             startup_timeout_seconds: Maximum time for the sandbox pod
                 to become ready, in seconds. Enforced server-side.
-                The server defaults to 60 seconds if not set.
+                The server defaults to 90 seconds if not set.
             termination_policy: Action to run before the sandbox pod
                 is removed. Defaults to immediate deletion if not
                 set. Pass a SnapshotRootfs to snapshot the
@@ -605,8 +605,9 @@ class Sandbox:
     def delete(self) -> None:
         """Delete the sandbox.
 
-        Executes the termination policy and removes the pod. Called
-        automatically when using the sandbox as a context manager.
+        Returns as soon as the server accepts the request. The sandbox
+        enters Terminating state while the termination policy runs, then
+        the Sandbox resource is delete and get() would return NotFoundError.
         """
         self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
 
@@ -683,7 +684,8 @@ class AsyncSandbox:
     async def delete(self) -> None:
         """Delete the sandbox.
 
-        Executes the termination policy and removes the pod. Called
-        automatically when using the sandbox as an async context manager.
+        Returns as soon as the server accepts the request. The sandbox
+        enters Terminating state while the termination policy runs, then
+        the Sandbox resource is delete and get() would return NotFoundError.
         """
         await self._api.request_no_content("DELETE", _sandbox_path(self._data.id))

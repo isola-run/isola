@@ -173,7 +173,7 @@ spec:
                   rule: self.size() <= 1 || self.all(i, self.all(j, i == j || i.containerName
                     != j.containerName))
               startupTimeoutSeconds:
-                default: 60
+                default: 90
                 description: |-
                   StartupTimeoutSeconds defines how long the sandbox has to become Ready
                   after pod creation. If the pod hasn't reached Ready within this time,

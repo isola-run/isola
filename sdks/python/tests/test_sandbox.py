@@ -310,7 +310,7 @@ def _make_sandbox_response(status: str, sandbox_id: str = "sandbox-123") -> dict
         "status": status,
         "creationTimestamp": "2026-02-18T00:00:00Z",
         "podTemplate": {"containers": [{"name": "sandbox0", "image": "python:3.12"}]},
-        "startupTimeoutSeconds": 60,
+        "startupTimeoutSeconds": 90,
     }
 
 
