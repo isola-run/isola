@@ -106,6 +106,8 @@ print(sandbox.status)  # might be SandboxStatus.PENDING
 | `startup_timeout_seconds` | Server | 60s | How long the server gives the sandbox to start. If it expires, the sandbox is marked Failed. Omit to use the server default. |
 | `timeout_seconds` | Server | No limit | Maximum lifetime of the sandbox. The server begins the termination process after this duration. |
 
+> Setting `timeout_seconds` (or using `with`) is strongly recommended to ensure the sandbox resource is eventually deleted from the k8s api-server.
+
 ## Commands
 
 ### Run (blocking)
@@ -136,6 +138,8 @@ result = sandbox.commands.run(
 
 ```python
 script = """
+printf 'a\\nb\\nc\\n' > /tmp/one.txt
+printf 'hello world\\n' > /tmp/two.txt
 for f in /tmp/*.txt; do
   echo "$f: $(wc -l < "$f") lines"
 done
@@ -328,7 +332,7 @@ print(RandomForestClassifier(random_state=0).fit(X, y).score(X, y))
 
 ### Automatic snapshots on termination
 
-You can also configure a sandbox to snapshot automatically before it terminates:
+A sandbox can be configured to snapshot automatically as part of its termination policy:
 
 ```python
 from isola import SnapshotRootfs

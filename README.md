@@ -144,7 +144,7 @@ Capture a container's root filesystem changes to cloud storage (S3, GCS, or Azur
 
 Snapshots are stored in a cloud storage bucket and made available on every node automatically. Restore is resilient: when a sandbox references a snapshot, it retries until the snapshot appears or the startup timeout expires.
 
-Sandboxes can also be configured to snapshot automatically before termination:
+Sandboxes can also be configured to snapshot automatically as part of their termination policy:
 
 ```python
 from isola import SnapshotRootfs
@@ -154,6 +154,8 @@ sandbox = client.sandboxes.create(
     termination_policy=SnapshotRootfs(snapshot_name="on-exit-snapshot"),
 )
 ```
+
+The policy runs when the operator tears the sandbox down: `sandbox.delete()`, `timeout_seconds` expiring, or the `Sandbox` resource being deleted directly. It does *not* run when the container exits on its own (e.g. crash or entrypoint completed in case of a custom entrypoint).
 
 ### Network isolation
 
@@ -221,8 +223,7 @@ Sandbox pods run in a separate namespace from the control plane (`isola-sandboxe
 
 ```bash
 kubectl create namespace isola-sandboxes
-helm repo add isola https://charts.isola.run
-helm install isola isola/isola --namespace isola-system --create-namespace
+helm install isola oci://ghcr.io/isola-run/charts/isola --namespace isola-system --create-namespace
 ```
 
 Alternatively, set `sandboxNamespace.create: true` in your Helm values to let the chart create the namespace. Note that `helm uninstall` will then cascade-delete the namespace and all sandboxes inside it.
@@ -239,7 +240,7 @@ For local development with Kind, `hack/setup.sh` automates the full cluster setu
 ### Upgrading
 
 ```bash
-helm upgrade isola isola/isola --namespace isola-system
+helm upgrade isola oci://ghcr.io/isola-run/charts/isola --namespace isola-system
 ```
 
 CRDs are upgraded automatically as part of the Helm chart. To manage CRDs externally, install with `--set crds.enabled=false`.
@@ -248,7 +249,9 @@ CRDs are upgraded automatically as part of the Helm chart. To manage CRDs extern
 
 Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) named `gvisor` in your cluster. If your cluster does not already have gVisor installed:
 
-1. Install the `runsc` binary and `containerd-shim-runsc-v1` on each node. See the [gVisor quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions. Use gVisor `release-20260126.0` or later if you plan to use rootfs snapshots.
+0. Ensure your cluster uses [containerd](https://containerd.io/docs/2.2/getting-started/) (the default container runtime ok EKS, AKS, GKE and most clusters).
+
+1. Install the `runsc` binary and `containerd-shim-runsc-v1` on each node. See the [gVisor quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions. If you plan to use rootfs snapshots, install [`release-20260126.0`](https://storage.googleapis.com/gvisor/releases/release/20260126/x86_64/runsc) or later.
 
 2. Configure the containerd runtime. Create `/etc/containerd/runsc.toml`:
 

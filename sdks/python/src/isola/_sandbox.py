@@ -605,8 +605,9 @@ class Sandbox:
     def delete(self) -> None:
         """Delete the sandbox.
 
-        Executes the termination policy and removes the pod. Called
-        automatically when using the sandbox as a context manager.
+        Returns as soon as the server accepts the request. The sandbox
+        enters Terminating state while the termination policy runs, then
+        the Sandbox resource is delete and get() would return NotFoundError.
         """
         self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
 
@@ -683,7 +684,8 @@ class AsyncSandbox:
     async def delete(self) -> None:
         """Delete the sandbox.
 
-        Executes the termination policy and removes the pod. Called
-        automatically when using the sandbox as an async context manager.
+        Returns as soon as the server accepts the request. The sandbox
+        enters Terminating state while the termination policy runs, then
+        the Sandbox resource is delete and get() would return NotFoundError.
         """
         await self._api.request_no_content("DELETE", _sandbox_path(self._data.id))
