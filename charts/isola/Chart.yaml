@@ -4,8 +4,8 @@ description: |
   Isola - Secure sandbox orchestration for Kubernetes.
   Deploys the operator for sandbox lifecycle management and optional API gateway.
 type: application
-version: 0.5.0-rc.0
-appVersion: "0.5.0-rc.0"
+version: 0.5.0-rc.1
+appVersion: "0.5.0-rc.1"
 keywords:
   - isola
   - sandbox
