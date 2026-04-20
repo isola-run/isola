@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import pytest
 
-from isola import Isola, Network, Sandbox, SandboxStatus, SandboxSummary, SnapshotRootfs
+from isola import IsolaError, Isola, Network, Sandbox, SandboxStatus, SandboxSummary, SnapshotRootfs
 
-from utils import parse_k8s_quantity, wait_for_running
+from utils import parse_k8s_quantity, wait_for_running, wait_for_visible
 
 
 @pytest.mark.timeout(90)
@@ -185,26 +185,25 @@ def test_resource_limits_round_trip(
     assert parse_k8s_quantity(container.resources.limits.ephemeral_storage) == parse_k8s_quantity("1024Mi")
 
 
-@pytest.mark.timeout(120)
+@pytest.mark.timeout(60)
 def test_memory_limit_is_enforced(
     isola_client: Isola,
     sandbox_factory,
 ) -> None:
-    """A process allocating far more memory than the sandbox limit must be killed."""
-    sb = sandbox_factory(image="alpine:3.21", memory=128, timeout_seconds=300)
-    running = wait_for_running(isola_client, sb.id)
+    sb = sandbox_factory(image="alpine:3.21", memory=128, timeout_seconds=60)
+    wait_for_running(isola_client, sb.id)
 
-    # busybox awk: each associative-array entry costs ~80 bytes (key + value +
-    # hash overhead), so 10M entries demand ~800 MiB — ~6x the 128 MiB limit.
-    result = running.commands.run(
-        "sh", "-c",
-        'awk \'BEGIN{ for(i=0;i<10000000;i++) a[i]="xxxxxxxxxx"; print "ok" }\'',
-        timeout_seconds=60,
+    try:
+        r = sb.commands.run(
+            "dd", "if=/dev/zero", "of=/dev/null", "bs=400M", "count=1",
+            timeout_seconds=30,
+        )
+    except IsolaError:
+        return  # sandbox died mid-allocation — enforcement worked
+    pytest.fail(
+        f"400 MiB alloc in a 128 MiB sandbox completed cleanly: "
+        f"exit={r.exit_code} stderr={r.stderr[:200]!r}"
     )
-    assert result.exit_code != 0, (
-        f"allocating ~800 MiB with a 128 MiB limit should be killed, got exit={result.exit_code}"
-    )
-    assert "ok" not in result.stdout
 
 
 def test_server_defaults_are_present(
@@ -240,7 +239,7 @@ def test_termination_policy_snapshot_name_defaults_to_sandbox_id(
     assert sb._data.termination_policy.snapshot_rootfs is not None
     assert sb._data.termination_policy.snapshot_rootfs.snapshot_name == sb.id
 
-    fetched = isola_client.sandboxes.get(sb.id)
+    fetched = wait_for_visible(isola_client, sb.id)
     assert fetched._data.termination_policy.snapshot_rootfs.snapshot_name == sb.id
 
 
