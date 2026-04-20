@@ -185,6 +185,28 @@ def test_resource_limits_round_trip(
     assert parse_k8s_quantity(container.resources.limits.ephemeral_storage) == parse_k8s_quantity("1024Mi")
 
 
+@pytest.mark.timeout(120)
+def test_memory_limit_is_enforced(
+    isola_client: Isola,
+    sandbox_factory,
+) -> None:
+    """A process allocating far more memory than the sandbox limit must be killed."""
+    sb = sandbox_factory(image="alpine:3.21", memory=128, timeout_seconds=300)
+    running = wait_for_running(isola_client, sb.id)
+
+    # busybox awk: each associative-array entry costs ~80 bytes (key + value +
+    # hash overhead), so 10M entries demand ~800 MiB — ~6x the 128 MiB limit.
+    result = running.commands.run(
+        "sh", "-c",
+        'awk \'BEGIN{ for(i=0;i<10000000;i++) a[i]="xxxxxxxxxx"; print "ok" }\'',
+        timeout_seconds=60,
+    )
+    assert result.exit_code != 0, (
+        f"allocating ~800 MiB with a 128 MiB limit should be killed, got exit={result.exit_code}"
+    )
+    assert "ok" not in result.stdout
+
+
 def test_server_defaults_are_present(
     isola_client: Isola,
     session_sandbox: Sandbox,
