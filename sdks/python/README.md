@@ -40,7 +40,7 @@ export ISOLA_URL=http://isola-api-gateway.isola-system.svc.cluster.local
 export ISOLA_URL=https://isola.example.com
 ```
 
-Or pass it directly: `Isola(url="http://isola-api-gateway.isola.svc.cluster.local")`
+Or pass it directly: `Isola(url="http://isola-api-gateway.isola-system.svc.cluster.local")`
 
 ```python
 from isola import Isola
