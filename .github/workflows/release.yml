@@ -168,9 +168,9 @@ jobs:
         with:
           image: ${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}@${{ steps.build.outputs.digest }}
           format: spdx-json
-          artifact-name: sbom-${{ matrix.image.name }}.spdx.json
           output-file: ./sbom-${{ matrix.image.name }}.spdx.json
-          upload-release-assets: false  # we aggregate in the github-release job
+          upload-artifact: false
+          upload-release-assets: false
 
       - name: Attest SBOM (cosign)
         env:
@@ -300,27 +300,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Download SBOM artifacts
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8
-        with:
-          pattern: sbom-*
-          path: sboms
-          merge-multiple: true
-
-      - name: Build SBOM tarball + checksums
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          set -euo pipefail
-          tar czf "isola-sboms-${VERSION}.tar.gz" -C sboms .
-          sha256sum "isola-sboms-${VERSION}.tar.gz" > checksums.txt
-          cat checksums.txt
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
           body_path: CHANGELOG/${{ github.ref_name }}.md
           prerelease: ${{ needs.validate.outputs.is_prerelease == 'true' }}
-          files: |
-            isola-sboms-${{ needs.validate.outputs.version }}.tar.gz
-            checksums.txt
