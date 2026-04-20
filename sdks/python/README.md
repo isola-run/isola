@@ -34,7 +34,7 @@ export ISOLA_URL=http://localhost:8080
 export ISOLA_URL=http://isola-api-gateway
 
 # In-cluster (cross-namespace)
-export ISOLA_URL=http://isola-api-gateway.isola.svc.cluster.local
+export ISOLA_URL=http://isola-api-gateway.isola-system.svc.cluster.local
 
 # External (ingress or load balancer)
 export ISOLA_URL=https://isola.example.com
