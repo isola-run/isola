@@ -188,7 +188,7 @@ components:
           $ref: "#/components/schemas/PodTemplate"
           description: Pod template
         startupTimeoutSeconds:
-          description: Max seconds for the sandbox to become Ready. Defaults to 60 if omitted.
+          description: Max seconds for the sandbox to become Ready. Defaults to 90 if omitted.
           format: int64
           minimum: 1
           type: integer

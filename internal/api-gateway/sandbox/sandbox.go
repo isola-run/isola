@@ -61,7 +61,7 @@ type TerminationPolicy struct {
 type CreateSandboxRequest struct {
 	PodTemplate           PodTemplate        `json:"podTemplate" required:"true" doc:"Pod template"`
 	TimeoutSeconds        *int64             `json:"timeoutSeconds,omitempty" minimum:"1" doc:"How long the sandbox runs before the termination process begins, in seconds. Omit for no timeout"`
-	StartupTimeoutSeconds *int64             `json:"startupTimeoutSeconds,omitempty" minimum:"1" doc:"Max seconds for the sandbox to become Ready. Defaults to 60 if omitted."`
+	StartupTimeoutSeconds *int64             `json:"startupTimeoutSeconds,omitempty" minimum:"1" doc:"Max seconds for the sandbox to become Ready. Defaults to 90 if omitted."`
 	Network               *Network           `json:"network,omitempty" doc:"Network isolation config"`
 	TerminationPolicy     *TerminationPolicy `json:"terminationPolicy,omitempty" doc:"What to do when the sandbox terminates"`
 }

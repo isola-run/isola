@@ -481,7 +481,7 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should not fire startup timeout when deadline is far in the future", func() {
 			sandboxName := "sandbox-startup-nil-timeout"
 
-			// The CRD has +kubebuilder:default=60 so the API server always sets
+			// The CRD has +kubebuilder:default=90 so the API server always sets
 			// StartupTimeoutSeconds. Use a very large value to verify that the sandbox
 			// survives well past a typical startup window without being timed out.
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {

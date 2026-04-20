@@ -196,7 +196,7 @@ def test_server_defaults_are_present(
     both fail, preventing a silent contract break.
     """
     sb = isola_client.sandboxes.get(session_sandbox.id)
-    assert sb.startup_timeout_seconds == 60
+    assert sb.startup_timeout_seconds == 90
     assert sb.containers[0].name == "sandbox0"
 
 

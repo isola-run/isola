@@ -102,8 +102,8 @@ print(sandbox.status)  # might be SandboxStatus.PENDING
 
 | Timeout | Side | Default | What it controls |
 |---------|------|---------|-----------------|
-| `max_wait_seconds` | Client | 65s | How long `create()` polls before returning. Set to 0 to return immediately. Raises `IsolaTimeoutError` if it expires. The sandbox keeps running on the server regardless. |
-| `startup_timeout_seconds` | Server | 60s | How long the server gives the sandbox to start. If it expires, the sandbox is marked Failed. Omit to use the server default. |
+| `max_wait_seconds` | Client | 120s | How long `create()` polls before returning. Set to 0 to return immediately. Raises `IsolaTimeoutError` if it expires. The sandbox keeps running on the server regardless. |
+| `startup_timeout_seconds` | Server | 90s | How long the server gives the sandbox to start. If it expires, the sandbox is marked Failed. Omit to use the server default. |
 | `timeout_seconds` | Server | No limit | Maximum lifetime of the sandbox. The server begins the termination process after this duration. |
 
 > Setting `timeout_seconds` (or using `with`) is strongly recommended to ensure the sandbox resource is eventually deleted from the k8s api-server.
