@@ -138,11 +138,9 @@ result = sandbox.commands.run(
 
 ```python
 script = """
-printf 'a\\nb\\nc\\n' > /tmp/one.txt
-printf 'hello world\\n' > /tmp/two.txt
-for f in /tmp/*.txt; do
-  echo "$f: $(wc -l < "$f") lines"
-done
+echo '== cpu ==';  nproc
+echo '== mem ==';  free -h
+echo '== disk =='; df -h /
 """
 result = sandbox.commands.run("sh", "-c", script)
 ```
