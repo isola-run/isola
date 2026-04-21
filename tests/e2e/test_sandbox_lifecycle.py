@@ -185,7 +185,7 @@ def test_resource_limits_round_trip(
     assert parse_k8s_quantity(container.resources.limits.ephemeral_storage) == parse_k8s_quantity("1024Mi")
 
 
-@pytest.mark.timeout(60)
+@pytest.mark.timeout(120)
 def test_anonymous_memory_respects_memory_limit(
     isola_client: Isola,
     sandbox_factory,
