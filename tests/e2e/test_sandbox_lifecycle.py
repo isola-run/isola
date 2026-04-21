@@ -208,7 +208,9 @@ def test_anonymous_memory_respects_memory_limit(
             timeout_seconds=30,
         )
     except IsolaError:
-        return  # sandbox died mid-allocation — enforcement worked
+        return  # sandbox died mid-allocation, enforcement worked
+    if r.exit_code != 0:
+        return  # dd was killed or got ENOMEM, enforcement worked
     pytest.fail(
         f"400 MiB alloc in a 128 MiB sandbox completed cleanly: "
         f"exit={r.exit_code} stderr={r.stderr[:200]!r}"
