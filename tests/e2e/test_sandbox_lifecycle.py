@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import pytest
 
-from isola import Isola, Network, Sandbox, SandboxStatus, SandboxSummary, SnapshotRootfs
+from isola import IsolaError, Isola, Network, Sandbox, SandboxStatus, SandboxSummary, SnapshotRootfs
 
-from utils import parse_k8s_quantity, wait_for_running
+from utils import parse_k8s_quantity, wait_for_running, wait_for_status, wait_for_visible
 
 
 @pytest.mark.timeout(90)
@@ -185,6 +185,109 @@ def test_resource_limits_round_trip(
     assert parse_k8s_quantity(container.resources.limits.ephemeral_storage) == parse_k8s_quantity("1024Mi")
 
 
+_SWAP_SKIP_REASON = (
+    "when the host has swap enabled, anonymous memory that exceeds the memory "
+    "limit is moved to swap instead of triggering an OOM-kill, so the sandbox "
+    "never reaches FAILED. "
+    "https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files"
+)
+
+
+@pytest.mark.skip(reason=_SWAP_SKIP_REASON)
+@pytest.mark.timeout(120)
+def test_anonymous_memory_respects_memory_limit(
+    isola_client: Isola,
+    sandbox_factory,
+) -> None:
+    """Anonymous allocation inside the sandbox is bounded by `memory`.
+
+    dd with bs=400M allocates a single 400 MiB contiguous buffer. In a 128 MiB
+    sandbox that trips memory.max on the pod memcg; the memcg OOM-killer takes
+    down the Sentry and the sandbox transitions to FAILED.
+
+    Catches runsc not attaching the Sentry to the pod cgroup (gVisor #10371):
+    without enforcement, the dd completes in <1s with exit 0.
+    """
+    sb = sandbox_factory(image="alpine:3.21", memory=128, timeout_seconds=60)
+    wait_for_running(isola_client, sb.id)
+
+    try:
+        r = sb.commands.run(
+            "dd", "if=/dev/zero", "of=/dev/null", "bs=400M", "count=1",
+            timeout_seconds=30,
+        )
+    except IsolaError:
+        wait_for_status(isola_client, sb.id, SandboxStatus.FAILED, timeout=30)
+        return  # sandbox died mid-allocation, enforcement worked
+    if r.exit_code != 0:
+        return  # dd was killed or got ENOMEM, enforcement worked
+    pytest.fail(
+        f"400 MiB alloc in a 128 MiB sandbox completed cleanly: "
+        f"exit={r.exit_code} stderr={r.stderr[:200]!r}"
+    )
+
+
+@pytest.mark.skip(reason=_SWAP_SKIP_REASON)
+@pytest.mark.timeout(90)
+def test_tmpfs_write_respects_memory_limit(
+    isola_client: Isola,
+    sandbox_factory,
+) -> None:
+    """Writes to /tmp (gVisor in-sandbox tmpfs) are bounded by `memory`.
+
+    /tmp inside the sandbox is gVisor-managed tmpfs, stored in the Sentry's
+    memfd. Those pages are charged to the pod memcg as shmem. Overrunning the
+    limit drives the memcg OOM-killer, which kills the Sentry; the sandbox
+    transitions to FAILED.
+    """
+    # ephemeral_storage is generous so it cannot be the one that bites;
+    # the only variable under test is `memory`.
+    sb = sandbox_factory(
+        image="alpine:3.21", memory=64, ephemeral_storage=1024, timeout_seconds=120,
+    )
+    wait_for_running(isola_client, sb.id)
+
+    try:
+        sb.commands.spawn("dd", "if=/dev/zero", "of=/tmp/probe.bin", "bs=1M", "count=400")
+    except IsolaError:
+        pass  # sandbox may already be dying — the poll below confirms FAILED
+    wait_for_status(isola_client, sb.id, SandboxStatus.FAILED, timeout=60)
+
+
+@pytest.mark.timeout(120)
+def test_rootfs_write_respects_ephemeral_storage_limit(
+    isola_client: Isola,
+    sandbox_factory,
+) -> None:
+    """Writes to / (rootfs overlay) are bounded by `ephemeral_storage`.
+
+    gVisor's `overlay2=root:self` stores the rootfs overlay's backing file
+    inside the container's writable layer. That layer's size is what kubelet's
+    ephemeral-storage accounting watches. Exceeding the limit triggers kubelet
+    eviction and the sandbox transitions to FAILED (eviction is asynchronous —
+    kubelet polls disk usage roughly every 10 s).
+    """
+    # memory is generous so it cannot be the one that bites; the only
+    # variable under test is `ephemeral_storage`.
+    sb = sandbox_factory(
+        image="alpine:3.21", memory=512, ephemeral_storage=128, timeout_seconds=180,
+    )
+    wait_for_running(isola_client, sb.id)
+
+    # Unlike memory enforcement, this write typically completes first and the
+    # pod only dies once kubelet notices the writable-layer overrun. On slower
+    # disks eviction may land mid-write, so any exit code is acceptable: the
+    # authoritative signal is the sandbox reaching FAILED.
+    try:
+        sb.commands.run(
+            "dd", "if=/dev/zero", "of=/big.bin", "bs=1M", "count=400",
+            timeout_seconds=30,
+        )
+    except IsolaError:
+        pass  # sandbox may have died mid-write, wait_for_status confirms
+    wait_for_status(isola_client, sb.id, SandboxStatus.FAILED, timeout=60)
+
+
 def test_server_defaults_are_present(
     isola_client: Isola,
     session_sandbox: Sandbox,
@@ -218,7 +321,7 @@ def test_termination_policy_snapshot_name_defaults_to_sandbox_id(
     assert sb._data.termination_policy.snapshot_rootfs is not None
     assert sb._data.termination_policy.snapshot_rootfs.snapshot_name == sb.id
 
-    fetched = isola_client.sandboxes.get(sb.id)
+    fetched = wait_for_visible(isola_client, sb.id)
     assert fetched._data.termination_policy.snapshot_rootfs.snapshot_name == sb.id
 
 

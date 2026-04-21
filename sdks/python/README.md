@@ -34,13 +34,13 @@ export ISOLA_URL=http://localhost:8080
 export ISOLA_URL=http://isola-api-gateway
 
 # In-cluster (cross-namespace)
-export ISOLA_URL=http://isola-api-gateway.isola.svc.cluster.local
+export ISOLA_URL=http://isola-api-gateway.isola-system.svc.cluster.local
 
 # External (ingress or load balancer)
 export ISOLA_URL=https://isola.example.com
 ```
 
-Or pass it directly: `Isola(url="http://isola-api-gateway.isola.svc.cluster.local")`
+Or pass it directly: `Isola(url="http://isola-api-gateway.isola-system.svc.cluster.local")`
 
 ```python
 from isola import Isola
@@ -138,11 +138,9 @@ result = sandbox.commands.run(
 
 ```python
 script = """
-printf 'a\\nb\\nc\\n' > /tmp/one.txt
-printf 'hello world\\n' > /tmp/two.txt
-for f in /tmp/*.txt; do
-  echo "$f: $(wc -l < "$f") lines"
-done
+echo '== cpu ==';  nproc
+echo '== mem ==';  free -h
+echo '== disk =='; df -h /
 """
 result = sandbox.commands.run("sh", "-c", script)
 ```
@@ -355,7 +353,9 @@ print(snapshot.status)  # RootfsSnapshotStatus.SUCCEEDED
 For advanced use cases, you can run multiple containers in a single sandbox. Use the `containers` parameter instead of `image`:
 
 ```python
-from isola import Container
+from isola import Container, ResourceList, ResourceRequirements
+
+limits = ResourceRequirements(limits=ResourceList(cpu="500m", memory="256Mi", ephemeral_storage="1Gi"))
 
 sandbox = client.sandboxes.create(
     containers=[
@@ -363,14 +363,18 @@ sandbox = client.sandboxes.create(
             name="app",
             image="python:3.12-slim",
             command=["python", "-m", "http.server", "8080"],
+            resources=limits,
         ),
         Container(
             name="worker",
             image="alpine:3.21",
+            resources=limits,
         ),
     ],
 )
 ```
+
+Set CPU, memory, and ephemeral storage limits on every container. gVisor runs a single sentry process inside the pod cgroup, which is where limits apply to the sandbox. Kubernetes sums container limits into the pod cgroup only when every container declares one, so a missing limit on any container produces surprising pod-level behavior on that dimension: unbounded for CPU and memory, too-low caps for ephemeral storage.
 
 Target a specific container when running commands or writing files:
 

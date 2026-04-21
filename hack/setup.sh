@@ -90,6 +90,10 @@ install_gvisor_in_node() {
         docker exec "$node" sh -c 'cat > /etc/containerd/runsc.toml << "TOML"
 [runsc_config]
   allow-rootfs-tar-annotation = "true"
+  # SystemdCgroup=true so runsc enforces pod cgroup limits.
+  # https://gvisor.dev/docs/user_guide/systemd/
+  # https://github.com/google/gvisor/issues/10371
+  systemd-cgroup = "true"
 TOML'
 
         docker exec "$node" sh -c 'cat >> /etc/containerd/config.toml << "TOML"
