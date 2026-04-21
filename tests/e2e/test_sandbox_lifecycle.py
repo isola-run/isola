@@ -208,6 +208,7 @@ def test_anonymous_memory_respects_memory_limit(
             timeout_seconds=30,
         )
     except IsolaError:
+        wait_for_status(isola_client, sb.id, SandboxStatus.FAILED, timeout=30)
         return  # sandbox died mid-allocation, enforcement worked
     if r.exit_code != 0:
         return  # dd was killed or got ENOMEM, enforcement worked
@@ -263,13 +264,17 @@ def test_rootfs_write_respects_ephemeral_storage_limit(
     )
     wait_for_running(isola_client, sb.id)
 
-    # Unlike memory enforcement, this write completes cleanly first; the pod
-    # only dies once kubelet notices the writable-layer overrun.
-    r = sb.commands.run(
-        "dd", "if=/dev/zero", "of=/big.bin", "bs=1M", "count=400",
-        timeout_seconds=30,
-    )
-    assert r.exit_code == 0, f"dd should complete cleanly, got exit={r.exit_code}"
+    # Unlike memory enforcement, this write typically completes first and the
+    # pod only dies once kubelet notices the writable-layer overrun. On slower
+    # disks eviction may land mid-write, so any exit code is acceptable: the
+    # authoritative signal is the sandbox reaching FAILED.
+    try:
+        sb.commands.run(
+            "dd", "if=/dev/zero", "of=/big.bin", "bs=1M", "count=400",
+            timeout_seconds=30,
+        )
+    except IsolaError:
+        pass  # sandbox may have died mid-write, wait_for_status confirms
     wait_for_status(isola_client, sb.id, SandboxStatus.FAILED, timeout=60)
 
 
