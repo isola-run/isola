@@ -118,6 +118,15 @@ class Container(IsolaModel):
             If not set, defaults to sleep infinity.
         env: Environment variables as key-value pairs.
         resources: CPU, memory, and ephemeral storage k8s resource requirements.
+            In multi-container sandboxes, set CPU and memory limits on every
+            container. gVisor runs a single sentry process inside the pod
+            cgroup, and Kubernetes sums container limits into the pod cgroup
+            only when every container declares one, so a missing CPU or memory
+            limit leaves the whole pod unbounded on that dimension. Ephemeral
+            storage is the opposite case: kubelet caps the pod at the sum of
+            declared container limits, treating a missing limit as 0 rather
+            than infinity. If only one container in a two-container sandbox
+            declares a 256Mi limit, the whole pod is capped at 256Mi.
     """
 
     name: str | None = None

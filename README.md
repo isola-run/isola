@@ -186,16 +186,20 @@ Network isolation relies on Kubernetes [NetworkPolicy](https://kubernetes.io/doc
 Run multiple containers in a single sandbox. Containers share a network namespace and can communicate over localhost. Useful for running an application alongside its dependencies (databases, MCPs, tool servers) in one isolated environment:
 
 ```python
-from isola import Container
+from isola import Container, ResourceList, ResourceRequirements
+
+limits = ResourceRequirements(limits=ResourceList(cpu="500m", memory="256Mi", ephemeral_storage="1Gi"))
 
 sandbox = client.sandboxes.create(
     containers=[
-        Container(name="api", image="python:3.12-slim", command=["python3", "-m", "http.server", "8080"]),
-        Container(name="test", image="alpine:3.21"),
+        Container(name="api", image="python:3.12-slim", command=["python3", "-m", "http.server", "8080"], resources=limits),
+        Container(name="test", image="alpine:3.21", resources=limits),
     ],
 )
 result = sandbox.commands.run("wget", "-qO-", "http://127.0.0.1:8080", container="test")
 ```
+
+Set CPU, memory, and ephemeral storage limits on every container. gVisor runs a single sentry process inside the pod cgroup, which is where limits apply to the sandbox. Kubernetes sums container limits into the pod cgroup only when every container declares one, so a missing limit on any container produces surprising pod-level behavior on that dimension: unbounded for CPU and memory, too-low caps for ephemeral storage.
 
 ## Architecture
 

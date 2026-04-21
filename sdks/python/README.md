@@ -353,7 +353,9 @@ print(snapshot.status)  # RootfsSnapshotStatus.SUCCEEDED
 For advanced use cases, you can run multiple containers in a single sandbox. Use the `containers` parameter instead of `image`:
 
 ```python
-from isola import Container
+from isola import Container, ResourceList, ResourceRequirements
+
+limits = ResourceRequirements(limits=ResourceList(cpu="500m", memory="256Mi", ephemeral_storage="1Gi"))
 
 sandbox = client.sandboxes.create(
     containers=[
@@ -361,14 +363,18 @@ sandbox = client.sandboxes.create(
             name="app",
             image="python:3.12-slim",
             command=["python", "-m", "http.server", "8080"],
+            resources=limits,
         ),
         Container(
             name="worker",
             image="alpine:3.21",
+            resources=limits,
         ),
     ],
 )
 ```
+
+Set CPU, memory, and ephemeral storage limits on every container. gVisor runs a single sentry process inside the pod cgroup, which is where limits apply to the sandbox. Kubernetes sums container limits into the pod cgroup only when every container declares one, so a missing limit on any container produces surprising pod-level behavior on that dimension: unbounded for CPU and memory, too-low caps for ephemeral storage.
 
 Target a specific container when running commands or writing files:
 
