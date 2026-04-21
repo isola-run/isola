@@ -253,7 +253,7 @@ CRDs are upgraded automatically as part of the Helm chart. To manage CRDs extern
 
 Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) named `gvisor` in your cluster. If your cluster does not already have gVisor installed:
 
-0. Ensure your cluster uses [containerd](https://containerd.io/docs/2.2/getting-started/) (the default container runtime ok EKS, AKS, GKE and most clusters).
+0. Ensure your cluster uses [containerd](https://containerd.io/docs/2.2/getting-started/) (the default container runtime on EKS, AKS, GKE and most clusters).
 
 1. Install the `runsc` binary and `containerd-shim-runsc-v1` on each node. See the [gVisor quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions. If you plan to use rootfs snapshots, install [`release-20260126.0`](https://storage.googleapis.com/gvisor/releases/release/20260126/x86_64/runsc) or later.
 
@@ -262,6 +262,7 @@ Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/conta
 ```toml
 [runsc_config]
   allow-rootfs-tar-annotation = "true"
+  systemd-cgroup = "true"
 ```
 
 Add the runtime to your containerd config (typically `/etc/containerd/config.toml`):
