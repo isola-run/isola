@@ -262,6 +262,7 @@ Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/conta
 ```toml
 [runsc_config]
   allow-rootfs-tar-annotation = "true"
+  systemd-cgroup = "true"
 ```
 
 Add the runtime to your containerd config (typically `/etc/containerd/config.toml`):
