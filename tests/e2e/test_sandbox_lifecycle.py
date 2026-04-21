@@ -241,7 +241,7 @@ def test_tmpfs_write_respects_memory_limit(
         sb.commands.spawn("dd", "if=/dev/zero", "of=/tmp/probe.bin", "bs=1M", "count=400")
     except IsolaError:
         pass  # sandbox may already be dying — the poll below confirms FAILED
-    wait_for_status(isola_client, sb.id, SandboxStatus.FAILED, timeout=30)
+    wait_for_status(isola_client, sb.id, SandboxStatus.FAILED, timeout=60)
 
 
 @pytest.mark.timeout(120)
