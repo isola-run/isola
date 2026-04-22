@@ -15,6 +15,7 @@
 package controller
 
 import (
+	"context"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -471,7 +472,7 @@ var _ = Describe("configureDNS function", func() {
 			},
 		}
 
-		configureDNS(pod, nil)
+		configureDNS(context.Background(), pod, nil)
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
 		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"127.0.0.1"}))
 	})
@@ -489,7 +490,7 @@ var _ = Describe("configureDNS function", func() {
 			AllowClusterDNS: ptr.To(true),
 		}
 
-		configureDNS(pod, network)
+		configureDNS(context.Background(), pod, network)
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
 	})
 
@@ -506,7 +507,7 @@ var _ = Describe("configureDNS function", func() {
 			Nameservers: []string{"8.8.8.8", "1.1.1.1"},
 		}
 
-		configureDNS(pod, network)
+		configureDNS(context.Background(), pod, network)
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
 		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
 	})
@@ -524,7 +525,7 @@ var _ = Describe("configureDNS function", func() {
 			AllowedEgressCIDRs: []string{"203.0.113.0/24"},
 		}
 
-		configureDNS(pod, network)
+		configureDNS(context.Background(), pod, network)
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
 		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
 		Expect(pod.Spec.DNSConfig.Options).To(HaveLen(1))
@@ -544,7 +545,7 @@ var _ = Describe("configureDNS function", func() {
 			AllowInternetEgress: ptr.To(true),
 		}
 
-		configureDNS(pod, network)
+		configureDNS(context.Background(), pod, network)
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSNone))
 		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8", "1.1.1.1"}))
 		Expect(pod.Spec.DNSConfig.Options).To(HaveLen(1))
@@ -565,7 +566,29 @@ var _ = Describe("configureDNS function", func() {
 			Nameservers:     []string{"8.8.8.8"},
 		}
 
-		configureDNS(pod, network)
+		configureDNS(context.Background(), pod, network)
+		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
+		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8"}))
+	})
+
+	It("should override pod template nameservers with network.nameservers when allowClusterDNS is true", func() {
+		pod := &corev1.Pod{
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Name: "test", Image: "busybox"},
+				},
+				DNSConfig: &corev1.PodDNSConfig{
+					Nameservers: []string{"9.9.9.9"},
+				},
+			},
+		}
+
+		network := &sandboxv1alpha1.Network{
+			AllowClusterDNS: ptr.To(true),
+			Nameservers:     []string{"8.8.8.8"},
+		}
+
+		configureDNS(context.Background(), pod, network)
 		Expect(pod.Spec.DNSPolicy).To(Equal(corev1.DNSClusterFirst))
 		Expect(pod.Spec.DNSConfig.Nameservers).To(Equal([]string{"8.8.8.8"}))
 	})
