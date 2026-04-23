@@ -260,10 +260,10 @@ spec:
               rule: has(self.terminationPolicy) == has(oldSelf.terminationPolicy)
                 && (!has(self.terminationPolicy) || self.terminationPolicy == oldSelf.terminationPolicy)
             - fieldPath: .timeoutSeconds
-              message: timeoutSeconds is immutable
+              message: timeoutSeconds is immutable once set
               reason: FieldValueForbidden
-              rule: has(self.timeoutSeconds) == has(oldSelf.timeoutSeconds) && (!has(self.timeoutSeconds)
-                || self.timeoutSeconds == oldSelf.timeoutSeconds)
+              rule: '!has(oldSelf.timeoutSeconds) || (has(self.timeoutSeconds) &&
+                self.timeoutSeconds == oldSelf.timeoutSeconds)'
           status:
             description: status defines the observed state of Sandbox
             properties:

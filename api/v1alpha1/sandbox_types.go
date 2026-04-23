@@ -146,7 +146,7 @@ type RootfsSnapshotSource struct {
 // +kubebuilder:validation:XValidation:rule="has(self.network) == has(oldSelf.network) && (!has(self.network) || self.network == oldSelf.network)",message="network is immutable",reason="FieldValueForbidden",fieldPath=".network"
 // +kubebuilder:validation:XValidation:rule="has(self.rootfsSnapshotSources) == has(oldSelf.rootfsSnapshotSources) && (!has(self.rootfsSnapshotSources) || self.rootfsSnapshotSources == oldSelf.rootfsSnapshotSources)",message="rootfsSnapshotSources is immutable",reason="FieldValueForbidden",fieldPath=".rootfsSnapshotSources"
 // +kubebuilder:validation:XValidation:rule="has(self.terminationPolicy) == has(oldSelf.terminationPolicy) && (!has(self.terminationPolicy) || self.terminationPolicy == oldSelf.terminationPolicy)",message="terminationPolicy is immutable",reason="FieldValueForbidden",fieldPath=".terminationPolicy"
-// +kubebuilder:validation:XValidation:rule="has(self.timeoutSeconds) == has(oldSelf.timeoutSeconds) && (!has(self.timeoutSeconds) || self.timeoutSeconds == oldSelf.timeoutSeconds)",message="timeoutSeconds is immutable",reason="FieldValueForbidden",fieldPath=".timeoutSeconds"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.timeoutSeconds) || (has(self.timeoutSeconds) && self.timeoutSeconds == oldSelf.timeoutSeconds)",message="timeoutSeconds is immutable once set",reason="FieldValueForbidden",fieldPath=".timeoutSeconds"
 type SandboxSpec struct {
 	// PodTemplate describes the pod that will be created to run the sandbox.
 	// The Sandbox controller will override specific security settings (runtimeClassName, etc.)

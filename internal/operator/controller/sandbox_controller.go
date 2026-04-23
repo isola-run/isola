@@ -113,6 +113,15 @@ const (
 	// is a mirror of this annotation; the pod is the durable source of truth so
 	// the field survives operator upgrades and transient status-patch failures.
 	SidecarVersionAnnotation = "isola.run/sidecar-version"
+
+	// AdoptedAtAnnotation marks a Sandbox as having been claimed out of a
+	// WarmSandboxPool. Set by the api-gateway at adoption time as RFC3339.
+	// Drives two behaviors:
+	//  - TimeoutAt is anchored to max(PodStartTime, AdoptedAt) so warm pods
+	//    don't timeout against pool-creation time.
+	//  - executeTerminationPolicy short-circuits when this annotation is absent
+	//    so pool churn never triggers SnapshotRootfs.
+	AdoptedAtAnnotation = "isola.run/adopted-at"
 )
 
 func (r *SandboxReconciler) clock() Clock {
@@ -572,8 +581,11 @@ func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv
 		return nil, nil
 	}
 
-	// Set once: anchor timeout to pod start time. Pod start time is immutable,
-	// so this naturally prevents crashlooping pods from pushing the timeout forward.
+	// Set once: anchor timeout to max(pod start time, adopted-at). Pod start time
+	// is immutable, so crashlooping pods can't push the timeout forward. Warm-pool
+	// adoption sets the adopted-at annotation strictly later than pod start, so
+	// anchoring on the max is what prevents a pool member from timing out against
+	// pool-creation time.
 	if sandbox.Status.TimeoutAt == nil {
 		startTime := podutil.PodStartTime(sandboxPod)
 		if startTime == nil {
@@ -581,8 +593,19 @@ func (r *SandboxReconciler) ensureTimeout(ctx context.Context, sandbox *sandboxv
 			return nil, nil
 		}
 
-		timeoutAt := startTime.Add(time.Duration(*sandbox.Spec.TimeoutSeconds) * time.Second)
-		log.Info("calculated sandbox timeout from pod start time", "startTime", startTime.Time, "timeoutAt", timeoutAt)
+		anchor := startTime.Time
+		if raw := sandbox.Annotations[AdoptedAtAnnotation]; raw != "" {
+			if adoptedAt, parseErr := time.Parse(time.RFC3339, raw); parseErr == nil {
+				if adoptedAt.After(anchor) {
+					anchor = adoptedAt
+				}
+			} else {
+				log.Info("ignoring unparseable adopted-at annotation", "value", raw, "error", parseErr.Error())
+			}
+		}
+
+		timeoutAt := anchor.Add(time.Duration(*sandbox.Spec.TimeoutSeconds) * time.Second)
+		log.Info("calculated sandbox timeout", "anchor", anchor, "timeoutAt", timeoutAt)
 
 		sandbox.Status.TimeoutAt = &metav1.Time{Time: timeoutAt}
 		if err := r.Status().Patch(ctx, sandbox, client.MergeFrom(baseSandbox)); err != nil {
@@ -1005,6 +1028,12 @@ func (r *SandboxReconciler) executeTerminationPolicy(
 	snapshotDeadline time.Time,
 ) (ctrl.Result, bool, error) {
 	log := logf.FromContext(ctx)
+
+	// Unadopted sandboxes (pool members) must never snapshot: pool churn is
+	// expected and would otherwise fire SnapshotRootfs on every scale-down.
+	if sandbox.Annotations[AdoptedAtAnnotation] == "" {
+		return ctrl.Result{}, true, nil
+	}
 
 	if sandbox.Spec.TerminationPolicy == nil || sandbox.Spec.TerminationPolicy.Type == sandboxv1alpha1.TerminationTypeDelete {
 		if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
