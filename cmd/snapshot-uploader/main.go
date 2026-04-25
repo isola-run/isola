@@ -187,6 +187,19 @@ func uploadSnapshot(ctx context.Context, logger *slog.Logger, uploader objectUpl
 		return err
 	}
 
+	// Guard against a silently-truncated upload: io.Copy returns no error if the
+	// source hits EOF early (e.g. file truncated mid-read), and some object stores
+	// won't surface a short-write either. Without this, the controller would
+	// commit a partial snapshot.
+	if written != stat.Size() {
+		logger.Error("upload size mismatch",
+			"bytes_written", written,
+			"file_size", stat.Size(),
+			"key", snapshotKey,
+		)
+		return fmt.Errorf("upload size mismatch: wrote %d bytes, expected %d", written, stat.Size())
+	}
+
 	logger.Info("upload complete",
 		"bytes_written", written,
 		"file_size", stat.Size(),

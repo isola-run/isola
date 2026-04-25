@@ -31,11 +31,12 @@ import (
 
 // fakeUploader records calls and can return a configurable error.
 type fakeUploader struct {
-	key     string
-	data    []byte
-	err     error
-	called  bool
-	written int64
+	key            string
+	data           []byte
+	err            error
+	called         bool
+	written        int64
+	overrideReturn *int64 // if set, return this value instead of bytes copied
 }
 
 func (f *fakeUploader) upload(_ context.Context, key string, r io.Reader) (int64, error) {
@@ -51,6 +52,9 @@ func (f *fakeUploader) upload(_ context.Context, key string, r io.Reader) (int64
 	}
 	f.data = buf.Bytes()
 	f.written = n
+	if f.overrideReturn != nil {
+		return *f.overrideReturn, nil
+	}
 	return n, nil
 }
 
@@ -287,6 +291,34 @@ func TestUploadSnapshotTerminationLogFailureDoesNotFail(t *testing.T) {
 	}
 	if !uploader.called {
 		t.Error("uploader should have been called")
+	}
+}
+
+func TestUploadSnapshotSizeMismatch(t *testing.T) {
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "snapshot.tar")
+	if err := os.WriteFile(srcPath, []byte("0123456789"), 0600); err != nil {
+		t.Fatalf("failed to write source file: %v", err)
+	}
+
+	short := int64(5)
+	uploader := &fakeUploader{overrideReturn: &short}
+
+	termLogPath := filepath.Join(dir, "term-log")
+	err := uploadSnapshot(context.Background(), discardLogger(), uploader, uploadConfig{
+		snapshotFile:      srcPath,
+		snapshotName:      "snap1",
+		snapshotNamespace: "ns",
+		terminationLog:    termLogPath,
+	})
+	if err == nil {
+		t.Fatal("expected error when uploaded bytes differ from file size")
+	}
+	if !strings.Contains(err.Error(), "size mismatch") {
+		t.Errorf("error = %v, want size mismatch", err)
+	}
+	if _, statErr := os.Stat(termLogPath); !os.IsNotExist(statErr) {
+		t.Error("termination log should not be written on size-mismatch failure")
 	}
 }
 
