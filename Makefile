@@ -116,7 +116,7 @@ fix-all: fmt lint-fix sdk-python-fix-all ## Fix all auto-fixable issues
 
 ##@ Testing
 
-ENVTEST_K8S_VERSION ?= 1.35
+ENVTEST_K8S_VERSION ?= 1.36
 FOCUS ?=
 SKIP ?=
 GO_TEST_FLAGS ?=
