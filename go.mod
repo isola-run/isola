@@ -14,7 +14,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	gocloud.dev v0.45.0
 	golang.org/x/sys v0.43.0
-	k8s.io/api v0.35.4
+	k8s.io/api v0.36.0
 	k8s.io/apimachinery v0.36.0
 	k8s.io/client-go v0.35.4
 	k8s.io/klog/v2 v2.140.0
