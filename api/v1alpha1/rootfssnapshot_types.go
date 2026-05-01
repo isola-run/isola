@@ -147,5 +147,5 @@ type RootfsSnapshotList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&RootfsSnapshot{}, &RootfsSnapshotList{})
+	registerTypes(&RootfsSnapshot{}, &RootfsSnapshotList{})
 }
