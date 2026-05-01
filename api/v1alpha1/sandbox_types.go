@@ -261,5 +261,5 @@ type SandboxList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&Sandbox{}, &SandboxList{})
+	registerTypes(&Sandbox{}, &SandboxList{})
 }
