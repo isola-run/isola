@@ -51,7 +51,7 @@ operator:
           image:
             registry: docker.io
             repository: rclone/rclone
-            tag: "1.74.0"
+            tag: "1.74.1"
           dirCacheTime: "2s"
         mounter:
           image:
