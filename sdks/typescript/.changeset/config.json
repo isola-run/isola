@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/@changesets/[email protected]/schema.json",
+  "changelog": [
+    "@changesets/changelog-github",
+    { "repo": "isola-run/isola" }
+  ],
+  "commit": false,
+  "fixed": [],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": []
+}
