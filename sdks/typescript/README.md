@@ -2,9 +2,9 @@
 
 Isola is an open-source sandbox platform for running untrusted and AI-generated code securely on your own Kubernetes cluster. This SDK lets you create sandboxes, execute commands, read and write files, and snapshot environments programmatically from TypeScript and JavaScript.
 
-The SDK targets server-side runtimes: Node 22+, Bun, Deno, Cloudflare Workers, and Vercel Edge. There is no browser build — Isola is server-to-server.
+The SDK targets server-side runtimes: Node 22+, Bun, Deno, Cloudflare Workers, and Vercel Edge. There is no browser build; Isola is server-to-server.
 
-The TS SDK is async-only; it corresponds to Python's `AsyncIsola`. The Python SDK additionally ships a sync class.
+The TS SDK is async-only.
 
 ## Install
 
@@ -28,7 +28,7 @@ Requires Node 22 or later.
 
 ## Quick start
 
-`ISOLA_URL` must point at your Isola api-gateway. There is no default — set it for every deployment:
+`ISOLA_URL` must point at your Isola api-gateway. There is no default; set it for every deployment:
 
 ```bash
 # Local development (kubectl port-forward)
@@ -135,7 +135,7 @@ const result = await sandbox.commands.run(
 );
 ```
 
-You can also bound the **client-side** wait phase with `waitTimeoutMs` (TS-only — see Python parity note below):
+You can also bound the **client-side** wait phase with `waitTimeoutMs`:
 
 ```ts
 const result = await sandbox.commands.run(["sleep", "100"], { waitTimeoutMs: 5_000 });
@@ -144,7 +144,7 @@ const result = await sandbox.commands.run(["sleep", "100"], { waitTimeoutMs: 5_0
 
 ### Running scripts
 
-Shell scripts — pass to `sh -c`:
+Shell scripts: pass to `sh -c`:
 
 ```ts
 const script = `
@@ -155,7 +155,7 @@ echo '== disk =='; df -h /
 const result = await sandbox.commands.run(["sh", "-c", script]);
 ```
 
-Python — pass to `python3 -c`:
+Python: pass to `python3 -c`:
 
 ```ts
 const code = `
@@ -167,7 +167,7 @@ const result = await sandbox.commands.run(["python3", "-c", code]);
 
 This is the natural pattern when executing LLM-generated code blocks.
 
-> For commands you control, prefer separate args (`run(["python3", "analyze.py", "--input", filename])`) — it keeps data separate from the command itself.
+> For commands you control, prefer separate args (`run(["python3", "analyze.py", "--input", filename])`): it keeps data separate from the command itself.
 
 ### Spawn (non-blocking)
 
@@ -248,7 +248,7 @@ const data = await sandbox.filesystem.read("/tmp/hello.txt");
 console.log(new TextDecoder().decode(data));  // "Hello, World!"
 ```
 
-Parent directories are created automatically on uploads. Streaming bodies (`ReadableStream`) are supported but **non-replayable** — transient errors during a stream upload are not retried.
+Parent directories are created automatically on uploads. Streaming bodies (`ReadableStream`) are supported but **non-replayable**: transient errors during a stream upload are not retried.
 
 ## Sandbox management
 
@@ -295,7 +295,7 @@ network: {
 }
 ```
 
-The acronym field names (`allowedEgressCIDRs`, `allowClusterDNS`, `allowIPv6Egress`) match the OpenAPI casing — do not lowercase them.
+The acronym field names (`allowedEgressCIDRs`, `allowClusterDNS`, `allowIPv6Egress`) match the OpenAPI casing; do not lowercase them.
 
 ## Rootfs snapshots
 
@@ -467,7 +467,7 @@ The SDK automatically retries on transient errors (HTTP 502/503/504, transport f
 
 ## Migration notes for Python users
 
-- TypeScript SDK is async-only — use `await`, not `with`.
+- TypeScript SDK is async-only; use `await`, not `with`.
 - Use `await using` for automatic cleanup (Node 22+, TC39 explicit resource management).
 - All argument names are camelCase (`maxWaitMs`, `startupTimeoutSeconds`, `rootfsSnapshotName`).
 - Polling deadlines are in **milliseconds** (`maxWaitMs`), not seconds.

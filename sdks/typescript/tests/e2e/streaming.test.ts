@@ -72,11 +72,7 @@ describe.sequential("e2e: streaming", () => {
   it("output arrives incrementally while the command is still running", async () => {
     // Sleeps create observable windows; we expect at least one chunk to arrive
     // while exitCode() is still null, proving no end-of-process buffering.
-    const cmd = await sandbox.commands.spawn([
-      "sh",
-      "-c",
-      "echo line1; sleep 0.5; echo line2; sleep 0.5; echo line3",
-    ]);
+    const cmd = await sandbox.commands.spawn(["sh", "-c", "echo line1; sleep 0.5; echo line2; sleep 0.5; echo line3"]);
     let receivedWhileRunning = false;
     const chunks: string[] = [];
     for await (const chunk of cmd.stdout) {

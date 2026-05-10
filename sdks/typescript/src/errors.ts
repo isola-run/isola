@@ -22,6 +22,7 @@ function setErrorName(err: Error, name: string): void {
   });
 }
 
+/** Base exception for all Isola SDK errors. */
 export class IsolaError extends Error {
   protected static readonly errorName: string = "IsolaError";
 
@@ -38,8 +39,10 @@ export interface APIErrorOptions {
   cause?: unknown;
 }
 
+/** An error response from the Isola API. */
 export class APIError extends IsolaError {
   protected static override readonly errorName: string = "APIError";
+  /** HTTP status code from the API. */
   readonly statusCode: number;
 
   constructor(opts: APIErrorOptions) {
@@ -48,26 +51,32 @@ export class APIError extends IsolaError {
   }
 }
 
+/** The request was malformed or invalid. */
 export class BadRequestError extends APIError {
   protected static override readonly errorName: string = "BadRequestError";
 }
 
+/** The requested resource does not exist. */
 export class NotFoundError extends APIError {
   protected static override readonly errorName: string = "NotFoundError";
 }
 
+/** The request conflicts with current state. */
 export class ConflictError extends APIError {
   protected static override readonly errorName: string = "ConflictError";
 }
 
+/** The request body failed validation. */
 export class ValidationError extends APIError {
   protected static override readonly errorName: string = "ValidationError";
 }
 
+/** An unexpected error on the server. */
 export class InternalError extends APIError {
   protected static override readonly errorName: string = "InternalError";
 }
 
+/** The server received an invalid response from upstream. */
 export class BadGatewayError extends APIError {
   protected static override readonly errorName: string = "BadGatewayError";
 }
@@ -75,10 +84,12 @@ export class BadGatewayError extends APIError {
 // Status codes 401/403/503/504 fall through to the base APIError, matching
 // Python _exceptions.py:95-102.
 
+/** A timeout expired while waiting for an operation to complete. */
 export class IsolaTimeoutError extends IsolaError {
   protected static override readonly errorName: string = "IsolaTimeoutError";
 }
 
+/** An error occurred communicating with the Isola API. */
 export class APIConnectionError extends IsolaError {
   protected static override readonly errorName: string = "APIConnectionError";
 }

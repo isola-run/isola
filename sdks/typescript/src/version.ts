@@ -1,2 +1,2 @@
-// Managed by hack/bump-version.sh — do not edit by hand.
+// Managed by hack/bump-version.sh; do not edit by hand.
 export const VERSION = "0.5.0";

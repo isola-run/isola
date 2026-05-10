@@ -18,13 +18,23 @@ import type { RequestOptions } from "./client";
 import type { BodyKind, HttpClient } from "./internal/http";
 import { filesystemPath } from "./internal/url";
 
+/** Options for {@link Filesystem.read} and {@link Filesystem.write}. */
 export interface FileOptions {
+  /**
+   * Target container name. Only needed for multi-container sandboxes.
+   */
   container?: string;
 }
 
-// ReadableStream uploads require duplex: "half" in Node fetch.
-// Streams are non-replayable: transport errors on stream bodies are NOT retried.
-// Replayable: string | Uint8Array | ArrayBuffer | Blob.
+/**
+ * Body types accepted by {@link Filesystem.write}.
+ *
+ * `string` is encoded as UTF-8. `Uint8Array`, `ArrayBuffer`, and
+ * `Blob` bodies are replayable (transport errors are retried).
+ * `ReadableStream` bodies are streamed once: transport errors on
+ * stream bodies are NOT retried, and Node fetch requires
+ * `duplex: "half"`.
+ */
 export type UploadBody = string | Uint8Array | ArrayBuffer | Blob | ReadableStream<Uint8Array>;
 
 function classify(data: UploadBody): { body: BodyInit; bodyKind: BodyKind } {
@@ -38,6 +48,7 @@ function classify(data: UploadBody): { body: BodyInit; bodyKind: BodyKind } {
   return { body: data as BodyInit, bodyKind: "replayable" };
 }
 
+/** Read and write files inside a sandbox. */
 export class Filesystem {
   /** @internal */
   readonly _api: HttpClient;
@@ -49,6 +60,26 @@ export class Filesystem {
     this._sandboxId = sandboxId;
   }
 
+  /**
+   * Write a file to the sandbox.
+   *
+   * Creates the file if it does not exist, overwrites it if it does.
+   * Parent directories are created automatically.
+   *
+   * @example
+   * ```ts
+   * await sandbox.filesystem.write("/tmp/hello.txt", "hi");
+   * ```
+   *
+   * @param path - Absolute path inside the sandbox (e.g.
+   * `"/tmp/hello.txt"`).
+   * @param data - Content to write. Strings are encoded as UTF-8.
+   * Pass binary data as `Uint8Array`, `ArrayBuffer`, `Blob`, or a
+   * `ReadableStream<Uint8Array>` (streams are non-replayable; see
+   * {@link UploadBody}).
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   */
   async write(path: string, data: UploadBody, opts: FileOptions = {}, req: RequestOptions = {}): Promise<void> {
     const { body, bodyKind } = classify(data);
     const params: Record<string, string> = { path };
@@ -65,6 +96,21 @@ export class Filesystem {
     });
   }
 
+  /**
+   * Read a file from the sandbox.
+   *
+   * @example
+   * ```ts
+   * const bytes = await sandbox.filesystem.read("/tmp/hello.txt");
+   * const text = new TextDecoder().decode(bytes);
+   * ```
+   *
+   * @param path - Absolute path inside the sandbox.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @returns File contents as bytes. Decode with `TextDecoder` for
+   * text.
+   */
   async read(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<Uint8Array> {
     const params: Record<string, string> = { path };
     if (opts.container) params.container = opts.container;

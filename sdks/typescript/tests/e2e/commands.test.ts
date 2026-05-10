@@ -108,10 +108,14 @@ describe.sequential("e2e: commands", () => {
     ["arbitrary", "exit 42", 42],
     ["command-not-found", "exit 127", 127],
     ["max-byte", "exit 255", 255],
-  ] as const)("exit code %s is faithfully propagated", async (_label, exitArg, expected) => {
-    const r = await sandbox.commands.run(["sh", "-c", exitArg]);
-    expect(r.exitCode).toBe(expected);
-  }, 30_000);
+  ] as const)(
+    "exit code %s is faithfully propagated",
+    async (_label, exitArg, expected) => {
+      const r = await sandbox.commands.run(["sh", "-c", exitArg]);
+      expect(r.exitCode).toBe(expected);
+    },
+    30_000,
+  );
 
   it("kill() is idempotent — second kill does not raise", async () => {
     const cmd = await sandbox.commands.spawn(["sleep", "300"], { timeoutSeconds: 15 });
@@ -159,6 +163,7 @@ describe.sequential("e2e: commands", () => {
   it("ISOLA_CONTAINER_NAME is stripped from user command env", async () => {
     // Operator injects ISOLA_CONTAINER_NAME into the container; the sidecar
     // strips it before exec'ing the user command.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: shell var, not template literal.
     const r = await sandbox.commands.run(["sh", "-c", 'echo "${ISOLA_CONTAINER_NAME}"']);
     expect(r.stdout.trim()).toBe("");
   }, 30_000);

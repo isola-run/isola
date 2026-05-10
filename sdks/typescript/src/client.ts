@@ -19,22 +19,30 @@ import { normalizeUrl } from "./internal/url";
 import { RootfsSnapshots } from "./rootfs-snapshot";
 import { Sandboxes } from "./sandbox";
 
+/** Options for the {@link Isola} client constructor. */
 export interface IsolaOptions {
-  /** Base URL of the Isola API gateway. Falls back to ISOLA_URL env var. */
+  /**
+   * Base URL of the Isola API gateway. If not provided, reads from
+   * the `ISOLA_URL` environment variable.
+   */
   url?: string;
   /**
-   * Per-request HTTP timeout in milliseconds. Default 30_000.
-   * Pass `null` to disable. Validated at construction; non-positive or
-   * non-finite values throw TypeError.
+   * Per-request HTTP timeout, in milliseconds. Default 30_000.
+   * Pass `null` to disable. Validated at construction; non-positive
+   * or non-finite values throw `TypeError`.
    *
-   * Note: requestTimeoutMs is constructor-only. Per-call cancellation uses
-   * the `signal` option on individual methods.
+   * `requestTimeoutMs` is constructor-only. Per-call cancellation
+   * uses the `signal` option on individual methods.
    */
   requestTimeoutMs?: number | null;
-  /** Custom fetch implementation (testing, proxies, custom transports). */
+  /**
+   * Custom `fetch` implementation, for testing, proxies, or custom
+   * transports.
+   */
   fetch?: FetchLike;
 }
 
+/** Per-call options accepted by every SDK method. */
 export interface RequestOptions {
   /** AbortSignal for per-call cancellation. */
   signal?: AbortSignal;
@@ -60,6 +68,27 @@ function resolveUrl(url: string | undefined): string {
   return normalizeUrl(candidate);
 }
 
+/**
+ * Client for the Isola API.
+ *
+ * The client is async-disposable: use `await using` to close the
+ * underlying HTTP connection automatically when the scope exits.
+ *
+ * @example
+ * ```ts
+ * import { Isola } from "@isola.run/sdk";
+ *
+ * await using client = new Isola();
+ * await using sandbox = await client.sandboxes.create({
+ *   image: "alpine:3.21",
+ * });
+ * const result = await sandbox.commands.run(["echo", "hello"]);
+ * console.log(result.stdout);
+ * ```
+ *
+ * @throws {Error} If no URL is provided and `ISOLA_URL` is unset.
+ * @throws {TypeError} If `requestTimeoutMs` is invalid.
+ */
 export class Isola {
   /** @internal */
   readonly _api: HttpClient;
@@ -79,20 +108,28 @@ export class Isola {
     this.rootfsSnapshots = new RootfsSnapshots(this._api);
   }
 
-  /** @internal — exposed for tests, mirrors Python client._api.url. */
+  /** @internal exposed for tests. */
   get url(): string {
     return this._api.url;
   }
 
-  /** @internal — exposed for tests. */
+  /** @internal exposed for tests. */
   get isClosed(): boolean {
     return this._closed;
   }
 
+  /**
+   * Close the client.
+   *
+   * Called automatically when using the client with `await using`.
+   * The native fetch dispatcher does not need explicit shutdown; this
+   * flips an internal closed flag and exists so callers always have a
+   * symmetric `close()` method.
+   */
   async close(): Promise<void> {
     this._closed = true;
     // The native fetch dispatcher we use does not need explicit shutdown;
-    // close() exists for API parity and to flip a closed flag for tests.
+    // close() exists to flip a closed flag for tests.
   }
 
   async [Symbol.asyncDispose](): Promise<void> {

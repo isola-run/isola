@@ -81,9 +81,8 @@ function requiredDate(v: unknown): Date {
 }
 
 // Drops `undefined` properties so outgoing JSON matches Python's
-// `model_dump(by_alias=True, exclude_none=True)`. Also drops empty objects
-// only when explicitly requested? No — Python preserves empty submodels.
-// We preserve empty objects to match SnapshotRootfs() round-tripping as `{}`.
+// `model_dump(by_alias=True, exclude_none=True)`. Empty submodels are
+// preserved to match SnapshotRootfs() round-tripping as `{}`.
 function dropUndefined<T extends Record<string, unknown>>(obj: T): Wire {
   const out: Wire = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -94,7 +93,10 @@ function dropUndefined<T extends Record<string, unknown>>(obj: T): Wire {
 
 // ---------- Public types ----------
 
+/** Lifecycle status of a sandbox. */
 export type SandboxStatus = "Pending" | "Running" | "Terminating" | "Succeeded" | "Failed";
+
+/** Lifecycle status of a rootfs snapshot. */
 export type RootfsSnapshotStatus = "Pending" | "Running" | "Succeeded" | "Failed";
 
 const SANDBOX_STATUSES: ReadonlySet<string> = new Set(["Pending", "Running", "Terminating", "Succeeded", "Failed"]);
@@ -115,11 +117,43 @@ function rootfsSnapshotStatus(v: unknown): RootfsSnapshotStatus {
   return v as RootfsSnapshotStatus;
 }
 
+/**
+ * Network configuration for a sandbox.
+ *
+ * Sandboxes have no network access by default. Use this to enable
+ * internet access, cluster DNS, or fine-grained egress rules.
+ *
+ * When internet egress or custom CIDRs are enabled without cluster DNS,
+ * the server automatically configures public nameservers (8.8.8.8, 1.1.1.1)
+ * so DNS resolution works out of the box. Override this with the
+ * `nameservers` field.
+ */
 export interface Network {
+  /** Allow outbound traffic to the public internet. */
   allowInternetEgress?: boolean;
+  /**
+   * List of CIDR blocks the sandbox can reach (e.g. `["10.0.0.0/8"]`).
+   * Use this for fine-grained control instead of allowing all internet
+   * traffic.
+   */
   allowedEgressCIDRs?: string[];
+  /**
+   * Allow DNS resolution through the cluster's DNS service. When
+   * `false` and `allowInternetEgress` or `allowedEgressCIDRs` are
+   * specified, the sandbox uses public nameservers or the ones you
+   * provide in `nameservers`.
+   */
   allowClusterDNS?: boolean;
+  /**
+   * Custom DNS nameservers. Overrides the automatic public
+   * nameservers.
+   */
   nameservers?: string[];
+  /**
+   * Enable IPv6 across egress configuration. Extends
+   * `allowInternetEgress` to cover IPv6, and allows IPv6 addresses in
+   * `allowedEgressCIDRs` and `nameservers`.
+   */
   allowIPv6Egress?: boolean;
 }
 
@@ -144,6 +178,11 @@ export const Network = {
   },
 };
 
+/**
+ * Kubernetes resource quantities for a single direction (limits or
+ * requests). Strings use Kubernetes quantity syntax (e.g. `"500m"` for
+ * CPU, `"256Mi"` for memory).
+ */
 export interface ResourceList {
   cpu?: string;
   memory?: string;
@@ -167,6 +206,7 @@ export const ResourceList = {
   },
 };
 
+/** CPU, memory, and ephemeral storage limits and requests for a container. */
 export interface ResourceRequirements {
   limits?: ResourceList;
   requests?: ResourceList;
@@ -188,12 +228,40 @@ export const ResourceRequirements = {
   },
 };
 
+/**
+ * Container specification for sandbox creation.
+ *
+ * Used with the `containers` parameter of {@link Sandboxes.create} when
+ * running multi-container sandboxes or when specifying custom and
+ * non-equal requests and limits resource requirements.
+ */
 export interface Container {
+  /** Container name. Auto-generated if not set. */
   name?: string;
+  /** Container image to run (e.g. `"python:3.12"`). */
   image: string;
+  /** Name of a rootfs snapshot to restore into this container. */
   rootfsSnapshotName?: string;
+  /**
+   * Command and arguments to run in the container. If not set,
+   * defaults to `sleep infinity`.
+   */
   command?: string[];
+  /** Environment variables as key-value pairs. */
   env?: Record<string, string>;
+  /**
+   * CPU, memory, and ephemeral storage k8s resource requirements.
+   *
+   * In multi-container sandboxes, set CPU and memory limits on every
+   * container. gVisor runs a single sentry process inside the pod
+   * cgroup, and Kubernetes sums container limits into the pod cgroup
+   * only when every container declares one, so a missing CPU or memory
+   * limit leaves the whole pod unbounded on that dimension. Ephemeral
+   * storage is the opposite case: kubelet caps the pod at the sum of
+   * declared container limits, treating a missing limit as 0 rather
+   * than infinity. If only one container in a two-container sandbox
+   * declares a 256Mi limit, the whole pod is capped at 256Mi.
+   */
   resources?: ResourceRequirements;
 }
 
@@ -224,11 +292,22 @@ export const Container = {
   },
 };
 
+/**
+ * Read-only container information returned by the API.
+ *
+ * `env` is intentionally omitted on response types to avoid leaking
+ * secrets. It is write-only on {@link Container}.
+ */
 export interface ContainerInfo {
+  /** Container name. */
   name: string;
+  /** Container image. */
   image: string;
+  /** Rootfs snapshot name, if restoring from one. */
   rootfsSnapshotName?: string;
+  /** Command and arguments. */
   command?: string[];
+  /** Resource limits and requests. */
   resources?: ResourceRequirements;
 }
 
@@ -247,8 +326,27 @@ export const ContainerInfo = {
   },
 };
 
+/**
+ * Termination policy that snapshots a container's root filesystem
+ * changes on exit.
+ *
+ * Pass this as the `terminationPolicy` parameter of
+ * {@link Sandboxes.create} to automatically capture a rootfs snapshot
+ * of the container's root filesystem changes when the sandbox
+ * terminates. Restore the snapshot later by passing its name as
+ * `rootfsSnapshotName`.
+ */
 export interface SnapshotRootfs {
+  /**
+   * Name for the snapshot. If not set, defaults to the sandbox's ID
+   * on the server.
+   */
   snapshotName?: string;
+  /**
+   * Maximum time for the snapshot operation, in seconds. Enforced
+   * server-side. The server cancels the snapshot if it takes longer
+   * than this. The server defaults to 300 seconds if not set.
+   */
   timeoutSeconds?: number;
 }
 
@@ -267,9 +365,13 @@ export const SnapshotRootfs = {
   },
 };
 
+/** Lightweight sandbox summary returned by list operations. */
 export interface SandboxSummary {
+  /** Unique identifier of the sandbox. */
   id: string;
+  /** Current lifecycle status. */
   status: SandboxStatus;
+  /** When the sandbox was created. */
   creationTimestamp: Date;
 }
 
@@ -285,10 +387,15 @@ export const SandboxSummary = {
   },
 };
 
+/** Result of a completed command execution. */
 export interface CommandResult {
+  /** Unique identifier of the command. */
   readonly id: string;
+  /** Complete standard output as a string. */
   readonly stdout: string;
+  /** Complete standard error as a string. */
   readonly stderr: string;
+  /** Process exit code. 0 indicates success. */
   readonly exitCode: number;
 }
 

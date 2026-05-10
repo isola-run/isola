@@ -3,7 +3,7 @@
 // Imports the built SDK and exercises constructor + a no-network code path.
 // Does not require a live Isola API gateway.
 
-import { APIError, BadRequestError, IsolaError, Isola, NotFoundError, VERSION } from "../dist/index.js";
+import { APIError, BadRequestError, Isola, IsolaError, NotFoundError, VERSION } from "../dist/index.js";
 
 const errors: string[] = [];
 

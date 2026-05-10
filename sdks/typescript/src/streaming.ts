@@ -19,9 +19,10 @@
 // heartbeat-only events.
 //
 // HTTP error path mirrors Python _streaming.py:113-114: errorFromHttp(status,
-// null, body) — omits method/path (deliberate divergence from non-streaming
-// error path). isTransient() classifies APIError; non-transient: immediate
-// raise (no reconnect). Cause chained on reconnect-exhausted error.
+// null, body) intentionally omits method/path (deliberate divergence from the
+// non-streaming error path). isTransient() classifies APIError; non-transient
+// errors raise immediately (no reconnect). Cause chained on reconnect-exhausted
+// error.
 
 import { APIError, connectionErrorFromError, errorFromHttp, isTransient } from "./errors";
 import type { HttpClient } from "./internal/http";
@@ -31,10 +32,33 @@ import { parseSSE } from "./internal/sse";
 export const MAX_RECONNECTS = 5;
 const RETRY_DELAY_MS = 1_000;
 
+/** Options for {@link StreamReader.iter} and {@link StreamReader.read}. */
 export interface StreamReadOptions {
+  /** AbortSignal for per-call cancellation. */
   signal?: AbortSignal;
 }
 
+/**
+ * A single-use reader for a streaming output.
+ *
+ * Iterate over it with `for await` to receive chunks as they arrive,
+ * or call {@link StreamReader.read} to collect everything into a
+ * string. Attempting to iterate a second time throws.
+ *
+ * The reader reconnects automatically on transient network errors,
+ * resuming from where it left off (`Last-Event-ID`).
+ *
+ * @example
+ * ```ts
+ * const cmd = await sandbox.commands.spawn(["ls", "-la"]);
+ * for await (const chunk of cmd.stdout) {
+ *   process.stdout.write(chunk);
+ * }
+ *
+ * // Or read everything at once:
+ * const output = await cmd.stderr.read();
+ * ```
+ */
 export class StreamReader implements AsyncIterable<string> {
   private readonly _api: HttpClient;
   private readonly _path: string;
@@ -51,6 +75,11 @@ export class StreamReader implements AsyncIterable<string> {
     return this.iter();
   }
 
+  /**
+   * Begin iterating the stream.
+   *
+   * @throws {Error} If the stream has already been consumed.
+   */
   iter(opts: StreamReadOptions = {}): AsyncIterableIterator<string> {
     if (this._consumed) {
       throw new Error("StreamReader is single-use and has already been consumed");
@@ -59,6 +88,11 @@ export class StreamReader implements AsyncIterable<string> {
     return this._generate(opts.signal);
   }
 
+  /**
+   * Read the entire stream and return it as a string.
+   *
+   * @throws {Error} If the stream has already been consumed.
+   */
   async read(opts: StreamReadOptions = {}): Promise<string> {
     const chunks: string[] = [];
     for await (const chunk of this.iter(opts)) {

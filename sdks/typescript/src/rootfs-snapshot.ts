@@ -30,13 +30,36 @@ import {
 const POLL_INTERVAL_MS = 1_000;
 const DEFAULT_MAX_WAIT_MS = 310_000;
 
+/** Options for {@link RootfsSnapshots.create}. */
 export interface CreateSnapshotOptions {
+  /** ID of the sandbox to snapshot. */
   sandboxId: string;
+  /**
+   * Name for the snapshot. Defaults to the sandbox's ID on the
+   * server. Use this name later as `rootfsSnapshotName` when creating
+   * a new sandbox.
+   */
   snapshotName?: string;
+  /**
+   * Which container to snapshot, for multi-container sandboxes.
+   * Defaults to the first container.
+   */
   containerName?: string;
+  /**
+   * Maximum time for the snapshot operation, in seconds. Enforced
+   * server-side. The server defaults to 300 seconds if not set.
+   */
   timeoutSeconds?: number;
+  /**
+   * How long the Kubernetes resource is retained after the snapshot
+   * completes, in seconds. The server defaults to 300 seconds if not
+   * set.
+   */
   ttlSecondsAfterFinished?: number;
-  /** Client-side polling deadline; default 310_000ms. */
+  /**
+   * How long this method polls for completion, in milliseconds.
+   * Client-side only. Defaults to 310_000ms.
+   */
   maxWaitMs?: number;
 }
 
@@ -87,6 +110,14 @@ async function waitUntilComplete(
   }
 }
 
+/**
+ * Manage rootfs snapshots.
+ *
+ * Rootfs snapshots capture one container's root filesystem changes at
+ * a point in time. Other mounts (e.g. tmpfs like `/tmp`) are not
+ * included. Restore a snapshot when creating a new sandbox to pick up
+ * where you left off.
+ */
 export class RootfsSnapshots {
   /** @internal */
   readonly _api: HttpClient;
@@ -95,6 +126,27 @@ export class RootfsSnapshots {
     this._api = api;
   }
 
+  /**
+   * Create a rootfs snapshot from a running sandbox.
+   *
+   * Blocks until the snapshot completes, up to `maxWaitMs`. Set
+   * `maxWaitMs: 0` to return immediately.
+   *
+   * @example
+   * ```ts
+   * const snapshot = await client.rootfsSnapshots.create({
+   *   sandboxId: sandbox.id,
+   *   snapshotName: "my-snapshot",
+   * });
+   * ```
+   *
+   * @param opts - Snapshot options.
+   * @returns A {@link RootfsSnapshot} with the snapshot metadata and
+   * status.
+   * @throws {IsolaError} If the snapshot fails.
+   * @throws {IsolaTimeoutError} If the snapshot does not complete
+   * within `maxWaitMs`.
+   */
   async create(opts: CreateSnapshotOptions, req: RequestOptions = {}): Promise<RootfsSnapshot> {
     const payload: CreateRootfsSnapshotPayload = { sandboxId: opts.sandboxId };
     if (opts.snapshotName !== undefined) payload.snapshotName = opts.snapshotName;
@@ -121,6 +173,16 @@ export class RootfsSnapshots {
     return new RootfsSnapshot(finalData);
   }
 
+  /**
+   * Get a rootfs snapshot by ID.
+   *
+   * @param snapshotId - The snapshot's unique identifier.
+   * @returns A {@link RootfsSnapshot} with the current state.
+   * @throws {NotFoundError} If the snapshot's Kubernetes resource no
+   * longer exists. A completed snapshot's data remains in storage
+   * even after `NotFoundError` on the K8s resource and can still be
+   * restored by `snapshotName`.
+   */
   async get(snapshotId: string, req: RequestOptions = {}): Promise<RootfsSnapshot> {
     const data = await this._api.requestModel<RootfsSnapshotData>(
       {
@@ -134,6 +196,13 @@ export class RootfsSnapshots {
   }
 }
 
+/**
+ * A rootfs snapshot.
+ *
+ * Inspect the snapshot's status and metadata. To restore from this
+ * snapshot, pass its `snapshotName` as `rootfsSnapshotName` when
+ * creating a new sandbox.
+ */
 export class RootfsSnapshot {
   /** @internal */
   readonly _data: RootfsSnapshotData;
@@ -142,34 +211,45 @@ export class RootfsSnapshot {
     this._data = data;
   }
 
+  /** Unique identifier of the snapshot. */
   get id(): string {
     return this._data.id;
   }
 
+  /** Current lifecycle status of the snapshot. */
   get status(): RootfsSnapshotStatus {
     return this._data.status;
   }
 
+  /** When the snapshot was created. */
   get creationTimestamp(): Date {
     return this._data.creationTimestamp;
   }
 
+  /** Name of the snapshot. Use this to restore from it. */
   get snapshotName(): string {
     return this._data.snapshotName;
   }
 
+  /** ID of the sandbox this snapshot was taken from. */
   get sandboxId(): string {
     return this._data.sandboxId;
   }
 
+  /** Container that was snapshotted, or `null` for the default. */
   get containerName(): string | null {
     return this._data.containerName;
   }
 
+  /** Server-side timeout for the snapshot operation, in seconds. */
   get timeoutSeconds(): number {
     return this._data.timeoutSeconds;
   }
 
+  /**
+   * How long the Kubernetes resource is retained after the snapshot
+   * completes, in seconds.
+   */
   get ttlSecondsAfterFinished(): number {
     return this._data.ttlSecondsAfterFinished;
   }

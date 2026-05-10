@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// URL helpers — matches the path construction logic in Python _client.py:285-289
+// URL helpers. Matches the path construction logic in Python _client.py:285-289
 // and the per-resource path helpers across _sandbox.py / _commands.py /
 // _filesystem.py / _rootfs_snapshot.py.
 
@@ -25,7 +25,7 @@ export function normalizeUrl(url: string): string {
 }
 
 // Mirrors Python's urllib.parse.quote(s, safe=''): escapes EVERY non-unreserved
-// character. encodeURIComponent leaves !, ', (, ), * unescaped — quote does not.
+// character. encodeURIComponent leaves !, ', (, ), * unescaped; quote does not.
 export function quoteSegment(s: string): string {
   return encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 }
@@ -78,16 +78,17 @@ export function filesystemPath(sandboxId: string): string {
   return `${sandboxPath(sandboxId)}/filesystem`;
 }
 
-// Builds a URL with optional query string. Drops null/undefined/empty values.
+// Builds a URL with optional query string. Drops null/undefined values.
+// Uses quoteSegment for query params so spaces become %20 (not +) and
+// !'()* are escaped, matching Python's urllib.parse.quote(safe='/').
 export function buildUrl(base: string, path: string, params?: Record<string, string | number | undefined>): string {
   let url = `${base}${path}`;
   if (!params) return url;
-  const search = new URLSearchParams();
+  const parts: string[] = [];
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null) continue;
-    search.append(key, String(value));
+    parts.push(`${quoteSegment(key)}=${quoteSegment(String(value))}`);
   }
-  const qs = search.toString();
-  if (qs.length > 0) url += `?${qs}`;
+  if (parts.length > 0) url += `?${parts.join("&")}`;
   return url;
 }

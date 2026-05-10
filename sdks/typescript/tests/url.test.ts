@@ -102,7 +102,11 @@ describe("buildUrl", () => {
     expect(buildUrl("https://h", "/p", { a: undefined, b: undefined })).toBe("https://h/p");
   });
 
-  it("URL-encodes param values", () => {
-    expect(buildUrl("https://h", "/p", { q: "hello world" })).toBe("https://h/p?q=hello+world");
+  it("URL-encodes param values with %20 for spaces (matches Python httpx)", () => {
+    expect(buildUrl("https://h", "/p", { q: "hello world" })).toBe("https://h/p?q=hello%20world");
+  });
+
+  it("URL-encodes !'()* in param values (matches Python urllib.parse.quote)", () => {
+    expect(buildUrl("https://h", "/p", { q: "a!b'c(d)e*f" })).toBe("https://h/p?q=a%21b%27c%28d%29e%2Af");
   });
 });

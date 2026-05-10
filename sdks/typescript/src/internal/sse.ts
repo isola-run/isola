@@ -24,7 +24,7 @@ export interface SSEEvent {
 const NUL = "\u0000";
 
 // WHATWG dispatch step: only emit on a blank-line boundary. EOF without a
-// trailing blank line discards pending data — matches Python httpx-sse.
+// trailing blank line discards pending data, matching Python httpx-sse.
 // retry: field is parsed and clamped to [1s, 60s].
 // id: field stored as opaque string; NUL-containing ids ignored.
 export async function* parseSSE(body: ReadableStream<Uint8Array>, signal?: AbortSignal): AsyncGenerator<SSEEvent> {
@@ -88,6 +88,12 @@ export async function* parseSSE(body: ReadableStream<Uint8Array>, signal?: Abort
       signal?.throwIfAborted();
       const { done, value } = await reader.read();
       if (done) {
+        // If reader.read() resolved cleanly because abort fired during the
+        // pending read (onAbort called reader.cancel), surface the abort.
+        // Without this, callers iterating with `for await` see a clean
+        // completion instead of the signal.reason, so the README's
+        // cancellation example would silently exit the loop.
+        if (signal?.aborted) throw signal.reason;
         // WHATWG: discard any pending data buffer at EOF. Flush partial
         // UTF-8 (replacement char) and the final unterminated line through
         // processLine, but DO NOT dispatch a final unterminated event.

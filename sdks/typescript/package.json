@@ -51,8 +51,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "lint": "biome check src tests",
-    "lint:fix": "biome check --write src tests",
+    "lint": "biome check src tests examples",
+    "lint:fix": "biome check --write src tests examples",
     "typecheck": "tsc --noEmit",
     "verify-package": "pnpm build && attw --pack . && publint",
     "prepublishOnly": "pnpm run build"
@@ -74,8 +74,5 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
   }
 }

@@ -14,3 +14,11 @@
       directory: "/"
       schedule:
         interval: "weekly"
+
+    - package-ecosystem: "npm"
+      directory: "/sdks/typescript"
+      schedule:
+        interval: "weekly"
+      groups:
+        typescript-sdk-deps:
+          patterns: ["*"]

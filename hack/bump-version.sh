@@ -2,11 +2,14 @@
 # Bump all version-holding files to the given semver.
 #
 # Writes:
-#   VERSION                            (plaintext)
-#   charts/isola/Chart.yaml            (version + appVersion)
-#   sdks/python/src/isola/_version.py  (__version__ constant; hatchling reads it)
+#   VERSION                                 (plaintext)
+#   charts/isola/Chart.yaml                 (version + appVersion)
+#   sdks/python/src/isola/_version.py       (__version__ constant; hatchling reads it)
+#   sdks/typescript/src/version.ts          (VERSION constant; barrel-exported)
+#   sdks/typescript/package.json            (version field; via npm version)
+#   sdks/typescript/pnpm-lock.yaml          (refreshed via pnpm install --lockfile-only)
 # Then runs:
-#   make openapi                       (regenerates api/openapi/*.yaml)
+#   make openapi                            (regenerates api/openapi/*.yaml)
 #
 # Usage:
 #   ./hack/bump-version.sh 0.5.0
@@ -44,6 +47,20 @@ cat > sdks/python/src/isola/_version.py <<EOF
 # Managed by hack/bump-version.sh, do not edit.
 __version__ = "$NEW_VERSION"
 EOF
+
+# TypeScript SDK keeps the version constant in src/version.ts (re-exported via
+# the index barrel) and the npm version in package.json. Both must stay in sync.
+cat > sdks/typescript/src/version.ts <<EOF
+// Managed by hack/bump-version.sh; do not edit by hand.
+export const VERSION = "$NEW_VERSION";
+EOF
+(
+    cd sdks/typescript
+    # npm version preserves package.json formatting better than yq.
+    npm version --no-git-tag-version --allow-same-version "$NEW_VERSION"
+    # Refresh pnpm-lock.yaml without touching node_modules.
+    pnpm install --lockfile-only
+)
 
 # make openapi must rerun: info.version in api/openapi/*.yaml is baked from VERSION.
 make openapi

@@ -22,11 +22,14 @@ import {
   isAbortError,
   isTransient,
 } from "../errors";
+import { VERSION } from "../version";
 import { buildUrl } from "./url";
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000; // mirrors Python _client.py read=30s
 export const MAX_RETRIES = 5; // _client.py:32
 export const RETRY_DELAY_MS = 1_000; // _client.py:33
+
+const DEFAULT_USER_AGENT = `@isola-run/sdk/${VERSION}`;
 
 const STREAM_CONNECT_TIMEOUT_MS = 5_000;
 
@@ -94,13 +97,14 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-// Replayable body kinds: string | Uint8Array | ArrayBuffer | Blob | URLSearchParams.
+// Replayable body kinds: string | ArrayBufferView (Uint8Array, Int8Array, etc.)
+// | ArrayBuffer | Blob | URLSearchParams.
 // Streams are non-replayable; FormData would be too if we supported it.
 export function isReplayableBody(body: unknown): boolean {
   if (body == null) return true;
   if (typeof body === "string") return true;
-  if (body instanceof Uint8Array) return true;
   if (body instanceof ArrayBuffer) return true;
+  if (ArrayBuffer.isView(body)) return true; // covers Uint8Array, Int8Array, DataView, etc.
   if (typeof Blob !== "undefined" && body instanceof Blob) return true;
   if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) return true;
   return false;
@@ -144,6 +148,16 @@ export class HttpClient {
     if (opts.jsonBody !== undefined && !headers.has("content-type")) {
       headers.set("content-type", "application/json");
     }
+    // User-Agent is rejected by some runtimes (Workers, browser-fetch in older
+    // Node) so add it only if the runtime allows it. Worker runtimes ignore
+    // attempts to set it; Node and Bun accept it. Send a best-effort default.
+    if (!headers.has("user-agent")) {
+      try {
+        headers.set("user-agent", DEFAULT_USER_AGENT);
+      } catch {
+        // some runtimes forbid setting user-agent; ignore.
+      }
+    }
 
     let lastError: unknown;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -165,16 +179,20 @@ export class HttpClient {
         if (attemptSignal.userSignal?.aborted) {
           throw attemptSignal.userSignal.reason ?? err;
         }
+        // Pass through SDK-typed errors verbatim (e.g. a custom fetch that
+        // already classified the failure as APIError).
+        if (err instanceof APIError || err instanceof APIConnectionError) throw err;
+        // Only retry on transport-shaped failures: native fetch rejects with
+        // TypeError on network/DNS/TLS errors, AbortError on aborts, or our
+        // per-attempt timeout signal firing. Other thrown values (e.g. a
+        // user-supplied fetch throwing a RangeError) are wrapped as
+        // APIConnectionError and propagated without retry, matching Python.
         const transportTimedOut = attemptSignal.timeoutSignal?.aborted === true || isAbortError(err);
-        if (canRetry && attempt < MAX_RETRIES) {
+        const isTransport = transportTimedOut || err instanceof TypeError;
+        if (isTransport && canRetry && attempt < MAX_RETRIES) {
           await sleep(RETRY_DELAY_MS, opts.signal);
           continue;
         }
-        if (transportTimedOut) {
-          throw connectionErrorFromError(err, { method: opts.method, path: opts.path });
-        }
-        // Non-Error JS runtime errors (RuntimeError-style) → APIConnectionError too.
-        if (err instanceof APIError || err instanceof APIConnectionError) throw err;
         throw connectionErrorFromError(err, { method: opts.method, path: opts.path });
       }
 
@@ -197,7 +215,7 @@ export class HttpClient {
       return response;
     }
 
-    // Unreachable — the loop either returns or throws.
+    // Unreachable: the loop either returns or throws.
     throw connectionErrorFromError(lastError ?? new Error("retry loop exited unexpectedly"), {
       method: opts.method,
       path: opts.path,

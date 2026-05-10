@@ -37,28 +37,53 @@ import {
 } from "./models";
 import { StreamReader } from "./streaming";
 
-// Long-poll interval — must stay <= api-gateway's maximum:"25".
+// Long-poll interval. Must stay <= api-gateway's maximum:"25".
 // Full chain (per CLAUDE.md): SDK 20s < gateway 25s < sidecar 30s
 //                             < gateway WriteTimeout 45s < sidecar WriteTimeout 75s
 const LONG_POLL_WAIT_SECONDS = 20;
 
+/** Options for {@link Commands.spawn}. */
 export interface SpawnOptions {
+  /** Environment variables for the command. */
   env?: Record<string, string>;
+  /** Working directory inside the sandbox. */
   cwd?: string;
-  /** Server-side process kill deadline. */
+  /**
+   * Maximum time the command can run, in seconds. Enforced
+   * server-side. The server kills the process if it runs longer.
+   * If omitted, no server-side limit is applied.
+   */
   timeoutSeconds?: number;
+  /**
+   * Target container name. Only needed for multi-container sandboxes.
+   */
   container?: string;
 }
 
+/** Options for {@link Commands.run}. */
 export interface RunOptions extends SpawnOptions {
+  /**
+   * Data to send to the command's stdin. The SDK writes this and
+   * closes stdin automatically. Strings are encoded as UTF-8. For
+   * interactive control, use {@link Commands.spawn} with
+   * {@link Command.writeStdin} instead.
+   */
   input?: string | Uint8Array;
-  /** Client-side deadline for the wait/read phase; throws IsolaTimeoutError. */
+  /**
+   * Client-side deadline for the wait/read phase, in milliseconds.
+   * Throws {@link IsolaTimeoutError} on expiry.
+   */
   waitTimeoutMs?: number;
 }
 
+/** Options for {@link Command.wait}. */
 export interface WaitOptions {
-  /** Client-side wait deadline; throws IsolaTimeoutError on expiry. */
+  /**
+   * Client-side wait deadline, in milliseconds. Throws
+   * {@link IsolaTimeoutError} on expiry.
+   */
   timeoutMs?: number;
+  /** AbortSignal for per-call cancellation. */
   signal?: AbortSignal;
 }
 
@@ -91,6 +116,7 @@ function buildWaitSignal(
   };
 }
 
+/** Execute commands inside a sandbox. */
 export class Commands {
   /** @internal */
   readonly _api: HttpClient;
@@ -102,6 +128,26 @@ export class Commands {
     this._sandboxId = sandboxId;
   }
 
+  /**
+   * Start a command without waiting for it to finish.
+   *
+   * @example
+   * ```ts
+   * const cmd = await sandbox.commands.spawn(["ls", "-la"]);
+   * for await (const chunk of cmd.stdout) {
+   *   process.stdout.write(chunk);
+   * }
+   * await cmd.wait();
+   * ```
+   *
+   * @param args - The command and its arguments as separate strings
+   * (e.g. `["ls", "-la"]`).
+   * @param opts - Spawn options (`env`, `cwd`, `timeoutSeconds`,
+   * `container`).
+   * @returns A {@link Command} handle for streaming output, sending
+   * input, or waiting for completion.
+   * @throws {Error} If `args` is empty.
+   */
   async spawn(args: string[], opts: SpawnOptions = {}, req: RequestOptions = {}): Promise<Command> {
     if (!Array.isArray(args) || args.length === 0) {
       throw new Error("at least one argument (the command) is required");
@@ -120,6 +166,30 @@ export class Commands {
     return new Command(this._api, this._sandboxId, data.id);
   }
 
+  /**
+   * Run a command and wait for it to complete.
+   *
+   * Convenience wrapper around {@link Commands.spawn}: starts the
+   * command, optionally sends `input` to stdin, waits for the
+   * process to exit, and collects stdout and stderr.
+   *
+   * @example
+   * ```ts
+   * const result = await sandbox.commands.run(["echo", "hello"]);
+   * console.log(result.stdout); // "hello\n"
+   * console.log(result.exitCode); // 0
+   * ```
+   *
+   * @param args - The command and its arguments as separate strings
+   * (e.g. `["echo", "hello world"]`).
+   * @param opts - Run options. `input` is written to stdin and stdin
+   * is then closed automatically.
+   * @returns A {@link CommandResult} with `stdout`, `stderr`, and
+   * `exitCode`.
+   * @throws {Error} If `args` is empty.
+   * @throws {IsolaTimeoutError} If `waitTimeoutMs` expires before
+   * the command exits.
+   */
   async run(args: string[], opts: RunOptions = {}, req: RequestOptions = {}): Promise<CommandResult> {
     const cmd = await this.spawn(args, opts, req);
 
@@ -158,6 +228,14 @@ export class Commands {
   }
 }
 
+/**
+ * A running or completed command inside a sandbox.
+ *
+ * Returned by {@link Commands.spawn}. Use {@link Command.stdout} and
+ * {@link Command.stderr} to stream output, {@link Command.wait} to
+ * block until completion, or {@link Command.kill} to terminate the
+ * process.
+ */
 export class Command {
   /** @internal */
   readonly _api: HttpClient;
@@ -174,10 +252,18 @@ export class Command {
     this._commandId = commandId;
   }
 
+  /** Unique identifier of the command. */
   get id(): string {
     return this._commandId;
   }
 
+  /**
+   * Stream of the command's standard output.
+   *
+   * Yields text chunks as they arrive. Single-use: iterate once with
+   * `for await` or call {@link StreamReader.read} to collect
+   * everything.
+   */
   get stdout(): StreamReader {
     if (this._stdout === null) {
       this._stdout = new StreamReader(this._api, commandStdoutPath(this._sandboxId, this._commandId));
@@ -185,6 +271,13 @@ export class Command {
     return this._stdout;
   }
 
+  /**
+   * Stream of the command's standard error.
+   *
+   * Yields text chunks as they arrive. Single-use: iterate once with
+   * `for await` or call {@link StreamReader.read} to collect
+   * everything.
+   */
   get stderr(): StreamReader {
     if (this._stderr === null) {
       this._stderr = new StreamReader(this._api, commandStderrPath(this._sandboxId, this._commandId));
@@ -192,6 +285,12 @@ export class Command {
     return this._stderr;
   }
 
+  /**
+   * Poll the command's exit status.
+   *
+   * @returns The exit code if the command has finished, or `null` if
+   * it is still running.
+   */
   async exitCode(req: RequestOptions = {}): Promise<number | null> {
     const status = await this._api.requestModel<CommandStatusResponse>(
       {
@@ -204,6 +303,17 @@ export class Command {
     return status.exitCode;
   }
 
+  /**
+   * Block until the command finishes.
+   *
+   * To bound the wait server-side, pass `timeoutSeconds` to
+   * {@link Commands.spawn}. To bound it client-side, pass `timeoutMs`
+   * here.
+   *
+   * @returns The exit code of the command.
+   * @throws {IsolaTimeoutError} If `timeoutMs` expires before the
+   * command exits.
+   */
   async wait(opts: WaitOptions = {}): Promise<number> {
     const path = commandStatusPath(this._sandboxId, this._commandId);
     const params = statusParams();
@@ -232,6 +342,12 @@ export class Command {
     }
   }
 
+  /**
+   * Send data to the command's standard input.
+   *
+   * @param data - Text or bytes to write. Strings are encoded as
+   * UTF-8.
+   */
   async writeStdin(data: string | Uint8Array, req: RequestOptions = {}): Promise<void> {
     const raw: Uint8Array = typeof data === "string" ? new TextEncoder().encode(data) : data;
     await this._api.requestNoContent({
@@ -244,6 +360,12 @@ export class Command {
     });
   }
 
+  /**
+   * Close the command's standard input.
+   *
+   * Call this after writing all input so the command knows there is
+   * no more data coming (like pressing Ctrl-D).
+   */
   async closeStdin(req: RequestOptions = {}): Promise<void> {
     await this._api.requestNoContent({
       method: "POST",
@@ -252,6 +374,7 @@ export class Command {
     });
   }
 
+  /** Terminate the command immediately. */
   async kill(req: RequestOptions = {}): Promise<void> {
     await this._api.requestNoContent({
       method: "DELETE",
