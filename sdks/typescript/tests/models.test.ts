@@ -588,9 +588,18 @@ describe("CommandResult.fromWire", () => {
     );
   });
 
-  it("coerces non-number exitCode via Number()", () => {
-    const r = CommandResult.fromWire({ id: "x", stdout: "", stderr: "", exitCode: "42" });
-    expect(r.exitCode).toBe(42);
+  it("throws when exitCode is a string", () => {
+    // We tightened the decoder to reject non-finite-number exitCodes, matching
+    // CommandStatusResponse.fromWire and Python's strict typing.
+    expect(() => CommandResult.fromWire({ id: "x", stdout: "", stderr: "", exitCode: "42" })).toThrow(
+      /exitCode must be a finite number/,
+    );
+  });
+
+  it("throws when exitCode is missing", () => {
+    expect(() => CommandResult.fromWire({ id: "x", stdout: "", stderr: "" })).toThrow(
+      /exitCode must be a finite number/,
+    );
   });
 
   it("defaults stdout/stderr to empty strings when missing", () => {

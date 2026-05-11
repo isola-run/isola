@@ -139,6 +139,35 @@ describe("RootfsSnapshots.create polling", () => {
     expect(stub.calls).toHaveLength(4);
   });
 
+  it("throws IsolaError when status transitions Running -> Failed mid-poll", async () => {
+    // Defense against a regression that misclassifies Running as success-terminal.
+    const stub = makeStubFetch(
+      jsonResponse(makeRootfsSnapshotResponse("Pending"), { status: 201 }),
+      jsonResponse(makeRootfsSnapshotResponse("Running")),
+      jsonResponse(makeRootfsSnapshotResponse("Running")),
+      jsonResponse(makeRootfsSnapshotResponse("Failed")),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+
+    const promise = client.rootfsSnapshots.create({
+      sandboxId: "sandbox-123",
+      snapshotName: "my-snapshot",
+    });
+    let caught: unknown;
+    promise.catch((err) => {
+      caught = err;
+    });
+    await vi.runAllTimersAsync();
+    try {
+      await promise;
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(IsolaError);
+    expect((caught as Error).message).toMatch(/terminal state.*Failed/);
+    expect(stub.calls).toHaveLength(4);
+  });
+
   it("maxWaitMs: 0 returns immediately without polling", async () => {
     const stub = makeStubFetch(jsonResponse(makeRootfsSnapshotResponse("Pending"), { status: 201 }));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });

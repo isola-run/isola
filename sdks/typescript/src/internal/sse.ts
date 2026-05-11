@@ -79,6 +79,7 @@ export async function* parseSSE(body: ReadableStream<Uint8Array>, signal?: Abort
   };
   if (signal?.aborted) {
     reader.releaseLock();
+    void body.cancel().catch(() => {});
     throw signal.reason;
   }
   signal?.addEventListener("abort", onAbort, { once: true });

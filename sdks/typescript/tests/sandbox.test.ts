@@ -359,6 +359,27 @@ describe("polling — wait until Running", () => {
     expect(stub.calls[1]?.method).toBe("GET");
     expect(stub.calls[2]?.method).toBe("GET");
   });
+
+  it("Terminating is not in TERMINAL_STATUSES — keeps polling, not throwing", async () => {
+    // Terminating is the in-progress termination state; it should NOT be
+    // treated as a terminal-success state by waitUntilRunning. A regression
+    // that added it to TERMINAL_STATUSES would throw a "terminal state" error
+    // here; correct behavior is to keep polling until Running.
+    const stub = makeStubFetch(
+      jsonResponse(makeSandboxResponse("Pending"), { status: 201 }),
+      jsonResponse(makeSandboxResponse("Terminating")),
+      jsonResponse(makeSandboxResponse("Terminating")),
+      jsonResponse(makeSandboxResponse("Running")),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+
+    const promise = client.sandboxes.create({ image: "python:3.12" });
+    await vi.runAllTimersAsync();
+    const sandbox = await promise;
+
+    expect(sandbox.status).toBe("Running");
+    expect(stub.calls).toHaveLength(4);
+  });
 });
 
 // --- maxWaitMs: 0 ---

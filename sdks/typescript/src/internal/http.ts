@@ -179,9 +179,17 @@ export class HttpClient {
         if (attemptSignal.userSignal?.aborted) {
           throw attemptSignal.userSignal.reason ?? err;
         }
-        // Pass through SDK-typed errors verbatim (e.g. a custom fetch that
-        // already classified the failure as APIError).
-        if (err instanceof APIError || err instanceof APIConnectionError) throw err;
+        // SDK-typed errors from a custom fetch: route through the same
+        // transient gate the response-status path uses, so a custom fetch
+        // throwing APIConnectionError or APIError(502|503|504) still benefits
+        // from the retry policy. Non-transient SDK errors pass through.
+        if (err instanceof APIError || err instanceof APIConnectionError) {
+          if (isTransient(err) && canRetry && attempt < MAX_RETRIES) {
+            await sleep(RETRY_DELAY_MS, opts.signal);
+            continue;
+          }
+          throw err;
+        }
         // Only retry on transport-shaped failures: native fetch rejects with
         // TypeError on network/DNS/TLS errors, AbortError on aborts, or our
         // per-attempt timeout signal firing. Other thrown values (e.g. a
@@ -233,6 +241,11 @@ export class HttpClient {
     try {
       payload = await response.json();
     } catch (err) {
+      // If the caller aborted mid-body, surface the abort, not a wrapped
+      // "invalid response payload". Otherwise an in-flight cancellation
+      // becomes indistinguishable from a server-side malformed JSON.
+      if (opts.signal?.aborted) throw opts.signal.reason ?? err;
+      if (isAbortError(err)) throw err;
       throw new APIError({
         statusCode: response.status,
         message: "invalid response payload",
@@ -289,7 +302,13 @@ export class HttpClient {
     } catch (err) {
       clearTimeout(timer);
       if (opts.signal?.aborted) throw opts.signal.reason ?? err;
-      if (connectTimedOut || connectController.signal.aborted) {
+      // Wrap connect-timeout and transport-shaped failures so the StreamReader
+      // catch can classify them via isTransient() and retry. Native fetch
+      // throws TypeError on network/DNS/TLS errors; AbortError indicates the
+      // connect timer fired. SDK-typed errors are forwarded verbatim so a
+      // custom fetch can already classify failures.
+      if (err instanceof APIError || err instanceof APIConnectionError) throw err;
+      if (connectTimedOut || connectController.signal.aborted || isAbortError(err) || err instanceof TypeError) {
         throw connectionErrorFromError(err, { method: "GET", path });
       }
       throw err;

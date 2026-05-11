@@ -495,6 +495,99 @@ describe("Commands.run sibling cancellation", () => {
   }, 15_000);
 });
 
+// --- run({ waitTimeoutMs }) bounds the wait/read phase ---
+
+describe("Commands.run waitTimeoutMs", () => {
+  it("throws IsolaTimeoutError when waitTimeoutMs expires before completion", async () => {
+    const sbId = "sandbox-123";
+    const cmdId = "cmd-runtimeout";
+    const hang = (req: { signal: AbortSignal | undefined }): Promise<Response> =>
+      new Promise<Response>((_, reject) => {
+        if (req.signal?.aborted) {
+          reject(req.signal.reason ?? new DOMException("aborted", "AbortError"));
+          return;
+        }
+        req.signal?.addEventListener(
+          "abort",
+          () => reject(req.signal?.reason ?? new DOMException("aborted", "AbortError")),
+          { once: true },
+        );
+      });
+
+    const routes = {
+      [`GET /v1/sandboxes/${sbId}`]: () => jsonResponse(sandboxResponseFixture()),
+      [`POST /v1/sandboxes/${sbId}/commands`]: () => jsonResponse({ id: cmdId }, { status: 202 }),
+      // All three streams hang indefinitely; waitTimeoutMs must abort them.
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stdout`]: (req: { signal: AbortSignal | undefined }) => hang(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stderr`]: (req: { signal: AbortSignal | undefined }) => hang(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) => hang(req),
+    };
+    const routing = makeRoutingFetch(routes);
+    const client = new Isola({ url: URL_BASE, fetch: routing.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get(sbId);
+
+    let caught: unknown;
+    const t0 = performance.now();
+    try {
+      await sandbox.commands.run(["sleep", "10"], { waitTimeoutMs: 80 });
+    } catch (err) {
+      caught = err;
+    }
+    const elapsed = performance.now() - t0;
+
+    expect(caught).toBeInstanceOf(IsolaTimeoutError);
+    expect((caught as Error).message).toContain(`did not complete within 80ms`);
+    // Sanity: the timeout fired close to its budget, not after every sibling
+    // independently timed out the request layer.
+    expect(elapsed).toBeLessThan(2_000);
+  }, 10_000);
+
+  it("propagates user signal.reason when aborted ahead of waitTimeoutMs", async () => {
+    const sbId = "sandbox-123";
+    const cmdId = "cmd-userabort-run";
+    const reason = new Error("user-cancelled-run");
+    const ctrl = new AbortController();
+
+    const hangAndAbort = (req: { signal: AbortSignal | undefined }): Promise<Response> =>
+      new Promise<Response>((_, reject) => {
+        if (req.signal?.aborted) {
+          reject(req.signal.reason ?? new DOMException("aborted", "AbortError"));
+          return;
+        }
+        req.signal?.addEventListener(
+          "abort",
+          () => reject(req.signal?.reason ?? new DOMException("aborted", "AbortError")),
+          { once: true },
+        );
+      });
+
+    const routes = {
+      [`GET /v1/sandboxes/${sbId}`]: () => jsonResponse(sandboxResponseFixture()),
+      [`POST /v1/sandboxes/${sbId}/commands`]: () => jsonResponse({ id: cmdId }, { status: 202 }),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stdout`]: (req: { signal: AbortSignal | undefined }) =>
+        hangAndAbort(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stderr`]: (req: { signal: AbortSignal | undefined }) =>
+        hangAndAbort(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) =>
+        hangAndAbort(req),
+    };
+    const routing = makeRoutingFetch(routes);
+    const client = new Isola({ url: URL_BASE, fetch: routing.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get(sbId);
+
+    setTimeout(() => ctrl.abort(reason), 30);
+
+    let caught: unknown;
+    try {
+      await sandbox.commands.run(["sleep", "10"], { waitTimeoutMs: 5_000 }, { signal: ctrl.signal });
+    } catch (err) {
+      caught = err;
+    }
+    // User abort wins over the run-phase deadline.
+    expect(caught).toBe(reason);
+  }, 10_000);
+});
+
 // --- wait() error pass-through (non-signal) ---
 
 describe("Command.wait error pass-through", () => {

@@ -58,8 +58,10 @@ function resolveTimeout(value: number | null | undefined): number | null {
 }
 
 function resolveUrl(url: string | undefined): string {
+  // Matches Python `url or os.environ.get("ISOLA_URL")`: empty string also
+  // falls back to the env var.
   let candidate = url;
-  if (candidate === undefined) {
+  if (candidate === undefined || candidate === "") {
     candidate = typeof process !== "undefined" && process.env ? process.env.ISOLA_URL : undefined;
   }
   if (candidate === undefined || candidate === null || candidate === "") {
@@ -76,7 +78,7 @@ function resolveUrl(url: string | undefined): string {
  *
  * @example
  * ```ts
- * import { Isola } from "@isola.run/sdk";
+ * import { Isola } from "@isola-run/sdk";
  *
  * await using client = new Isola();
  * await using sandbox = await client.sandboxes.create({
@@ -128,8 +130,6 @@ export class Isola {
    */
   async close(): Promise<void> {
     this._closed = true;
-    // The native fetch dispatcher we use does not need explicit shutdown;
-    // close() exists to flip a closed flag for tests.
   }
 
   async [Symbol.asyncDispose](): Promise<void> {

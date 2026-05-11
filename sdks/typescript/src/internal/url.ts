@@ -24,10 +24,18 @@ export function normalizeUrl(url: string): string {
   return trimmed;
 }
 
-// Mirrors Python's urllib.parse.quote(s, safe=''): escapes EVERY non-unreserved
-// character. encodeURIComponent leaves !, ', (, ), * unescaped; quote does not.
+// Path-segment encoding matching Python's urllib.parse.quote(s, safe=''):
+// escapes every non-unreserved character. encodeURIComponent leaves !, ', (, ),
+// * unescaped; quote does not, so add them explicitly.
 export function quoteSegment(s: string): string {
   return encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+// Query-component encoding matching Python httpx's urlencode behavior: spaces
+// become `+` (form-urlencoded style), and the additional reserved characters
+// `!'()*` get percent-encoded like quoteSegment.
+function quoteQueryComponent(s: string): string {
+  return quoteSegment(s).replace(/%20/g, "+");
 }
 
 export function sandboxesPath(): string {
@@ -78,16 +86,16 @@ export function filesystemPath(sandboxId: string): string {
   return `${sandboxPath(sandboxId)}/filesystem`;
 }
 
-// Builds a URL with optional query string. Drops null/undefined values.
-// Uses quoteSegment for query params so spaces become %20 (not +) and
-// !'()* are escaped, matching Python's urllib.parse.quote(safe='/').
+// Builds a URL with optional query string. Drops undefined/null values.
+// Uses quoteQueryComponent so spaces become `+` and !'()* are percent-encoded,
+// matching Python httpx's QueryParams.__str__ wire output.
 export function buildUrl(base: string, path: string, params?: Record<string, string | number | undefined>): string {
   let url = `${base}${path}`;
   if (!params) return url;
   const parts: string[] = [];
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null) continue;
-    parts.push(`${quoteSegment(key)}=${quoteSegment(String(value))}`);
+    parts.push(`${quoteQueryComponent(key)}=${quoteQueryComponent(String(value))}`);
   }
   if (parts.length > 0) url += `?${parts.join("&")}`;
   return url;

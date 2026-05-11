@@ -465,14 +465,18 @@ try {
 
 The SDK automatically retries on transient errors (HTTP 502/503/504, transport failures): up to 6 total attempts, fixed 1 s delay between attempts. Per-attempt timeout is governed by `requestTimeoutMs`.
 
-## Migration notes for Python users
+## Conventions
 
-- TypeScript SDK is async-only; use `await`, not `with`.
-- Use `await using` for automatic cleanup (Node 22+, TC39 explicit resource management).
-- All argument names are camelCase (`maxWaitMs`, `startupTimeoutSeconds`, `rootfsSnapshotName`).
+- The SDK is async-only. Use `await` and (optionally) `await using` for
+  automatic cleanup; the latter requires Node 22+ or the TC39 explicit
+  resource management proposal.
+- Argument names are camelCase (`maxWaitMs`, `startupTimeoutSeconds`,
+  `rootfsSnapshotName`).
 - Polling deadlines are in **milliseconds** (`maxWaitMs`), not seconds.
-- The constructor's `requestTimeoutMs` is a single wall-clock budget per HTTP attempt; Python's httpx uses four separate buckets (connect/read/write/pool).
-- `cmd.wait({ timeoutMs })` and `commands.run({ waitTimeoutMs })` are TS-only knobs (Python parity follow-up).
+- `requestTimeoutMs` on the client is a single wall-clock budget per HTTP
+  attempt.
+- `cmd.wait({ timeoutMs })` and `commands.run({ waitTimeoutMs })` bound
+  the client-side wait/read phase and throw `IsolaTimeoutError` on expiry.
 
 ## License
 

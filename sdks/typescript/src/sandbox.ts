@@ -133,6 +133,15 @@ export type CreateSandboxOptions = SingleContainerOptions | MultiContainerOption
 
 const DEFAULT_MAX_WAIT_MS = 120_000;
 
+// Half-even rounding (banker's), matching Python's built-in `round`. Math.round
+// uses half-away-from-zero, so 0.5 → 1 instead of 0. The divergence only
+// matters at exact halves; `round(2.5) === 2` (Python) vs Math.round(2.5) === 3.
+function roundHalfEven(n: number): number {
+  const rounded = Math.round(n);
+  if (Math.abs(n - Math.trunc(n)) !== 0.5) return rounded;
+  return rounded % 2 === 0 ? rounded : rounded - Math.sign(n);
+}
+
 function buildResources(
   cpu: number | undefined,
   memory: number | undefined,
@@ -140,28 +149,36 @@ function buildResources(
 ): ResourceRequirements | undefined {
   if (cpu === undefined && memory === undefined && ephemeralStorage === undefined) return undefined;
   const list: ResourceList = {};
-  if (cpu !== undefined) list.cpu = `${Math.round(cpu * 1000)}m`;
+  if (cpu !== undefined) list.cpu = `${roundHalfEven(cpu * 1000)}m`;
   if (memory !== undefined) list.memory = `${memory}Mi`;
   if (ephemeralStorage !== undefined) list.ephemeralStorage = `${ephemeralStorage}Mi`;
   return { limits: list, requests: list };
 }
 
-function isMulti(opts: CreateSandboxOptions): opts is MultiContainerOptions {
-  return Array.isArray((opts as { containers?: unknown }).containers);
-}
-
 function buildContainers(opts: CreateSandboxOptions): Container[] {
-  if (isMulti(opts)) {
-    if (opts.containers.length === 0) {
+  // Decide mode by property presence, then validate the shape — so a JS caller
+  // passing `containers: <non-array>` gets a clear error rather than silently
+  // dropping the value down the single-container path.
+  const raw = opts as unknown as Record<string, unknown>;
+  const hasContainers = raw.containers !== undefined;
+  const hasImage = raw.image !== undefined;
+
+  if (hasContainers && hasImage) {
+    throw new Error("cannot specify both 'image' and 'containers'");
+  }
+  if (!hasContainers && !hasImage) {
+    throw new Error("must specify either 'image' or 'containers'");
+  }
+
+  if (hasContainers) {
+    if (!Array.isArray(raw.containers)) {
+      throw new Error("'containers' must be an array");
+    }
+    if (raw.containers.length === 0) {
       throw new Error("containers must be a non-empty array");
     }
-    // Compile-time invariants forbid these fields alongside `containers`, but
-    // we still assert at runtime to match Python's _validate_create_args.
-    if ((opts as unknown as Record<string, unknown>).image !== undefined) {
-      throw new Error("cannot specify both 'image' and 'containers'");
-    }
     const offending = (["command", "env", "cpu", "memory", "ephemeralStorage", "rootfsSnapshotName"] as const).filter(
-      (k) => (opts as unknown as Record<string, unknown>)[k] !== undefined,
+      (k) => raw[k] !== undefined,
     );
     if (offending.length > 0) {
       throw new Error(
@@ -169,13 +186,13 @@ function buildContainers(opts: CreateSandboxOptions): Container[] {
           "set these on each Container instead",
       );
     }
-    return opts.containers;
+    return raw.containers as Container[];
   }
 
-  if (typeof (opts as SingleContainerOptions).image !== "string") {
-    throw new Error("must specify either 'image' or 'containers'");
-  }
   const single = opts as SingleContainerOptions;
+  if (typeof single.image !== "string") {
+    throw new Error("'image' must be a string");
+  }
   const resources = buildResources(single.cpu, single.memory, single.ephemeralStorage);
   const container: Container = { image: single.image };
   if (single.command !== undefined) container.command = single.command;
@@ -355,7 +372,7 @@ export class Sandboxes {
 }
 
 /**
- * A running sandbox.
+ * A handle to a sandbox.
  *
  * Use {@link Sandbox.commands} to execute processes and
  * {@link Sandbox.filesystem} to read and write files. Sandboxes are

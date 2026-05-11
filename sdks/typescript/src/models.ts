@@ -403,11 +403,14 @@ export const CommandResult = {
   fromWire(json: unknown): CommandResult {
     const o = record(json);
     if (typeof o.id !== "string") throw new TypeError("CommandResult.id is required");
+    if (typeof o.exitCode !== "number" || !Number.isFinite(o.exitCode)) {
+      throw new TypeError("CommandResult.exitCode must be a finite number");
+    }
     return {
       id: o.id,
       stdout: typeof o.stdout === "string" ? o.stdout : "",
       stderr: typeof o.stderr === "string" ? o.stderr : "",
-      exitCode: typeof o.exitCode === "number" ? o.exitCode : Number(o.exitCode),
+      exitCode: o.exitCode,
     };
   },
 };
@@ -570,7 +573,7 @@ export const RootfsSnapshotData = {
       id: o.id,
       sandboxId: o.sandboxId,
       snapshotName: o.snapshotName,
-      containerName: typeof o.containerName === "string" ? o.containerName : null,
+      containerName: optionalString(o.containerName) ?? null,
       timeoutSeconds: o.timeoutSeconds,
       ttlSecondsAfterFinished: o.ttlSecondsAfterFinished,
       status: rootfsSnapshotStatus(o.status),

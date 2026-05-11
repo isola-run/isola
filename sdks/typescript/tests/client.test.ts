@@ -611,9 +611,10 @@ describe("HttpClient.fetchStream", () => {
     expect(caught).toBe(reason);
   });
 
-  it("re-throws non-connect-timeout errors verbatim", async () => {
-    // The remaining `throw err` branch (http.ts:277): not connect-timed-out,
-    // not user-aborted — fetchStream should re-throw as-is.
+  it("wraps native TypeError transport errors as APIConnectionError", async () => {
+    // fetchStream catches transport-shaped errors (TypeError from native fetch
+    // on DNS/TLS/connect failure) and wraps them as APIConnectionError so the
+    // StreamReader retry loop can classify them via isTransient().
     const transportErr = new TypeError("connect failed");
     const stub = makeStubFetch(transportErr);
     const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
@@ -624,7 +625,25 @@ describe("HttpClient.fetchStream", () => {
     } catch (err) {
       caught = err;
     }
-    expect(caught).toBe(transportErr);
+    expect(caught).toBeInstanceOf(APIConnectionError);
+    expect((caught as Error).message).toContain("GET /path");
+    expect((caught as Error).cause).toBe(transportErr);
+  });
+
+  it("re-throws unknown error shapes verbatim", async () => {
+    // Non-transport, non-abort, non-SDK errors propagate as-is. A user-supplied
+    // fetch throwing RangeError should not be silently classified.
+    const weirdErr = new RangeError("unexpected");
+    const stub = makeStubFetch(weirdErr);
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+
+    let caught: unknown;
+    try {
+      await api.fetchStream("/path");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBe(weirdErr);
   });
 
   it("rejects synchronously when the supplied signal is already aborted", async () => {

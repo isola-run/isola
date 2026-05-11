@@ -24,7 +24,7 @@
 // errors raise immediately (no reconnect). Cause chained on reconnect-exhausted
 // error.
 
-import { APIError, connectionErrorFromError, errorFromHttp, isTransient } from "./errors";
+import { APIConnectionError, APIError, connectionErrorFromError, errorFromHttp, isTransient } from "./errors";
 import type { HttpClient } from "./internal/http";
 import { sleep } from "./internal/http";
 import { parseSSE } from "./internal/sse";
@@ -135,6 +135,13 @@ export class StreamReader implements AsyncIterable<string> {
         return;
       } catch (err) {
         if (signal?.aborted) throw signal.reason ?? err;
+        // Retry only network-shaped or SDK transport/server errors. Anything
+        // else (TypeError from a parser bug, etc.) is a programming error and
+        // must propagate immediately rather than be hidden behind 5 reconnect
+        // attempts and a misleading "failed to reach Isola API" wrap.
+        if (!(err instanceof APIError) && !(err instanceof APIConnectionError) && !(err instanceof TypeError)) {
+          throw err;
+        }
         if (err instanceof APIError && !isTransient(err)) throw err;
         reconnects += 1;
         if (reconnects > MAX_RECONNECTS) {

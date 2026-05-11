@@ -198,23 +198,24 @@ export class Commands {
       await cmd.closeStdin(req);
     }
 
-    // Compose the user signal with a wait-phase deadline. If any of the
-    // siblings reject, abort the others via an internal controller so
-    // resources release promptly.
+    // waitTimeoutMs bounds the entire wait+read phase (spec F13). Use a
+    // single AbortSignal.timeout composed with the user signal and an
+    // internalController, then pass it to all three concurrent waits. If
+    // the timer fires, stdout/stderr/wait all abort together and the catch
+    // surfaces IsolaTimeoutError.
     const internalController = new AbortController();
     const userSignal = req.signal;
     const signals: AbortSignal[] = [internalController.signal];
     if (userSignal) signals.push(userSignal);
+    const runTimeoutSignal = opts.waitTimeoutMs !== undefined ? AbortSignal.timeout(opts.waitTimeoutMs) : undefined;
+    if (runTimeoutSignal) signals.push(runTimeoutSignal);
     const composedSignal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
 
     try {
       const [stdout, stderr, exitCode] = await Promise.all([
         cmd.stdout.read(composedSignal ? { signal: composedSignal } : {}),
         cmd.stderr.read(composedSignal ? { signal: composedSignal } : {}),
-        cmd.wait({
-          ...(opts.waitTimeoutMs !== undefined ? { timeoutMs: opts.waitTimeoutMs } : {}),
-          ...(composedSignal ? { signal: composedSignal } : {}),
-        }),
+        cmd.wait(composedSignal ? { signal: composedSignal } : {}),
       ]);
       return { id: cmd.id, stdout, stderr, exitCode };
     } catch (err) {
@@ -222,6 +223,11 @@ export class Commands {
       // hang on a server that has stopped sending events.
       if (!internalController.signal.aborted) {
         internalController.abort(err instanceof Error ? err : new Error(String(err)));
+      }
+      if (runTimeoutSignal?.aborted) {
+        throw new IsolaTimeoutError(`command ${cmd.id} did not complete within ${opts.waitTimeoutMs}ms`, {
+          cause: err,
+        });
       }
       throw err;
     }
@@ -331,12 +337,14 @@ export class Command {
         );
         if (status.exitCode !== null) return status.exitCode;
       } catch (err) {
+        // User cancel wins over the wait deadline if both fired: caller intent
+        // is preserved (mirrors Anthropic client.ts:980-988).
+        if (opts.signal?.aborted) throw opts.signal.reason ?? err;
         if (timeoutSignal?.aborted) {
           throw new IsolaTimeoutError(`command ${this._commandId} did not complete within ${opts.timeoutMs}ms`, {
             cause: err,
           });
         }
-        if (opts.signal?.aborted) throw opts.signal.reason ?? err;
         throw err;
       }
     }
