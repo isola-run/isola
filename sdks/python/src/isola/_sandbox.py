@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from datetime import datetime
 from typing import overload
@@ -600,7 +601,11 @@ class Sandbox:
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        self.delete()
+        # Swallow NotFoundError so exiting the `with` block when the sandbox is
+        # already gone (server-side timeout, manual delete, pod eviction)
+        # doesn't shadow the user's original exception with a cleanup 404.
+        with contextlib.suppress(NotFoundError):
+            self.delete()
 
     def delete(self) -> None:
         """Delete the sandbox.
@@ -679,7 +684,12 @@ class AsyncSandbox:
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
-        await self.delete()
+        # Swallow NotFoundError so exiting the `async with` block when the
+        # sandbox is already gone (server-side timeout, manual delete, pod
+        # eviction) doesn't shadow the user's original exception with a
+        # cleanup 404.
+        with contextlib.suppress(NotFoundError):
+            await self.delete()
 
     async def delete(self) -> None:
         """Delete the sandbox.
