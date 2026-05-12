@@ -24,6 +24,7 @@ import respx
 from isola import (
     AsyncIsola,
     Container,
+    InternalError,
     Isola,
     IsolaError,
     IsolaTimeoutError,
@@ -140,6 +141,84 @@ def test_sandbox_context_manager_deletes_on_exit(sandbox_response_copy: dict[str
             assert sandbox.id == "sandbox-123"
 
     assert delete_route.called
+
+
+@respx.mock
+def test_sandbox_context_manager_swallows_not_found_on_exit(sandbox_response_copy: dict[str, object]) -> None:
+    # Server-side timeout / manual delete / pod eviction can race: by the time
+    # __exit__ fires, the sandbox is already gone. A propagating 404 would
+    # replace whatever the user's `with` block was raising.
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.delete("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(404, json={"detail": "not found"})
+    )
+
+    boom = RuntimeError("user-block-error")
+    with Isola(url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        with pytest.raises(RuntimeError) as exc_info, sandbox:
+            raise boom
+
+    # The user's exception survives intact, not shadowed by NotFoundError.
+    assert exc_info.value is boom
+
+
+@respx.mock
+def test_sandbox_context_manager_propagates_non_404_on_exit(sandbox_response_copy: dict[str, object]) -> None:
+    # Idempotency is scoped to NotFoundError only. A 500 (or any other failure)
+    # must still surface so callers see real cleanup errors.
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.delete("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(500, json={"detail": "boom"})
+    )
+
+    with Isola(url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        with pytest.raises(InternalError), sandbox:
+            pass
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_sandbox_context_manager_swallows_not_found_on_exit(
+    sandbox_response_copy: dict[str, object],
+) -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.delete("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(404, json={"detail": "not found"})
+    )
+
+    boom = RuntimeError("user-block-error")
+    async with AsyncIsola(url="http://localhost:8080") as client:
+        with pytest.raises(RuntimeError) as exc_info:
+            async with await client.sandboxes.get("sandbox-123"):
+                raise boom
+
+    assert exc_info.value is boom
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_sandbox_context_manager_propagates_non_404_on_exit(
+    sandbox_response_copy: dict[str, object],
+) -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.delete("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(500, json={"detail": "boom"})
+    )
+
+    async with AsyncIsola(url="http://localhost:8080") as client:
+        with pytest.raises(InternalError):
+            async with await client.sandboxes.get("sandbox-123"):
+                pass
 
 
 @pytest.mark.asyncio
