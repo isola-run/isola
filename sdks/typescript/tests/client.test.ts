@@ -218,12 +218,12 @@ describe("response decoding failures", () => {
     expect((caught as APIError).message).toBe("200: invalid response payload");
   });
 
-  it("user abort during response.json() surfaces signal.reason, not 'invalid response payload'", async () => {
-    // Body parking on a never-closed ReadableStream. While requestModel awaits
-    // response.json(), the user aborts. The catch must see signal.aborted and
-    // throw signal.reason verbatim — NOT wrap it as APIError("invalid
-    // response payload") which would mask a deliberate cancellation as a
-    // server fault.
+  it("user abort during response body read surfaces signal.reason, not 'invalid response payload'", async () => {
+    // Body parking on a never-closed ReadableStream. While request() buffers
+    // the body via arrayBuffer(), the user aborts. The catch must see
+    // signal.aborted and throw signal.reason verbatim — NOT wrap it as
+    // APIError("invalid response payload") or APIConnectionError, which
+    // would mask a deliberate cancellation as a server/transport fault.
     const reason = new Error("user-abort-during-body-parse");
     const ctrl = new AbortController();
 
@@ -250,8 +250,8 @@ describe("response decoding failures", () => {
     };
     const client = new Isola({ url: URL_BASE, fetch: fetchImpl, requestTimeoutMs: null });
 
-    // Fire the abort one microtask later so request() returns the response
-    // and requestModel parks on await response.json().
+    // Fire the abort one microtask later so request() parks on
+    // await response.arrayBuffer() before the abort fires.
     queueMicrotask(() => ctrl.abort(reason));
 
     let caught: unknown;
@@ -371,7 +371,7 @@ describe("body replay on retry", () => {
     );
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
     // Use the internal _api to directly send a Uint8Array body and check retry sees it.
-    const response = await client._api.request({
+    const { response } = await client._api.request({
       method: "POST",
       path: "/v1/sandboxes",
       body: payload,
@@ -794,4 +794,213 @@ describe("per-attempt request timeout", () => {
     // All MAX_RETRIES+1 attempts attempted.
     expect(stub.calls.length).toBe(1 + MAX_RETRIES);
   }, 15_000);
+});
+
+describe("response body read failures", () => {
+  // Build a Response whose body errors after enqueueing partial bytes,
+  // simulating a connection drop / chunked-encoding error after headers
+  // arrived. fetch() resolves; arrayBuffer()/json() reject.
+  function bodyErroringResponse(
+    err: unknown,
+    init: ResponseInit = { status: 200, headers: { "content-type": "application/json" } },
+  ): Response {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{"));
+        controller.error(err);
+      },
+    });
+    return new Response(stream, init);
+  }
+
+  it("requestBytes retries when response body errors mid-read, then succeeds", async () => {
+    const stub = makeStubFetch(
+      bodyErroringResponse(new TypeError("connection reset")),
+      new Response(new Uint8Array([1, 2, 3])),
+    );
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+    const bytes = await api.requestBytes({ method: "GET", path: "/v1/x" });
+    expect(Array.from(bytes)).toEqual([1, 2, 3]);
+    expect(stub.calls).toHaveLength(2);
+  }, 15_000);
+
+  it("requestModel retries when response body errors mid-read, then succeeds", async () => {
+    const stub = makeStubFetch(bodyErroringResponse(new TypeError("connection reset")), jsonResponse({ ok: true }));
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+    const result = await api.requestModel<unknown>({ method: "GET", path: "/v1/x" }, (json) => json);
+    expect(result).toEqual({ ok: true });
+    expect(stub.calls).toHaveLength(2);
+  }, 15_000);
+
+  it("requestBytes wraps exhausted body-read failures as APIConnectionError", async () => {
+    const stub = makeStubFetch(
+      ...Array.from({ length: 1 + MAX_RETRIES }, () => bodyErroringResponse(new TypeError("connection reset"))),
+    );
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+
+    let caught: unknown;
+    try {
+      await api.requestBytes({ method: "GET", path: "/v1/x" });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(APIConnectionError);
+    expect((caught as Error).message).toContain("GET /v1/x:");
+    expect(stub.calls).toHaveLength(1 + MAX_RETRIES);
+  }, 15_000);
+
+  it("requestModel wraps exhausted body-read failures as APIConnectionError (NOT 'invalid response payload')", async () => {
+    // The bug being fixed: before, a transport-shaped body-read failure
+    // surfaced as APIError(200, "invalid response payload") — non-transient,
+    // unretryable, and indistinguishable from server-side malformed JSON.
+    // After the fix, it must surface as the retryable APIConnectionError.
+    const stub = makeStubFetch(
+      ...Array.from({ length: 1 + MAX_RETRIES }, () => bodyErroringResponse(new TypeError("connection reset"))),
+    );
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+
+    let caught: unknown;
+    try {
+      await api.requestModel<unknown>({ method: "GET", path: "/v1/x" }, (json) => json);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(APIConnectionError);
+    expect((caught as Error).message).toContain("GET /v1/x:");
+    expect(stub.calls).toHaveLength(1 + MAX_RETRIES);
+  }, 15_000);
+
+  it("requestModel still raises APIError for actually-malformed JSON (no retry)", async () => {
+    // Regression guard for the fix: when the body arrives intact but the
+    // payload itself isn't JSON, that's a server-side fault, not a transport
+    // one — retain APIError("invalid response payload") and do NOT retry.
+    const stub = makeStubFetch(
+      new Response("<html>not json</html>", { status: 200, headers: { "content-type": "text/html" } }),
+    );
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+
+    let caught: unknown;
+    try {
+      await api.requestModel<unknown>({ method: "GET", path: "/v1/x" }, (json) => json);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(APIError);
+    expect(caught).not.toBeInstanceOf(APIConnectionError);
+    expect((caught as APIError).message).toBe("200: invalid response payload");
+    expect(stub.calls).toHaveLength(1);
+  });
+
+  it("non-transport body-read error is wrapped as APIConnectionError without retry", async () => {
+    // Mirrors the headers-phase contract: a non-transport thrown value (e.g.
+    // RangeError) gets wrapped as APIConnectionError once, not retried.
+    // Stream errors propagate through arrayBuffer() verbatim, so this also
+    // protects against future regressions where the runtime might wrap stream
+    // errors as TypeError and silently re-enable retry.
+    const stub = makeStubFetch(bodyErroringResponse(new RangeError("unexpected")));
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+
+    let caught: unknown;
+    try {
+      await api.requestBytes({ method: "GET", path: "/v1/x" });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(APIConnectionError);
+    expect(stub.calls).toHaveLength(1);
+  });
+
+  it("non-replayable body (stream) does NOT retry on body-read failure", async () => {
+    const requestStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("chunk"));
+        controller.close();
+      },
+    });
+    const stub = makeStubFetch(bodyErroringResponse(new TypeError("connection reset")));
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+
+    let caught: unknown;
+    try {
+      await api.requestBytes({
+        method: "POST",
+        path: "/v1/x",
+        body: requestStream,
+        bodyKind: "stream",
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(APIConnectionError);
+    expect(stub.calls).toHaveLength(1);
+  });
+
+  it("per-attempt timeout firing during body read wraps as APIConnectionError after retries", async () => {
+    // Body never produces bytes; only the per-attempt AbortSignal.timeout
+    // fires. Each attempt's abort surfaces a TimeoutError DOMException;
+    // canRetry is true so the SDK retries up to MAX_RETRIES; the final
+    // attempt wraps the timeout as APIConnectionError.
+    const fetchImpl = (_input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
+      const sig = init.signal;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          sig?.addEventListener(
+            "abort",
+            () => {
+              controller.error(sig.reason);
+            },
+            { once: true },
+          );
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 200 }));
+    };
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: 20, fetch: fetchImpl });
+
+    let caught: unknown;
+    try {
+      await api.requestBytes({ method: "GET", path: "/v1/x" });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(APIConnectionError);
+    expect((caught as Error).message).toContain("GET /v1/x:");
+  }, 15_000);
+
+  it("user abort during requestBytes body read surfaces signal.reason verbatim", async () => {
+    // Counterpart to the requestModel user-abort test above, for the
+    // requestBytes / filesystem.read path. User aborts while arrayBuffer()
+    // is reading; signal.reason must propagate, not a wrapped APIConnectionError.
+    const reason = new Error("user-abort-during-body-read");
+    const ctrl = new AbortController();
+    const fetchImpl = (_input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
+      const sig = init.signal;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("{"));
+          sig?.addEventListener(
+            "abort",
+            () => {
+              controller.error(sig.reason);
+            },
+            { once: true },
+          );
+        },
+      });
+      return Promise.resolve(
+        new Response(body, { status: 200, headers: { "content-type": "application/octet-stream" } }),
+      );
+    };
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: fetchImpl });
+
+    queueMicrotask(() => ctrl.abort(reason));
+
+    let caught: unknown;
+    try {
+      await api.requestBytes({ method: "GET", path: "/v1/x", signal: ctrl.signal });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBe(reason);
+  });
 });

@@ -125,6 +125,18 @@ interface BodyAttempt {
   canRetry: boolean;
 }
 
+// Native fetch + arrayBuffer reject with TypeError on network/DNS/TLS/stream
+// errors, AbortError/TimeoutError on abort. Anything else is a non-transport
+// failure (e.g. a user-supplied fetch throwing RangeError) and gets wrapped
+// as APIConnectionError without retry.
+function isTransportFailure(err: unknown, attemptSignal: AttemptSignal): boolean {
+  if (attemptSignal.timeoutSignal?.aborted === true) return true;
+  if (isAbortError(err)) return true;
+  return err instanceof TypeError;
+}
+
+const UTF8_DECODER = new TextDecoder("utf-8", { fatal: false });
+
 /** @internal */
 export class HttpClient {
   readonly url: string;
@@ -150,7 +162,9 @@ export class HttpClient {
     return { body: opts.body, canRetry: isReplayableBody(opts.body) };
   }
 
-  async request(opts: RequestOpts): Promise<Response> {
+  // Body is consumed inside the retry loop so mid-stream drops and per-attempt
+  // timeouts retry like a headers-phase fetch() rejection, matching Python httpx.
+  async request(opts: RequestOpts): Promise<{ response: Response; bodyBytes: Uint8Array }> {
     const url = buildUrl(this.url, opts.path, opts.params);
     const { body, duplex, canRetry } = this.resolveBody(opts);
 
@@ -202,14 +216,22 @@ export class HttpClient {
           }
           throw err;
         }
-        // Only retry on transport-shaped failures: native fetch rejects with
-        // TypeError on network/DNS/TLS errors, AbortError on aborts, or our
-        // per-attempt timeout signal firing. Other thrown values (e.g. a
-        // user-supplied fetch throwing a RangeError) are wrapped as
-        // APIConnectionError and propagated without retry, matching Python.
-        const transportTimedOut = attemptSignal.timeoutSignal?.aborted === true || isAbortError(err);
-        const isTransport = transportTimedOut || err instanceof TypeError;
-        if (isTransport && canRetry && attempt < MAX_RETRIES) {
+        if (isTransportFailure(err, attemptSignal) && canRetry && attempt < MAX_RETRIES) {
+          await sleep(RETRY_DELAY_MS, opts.signal);
+          continue;
+        }
+        throw connectionErrorFromError(err, { method: opts.method, path: opts.path });
+      }
+
+      let bodyBytes: Uint8Array;
+      try {
+        bodyBytes = new Uint8Array(await response.arrayBuffer());
+      } catch (err) {
+        lastError = err;
+        if (attemptSignal.userSignal?.aborted) {
+          throw attemptSignal.userSignal.reason ?? err;
+        }
+        if (isTransportFailure(err, attemptSignal) && canRetry && attempt < MAX_RETRIES) {
           await sleep(RETRY_DELAY_MS, opts.signal);
           continue;
         }
@@ -217,11 +239,10 @@ export class HttpClient {
       }
 
       if (response.status >= 400) {
-        const bodyBuf = new Uint8Array(await response.arrayBuffer());
         const apiErr = errorFromHttp({
           status: response.status,
           reason: response.statusText || null,
-          body: bodyBuf,
+          body: bodyBytes,
           method: opts.method,
           path: opts.path,
         });
@@ -232,7 +253,7 @@ export class HttpClient {
         throw apiErr;
       }
 
-      return response;
+      return { response, bodyBytes };
     }
 
     // Unreachable: the loop either returns or throws.
@@ -243,21 +264,15 @@ export class HttpClient {
   }
 
   async requestNoContent(opts: RequestOpts): Promise<void> {
-    const response = await this.request(opts);
-    void response.body?.cancel().catch(() => {});
+    await this.request(opts);
   }
 
   async requestModel<T>(opts: RequestOpts, decode: (json: unknown) => T): Promise<T> {
-    const response = await this.request(opts);
+    const { response, bodyBytes } = await this.request(opts);
     let payload: unknown;
     try {
-      payload = await response.json();
+      payload = JSON.parse(UTF8_DECODER.decode(bodyBytes));
     } catch (err) {
-      // If the caller aborted mid-body, surface the abort, not a wrapped
-      // "invalid response payload". Otherwise an in-flight cancellation
-      // becomes indistinguishable from a server-side malformed JSON.
-      if (opts.signal?.aborted) throw opts.signal.reason ?? err;
-      if (isAbortError(err)) throw err;
       throw new APIError({
         statusCode: response.status,
         message: "invalid response payload",
@@ -276,8 +291,8 @@ export class HttpClient {
   }
 
   async requestBytes(opts: RequestOpts): Promise<Uint8Array> {
-    const response = await this.request(opts);
-    return new Uint8Array(await response.arrayBuffer());
+    const { bodyBytes } = await this.request(opts);
+    return bodyBytes;
   }
 
   // Stream connect timeout via manual AbortController + clearTimeout after
