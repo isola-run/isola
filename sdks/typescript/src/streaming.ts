@@ -66,6 +66,7 @@ export class StreamReader implements AsyncIterable<string> {
   private _consumed = false;
   private _retryDelayMs = RETRY_DELAY_MS;
 
+  /** @internal */
   constructor(api: HttpClient, path: string) {
     this._api = api;
     this._path = path;

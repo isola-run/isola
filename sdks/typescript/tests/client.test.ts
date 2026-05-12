@@ -26,8 +26,15 @@ import {
   NotFoundError,
   ValidationError,
 } from "../src/errors";
-import { HttpClient, MAX_RETRIES } from "../src/internal/http";
-import { jsonResponse, makeStubFetch, sandboxResponseFixture, sseResponse, sseResponseBody } from "./_helpers";
+import { HttpClient, MAX_RETRIES, RETRY_DELAY_MS } from "../src/internal/http";
+import {
+  hangUntilAbort,
+  jsonResponse,
+  makeStubFetch,
+  sandboxResponseFixture,
+  sseResponse,
+  sseResponseBody,
+} from "./_helpers";
 
 const URL_BASE = "http://localhost:8080";
 
@@ -68,6 +75,43 @@ describe("URL handling", () => {
 
   it("throws when explicit URL is empty", () => {
     expect(() => new Isola({ url: "" })).toThrow(/ISOLA_URL/);
+  });
+
+  it("throws when process.env is undefined and no URL provided", () => {
+    // Some runtimes (Workers, edge) don't expose process.env. The env-var
+    // lookup must guard against that and still surface the canonical
+    // 'ISOLA_URL' error.
+    const originalEnv = process.env;
+    // @ts-expect-error - intentionally removing env to exercise the branch.
+    process.env = undefined;
+    try {
+      expect(() => new Isola()).toThrow(/ISOLA_URL/);
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+});
+
+// --- User-Agent header ---
+
+describe("User-Agent header", () => {
+  it("auto-sets a default User-Agent when caller did not provide one", async () => {
+    const stub = makeStubFetch(jsonResponse({ sandboxes: [] }));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
+    await client.sandboxes.list();
+    const ua = stub.calls[0]!.headers.get("user-agent");
+    expect(ua).toMatch(/^@isola-run\/sdk\//);
+  });
+
+  it("respects an explicit User-Agent header (does not overwrite)", async () => {
+    const stub = makeStubFetch(jsonResponse({ sandboxes: [] }));
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+    await api.request({
+      method: "GET",
+      path: "/v1/sandboxes",
+      headers: { "user-agent": "my-cli/1.0" },
+    });
+    expect(stub.calls[0]!.headers.get("user-agent")).toBe("my-cli/1.0");
   });
 });
 
@@ -183,6 +227,51 @@ describe("response decoding failures", () => {
     expect(caught).toBeInstanceOf(APIError);
     expect((caught as APIError).message).toBe("200: invalid response payload");
   });
+
+  it("user abort during response.json() surfaces signal.reason, not 'invalid response payload' (B9)", async () => {
+    // Body parking on a never-closed ReadableStream. While requestModel awaits
+    // response.json(), the user aborts. The catch must see signal.aborted and
+    // throw signal.reason verbatim — NOT wrap it as APIError("invalid
+    // response payload") which would mask a deliberate cancellation as a
+    // server fault.
+    const reason = new Error("user-abort-during-body-parse");
+    const ctrl = new AbortController();
+
+    // Build a Response whose body never closes and rejects (via the request
+    // init signal) when the caller aborts.
+    const fetchImpl = (_input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
+      const sig = init.signal;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          // Enqueue partial JSON so json() must keep reading.
+          controller.enqueue(new TextEncoder().encode('{"partial":'));
+          // Hook the signal: when it aborts, error the stream with the reason
+          // so response.json() rejects.
+          sig?.addEventListener(
+            "abort",
+            () => {
+              controller.error(sig.reason);
+            },
+            { once: true },
+          );
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 200, headers: { "content-type": "application/json" } }));
+    };
+    const client = new Isola({ url: URL_BASE, fetch: fetchImpl, requestTimeoutMs: null });
+
+    // Fire the abort one microtask later so request() returns the response
+    // and requestModel parks on await response.json().
+    queueMicrotask(() => ctrl.abort(reason));
+
+    let caught: unknown;
+    try {
+      await client.sandboxes.get("sandbox-123", { signal: ctrl.signal });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBe(reason);
+  });
 });
 
 // --- Retry behavior ---
@@ -250,6 +339,32 @@ describe("retry behavior", () => {
     expect(stub.calls).toHaveLength(1 + MAX_RETRIES);
   }, 15_000);
 
+  it("waits exactly RETRY_DELAY_MS between attempts (README-pinned 1s)", async () => {
+    // Pin the README's "fixed 1s delay between attempts" promise. Without
+    // this, a regression to backoff/jitter or to a different constant would
+    // pass the attempt-count tests but break the documented behavior.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const stub = makeStubFetch(
+        jsonResponse({ detail: "bad gateway" }, { status: 502 }),
+        jsonResponse({ sandboxes: [] }),
+      );
+      const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
+      const promise = client.sandboxes.list();
+
+      // After the first attempt the SDK should have scheduled a sleep of
+      // exactly RETRY_DELAY_MS before the second. Advance N-1 ms — no second
+      // call yet — then advance the last 1ms and assert it fired.
+      await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS - 1);
+      expect(stub.calls).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await promise;
+      expect(stub.calls).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("exhausts retries on transport error -> raises APIConnectionError", async () => {
     const errs = Array.from({ length: 1 + MAX_RETRIES }, () => new TypeError("connect failed"));
     const stub = makeStubFetch(...errs);
@@ -280,6 +395,24 @@ describe("body replay on retry", () => {
     expect(stub.calls).toHaveLength(2);
     expect(stub.calls[0]?.bodyText).toBe('{"some":"json"}');
     expect(stub.calls[1]?.bodyText).toBe('{"some":"json"}');
+  }, 15_000);
+
+  // Catches a regression where `ArrayBuffer.isView` is replaced with a narrower
+  // `body instanceof Uint8Array` — Int32Array/DataView are also views and must
+  // remain replayable on transient retries.
+  it.each([
+    { label: "Int32Array", make: (): BodyInit => new Int32Array([1, 2, 3]) as unknown as BodyInit },
+    { label: "DataView", make: (): BodyInit => new DataView(new ArrayBuffer(8)) as unknown as BodyInit },
+  ])("typed-array body ($label) is replayable and retried on 502", async ({ make }) => {
+    const stub = makeStubFetch(jsonResponse({ detail: "bad gateway" }, { status: 502 }), jsonResponse({ ok: true }));
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+    await api.request({
+      method: "POST",
+      path: "/v1/sandboxes",
+      body: make(),
+      headers: { "content-type": "application/octet-stream" },
+    });
+    expect(stub.calls).toHaveLength(2);
   }, 15_000);
 
   it("ReadableStream (non-replayable) is NOT retried after transport error", async () => {
@@ -343,20 +476,9 @@ describe("requestTimeoutMs", () => {
     // Second attempt: succeed. If timeouts didn't reset per-attempt, the
     // second attempt would also see an aborted signal at request time.
     let attempts = 0;
-    const slowThenFast = async (_req: { signal: AbortSignal | undefined }): Promise<Response> => {
+    const slowThenFast = async (req: { signal: AbortSignal | undefined }): Promise<Response> => {
       attempts++;
-      if (attempts === 1) {
-        // Hang until aborted.
-        return await new Promise<Response>((_, reject) => {
-          _req.signal?.addEventListener(
-            "abort",
-            () => {
-              reject(_req.signal?.reason ?? new DOMException("timed out", "TimeoutError"));
-            },
-            { once: true },
-          );
-        });
-      }
+      if (attempts === 1) return hangUntilAbort(req);
       return jsonResponse({ sandboxes: [] });
     };
     const stub = makeStubFetch(slowThenFast, slowThenFast);
@@ -374,18 +496,7 @@ describe("AbortSignal handling", () => {
     const reason = new Error("user-cancelled");
     const ctrl = new AbortController();
     // Hang forever — never resolves.
-    const stub = makeStubFetch(
-      async (req): Promise<Response> =>
-        new Promise<Response>((_, reject) => {
-          req.signal?.addEventListener(
-            "abort",
-            () => {
-              reject(req.signal?.reason ?? new DOMException("aborted", "AbortError"));
-            },
-            { once: true },
-          );
-        }),
-    );
+    const stub = makeStubFetch((req): Promise<Response> => hangUntilAbort(req));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
 
     const promise = client.sandboxes.list({ signal: ctrl.signal });
@@ -403,18 +514,7 @@ describe("AbortSignal handling", () => {
   it("user-cancel-during-fetch wins over internal timeout", async () => {
     const reason = new Error("user-wins");
     const ctrl = new AbortController();
-    const stub = makeStubFetch(
-      async (req): Promise<Response> =>
-        new Promise<Response>((_, reject) => {
-          req.signal?.addEventListener(
-            "abort",
-            () => {
-              reject(req.signal?.reason ?? new DOMException("aborted", "AbortError"));
-            },
-            { once: true },
-          );
-        }),
-    );
+    const stub = makeStubFetch((req): Promise<Response> => hangUntilAbort(req));
     const client = new Isola({ url: URL_BASE, requestTimeoutMs: 5_000, fetch: stub.fetch });
 
     const promise = client.sandboxes.list({ signal: ctrl.signal });
@@ -483,17 +583,36 @@ describe("client lifecycle", () => {
     await client.close();
     expect(client.isClosed).toBe(true);
   });
+
+  it("await using calls close() even when the block throws", async () => {
+    // Spec for `using`: cleanup runs on normal AND exceptional exit. This pins
+    // the language semantics so a regression that wired the dispose to only
+    // the happy path would surface here.
+    const stub = makeStubFetch();
+    let captured: Isola | undefined;
+    const boom = new Error("from-inside-block");
+
+    let caught: unknown;
+    try {
+      await using client = new Isola({ url: URL_BASE, fetch: stub.fetch });
+      captured = client;
+      throw boom;
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBe(boom);
+    expect(captured?.isClosed).toBe(true);
+  });
 });
 
 // --- Internal request() error pass-through ---
 
 describe("transport error pass-through to APIConnectionError", () => {
-  it("re-throws an APIError that bubbled up from a custom fetch on the last attempt", async () => {
-    // Simulate a fetch that throws an APIError directly. That triggers the
-    // `err instanceof APIError` short-circuit on the last attempt
-    // (http.ts:177). We must exhaust retries since APIError is not detected
-    // as transient at the catch level (canRetry is true for replayable
-    // bodies, so retries proceed; on the last attempt the branch fires).
+  it("re-throws an APIError(502) from a custom fetch verbatim after retries exhaust", async () => {
+    // A custom fetch throwing an APIError(502) goes through the SDK-typed
+    // retry branch: isTransient(err) is true for 502, so the SDK retries up to
+    // MAX_RETRIES. On the final attempt the branch falls through and re-throws
+    // the original error verbatim (no wrap into APIConnectionError).
     const errs = Array.from(
       { length: 1 + MAX_RETRIES },
       () => new APIError({ statusCode: 502, message: "from-fetch" }),
@@ -507,11 +626,12 @@ describe("transport error pass-through to APIConnectionError", () => {
     } catch (err) {
       caught = err;
     }
-    // The original APIError must be re-thrown verbatim — NOT wrapped in
-    // APIConnectionError, even though the inner catch reaches that branch.
     expect(caught).toBeInstanceOf(APIError);
     expect((caught as APIError).statusCode).toBe(502);
     expect((caught as APIError).message).toContain("from-fetch");
+    // Defends B5: a regression that bypasses the SDK-typed retry would either
+    // wrap as APIConnectionError or stop after 1 attempt.
+    expect(stub.calls.length).toBe(1 + MAX_RETRIES);
   }, 15_000);
 
   it("re-throws an APIConnectionError that bubbled up from a custom fetch", async () => {
@@ -520,7 +640,45 @@ describe("transport error pass-through to APIConnectionError", () => {
     const stub = makeStubFetch(...errs);
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
     await expect(client.sandboxes.list()).rejects.toThrow(APIConnectionError);
+    expect(stub.calls.length).toBe(1 + MAX_RETRIES);
   }, 15_000);
+
+  it("re-throws non-transient APIError from a custom fetch with NO retry (B11)", async () => {
+    // Defends B11: SDK-typed errors thrown by a custom fetch pass through the
+    // same isTransient gate as response-status errors. A 400 (non-transient)
+    // must NOT retry — exactly one attempt, original error verbatim.
+    const stub = makeStubFetch(new BadRequestError({ statusCode: 400, message: "from-fetch-400" }));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
+
+    let caught: unknown;
+    try {
+      await client.sandboxes.list();
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(BadRequestError);
+    expect((caught as BadRequestError).statusCode).toBe(400);
+    expect((caught as BadRequestError).message).toContain("from-fetch-400");
+    expect(stub.calls.length).toBe(1);
+  });
+
+  it("fetchStream passes SDK-typed errors verbatim (no double-wrap) (B11)", async () => {
+    // Defends B11 at the streaming layer. fetchStream's catch wraps native
+    // TypeError/AbortError as APIConnectionError, but an SDK-typed error from
+    // a custom fetch should pass through unchanged — no re-wrap chain.
+    const sdkErr = new BadRequestError({ statusCode: 400, message: "from-fetch-stream" });
+    const stub = makeStubFetch(sdkErr);
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+
+    let caught: unknown;
+    try {
+      await api.fetchStream("/path");
+    } catch (err) {
+      caught = err;
+    }
+    // Reference-equality: the exact same error object, not a wrapped copy.
+    expect(caught).toBe(sdkErr);
+  });
 });
 
 // --- fetchStream connect timeout & error pass-through ---
@@ -542,22 +700,8 @@ describe("HttpClient.fetchStream", () => {
       // fetch hangs forever, but as soon as the connect controller aborts the
       // signal we reject with the abort reason. fetchStream then translates
       // that into APIConnectionError because connectTimedOut === true.
-      const fetchImpl = (_input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
-        return new Promise<Response>((_, reject) => {
-          const sig = init.signal;
-          if (sig?.aborted) {
-            reject(sig.reason);
-            return;
-          }
-          sig?.addEventListener(
-            "abort",
-            () => {
-              reject(sig.reason);
-            },
-            { once: true },
-          );
-        });
-      };
+      const fetchImpl = (_input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> =>
+        hangUntilAbort({ signal: init.signal ?? undefined });
       const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: fetchImpl });
 
       const promise = api.fetchStream("/path");
@@ -580,22 +724,8 @@ describe("HttpClient.fetchStream", () => {
   it("propagates user signal.reason verbatim when the user aborts during connect", async () => {
     const reason = new Error("user-abort");
     const ctrl = new AbortController();
-    const fetchImpl = (_input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
-      return new Promise<Response>((_, reject) => {
-        const sig = init.signal;
-        if (sig?.aborted) {
-          reject(sig.reason);
-          return;
-        }
-        sig?.addEventListener(
-          "abort",
-          () => {
-            reject(sig.reason);
-          },
-          { once: true },
-        );
-      });
-    };
+    const fetchImpl = (_input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> =>
+      hangUntilAbort({ signal: init.signal ?? undefined });
     const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: fetchImpl });
 
     const promise = api.fetchStream("/path", { signal: ctrl.signal });
@@ -675,22 +805,7 @@ describe("per-attempt request timeout", () => {
     const stub = makeStubFetch(
       ...Array.from(
         { length: 1 + MAX_RETRIES },
-        () =>
-          async (req: { signal: AbortSignal | undefined }): Promise<Response> => {
-            return await new Promise<Response>((_, reject) => {
-              if (req.signal?.aborted) {
-                reject(req.signal.reason);
-                return;
-              }
-              req.signal?.addEventListener(
-                "abort",
-                () => {
-                  reject(req.signal?.reason ?? new DOMException("timed out", "TimeoutError"));
-                },
-                { once: true },
-              );
-            });
-          },
+        () => (req: { signal: AbortSignal | undefined }) => hangUntilAbort(req),
       ),
     );
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: 20 });

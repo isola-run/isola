@@ -74,6 +74,13 @@ describe("Network acronym aliases", () => {
     const dumped = Network.toWire({ allowClusterDNS: true });
     expect(Object.keys(dumped)).toEqual(["allowClusterDNS"]);
   });
+
+  it("excludes null fields too (JS callers passing null instead of undefined)", () => {
+    // TS forbids null here; JS callers can pass it. dropUndefined matches
+    // Python's exclude_none=True semantics on both, so the wire stays clean.
+    const dumped = Network.toWire({ allowClusterDNS: true, nameservers: null as never });
+    expect(Object.keys(dumped)).toEqual(["allowClusterDNS"]);
+  });
 });
 
 describe("SandboxData round-trip", () => {
@@ -235,13 +242,21 @@ describe("TerminationPolicy.toWire and fromWire", () => {
     expect(wire).toEqual({ type: "SnapshotRootfs", snapshotRootfs: { snapshotName: "x", timeoutSeconds: 10 } });
   });
 
-  it("decodes the wire shape", () => {
+  it("decodes the SnapshotRootfs shape", () => {
     const tp = TerminationPolicy.fromWire({
       type: "SnapshotRootfs",
       snapshotRootfs: { snapshotName: "x" },
     });
     expect(tp.type).toBe("SnapshotRootfs");
     expect(tp.snapshotRootfs?.snapshotName).toBe("x");
+  });
+
+  it("decodes the Delete shape — the gateway's enum default", () => {
+    // api-gateway.yaml:567-573 — `Delete` is the default; any sandbox created
+    // without an explicit terminationPolicy round-trips with this shape.
+    const tp = TerminationPolicy.fromWire({ type: "Delete" });
+    expect(tp.type).toBe("Delete");
+    expect(tp.snapshotRootfs).toBeUndefined();
   });
 
   it("rejects unknown discriminator", () => {
@@ -263,38 +278,42 @@ describe("SnapshotRootfs.toWire", () => {
 
 // ---------- Decoder validation: rejects malformed inputs ----------
 
+// Type-only TypeErrors from internal helpers (`optionalString`, `optionalNumber`,
+// `record`, etc.) — the exact wording is a diagnostic, not a contract, so we
+// pin only the class. Tests that assert specific messages (e.g. field-name
+// "X.foo is required") live below and pin the named-field contract.
 describe("decoder validation: top-level type guard", () => {
   it("Network.fromWire rejects non-object", () => {
-    expect(() => Network.fromWire(null)).toThrow(/expected object/);
-    expect(() => Network.fromWire("string")).toThrow(/expected object/);
-    expect(() => Network.fromWire(42)).toThrow(/expected object/);
-    expect(() => Network.fromWire([])).toThrow(/expected object/);
+    expect(() => Network.fromWire(null)).toThrow(TypeError);
+    expect(() => Network.fromWire("string")).toThrow(TypeError);
+    expect(() => Network.fromWire(42)).toThrow(TypeError);
+    expect(() => Network.fromWire([])).toThrow(TypeError);
   });
 
   it("ResourceList.fromWire rejects non-object", () => {
-    expect(() => ResourceList.fromWire(null)).toThrow(/expected object/);
+    expect(() => ResourceList.fromWire(null)).toThrow(TypeError);
   });
 
   it("Container.fromWire rejects non-object", () => {
-    expect(() => Container.fromWire(null)).toThrow(/expected object/);
+    expect(() => Container.fromWire(null)).toThrow(TypeError);
   });
 });
 
 describe("Network.fromWire field type validation", () => {
   it("rejects non-boolean allowInternetEgress", () => {
-    expect(() => Network.fromWire({ allowInternetEgress: "yes" })).toThrow(/expected boolean/);
+    expect(() => Network.fromWire({ allowInternetEgress: "yes" })).toThrow(TypeError);
   });
 
   it("rejects non-array allowedEgressCIDRs", () => {
-    expect(() => Network.fromWire({ allowedEgressCIDRs: "10.0.0.0/8" })).toThrow(/expected array/);
+    expect(() => Network.fromWire({ allowedEgressCIDRs: "10.0.0.0/8" })).toThrow(TypeError);
   });
 
   it("rejects non-string entries in allowedEgressCIDRs", () => {
-    expect(() => Network.fromWire({ allowedEgressCIDRs: [42] })).toThrow(/expected string/);
+    expect(() => Network.fromWire({ allowedEgressCIDRs: [42] })).toThrow(TypeError);
   });
 
   it("rejects non-array nameservers", () => {
-    expect(() => Network.fromWire({ nameservers: { foo: "bar" } })).toThrow(/expected array/);
+    expect(() => Network.fromWire({ nameservers: { foo: "bar" } })).toThrow(TypeError);
   });
 
   it("treats null fields as undefined (no error)", () => {
@@ -305,7 +324,7 @@ describe("Network.fromWire field type validation", () => {
 
 describe("ResourceList.fromWire field type validation", () => {
   it("rejects non-string cpu", () => {
-    expect(() => ResourceList.fromWire({ cpu: 500 })).toThrow(/expected string/);
+    expect(() => ResourceList.fromWire({ cpu: 500 })).toThrow(TypeError);
   });
 
   it("populates all three fields when provided", () => {
@@ -337,6 +356,64 @@ describe("ResourceRequirements.fromWire", () => {
   });
 });
 
+describe("Container.toWire", () => {
+  it("emits 'name' before 'image' (byte-identical with Python pydantic dump)", () => {
+    // models.ts header declares wire-byte-identical with Python; Python's
+    // pydantic field declaration order is name -> image, so toWire keys must
+    // match. JSON.stringify preserves insertion order.
+    const wire = Container.toWire({ name: "worker", image: "alpine:3.21" });
+    expect(JSON.stringify(wire)).toBe('{"name":"worker","image":"alpine:3.21"}');
+  });
+
+  it("emits 'image' first when 'name' is absent", () => {
+    // No `name` provided — image is the lone required key, so it shows first.
+    const wire = Container.toWire({ image: "alpine:3.21" });
+    expect(Object.keys(wire as Record<string, unknown>)).toEqual(["image"]);
+  });
+});
+
+describe("Container.fromWire optional fields", () => {
+  it("decodes name, rootfsSnapshotName, and command when all present", () => {
+    const c = Container.fromWire({
+      image: "alpine:3.21",
+      name: "worker",
+      rootfsSnapshotName: "snap-1",
+      command: ["sh", "-c", "exit 0"],
+    });
+    expect(c.image).toBe("alpine:3.21");
+    expect(c.name).toBe("worker");
+    expect(c.rootfsSnapshotName).toBe("snap-1");
+    expect(c.command).toEqual(["sh", "-c", "exit 0"]);
+  });
+});
+
+describe("SnapshotRootfs.fromWire optional fields", () => {
+  it("decodes timeoutSeconds alongside snapshotName", () => {
+    const s = SnapshotRootfs.fromWire({ snapshotName: "x", timeoutSeconds: 60 });
+    expect(s.snapshotName).toBe("x");
+    expect(s.timeoutSeconds).toBe(60);
+  });
+
+  it("decodes timeoutSeconds without snapshotName", () => {
+    const s = SnapshotRootfs.fromWire({ timeoutSeconds: 120 });
+    expect(s.snapshotName).toBeUndefined();
+    expect(s.timeoutSeconds).toBe(120);
+  });
+});
+
+describe("TerminationPolicy.fromWire without snapshotRootfs", () => {
+  it("returns { type: 'SnapshotRootfs' } when snapshotRootfs is absent", () => {
+    const tp = TerminationPolicy.fromWire({ type: "SnapshotRootfs" });
+    expect(tp.type).toBe("SnapshotRootfs");
+    expect(tp.snapshotRootfs).toBeUndefined();
+  });
+
+  it("treats explicit null snapshotRootfs as absent", () => {
+    const tp = TerminationPolicy.fromWire({ type: "SnapshotRootfs", snapshotRootfs: null });
+    expect(tp.snapshotRootfs).toBeUndefined();
+  });
+});
+
 describe("Container.fromWire validation", () => {
   it("requires image", () => {
     expect(() => Container.fromWire({})).toThrow(/Container.image is required/);
@@ -349,7 +426,7 @@ describe("Container.fromWire validation", () => {
         image: "x",
         env: { FOO: 123 },
       }),
-    ).toThrow(/expected string value/);
+    ).toThrow(TypeError);
   });
 
   it("decodes resources sub-object", () => {
@@ -446,7 +523,7 @@ describe("SandboxSummary.fromWire validation", () => {
         status: "Pending",
         creationTimestamp: 123456,
       }),
-    ).toThrow(/expected timestamp string/);
+    ).toThrow(TypeError);
   });
 });
 
@@ -495,7 +572,7 @@ describe("SandboxData.fromWire validation", () => {
         startupTimeoutSeconds: 60,
         timeoutSeconds: Number.NaN,
       }),
-    ).toThrow(/expected number/);
+    ).toThrow(TypeError);
   });
 
   it("decodes optional terminationPolicy", () => {
@@ -532,6 +609,13 @@ describe("RootfsSnapshotData.fromWire validation", () => {
   it("decodes containerName when provided", () => {
     const data = RootfsSnapshotData.fromWire({ ...valid, containerName: "worker" });
     expect(data.containerName).toBe("worker");
+  });
+
+  it("rejects non-string containerName (B6 strict-decoder)", () => {
+    // Defends B6: the decoder must reject `containerName: <number>` rather
+    // than coerce or accept. Public-API consumers depend on the typed
+    // containerName field being string | null.
+    expect(() => RootfsSnapshotData.fromWire({ ...valid, containerName: 42 })).toThrow(TypeError);
   });
 
   it("requires id", () => {
@@ -612,6 +696,52 @@ describe("CommandResult.fromWire", () => {
 describe("CreateCommandResponse.fromWire", () => {
   it("requires id", () => {
     expect(() => CreateCommandResponse.fromWire({})).toThrow(/CreateCommandResponse.id is required/);
+  });
+});
+
+// Pin symmetry: every model that owns BOTH fromWire and toWire must reach a
+// fixed point after one round-trip. Catches asymmetric renames (e.g. wire
+// `allowClusterDNS` decoded as `allowClusterDns` and re-emitted as such).
+describe("round-trip: fromWire(toWire(x)) deep-equals x", () => {
+  it("Network round-trip preserves all acronym aliases", () => {
+    const x: Parameters<typeof Network.toWire>[0] = {
+      allowInternetEgress: true,
+      allowClusterDNS: false,
+      allowIPv6Egress: true,
+      allowedEgressCIDRs: ["10.0.0.0/8", "2001:db8::/32"],
+      nameservers: ["1.1.1.1", "8.8.8.8"],
+    };
+    expect(Network.fromWire(Network.toWire(x))).toEqual(x);
+  });
+
+  it("Container round-trip preserves name/image/command/env/resources/rootfsSnapshotName", () => {
+    const x: Parameters<typeof Container.toWire>[0] = {
+      name: "worker",
+      image: "alpine:3.21",
+      command: ["sh", "-c", "exit 0"],
+      env: { FOO: "1", BAR: "two" },
+      rootfsSnapshotName: "snap-1",
+      resources: {
+        limits: { cpu: "500m", memory: "1Gi", ephemeralStorage: "2Gi" },
+        requests: { cpu: "250m", memory: "512Mi" },
+      },
+    };
+    expect(Container.fromWire(Container.toWire(x))).toEqual(x);
+  });
+
+  it("SnapshotRootfs round-trip preserves provided fields and omits absent ones", () => {
+    const x: Parameters<typeof SnapshotRootfs.toWire>[0] = {
+      snapshotName: "my-snap",
+      timeoutSeconds: 120,
+    };
+    expect(SnapshotRootfs.fromWire(SnapshotRootfs.toWire(x))).toEqual(x);
+  });
+
+  it("TerminationPolicy round-trip pins the SnapshotRootfs wrap+unwrap", () => {
+    const inner: Parameters<typeof TerminationPolicy.toWire>[0] = { snapshotName: "x" };
+    const out = TerminationPolicy.fromWire(TerminationPolicy.toWire(inner));
+    expect(out.type).toBe("SnapshotRootfs");
+    expect(out.snapshotRootfs).toEqual({ snapshotName: "x" });
   });
 });
 

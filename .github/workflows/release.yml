@@ -320,8 +320,16 @@ jobs:
           # (mirrors release-pypi rationale).
       - name: Install
         run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Type check
+        run: pnpm typecheck
+      - name: Test with coverage
+        run: pnpm test:coverage
       - name: Build
         run: pnpm build
+      - name: Verify package
+        run: pnpm verify-package
       - name: Publish to npm
         # pnpm 11 publishes with OIDC trusted publishing and provenance natively.
         run: pnpm publish --provenance --access public --no-git-checks

@@ -80,13 +80,13 @@ function requiredDate(v: unknown): Date {
   return d;
 }
 
-// Drops `undefined` properties so outgoing JSON matches Python's
+// Drops `undefined` AND `null` properties so outgoing JSON matches Python's
 // `model_dump(by_alias=True, exclude_none=True)`. Empty submodels are
 // preserved to match SnapshotRootfs() round-tripping as `{}`.
 function dropUndefined<T extends Record<string, unknown>>(obj: T): Wire {
   const out: Wire = {};
   for (const [k, v] of Object.entries(obj)) {
-    if (v !== undefined) out[k] = v;
+    if (v != null) out[k] = v;
   }
   return out;
 }
@@ -157,6 +157,7 @@ export interface Network {
   allowIPv6Egress?: boolean;
 }
 
+/** @internal */
 export const Network = {
   fromWire(json: unknown): Network {
     const o = record(json);
@@ -189,6 +190,7 @@ export interface ResourceList {
   ephemeralStorage?: string;
 }
 
+/** @internal */
 export const ResourceList = {
   fromWire(json: unknown): ResourceList {
     const o = record(json);
@@ -212,6 +214,7 @@ export interface ResourceRequirements {
   requests?: ResourceList;
 }
 
+/** @internal */
 export const ResourceRequirements = {
   fromWire(json: unknown): ResourceRequirements {
     const o = record(json);
@@ -222,8 +225,8 @@ export const ResourceRequirements = {
   },
   toWire(r: ResourceRequirements): Wire {
     const out: Wire = {};
-    if (r.limits !== undefined) out.limits = ResourceList.toWire(r.limits);
-    if (r.requests !== undefined) out.requests = ResourceList.toWire(r.requests);
+    if (r.limits != null) out.limits = ResourceList.toWire(r.limits);
+    if (r.requests != null) out.requests = ResourceList.toWire(r.requests);
     return out;
   },
 };
@@ -265,6 +268,7 @@ export interface Container {
   resources?: ResourceRequirements;
 }
 
+/** @internal */
 export const Container = {
   fromWire(json: unknown): Container {
     const o = record(json);
@@ -282,12 +286,16 @@ export const Container = {
     return out;
   },
   toWire(c: Container): Wire {
-    const out: Wire = { image: c.image };
-    if (c.name !== undefined) out.name = c.name;
-    if (c.rootfsSnapshotName !== undefined) out.rootfsSnapshotName = c.rootfsSnapshotName;
-    if (c.command !== undefined) out.command = c.command;
-    if (c.env !== undefined) out.env = c.env;
-    if (c.resources !== undefined) out.resources = ResourceRequirements.toWire(c.resources);
+    // Field order mirrors Python's pydantic field declaration in _models.py so
+    // wire bytes are identical across SDKs. `!= null` so a JS caller passing
+    // `null` for an optional field doesn't crash the toWire pipeline.
+    const out: Wire = {};
+    if (c.name != null) out.name = c.name;
+    out.image = c.image;
+    if (c.rootfsSnapshotName != null) out.rootfsSnapshotName = c.rootfsSnapshotName;
+    if (c.command != null) out.command = c.command;
+    if (c.env != null) out.env = c.env;
+    if (c.resources != null) out.resources = ResourceRequirements.toWire(c.resources);
     return out;
   },
 };
@@ -311,6 +319,7 @@ export interface ContainerInfo {
   resources?: ResourceRequirements;
 }
 
+/** @internal */
 export const ContainerInfo = {
   fromWire(json: unknown): ContainerInfo {
     const o = record(json);
@@ -350,6 +359,7 @@ export interface SnapshotRootfs {
   timeoutSeconds?: number;
 }
 
+/** @internal */
 export const SnapshotRootfs = {
   fromWire(json: unknown): SnapshotRootfs {
     const o = record(json);
@@ -375,6 +385,7 @@ export interface SandboxSummary {
   creationTimestamp: Date;
 }
 
+/** @internal */
 export const SandboxSummary = {
   fromWire(json: unknown): SandboxSummary {
     const o = record(json);
@@ -399,6 +410,7 @@ export interface CommandResult {
   readonly exitCode: number;
 }
 
+/** @internal */
 export const CommandResult = {
   fromWire(json: unknown): CommandResult {
     const o = record(json);
@@ -416,21 +428,28 @@ export const CommandResult = {
 };
 
 // ---------- Internal payload/data types ----------
+//
+// Every type below is @internal: used cross-file inside the package but not
+// re-exported from index.ts. stripInternal removes them from dist/index.d.ts.
 
+/** @internal */
 export interface PodTemplate {
   containers: Container[];
 }
 
+/** @internal */
 export const PodTemplate = {
   toWire(t: PodTemplate): Wire {
     return { containers: t.containers.map((c) => Container.toWire(c)) };
   },
 };
 
+/** @internal */
 export interface PodTemplateInfo {
   containers: ContainerInfo[];
 }
 
+/** @internal */
 export const PodTemplateInfo = {
   fromWire(json: unknown): PodTemplateInfo {
     const o = record(json);
@@ -439,18 +458,23 @@ export const PodTemplateInfo = {
   },
 };
 
+/** @internal */
 export interface TerminationPolicy {
-  type: "SnapshotRootfs";
+  type: "SnapshotRootfs" | "Delete";
   snapshotRootfs?: SnapshotRootfs;
 }
 
+/** @internal */
 export const TerminationPolicy = {
   fromWire(json: unknown): TerminationPolicy {
     const o = record(json);
-    if (o.type !== "SnapshotRootfs") {
+    // Both enum values in api-gateway.yaml:567-573 are valid. The gateway's
+    // default is "Delete", so any sandbox created without an explicit
+    // terminationPolicy comes back with {type: "Delete"}.
+    if (o.type !== "SnapshotRootfs" && o.type !== "Delete") {
       throw new TypeError(`invalid TerminationPolicy.type: ${String(o.type)}`);
     }
-    const out: TerminationPolicy = { type: "SnapshotRootfs" };
+    const out: TerminationPolicy = { type: o.type };
     if (o.snapshotRootfs != null) out.snapshotRootfs = SnapshotRootfs.fromWire(o.snapshotRootfs);
     return out;
   },
@@ -462,6 +486,7 @@ export const TerminationPolicy = {
   },
 };
 
+/** @internal */
 export interface CreateSandboxPayload {
   podTemplate: PodTemplate;
   timeoutSeconds?: number;
@@ -470,21 +495,26 @@ export interface CreateSandboxPayload {
   terminationPolicy?: SnapshotRootfs;
 }
 
+/** @internal */
 export const CreateSandboxPayload = {
   toWire(p: CreateSandboxPayload): Wire {
+    // `!= null` for optional sub-models so a JS caller passing `null` doesn't
+    // crash the toWire pipeline (matches Python's `exclude_none=True`).
     const out: Wire = { podTemplate: PodTemplate.toWire(p.podTemplate) };
-    if (p.timeoutSeconds !== undefined) out.timeoutSeconds = p.timeoutSeconds;
-    if (p.startupTimeoutSeconds !== undefined) out.startupTimeoutSeconds = p.startupTimeoutSeconds;
-    if (p.network !== undefined) out.network = Network.toWire(p.network);
-    if (p.terminationPolicy !== undefined) out.terminationPolicy = TerminationPolicy.toWire(p.terminationPolicy);
+    if (p.timeoutSeconds != null) out.timeoutSeconds = p.timeoutSeconds;
+    if (p.startupTimeoutSeconds != null) out.startupTimeoutSeconds = p.startupTimeoutSeconds;
+    if (p.network != null) out.network = Network.toWire(p.network);
+    if (p.terminationPolicy != null) out.terminationPolicy = TerminationPolicy.toWire(p.terminationPolicy);
     return out;
   },
 };
 
+/** @internal */
 export interface ListSandboxesResponse {
   sandboxes: SandboxSummary[];
 }
 
+/** @internal */
 export const ListSandboxesResponse = {
   fromWire(json: unknown): ListSandboxesResponse {
     const o = record(json);
@@ -494,6 +524,7 @@ export const ListSandboxesResponse = {
   },
 };
 
+/** @internal */
 export interface SandboxData {
   id: string;
   podTemplate: PodTemplateInfo;
@@ -505,6 +536,7 @@ export interface SandboxData {
   terminationPolicy?: TerminationPolicy;
 }
 
+/** @internal */
 export const SandboxData = {
   fromWire(json: unknown): SandboxData {
     const o = record(json);
@@ -527,6 +559,7 @@ export const SandboxData = {
   },
 };
 
+/** @internal */
 export interface CreateRootfsSnapshotPayload {
   sandboxId: string;
   snapshotName?: string;
@@ -535,17 +568,19 @@ export interface CreateRootfsSnapshotPayload {
   ttlSecondsAfterFinished?: number;
 }
 
+/** @internal */
 export const CreateRootfsSnapshotPayload = {
   toWire(p: CreateRootfsSnapshotPayload): Wire {
     const out: Wire = { sandboxId: p.sandboxId };
-    if (p.snapshotName !== undefined) out.snapshotName = p.snapshotName;
-    if (p.containerName !== undefined) out.containerName = p.containerName;
-    if (p.timeoutSeconds !== undefined) out.timeoutSeconds = p.timeoutSeconds;
-    if (p.ttlSecondsAfterFinished !== undefined) out.ttlSecondsAfterFinished = p.ttlSecondsAfterFinished;
+    if (p.snapshotName != null) out.snapshotName = p.snapshotName;
+    if (p.containerName != null) out.containerName = p.containerName;
+    if (p.timeoutSeconds != null) out.timeoutSeconds = p.timeoutSeconds;
+    if (p.ttlSecondsAfterFinished != null) out.ttlSecondsAfterFinished = p.ttlSecondsAfterFinished;
     return out;
   },
 };
 
+/** @internal */
 export interface RootfsSnapshotData {
   id: string;
   sandboxId: string;
@@ -557,6 +592,7 @@ export interface RootfsSnapshotData {
   creationTimestamp: Date;
 }
 
+/** @internal */
 export const RootfsSnapshotData = {
   fromWire(json: unknown): RootfsSnapshotData {
     const o = record(json);
@@ -582,6 +618,7 @@ export const RootfsSnapshotData = {
   },
 };
 
+/** @internal */
 export interface CreateCommandPayload {
   args: string[];
   env?: Record<string, string>;
@@ -589,20 +626,23 @@ export interface CreateCommandPayload {
   timeoutSeconds?: number;
 }
 
+/** @internal */
 export const CreateCommandPayload = {
   toWire(p: CreateCommandPayload): Wire {
     const out: Wire = { args: p.args };
-    if (p.env !== undefined) out.env = p.env;
-    if (p.cwd !== undefined) out.cwd = p.cwd;
-    if (p.timeoutSeconds !== undefined) out.timeoutSeconds = p.timeoutSeconds;
+    if (p.env != null) out.env = p.env;
+    if (p.cwd != null) out.cwd = p.cwd;
+    if (p.timeoutSeconds != null) out.timeoutSeconds = p.timeoutSeconds;
     return out;
   },
 };
 
+/** @internal */
 export interface CreateCommandResponse {
   id: string;
 }
 
+/** @internal */
 export const CreateCommandResponse = {
   fromWire(json: unknown): CreateCommandResponse {
     const o = record(json);
@@ -611,10 +651,12 @@ export const CreateCommandResponse = {
   },
 };
 
+/** @internal */
 export interface CommandStatusResponse {
   exitCode: number | null;
 }
 
+/** @internal */
 export const CommandStatusResponse = {
   fromWire(json: unknown): CommandStatusResponse {
     const o = record(json);

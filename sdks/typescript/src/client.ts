@@ -14,7 +14,7 @@
 
 // Mirrors sdks/python/src/isola/_client.py:AsyncIsola.
 
-import { DEFAULT_REQUEST_TIMEOUT_MS, type FetchLike, HttpClient } from "./internal/http";
+import { DEFAULT_REQUEST_TIMEOUT_MS, HttpClient } from "./internal/http";
 import { normalizeUrl } from "./internal/url";
 import { RootfsSnapshots } from "./rootfs-snapshot";
 import { Sandboxes } from "./sandbox";
@@ -27,19 +27,22 @@ export interface IsolaOptions {
    */
   url?: string;
   /**
-   * Per-request HTTP timeout, in milliseconds. Default 30_000.
-   * Pass `null` to disable. Validated at construction; non-positive
-   * or non-finite values throw `TypeError`.
+   * Total wall-clock budget per HTTP attempt, in milliseconds. Default
+   * 30_000. Pass `null` to disable.
    *
-   * `requestTimeoutMs` is constructor-only. Per-call cancellation
-   * uses the `signal` option on individual methods.
+   * The budget covers connect + send + receive together rather than
+   * being split per phase, so a slow large-body download that takes
+   * longer than the budget end-to-end will time out.
+   *
+   * Constructor-only; for per-call cancellation use the `signal`
+   * option on individual methods, e.g. `AbortSignal.timeout(N)`.
    */
   requestTimeoutMs?: number | null;
   /**
    * Custom `fetch` implementation, for testing, proxies, or custom
    * transports.
    */
-  fetch?: FetchLike;
+  fetch?: typeof fetch;
 }
 
 /** Per-call options accepted by every SDK method. */
@@ -110,7 +113,7 @@ export class Isola {
     this.rootfsSnapshots = new RootfsSnapshots(this._api);
   }
 
-  /** @internal exposed for tests. */
+  /** The configured base URL of the Isola API gateway. */
   get url(): string {
     return this._api.url;
   }

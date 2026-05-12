@@ -4,6 +4,7 @@ import { Isola } from "../src";
 
 async function main(): Promise<void> {
   await using client = new Isola();
+  const resources = { limits: { cpu: "100m", memory: "128Mi" } };
   await using sandbox = await client.sandboxes.create({
     containers: [
       {
@@ -11,20 +12,14 @@ async function main(): Promise<void> {
         image: "alpine:3.21",
         command: ["sleep", "infinity"],
         env: { ROLE: "primary" },
-        resources: {
-          limits: { cpu: "100m", memory: "128Mi" },
-          requests: { cpu: "100m", memory: "128Mi" },
-        },
+        resources,
       },
       {
         name: "sidecar",
         image: "alpine:3.21",
         command: ["sleep", "infinity"],
         env: { ROLE: "sidecar" },
-        resources: {
-          limits: { cpu: "100m", memory: "128Mi" },
-          requests: { cpu: "100m", memory: "128Mi" },
-        },
+        resources,
       },
     ],
   });

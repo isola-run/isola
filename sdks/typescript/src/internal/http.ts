@@ -25,7 +25,12 @@ import {
 import { VERSION } from "../version";
 import { buildUrl } from "./url";
 
-export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000; // mirrors Python _client.py read=30s
+// Total per-attempt wall-clock budget. AbortSignal.timeout() aborts the whole
+// fetch (connect+send+receive) when it fires. Python httpx splits this into
+// connect/read/write/pool timeouts (5s/30s/30s/5s); we use one budget per
+// attempt instead. Long downloads that take >30s end-to-end will time out in
+// TS where Python would not.
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 export const MAX_RETRIES = 5; // _client.py:32
 export const RETRY_DELAY_MS = 1_000; // _client.py:33
 
@@ -33,14 +38,17 @@ const DEFAULT_USER_AGENT = `@isola-run/sdk/${VERSION}`;
 
 const STREAM_CONNECT_TIMEOUT_MS = 5_000;
 
+/** @internal */
 export type FetchLike = typeof fetch;
 
+/** @internal */
 export interface HttpClientOptions {
   url: string;
   requestTimeoutMs: number | null;
   fetch?: FetchLike;
 }
 
+/** @internal */
 export interface RequestOpts {
   method: string;
   path: string;
@@ -52,6 +60,7 @@ export interface RequestOpts {
   signal?: AbortSignal;
 }
 
+/** @internal */
 export type BodyKind = "replayable" | "stream" | "none";
 
 interface AttemptSignal {
@@ -116,6 +125,7 @@ interface BodyAttempt {
   canRetry: boolean;
 }
 
+/** @internal */
 export class HttpClient {
   readonly url: string;
   readonly requestTimeoutMs: number | null;

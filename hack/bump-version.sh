@@ -6,7 +6,7 @@
 #   charts/isola/Chart.yaml                 (version + appVersion)
 #   sdks/python/src/isola/_version.py       (__version__ constant; hatchling reads it)
 #   sdks/typescript/src/version.ts          (VERSION constant; barrel-exported)
-#   sdks/typescript/package.json            (version field; via npm version)
+#   sdks/typescript/package.json            (version field; via pnpm version)
 #   sdks/typescript/pnpm-lock.yaml          (refreshed via pnpm install --lockfile-only)
 # Then runs:
 #   make openapi                            (regenerates api/openapi/*.yaml)
@@ -56,8 +56,9 @@ export const VERSION = "$NEW_VERSION";
 EOF
 (
     cd sdks/typescript
-    # npm version preserves package.json formatting better than yq.
-    npm version --no-git-tag-version --allow-same-version "$NEW_VERSION"
+    # pnpm version preserves package.json formatting better than yq and keeps
+    # the bump script within the pnpm toolchain we use everywhere else.
+    pnpm version --no-git-tag-version --allow-same-version "$NEW_VERSION"
     # Refresh pnpm-lock.yaml without touching node_modules.
     pnpm install --lockfile-only
 )

@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { APIConnectionError, APIError, IsolaError, NotFoundError } from "../src/errors";
 import { HttpClient } from "../src/internal/http";
 import { MAX_RECONNECTS, StreamReader } from "../src/streaming";
-import { makeStubFetch, type Responder, sseResponse, sseResponseBody } from "./_helpers";
+import { expectRejection, makeStubFetch, type Responder, sseResponse, sseResponseBody } from "./_helpers";
 
 const BASE_URL = "https://api.example.test";
 
@@ -59,31 +59,6 @@ async function readAll(stream: StreamReader): Promise<string> {
   // read() resolves there's nothing left.
   await vi.runAllTimersAsync();
   return promise;
-}
-
-// Captures a promise's eventual outcome without leaving an unhandled
-// rejection while we drive fake timers. Returns a thunk that resolves to the
-// rejection reason (or throws if the promise resolved unexpectedly).
-function expectRejection<T>(promise: Promise<T>): () => Promise<unknown> {
-  let settled: { ok: true; value: T } | { ok: false; reason: unknown } | undefined;
-  // Attach handler synchronously so vitest never sees an unhandled rejection.
-  promise.then(
-    (value) => {
-      settled = { ok: true, value };
-    },
-    (reason) => {
-      settled = { ok: false, reason };
-    },
-  );
-  return async () => {
-    // Yield so any pending microtasks settle. Timers have already been
-    // advanced by the caller (runAllTimersAsync) before this thunk runs.
-    await Promise.resolve();
-    if (settled === undefined) throw new Error("expectRejection: promise did not settle");
-    if (settled.ok)
-      throw new Error(`expectRejection: expected rejection but got resolved value: ${String(settled.value)}`);
-    return settled.reason;
-  };
 }
 
 async function collectIter<T>(iter: AsyncIterable<T>): Promise<T[]> {
@@ -441,6 +416,27 @@ describe("StreamReader: defensive branches", () => {
     const reader = new StreamReader(makeClient(stub), "/path");
     expect(await readAll(reader)).toBe("abcd");
     expect(stub.calls).toHaveLength(2);
+  });
+
+  it("propagates a non-transport, non-SDK error verbatim (does NOT retry)", async () => {
+    // Defends streaming.ts narrowed catch: RangeError is not APIError, not
+    // APIConnectionError, not TypeError, so it must propagate after one
+    // attempt rather than be hidden behind 5 reconnect attempts and a
+    // misleading APIConnectionError wrap.
+    const weird = new RangeError("parser-bug");
+    const stub = makeStubFetch(
+      // First attempt: SSE body, then mid-stream RangeError via stream.error.
+      sseRaiseAfter(sseResponseBody([{ data: "ab", id: 2 }]), weird),
+      // Should never be reached.
+      sseResponse(sseResponseBody([{ data: "should-not-happen", id: 4 }])),
+    );
+    const reader = new StreamReader(makeClient(stub), "/path");
+    const settled = expectRejection(reader.read());
+    await vi.runAllTimersAsync();
+    const caught = await settled();
+    // Reference-equality: the RangeError surfaces unchanged.
+    expect(caught).toBe(weird);
+    expect(stub.calls).toHaveLength(1);
   });
 
   it("re-throws signal.reason verbatim when caller-aborted mid-stream", async () => {

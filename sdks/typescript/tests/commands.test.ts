@@ -21,6 +21,7 @@ import { BadGatewayError, InternalError, IsolaTimeoutError, NotFoundError } from
 import {
   emptyResponse,
   getSearchParam,
+  hangUntilAbort,
   jsonResponse,
   makeRoutingFetch,
   makeStubFetch,
@@ -107,6 +108,33 @@ describe("Commands.run", () => {
     expect(result.stdout).toBe("hello world\n");
     expect(result.stderr).toBe("");
     expect(result.id).toBe(cmdId);
+  });
+
+  it("does NOT throw on non-zero exit code — returns CommandResult { exitCode: 17 }", async () => {
+    // README contract: run() returns a CommandResult; a non-zero exit code is
+    // a normal completion, not an error. (Mirrors Python parity.) This pins
+    // the behavior so a regression that started throwing on exitCode > 0
+    // would fail loudly.
+    const sbId = "sandbox-123";
+    const cmdId = "cmd-nonzero";
+    const routes = {
+      [`GET /v1/sandboxes/${sbId}`]: () => jsonResponse(sandboxResponseFixture()),
+      [`POST /v1/sandboxes/${sbId}/commands`]: () => jsonResponse({ id: cmdId }, { status: 202 }),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: () => jsonResponse({ exitCode: 17 }),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stdout`]: () =>
+        new Response("", { status: 200, headers: { "content-type": "text/event-stream" } }),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stderr`]: () =>
+        new Response("data: oops\ndata: \nid: 1\n\n", {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
+    };
+    const routing = makeRoutingFetch(routes);
+    const client = new Isola({ url: URL_BASE, fetch: routing.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get(sbId);
+    const result = await sandbox.commands.run(["sh", "-c", "exit 17"]);
+    expect(result.exitCode).toBe(17);
+    expect(result.stderr).toBe("oops\n");
   });
 
   it("with input: writes stdin and closes before reading streams", async () => {
@@ -218,10 +246,27 @@ describe("Command.stdout / Command.stderr", () => {
   });
 });
 
+// --- stdout / stderr lazy-init caching ---
+
+describe("Command.stdout / Command.stderr lazy caching", () => {
+  // Pins the lazy-init memoization in commands.ts so callers can hold a
+  // reference to the StreamReader before iterating, without double-fetching.
+  it.each([
+    { key: "stdout" as const },
+    { key: "stderr" as const },
+  ])("$key returns the same StreamReader instance on repeated access", async ({ key }) => {
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), jsonResponse({ id: "cmd-s" }, { status: 202 }));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+    const cmd = await sandbox.commands.spawn(["echo"]);
+    expect(cmd[key]).toBe(cmd[key]);
+  });
+});
+
 // --- exitCode() ---
 
 describe("Command.exitCode", () => {
-  it("GET /status returns 42", async () => {
+  it("GET /status returns 42 (one-shot, no waitSeconds query param)", async () => {
     const stub = makeStubFetch(
       jsonResponse(sandboxResponseFixture()),
       jsonResponse({ id: "cmd-ec" }, { status: 202 }),
@@ -231,6 +276,12 @@ describe("Command.exitCode", () => {
     const sandbox = await client.sandboxes.get("sandbox-123");
     const cmd = await sandbox.commands.spawn(["sh", "-c", "exit 42"]);
     expect(await cmd.exitCode()).toBe(42);
+
+    // exitCode() is the one-shot probe (matches Python `command.exit_code`);
+    // it must NOT include the long-poll wait param. wait() is the long-poll
+    // companion (and IS pinned at waitSeconds=20 in the wait() suite).
+    const statusCall = stub.calls[2];
+    expect(getSearchParam(statusCall!.url, "waitSeconds")).toBeNull();
   });
 
   it("returns null when exitCode is null", async () => {
@@ -436,23 +487,6 @@ describe("Commands.run sibling cancellation", () => {
     const stderrSeen = { count: 0 };
     const waitSeen = { count: 0 };
 
-    const hangUntilAbort = (req: { signal: AbortSignal | undefined }, mark: () => void): Promise<Response> =>
-      new Promise<Response>((_, reject) => {
-        if (req.signal?.aborted) {
-          mark();
-          reject(req.signal.reason ?? new DOMException("aborted", "AbortError"));
-          return;
-        }
-        req.signal?.addEventListener(
-          "abort",
-          () => {
-            mark();
-            reject(req.signal?.reason ?? new DOMException("aborted", "AbortError"));
-          },
-          { once: true },
-        );
-      });
-
     const routes = {
       [`GET /v1/sandboxes/${sbId}`]: () => jsonResponse(sandboxResponseFixture()),
       [`POST /v1/sandboxes/${sbId}/commands`]: () => jsonResponse({ id: cmdId }, { status: 202 }),
@@ -501,26 +535,17 @@ describe("Commands.run waitTimeoutMs", () => {
   it("throws IsolaTimeoutError when waitTimeoutMs expires before completion", async () => {
     const sbId = "sandbox-123";
     const cmdId = "cmd-runtimeout";
-    const hang = (req: { signal: AbortSignal | undefined }): Promise<Response> =>
-      new Promise<Response>((_, reject) => {
-        if (req.signal?.aborted) {
-          reject(req.signal.reason ?? new DOMException("aborted", "AbortError"));
-          return;
-        }
-        req.signal?.addEventListener(
-          "abort",
-          () => reject(req.signal?.reason ?? new DOMException("aborted", "AbortError")),
-          { once: true },
-        );
-      });
 
     const routes = {
       [`GET /v1/sandboxes/${sbId}`]: () => jsonResponse(sandboxResponseFixture()),
       [`POST /v1/sandboxes/${sbId}/commands`]: () => jsonResponse({ id: cmdId }, { status: 202 }),
       // All three streams hang indefinitely; waitTimeoutMs must abort them.
-      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stdout`]: (req: { signal: AbortSignal | undefined }) => hang(req),
-      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stderr`]: (req: { signal: AbortSignal | undefined }) => hang(req),
-      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) => hang(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stdout`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stderr`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
     };
     const routing = makeRoutingFetch(routes);
     const client = new Isola({ url: URL_BASE, fetch: routing.fetch, requestTimeoutMs: null });
@@ -548,28 +573,15 @@ describe("Commands.run waitTimeoutMs", () => {
     const reason = new Error("user-cancelled-run");
     const ctrl = new AbortController();
 
-    const hangAndAbort = (req: { signal: AbortSignal | undefined }): Promise<Response> =>
-      new Promise<Response>((_, reject) => {
-        if (req.signal?.aborted) {
-          reject(req.signal.reason ?? new DOMException("aborted", "AbortError"));
-          return;
-        }
-        req.signal?.addEventListener(
-          "abort",
-          () => reject(req.signal?.reason ?? new DOMException("aborted", "AbortError")),
-          { once: true },
-        );
-      });
-
     const routes = {
       [`GET /v1/sandboxes/${sbId}`]: () => jsonResponse(sandboxResponseFixture()),
       [`POST /v1/sandboxes/${sbId}/commands`]: () => jsonResponse({ id: cmdId }, { status: 202 }),
       [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stdout`]: (req: { signal: AbortSignal | undefined }) =>
-        hangAndAbort(req),
+        hangUntilAbort(req),
       [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stderr`]: (req: { signal: AbortSignal | undefined }) =>
-        hangAndAbort(req),
+        hangUntilAbort(req),
       [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) =>
-        hangAndAbort(req),
+        hangUntilAbort(req),
     };
     const routing = makeRoutingFetch(routes);
     const client = new Isola({ url: URL_BASE, fetch: routing.fetch, requestTimeoutMs: null });
@@ -586,12 +598,71 @@ describe("Commands.run waitTimeoutMs", () => {
     // User abort wins over the run-phase deadline.
     expect(caught).toBe(reason);
   }, 10_000);
+
+  it("prefers user signal.reason over waitTimeoutMs when both fire mid-Promise.all", async () => {
+    // Race the M2 fix actually defends: spawn succeeds, then stdout/stderr/wait
+    // hang in Promise.all, and BOTH the waitTimeoutMs deadline AND the user
+    // signal abort near-simultaneously. The catch must surface the user's
+    // reason, not IsolaTimeoutError. (Mirrors Command.wait's precedence.)
+    const sbId = "sandbox-123";
+    const cmdId = "cmd-bothfire";
+    const reason = new Error("user-cancelled-race");
+    const ctrl = new AbortController();
+
+    const routes = {
+      [`GET /v1/sandboxes/${sbId}`]: () => jsonResponse(sandboxResponseFixture()),
+      [`POST /v1/sandboxes/${sbId}/commands`]: () => jsonResponse({ id: cmdId }, { status: 202 }),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stdout`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stderr`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+    };
+    const routing = makeRoutingFetch(routes);
+    const client = new Isola({ url: URL_BASE, fetch: routing.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get(sbId);
+
+    // Schedule the user abort and the waitTimeoutMs deadline both at ~50ms so
+    // they race inside Promise.all's catch (where the M2 precedence lives).
+    setTimeout(() => ctrl.abort(reason), 50);
+
+    let caught: unknown;
+    try {
+      await sandbox.commands.run(["sleep", "10"], { waitTimeoutMs: 50 }, { signal: ctrl.signal });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBe(reason);
+  }, 10_000);
+
+  it("accepts input: null without crashing (JS-only foot-gun)", async () => {
+    // TS types forbid `input: null`; JS callers can pass it. The run() guard
+    // must skip the writeStdin path so we don't hit `fetch` with body: null.
+    const sbId = "sandbox-123";
+    const cmdId = "cmd-null-input";
+    const stub = makeRoutingFetch({
+      [`GET /v1/sandboxes/${sbId}`]: () => jsonResponse(sandboxResponseFixture()),
+      [`POST /v1/sandboxes/${sbId}/commands`]: () => jsonResponse({ id: cmdId }, { status: 202 }),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stdout`]: () => emptyResponse(204),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stderr`]: () => emptyResponse(204),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: () => jsonResponse({ exitCode: 0 }),
+    });
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get(sbId);
+
+    const result = await sandbox.commands.run(["true"], { input: null as never });
+    expect(result.exitCode).toBe(0);
+    // No POST to /stdin (writeStdin path skipped).
+    const stdinCalls = stub.calls.filter((c) => c.url.includes("/stdin"));
+    expect(stdinCalls).toHaveLength(0);
+  });
 });
 
 // --- wait() error pass-through (non-signal) ---
 
 describe("Command.wait error pass-through", () => {
-  it("re-throws non-signal-caused errors (commands.ts:230)", async () => {
+  it("re-throws non-signal-caused errors verbatim", async () => {
     const sbId = "sandbox-123";
     const cmdId = "cmd-erron-wait";
     const routes = {
@@ -625,19 +696,7 @@ describe("Command.wait user-signal abort", () => {
       [`POST /v1/sandboxes/${sbId}/commands`]: () => jsonResponse({ id: cmdId }, { status: 202 }),
       // status: hang until the user signal aborts.
       [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) =>
-        new Promise<Response>((_, reject) => {
-          if (req.signal?.aborted) {
-            reject(req.signal.reason ?? new DOMException("aborted", "AbortError"));
-            return;
-          }
-          req.signal?.addEventListener(
-            "abort",
-            () => {
-              reject(req.signal?.reason ?? new DOMException("aborted", "AbortError"));
-            },
-            { once: true },
-          );
-        }),
+        hangUntilAbort(req),
     };
     const routing = makeRoutingFetch(routes);
     const client = new Isola({ url: URL_BASE, fetch: routing.fetch, requestTimeoutMs: null });

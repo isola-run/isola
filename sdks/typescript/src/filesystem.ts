@@ -55,6 +55,7 @@ export class Filesystem {
   /** @internal */
   readonly _sandboxId: string;
 
+  /** @internal */
   constructor(api: HttpClient, sandboxId: string) {
     this._api = api;
     this._sandboxId = sandboxId;

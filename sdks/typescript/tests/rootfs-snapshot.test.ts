@@ -19,7 +19,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Isola } from "../src/client";
 import { InternalError, IsolaError, IsolaTimeoutError } from "../src/errors";
-import { jsonResponse, makeRootfsSnapshotResponse, makeStubFetch, rootfsSnapshotResponseFixture } from "./_helpers";
+import {
+  jsonResponse,
+  makeRootfsSnapshotResponse,
+  makeStubFetch,
+  rootfsSnapshotResponseFixture,
+  settle,
+  spyMonotonicAdvancingBy,
+} from "./_helpers";
 
 const URL_BASE = "http://localhost:8080";
 
@@ -69,6 +76,16 @@ describe("RootfsSnapshots.create + get", () => {
       timeoutSeconds: 300,
       ttlSecondsAfterFinished: 600,
     });
+  });
+
+  it("create() with only sandboxId omits all optional fields from the wire payload", async () => {
+    // The wire payload must contain only `sandboxId` — the SDK must not
+    // serialize undefined snapshotName/containerName/timeoutSeconds/ttl as
+    // null or "" on the wire (Python parity: `exclude_none=True`).
+    const stub = makeStubFetch(jsonResponse(makeRootfsSnapshotResponse("Succeeded"), { status: 201 }));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    await client.rootfsSnapshots.create({ sandboxId: "sandbox-123" });
+    expect(JSON.parse(stub.calls[0]!.bodyText)).toEqual({ sandboxId: "sandbox-123" });
   });
 
   it("get(snapshotId) fetches by id", async () => {
@@ -210,17 +227,15 @@ describe("RootfsSnapshots.create polling", () => {
     );
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
 
-    // Attach a swallowing handler synchronously so any eventual rejection is
-    // already considered handled by the time the timer microtask flushes.
-    const settled = client.rootfsSnapshots
-      .create({
+    // settle() attaches a swallowing handler synchronously so any eventual
+    // rejection is already considered handled by the time the timer microtask
+    // flushes.
+    const settled = settle(
+      client.rootfsSnapshots.create({
         sandboxId: "sandbox-123",
         snapshotName: "my-snapshot",
-      })
-      .then(
-        (v) => ({ ok: true as const, v }),
-        (e: unknown) => ({ ok: false as const, e }),
-      );
+      }),
+    );
     await vi.runAllTimersAsync();
     const result = await settled;
 
@@ -273,11 +288,7 @@ describe("RootfsSnapshots.create timeout", () => {
     // Fast-forward performance.now() so each call adds 2000ms; with
     // maxWaitMs:5, the first reading after the POST puts us past the
     // deadline so the very next status check trips the timeout.
-    const elapsed = { v: 0 };
-    vi.spyOn(performance, "now").mockImplementation(() => {
-      elapsed.v += 2000;
-      return elapsed.v;
-    });
+    spyMonotonicAdvancingBy(2000);
 
     const stub = makeStubFetch(
       jsonResponse(makeRootfsSnapshotResponse("Pending"), { status: 201 }),
@@ -286,16 +297,13 @@ describe("RootfsSnapshots.create timeout", () => {
     );
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
 
-    const settled = client.rootfsSnapshots
-      .create({
+    const settled = settle(
+      client.rootfsSnapshots.create({
         sandboxId: "sandbox-123",
         snapshotName: "my-snapshot",
         maxWaitMs: 5,
-      })
-      .then(
-        (v) => ({ ok: true as const, v }),
-        (e: unknown) => ({ ok: false as const, e }),
-      );
+      }),
+    );
     await vi.runAllTimersAsync();
     const result = await settled;
 
@@ -304,14 +312,12 @@ describe("RootfsSnapshots.create timeout", () => {
       expect(result.e).toBeInstanceOf(IsolaTimeoutError);
       expect((result.e as IsolaTimeoutError).message).toMatch(/did not reach complete state within 5ms/);
     }
+    // Snapshot timeouts must not auto-DELETE — caller decides cleanup.
+    expect(stub.calls.filter((c) => c.method === "DELETE")).toHaveLength(0);
   });
 
   it("raises IsolaTimeoutError when 404 persists past the deadline", async () => {
-    const elapsed = { v: 0 };
-    vi.spyOn(performance, "now").mockImplementation(() => {
-      elapsed.v += 2000;
-      return elapsed.v;
-    });
+    spyMonotonicAdvancingBy(2000);
 
     const stub = makeStubFetch(
       jsonResponse(makeRootfsSnapshotResponse("Pending"), { status: 201 }),
@@ -321,16 +327,13 @@ describe("RootfsSnapshots.create timeout", () => {
     );
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
 
-    const settled = client.rootfsSnapshots
-      .create({
+    const settled = settle(
+      client.rootfsSnapshots.create({
         sandboxId: "sandbox-123",
         snapshotName: "my-snapshot",
         maxWaitMs: 5,
-      })
-      .then(
-        (v) => ({ ok: true as const, v }),
-        (e: unknown) => ({ ok: false as const, e }),
-      );
+      }),
+    );
     await vi.runAllTimersAsync();
     const result = await settled;
 
@@ -385,7 +388,7 @@ describe("RootfsSnapshots signal forwarding", () => {
 // --- Non-NotFound errors during wait propagate immediately ---
 
 describe("waitUntilComplete non-404 error propagation", () => {
-  it("re-throws InternalError without retrying (rootfs-snapshot.ts:78)", async () => {
+  it("re-throws InternalError without retrying", async () => {
     // Non-NotFound errors during polling must surface immediately rather
     // than being absorbed by the 404 retry branch.
     const stub = makeStubFetch(
@@ -394,15 +397,12 @@ describe("waitUntilComplete non-404 error propagation", () => {
     );
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
 
-    const settled = client.rootfsSnapshots
-      .create({
+    const settled = settle(
+      client.rootfsSnapshots.create({
         sandboxId: "sandbox-123",
         snapshotName: "my-snapshot",
-      })
-      .then(
-        (v) => ({ ok: true as const, v }),
-        (e: unknown) => ({ ok: false as const, e }),
-      );
+      }),
+    );
     await vi.runAllTimersAsync();
     const result = await settled;
 

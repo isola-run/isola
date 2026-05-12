@@ -65,6 +65,21 @@ describe("quoteSegment", () => {
   it("preserves unreserved characters", () => {
     expect(quoteSegment("abc-DEF_123.~")).toBe("abc-DEF_123.~");
   });
+
+  it("wraps URIError from unpaired surrogates as TypeError with context", () => {
+    // encodeURIComponent throws URIError for lone/unpaired surrogates. We
+    // re-throw as a typed SDK error so users don't see an opaque URIError
+    // deep inside fetch.
+    let caught: unknown;
+    try {
+      quoteSegment("\uD800");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(TypeError);
+    expect((caught as TypeError).message).toMatch(/invalid characters in URL component/);
+    expect((caught as TypeError).cause).toBeInstanceOf(URIError);
+  });
 });
 
 describe("path helpers", () => {

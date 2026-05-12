@@ -26,9 +26,18 @@ export function normalizeUrl(url: string): string {
 
 // Path-segment encoding matching Python's urllib.parse.quote(s, safe=''):
 // escapes every non-unreserved character. encodeURIComponent leaves !, ', (, ),
-// * unescaped; quote does not, so add them explicitly.
+// * unescaped; quote does not, so add them explicitly. encodeURIComponent
+// throws URIError on lone/unpaired surrogates; surface that as a typed SDK
+// error so users don't get an opaque URIError from deep inside fetch.
 export function quoteSegment(s: string): string {
-  return encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  try {
+    return encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  } catch (err) {
+    if (err instanceof URIError) {
+      throw new TypeError(`invalid characters in URL component: ${err.message}`, { cause: err });
+    }
+    throw err;
+  }
 }
 
 // Query-component encoding matching Python httpx's urlencode behavior: spaces

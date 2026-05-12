@@ -24,6 +24,7 @@ import {
   makeStubFetch,
   sandboxResponseFixture,
   sandboxSummaryResponseFixture,
+  spyMonotonicAdvancingBy,
 } from "./_helpers";
 
 const URL_BASE = "http://localhost:8080";
@@ -75,6 +76,29 @@ describe("create() flat resources mapping", () => {
       },
       timeoutSeconds: 3600,
     });
+  });
+
+  it.each([
+    // Positive half-ties: Math.round is half-away-from-zero (1.5 -> 2, 2.5 -> 3),
+    // so for ties we steer toward the even neighbour. Python's built-in `round`
+    // is the spec.
+    { cpu: 0.0025, expected: "2m" }, // 2.5 -> 2 (even)
+    { cpu: 0.0035, expected: "4m" }, // 3.5 -> 4 (even)
+    { cpu: 0.0045, expected: "4m" }, // 4.5 -> 4 (even)
+    { cpu: 0.5, expected: "500m" }, // not a tie
+    // Negative half-ties: defended against future helper reuse with negative
+    // inputs. The only current caller passes cpu * 1000 where cpu >= 0, but
+    // `roundHalfEven` is named generically; these pin the math.
+    { cpu: -0.0015, expected: "-2m" }, // -1.5 -> -2 (even)
+    { cpu: -0.0035, expected: "-4m" }, // -3.5 -> -4 (even)
+    { cpu: -0.0025, expected: "-2m" }, // -2.5 -> -2 (even — already)
+  ])("CPU shorthand $cpu rounds half-to-even -> $expected", async ({ cpu, expected }) => {
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture(), { status: 201 }));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+
+    await client.sandboxes.create({ image: "alpine:3.21", cpu });
+    const payload = JSON.parse(stub.calls[0]?.bodyText ?? "");
+    expect(payload.podTemplate.containers[0].resources.limits.cpu).toBe(expected);
   });
 });
 
@@ -180,6 +204,25 @@ describe("Symbol.asyncDispose", () => {
     expect(stub.calls[1]?.method).toBe("DELETE");
     expect(stub.calls[1]?.url).toBe(`${URL_BASE}/v1/sandboxes/sandbox-123`);
   });
+
+  it("await using sandbox still DELETEs when the block throws", async () => {
+    // The whole point of `using` is exception-safe cleanup. A regression that
+    // skipped the dispose on throw would orphan sandboxes.
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), emptyResponse(204));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const boom = new Error("from-inside-block");
+
+    let caught: unknown;
+    try {
+      await using sandbox = await client.sandboxes.get("sandbox-123");
+      expect(sandbox.id).toBe("sandbox-123");
+      throw boom;
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBe(boom);
+    expect(stub.calls[1]?.method).toBe("DELETE");
+  });
 });
 
 // --- create() validation ---
@@ -225,6 +268,38 @@ describe("create() validation", () => {
 
     await expect(client.sandboxes.create({ containers: [] })).rejects.toThrow();
     expect(stub.calls).toHaveLength(0);
+  });
+
+  it("throws when containers is a non-array shape (JS-only)", async () => {
+    // TS types forbid this; a JS caller passing { containers: {...} } would
+    // otherwise be misrouted to the single-container path and silently drop
+    // the value. buildContainers detects this and surfaces a clear error.
+    const stub = makeStubFetch();
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+
+    await expect(client.sandboxes.create({ containers: { image: "alpine:3.21" } as never })).rejects.toThrow(
+      /'containers' must be an array/,
+    );
+    expect(stub.calls).toHaveLength(0);
+  });
+
+  it("ignores `null` on optional sub-models (JS-only) instead of crashing", async () => {
+    // TS forbids `network: null`/`terminationPolicy: null`; a JS caller can pass
+    // them. The optional-sub-model guards in create() and CreateSandboxPayload
+    // use `!= null` (Python's `exclude_none` analogue) so we never invoke
+    // Network.toWire(null) / TerminationPolicy.toWire(null) and trigger a
+    // cryptic Object.entries(null) TypeError.
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture(), { status: 201 }));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+
+    await client.sandboxes.create({
+      image: "alpine:3.21",
+      network: null as never,
+      terminationPolicy: null as never,
+    });
+    const payload = JSON.parse(stub.calls[0]?.bodyText ?? "");
+    expect(payload).not.toHaveProperty("network");
+    expect(payload).not.toHaveProperty("terminationPolicy");
   });
 });
 
@@ -532,11 +607,7 @@ describe("timeout on max wait", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     // performance.now() advances by 2000ms each call so the 5_000ms
     // deadline is exceeded after a few polls — mirrors Python's fake_monotonic.
-    let elapsed = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => {
-      elapsed += 2000;
-      return elapsed;
-    });
+    spyMonotonicAdvancingBy(2000);
   });
 
   it("raises IsolaTimeoutError when the sandbox stays Pending past maxWaitMs", async () => {
@@ -557,6 +628,10 @@ describe("timeout on max wait", () => {
 
     expect(caught).toBeInstanceOf(IsolaTimeoutError);
     expect((caught as Error).message).toContain("did not reach running state within 5000ms");
+    // The SDK must NOT auto-DELETE on timeout — that's the caller's choice.
+    // A regression that added a "best-effort cleanup" would orphan sandboxes
+    // belonging to a different caller (think race with `await using`).
+    expect(stub.calls.filter((c) => c.method === "DELETE")).toHaveLength(0);
   });
 
   it("raises IsolaTimeoutError when 404 persists past maxWaitMs", async () => {
@@ -587,7 +662,7 @@ describe("waitUntilRunning non-404 error propagation", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   });
 
-  it("re-throws InternalError without retrying (sandbox.ts:171)", async () => {
+  it("re-throws InternalError without retrying", async () => {
     // Non-NotFound errors during polling must surface immediately rather
     // than being absorbed by the 404 retry branch.
     // We pre-load 1 + MAX_RETRIES failures because 500 is non-transient

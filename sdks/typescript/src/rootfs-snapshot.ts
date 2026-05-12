@@ -122,6 +122,7 @@ export class RootfsSnapshots {
   /** @internal */
   readonly _api: HttpClient;
 
+  /** @internal */
   constructor(api: HttpClient) {
     this._api = api;
   }
@@ -207,6 +208,7 @@ export class RootfsSnapshot {
   /** @internal */
   readonly _data: RootfsSnapshotData;
 
+  /** @internal */
   constructor(data: RootfsSnapshotData) {
     this._data = data;
   }

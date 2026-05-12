@@ -123,6 +123,7 @@ export class Commands {
   /** @internal */
   readonly _sandboxId: string;
 
+  /** @internal */
   constructor(api: HttpClient, sandboxId: string) {
     this._api = api;
     this._sandboxId = sandboxId;
@@ -193,29 +194,31 @@ export class Commands {
   async run(args: string[], opts: RunOptions = {}, req: RequestOptions = {}): Promise<CommandResult> {
     const cmd = await this.spawn(args, opts, req);
 
-    if (opts.input !== undefined) {
+    // `!= null` (not `!== undefined`) so a JS caller passing `input: null`
+    // doesn't crash inside writeStdin. Mirrors Python's `is not None`.
+    if (opts.input != null) {
       await cmd.writeStdin(opts.input, req);
       await cmd.closeStdin(req);
     }
 
-    // waitTimeoutMs bounds the entire wait+read phase (spec F13). Use a
-    // single AbortSignal.timeout composed with the user signal and an
-    // internalController, then pass it to all three concurrent waits. If
-    // the timer fires, stdout/stderr/wait all abort together and the catch
-    // surfaces IsolaTimeoutError.
+    // waitTimeoutMs bounds the entire wait+read phase (spec F13). Build one
+    // AbortSignal composed from the user signal, an internalController (to
+    // cancel siblings when any of stdout/stderr/wait rejects), and the
+    // optional run-phase deadline; pass it to all three concurrent waits.
     const internalController = new AbortController();
-    const userSignal = req.signal;
     const signals: AbortSignal[] = [internalController.signal];
-    if (userSignal) signals.push(userSignal);
+    if (req.signal) signals.push(req.signal);
     const runTimeoutSignal = opts.waitTimeoutMs !== undefined ? AbortSignal.timeout(opts.waitTimeoutMs) : undefined;
     if (runTimeoutSignal) signals.push(runTimeoutSignal);
-    const composedSignal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+    // Always at least one signal (internalController), so the AbortSignal.any
+    // fallback fires only when 2+ signals are involved.
+    const composedSignal: AbortSignal = signals.length === 1 ? internalController.signal : AbortSignal.any(signals);
 
     try {
       const [stdout, stderr, exitCode] = await Promise.all([
-        cmd.stdout.read(composedSignal ? { signal: composedSignal } : {}),
-        cmd.stderr.read(composedSignal ? { signal: composedSignal } : {}),
-        cmd.wait(composedSignal ? { signal: composedSignal } : {}),
+        cmd.stdout.read({ signal: composedSignal }),
+        cmd.stderr.read({ signal: composedSignal }),
+        cmd.wait({ signal: composedSignal }),
       ]);
       return { id: cmd.id, stdout, stderr, exitCode };
     } catch (err) {
@@ -224,6 +227,9 @@ export class Commands {
       if (!internalController.signal.aborted) {
         internalController.abort(err instanceof Error ? err : new Error(String(err)));
       }
+      // User cancel wins over the run-phase deadline if both fired: caller
+      // intent is preserved (mirrors Command.wait's same precedence rule).
+      if (req.signal?.aborted) throw req.signal.reason ?? err;
       if (runTimeoutSignal?.aborted) {
         throw new IsolaTimeoutError(`command ${cmd.id} did not complete within ${opts.waitTimeoutMs}ms`, {
           cause: err,
@@ -252,6 +258,7 @@ export class Command {
   private _stdout: StreamReader | null = null;
   private _stderr: StreamReader | null = null;
 
+  /** @internal */
   constructor(api: HttpClient, sandboxId: string, commandId: string) {
     this._api = api;
     this._sandboxId = sandboxId;
@@ -362,7 +369,6 @@ export class Command {
       method: "POST",
       path: commandStdinPath(this._sandboxId, this._commandId),
       body: raw as unknown as BodyInit,
-      bodyKind: "replayable",
       headers: { "content-type": "application/octet-stream" },
       ...(req.signal ? { signal: req.signal } : {}),
     });

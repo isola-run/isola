@@ -159,6 +159,12 @@ describe("errorFromHttp", () => {
     const e = errorFromHttp({ status: 500, reason: "Internal Server Error", body });
     expect(e.message).toContain("Internal Server Error");
   });
+
+  it("preserves opts.cause on the resulting APIError", () => {
+    const inner = new Error("inner");
+    const e = errorFromHttp({ status: 500, reason: "Server Error", body: null, cause: inner });
+    expect(e.cause).toBe(inner);
+  });
 });
 
 describe("connectionErrorFromError", () => {

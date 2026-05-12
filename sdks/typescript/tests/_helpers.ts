@@ -15,6 +15,8 @@
 // Fetch-injection helpers — the multi-runtime-safe alternative to MSW.
 // Mirrors how respx is used in sdks/python/tests/.
 
+import { vi } from "vitest";
+
 export interface RecordedRequest {
   url: string;
   method: string;
@@ -206,12 +208,67 @@ export function emptyResponse(status = 204): Response {
   return new Response(null, { status });
 }
 
-export function noContentResponse(status = 204): Response {
-  return emptyResponse(status);
+// Hangs a routing-fetch responder until its AbortSignal fires, then rejects
+// with signal.reason. The optional `onAbort` hook lets the caller record that
+// abort cleanup actually reached this handler (e.g. for sibling-cancel tests).
+export function hangUntilAbort(req: { signal: AbortSignal | undefined }, onAbort?: () => void): Promise<Response> {
+  return new Promise<Response>((_, reject) => {
+    const fire = (): void => {
+      onAbort?.();
+      reject(req.signal?.reason ?? new DOMException("aborted", "AbortError"));
+    };
+    if (req.signal?.aborted) {
+      fire();
+      return;
+    }
+    req.signal?.addEventListener("abort", fire, { once: true });
+  });
 }
 
-export function networkError(message: string): TypeError {
-  return new TypeError(message);
+// Captures a promise's eventual outcome without leaving an unhandled rejection.
+// Returns a thunk that resolves to the rejection reason (or throws if the
+// promise resolved unexpectedly). Used with fake timers where awaiting the
+// rejection directly would race with timer advancement.
+export function expectRejection<T>(promise: Promise<T>): () => Promise<unknown> {
+  let settled: { ok: true; value: T } | { ok: false; reason: unknown } | undefined;
+  promise.then(
+    (value) => {
+      settled = { ok: true, value };
+    },
+    (reason) => {
+      settled = { ok: false, reason };
+    },
+  );
+  return async () => {
+    await Promise.resolve();
+    if (settled === undefined) throw new Error("expectRejection: promise did not settle");
+    if (settled.ok)
+      throw new Error(`expectRejection: expected rejection but got resolved value: ${String(settled.value)}`);
+    return settled.reason;
+  };
+}
+
+// Convenience: settle a promise into an ok-or-err shape so tests can drive
+// fake timers between the promise call and the awaited result without leaving
+// an unhandled rejection. Mirrors the pattern in rootfs-snapshot.test.ts:215.
+export function settle<T>(promise: Promise<T>): Promise<{ ok: true; v: T } | { ok: false; e: unknown }> {
+  return promise.then(
+    (v) => ({ ok: true as const, v }),
+    (e: unknown) => ({ ok: false as const, e }),
+  );
+}
+
+// Spy on `performance.now` and advance the returned value by `stepMs` on every
+// call. Mirrors Python tests' `fake_monotonic` recipe. Use this to drive the
+// waitUntil* deadline checks (which probe `performance.now`) past the budget
+// without sleeping in real time. The spy is restored by the caller's
+// `vi.restoreAllMocks()` in `afterEach`.
+export function spyMonotonicAdvancingBy(stepMs: number): void {
+  let elapsed = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => {
+    elapsed += stepMs;
+    return elapsed;
+  });
 }
 
 // Mirrors sdks/python/tests/conftest.py:sandbox_response.

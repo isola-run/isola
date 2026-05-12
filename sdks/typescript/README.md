@@ -289,7 +289,7 @@ Other network options:
 network: {
   allowInternetEgress: false,             // block outbound internet traffic (default)
   allowedEgressCIDRs: ["104.16.0.0/12"],  // fine-grained CIDR allowlist
-  allowClusterDNS: false,                 // use the cluster's DNS service
+  allowClusterDNS: false,                 // disable cluster DNS resolution (default)
   nameservers: ["8.8.8.8"],               // custom DNS nameservers
   allowIPv6Egress: false,                 // extend egress config to IPv6
 }
@@ -393,7 +393,6 @@ For advanced use cases, you can run multiple containers in a single sandbox. Use
 ```ts
 const limits = {
   limits: { cpu: "500m", memory: "256Mi", ephemeralStorage: "1Gi" },
-  requests: { cpu: "500m", memory: "256Mi", ephemeralStorage: "1Gi" },
 };
 
 const sandbox = await client.sandboxes.create({
@@ -480,4 +479,4 @@ The SDK automatically retries on transient errors (HTTP 502/503/504, transport f
 
 ## License
 
-Apache 2.0. See `../../LICENSE` at the repo root.
+Apache 2.0. See [LICENSE](https://github.com/isola-run/isola/blob/main/LICENSE).

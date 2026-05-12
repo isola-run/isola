@@ -133,13 +133,15 @@ export type CreateSandboxOptions = SingleContainerOptions | MultiContainerOption
 
 const DEFAULT_MAX_WAIT_MS = 120_000;
 
-// Half-even rounding (banker's), matching Python's built-in `round`. Math.round
-// uses half-away-from-zero, so 0.5 → 1 instead of 0. The divergence only
-// matters at exact halves; `round(2.5) === 2` (Python) vs Math.round(2.5) === 3.
+// Half-even (banker's) rounding, matching Python's built-in `round`. Math.round
+// rounds halves toward +∞ (Math.round(2.5)===3, Math.round(-1.5)===-1); banker's
+// goes to the nearest even, so 2.5→2 and -1.5→-2. When Math.round lands on an
+// odd integer at a half-tie, subtract 1 (always a valid step to even on both
+// signs because Math.round picked the +∞-side neighbour).
 function roundHalfEven(n: number): number {
   const rounded = Math.round(n);
   if (Math.abs(n - Math.trunc(n)) !== 0.5) return rounded;
-  return rounded % 2 === 0 ? rounded : rounded - Math.sign(n);
+  return rounded % 2 === 0 ? rounded : rounded - 1;
 }
 
 function buildResources(
@@ -254,6 +256,7 @@ export class Sandboxes {
   /** @internal */
   readonly _api: HttpClient;
 
+  /** @internal */
   constructor(api: HttpClient) {
     this._api = api;
   }
@@ -309,10 +312,13 @@ export class Sandboxes {
     const payload: CreateSandboxPayload = {
       podTemplate: { containers: containerList },
     };
-    if (opts.network !== undefined) payload.network = opts.network;
-    if (opts.timeoutSeconds !== undefined) payload.timeoutSeconds = opts.timeoutSeconds;
-    if (opts.startupTimeoutSeconds !== undefined) payload.startupTimeoutSeconds = opts.startupTimeoutSeconds;
-    if (opts.terminationPolicy !== undefined) payload.terminationPolicy = opts.terminationPolicy;
+    // `!= null` (not `!== undefined`) so a JS caller passing `null` for an
+    // optional sub-model doesn't reach a downstream `Object.entries(null)`
+    // inside the toWire pipeline (Python's `exclude_none=True` analogue).
+    if (opts.network != null) payload.network = opts.network;
+    if (opts.timeoutSeconds != null) payload.timeoutSeconds = opts.timeoutSeconds;
+    if (opts.startupTimeoutSeconds != null) payload.startupTimeoutSeconds = opts.startupTimeoutSeconds;
+    if (opts.terminationPolicy != null) payload.terminationPolicy = opts.terminationPolicy;
 
     const data = await this._api.requestModel<SandboxData>(
       {
@@ -397,6 +403,7 @@ export class Sandbox {
   readonly commands: Commands;
   readonly filesystem: Filesystem;
 
+  /** @internal */
   constructor(api: HttpClient, data: SandboxData) {
     this._api = api;
     this._data = data;
