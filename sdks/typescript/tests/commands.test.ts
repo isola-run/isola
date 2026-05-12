@@ -30,8 +30,6 @@ import {
 
 const URL_BASE = "http://localhost:8080";
 
-// --- spawn() lifecycle ---
-
 describe("Commands.spawn", () => {
   it("posts the full payload and includes ?container query param", async () => {
     const stub = makeStubFetch(
@@ -79,8 +77,6 @@ describe("Commands.spawn", () => {
     await expect(sandbox.commands.spawn([])).rejects.toThrow(/at least one argument/);
   });
 });
-
-// --- run() returns CommandResult ---
 
 describe("Commands.run", () => {
   it("returns CommandResult with stdout/stderr/exitCode", async () => {
@@ -202,8 +198,6 @@ describe("Commands.run", () => {
   });
 });
 
-// --- stdout / stderr streaming ---
-
 describe("Command.stdout / Command.stderr", () => {
   it("stdout decodes SSE body to 'hello world\\n' (trailing-newline pattern)", async () => {
     const stub = makeStubFetch(
@@ -246,8 +240,6 @@ describe("Command.stdout / Command.stderr", () => {
   });
 });
 
-// --- stdout / stderr lazy-init caching ---
-
 describe("Command.stdout / Command.stderr lazy caching", () => {
   // Pins the lazy-init memoization in commands.ts so callers can hold a
   // reference to the StreamReader before iterating, without double-fetching.
@@ -262,8 +254,6 @@ describe("Command.stdout / Command.stderr lazy caching", () => {
     expect(cmd[key]).toBe(cmd[key]);
   });
 });
-
-// --- exitCode() ---
 
 describe("Command.exitCode", () => {
   it("GET /status returns 42 (one-shot, no waitSeconds query param)", async () => {
@@ -296,8 +286,6 @@ describe("Command.exitCode", () => {
     expect(await cmd.exitCode()).toBeNull();
   });
 });
-
-// --- writeStdin ---
 
 describe("Command.writeStdin", () => {
   it("string is encoded as UTF-8 bytes", async () => {
@@ -337,8 +325,6 @@ describe("Command.writeStdin", () => {
   });
 });
 
-// --- closeStdin ---
-
 describe("Command.closeStdin", () => {
   it("POSTs to /stdin/close with no body", async () => {
     const stub = makeStubFetch(
@@ -359,8 +345,6 @@ describe("Command.closeStdin", () => {
   });
 });
 
-// --- kill ---
-
 describe("Command.kill", () => {
   it("DELETEs /commands/{id}", async () => {
     const stub = makeStubFetch(
@@ -379,8 +363,6 @@ describe("Command.kill", () => {
     expect(new URL(killCall?.url ?? "").pathname).toBe("/v1/sandboxes/sandbox-123/commands/cmd-kill");
   });
 });
-
-// --- wait() ---
 
 describe("Command.wait", () => {
   it("GETs /status with ?waitSeconds=20", async () => {
@@ -472,15 +454,13 @@ describe("Command.wait", () => {
   }, 10_000);
 });
 
-// --- run() failure path: cancels sibling reads/wait when one rejects ---
-
 describe("Commands.run sibling cancellation", () => {
   it("aborts stderr/wait when stdout rejects (e.g. 404 on stdout SSE)", async () => {
     const sbId = "sandbox-123";
     const cmdId = "cmd-fail";
 
     // Track whether stderr and wait observed an aborted signal — i.e. the
-    // sibling cancellation path on the run() catch (commands.ts:153-156)
+    // sibling cancellation path on the run() catch
     // actually reached them.
     let stderrAborted = false;
     let waitAborted = false;
@@ -528,8 +508,6 @@ describe("Commands.run sibling cancellation", () => {
     expect(waitSeen.count).toBeGreaterThanOrEqual(1);
   }, 15_000);
 });
-
-// --- run({ waitTimeoutMs }) bounds the wait/read phase ---
 
 describe("Commands.run waitTimeoutMs", () => {
   it("throws IsolaTimeoutError when waitTimeoutMs expires before completion", async () => {
@@ -600,7 +578,7 @@ describe("Commands.run waitTimeoutMs", () => {
   }, 10_000);
 
   it("prefers user signal.reason over waitTimeoutMs when both fire mid-Promise.all", async () => {
-    // Race the M2 fix actually defends: spawn succeeds, then stdout/stderr/wait
+    // Race we cover: spawn succeeds, then stdout/stderr/wait
     // hang in Promise.all, and BOTH the waitTimeoutMs deadline AND the user
     // signal abort near-simultaneously. The catch must surface the user's
     // reason, not IsolaTimeoutError. (Mirrors Command.wait's precedence.)
@@ -624,7 +602,8 @@ describe("Commands.run waitTimeoutMs", () => {
     const sandbox = await client.sandboxes.get(sbId);
 
     // Schedule the user abort and the waitTimeoutMs deadline both at ~50ms so
-    // they race inside Promise.all's catch (where the M2 precedence lives).
+    // they race inside Promise.all's catch (where the user-signal-wins
+    // precedence rule lives).
     setTimeout(() => ctrl.abort(reason), 50);
 
     let caught: unknown;
@@ -659,8 +638,6 @@ describe("Commands.run waitTimeoutMs", () => {
   });
 });
 
-// --- wait() error pass-through (non-signal) ---
-
 describe("Command.wait error pass-through", () => {
   it("re-throws non-signal-caused errors verbatim", async () => {
     const sbId = "sandbox-123";
@@ -677,12 +654,10 @@ describe("Command.wait error pass-through", () => {
     const cmd = await sandbox.commands.spawn(["sleep", "100"]);
 
     // wait() with no timeout, no signal — the catch path falls through the
-    // timeout/signal branches and into the verbatim re-throw (commands.ts:230).
+    // timeout/signal branches and into the verbatim re-throw.
     await expect(cmd.wait()).rejects.toThrow(InternalError);
   });
 });
-
-// --- wait() user-signal abort path ---
 
 describe("Command.wait user-signal abort", () => {
   it("propagates user signal.reason when aborted mid-poll", async () => {
@@ -709,7 +684,7 @@ describe("Command.wait user-signal abort", () => {
     let caught: unknown;
     try {
       // No timeoutMs — solely user-signal driven so the catch falls to the
-      // opts.signal?.aborted branch (commands.ts:229).
+      // opts.signal?.aborted branch.
       await cmd.wait({ signal: ctrl.signal });
     } catch (err) {
       caught = err;
@@ -717,8 +692,6 @@ describe("Command.wait user-signal abort", () => {
     expect(caught).toBe(reason);
   }, 10_000);
 });
-
-// --- error mapping ---
 
 describe("Commands error mapping", () => {
   it("spawn 500 -> InternalError", async () => {

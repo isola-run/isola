@@ -27,12 +27,12 @@ import { buildUrl } from "./url";
 
 // Total per-attempt wall-clock budget. AbortSignal.timeout() aborts the whole
 // fetch (connect+send+receive) when it fires. Python httpx splits this into
-// connect/read/write/pool timeouts (5s/30s/30s/5s); we use one budget per
-// attempt instead. Long downloads that take >30s end-to-end will time out in
-// TS where Python would not.
+// connect/read/write/pool (5s/30s/30s/5s, all per-chunk); we use one total
+// budget per attempt. Streams whose chunks arrive within 30s but exceed 30s
+// total succeed in Python yet time out in TS.
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
-export const MAX_RETRIES = 5; // _client.py:32
-export const RETRY_DELAY_MS = 1_000; // _client.py:33
+export const MAX_RETRIES = 5;
+export const RETRY_DELAY_MS = 1_000;
 
 const DEFAULT_USER_AGENT = `@isola-run/sdk/${VERSION}`;
 
@@ -164,8 +164,10 @@ export class HttpClient {
     if (!headers.has("user-agent")) {
       try {
         headers.set("user-agent", DEFAULT_USER_AGENT);
-      } catch {
-        // some runtimes forbid setting user-agent; ignore.
+      } catch (err) {
+        // TypeError on a forbidden-header runtime is expected; anything else
+        // is a real bug.
+        if (!(err instanceof TypeError)) throw err;
       }
     }
 

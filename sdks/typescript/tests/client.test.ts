@@ -47,8 +47,6 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-// --- URL handling ---
-
 describe("URL handling", () => {
   it("strips trailing slash from explicit URL", () => {
     const stub = makeStubFetch();
@@ -92,8 +90,6 @@ describe("URL handling", () => {
   });
 });
 
-// --- User-Agent header ---
-
 describe("User-Agent header", () => {
   it("auto-sets a default User-Agent when caller did not provide one", async () => {
     const stub = makeStubFetch(jsonResponse({ sandboxes: [] }));
@@ -114,8 +110,6 @@ describe("User-Agent header", () => {
     expect(stub.calls[0]!.headers.get("user-agent")).toBe("my-cli/1.0");
   });
 });
-
-// --- Error mapping ---
 
 describe("error mapping", () => {
   const cases: Array<[number, new (...args: never[]) => APIError]> = [
@@ -171,8 +165,6 @@ describe("error mapping", () => {
   }
 });
 
-// --- Transport / connection errors ---
-
 describe("transport error mapping", () => {
   it("wraps transport errors as APIConnectionError with method/path prefix", async () => {
     const transportErr = new TypeError("connect failed");
@@ -191,8 +183,6 @@ describe("transport error mapping", () => {
     expect((caught as Error).message).toContain("connect failed");
   }, 15_000);
 });
-
-// --- JSON decode failures ---
 
 describe("response decoding failures", () => {
   it("invalid JSON body raises APIError with 200: invalid response payload", async () => {
@@ -228,7 +218,7 @@ describe("response decoding failures", () => {
     expect((caught as APIError).message).toBe("200: invalid response payload");
   });
 
-  it("user abort during response.json() surfaces signal.reason, not 'invalid response payload' (B9)", async () => {
+  it("user abort during response.json() surfaces signal.reason, not 'invalid response payload'", async () => {
     // Body parking on a never-closed ReadableStream. While requestModel awaits
     // response.json(), the user aborts. The catch must see signal.aborted and
     // throw signal.reason verbatim — NOT wrap it as APIError("invalid
@@ -273,8 +263,6 @@ describe("response decoding failures", () => {
     expect(caught).toBe(reason);
   });
 });
-
-// --- Retry behavior ---
 
 describe("retry behavior", () => {
   it("retries 502 then succeeds", async () => {
@@ -374,8 +362,6 @@ describe("retry behavior", () => {
   }, 15_000);
 });
 
-// --- Replayable body retry ---
-
 describe("body replay on retry", () => {
   it("Uint8Array (replayable) is resent on retry", async () => {
     const payload = new TextEncoder().encode('{"some":"json"}');
@@ -440,8 +426,6 @@ describe("body replay on retry", () => {
   });
 });
 
-// --- requestTimeoutMs validation and behavior ---
-
 describe("requestTimeoutMs", () => {
   it("rejects negative values at construction", () => {
     expect(() => new Isola({ url: URL_BASE, requestTimeoutMs: -1 })).toThrow(TypeError);
@@ -488,8 +472,6 @@ describe("requestTimeoutMs", () => {
     expect(stub.calls).toHaveLength(2);
   }, 15_000);
 });
-
-// --- AbortSignal handling ---
 
 describe("AbortSignal handling", () => {
   it("user-supplied signal cancels with the original signal.reason", async () => {
@@ -547,8 +529,6 @@ describe("AbortSignal handling", () => {
   });
 });
 
-// --- fetch injection ---
-
 describe("fetch injection", () => {
   it("uses the supplied fetch implementation", async () => {
     const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()));
@@ -560,8 +540,6 @@ describe("fetch injection", () => {
     expect(stub.calls[0]?.method).toBe("GET");
   });
 });
-
-// --- Lifecycle ---
 
 describe("client lifecycle", () => {
   it("await using calls close() via Symbol.asyncDispose", async () => {
@@ -585,9 +563,9 @@ describe("client lifecycle", () => {
   });
 
   it("await using calls close() even when the block throws", async () => {
-    // Spec for `using`: cleanup runs on normal AND exceptional exit. This pins
-    // the language semantics so a regression that wired the dispose to only
-    // the happy path would surface here.
+    // A regression that wired Isola.[Symbol.asyncDispose] to only fire on
+    // normal exit (or made close() observe a flag set before throw) would
+    // leave isClosed false after the exceptional unwind.
     const stub = makeStubFetch();
     let captured: Isola | undefined;
     const boom = new Error("from-inside-block");
@@ -604,8 +582,6 @@ describe("client lifecycle", () => {
     expect(captured?.isClosed).toBe(true);
   });
 });
-
-// --- Internal request() error pass-through ---
 
 describe("transport error pass-through to APIConnectionError", () => {
   it("re-throws an APIError(502) from a custom fetch verbatim after retries exhaust", async () => {
@@ -629,8 +605,8 @@ describe("transport error pass-through to APIConnectionError", () => {
     expect(caught).toBeInstanceOf(APIError);
     expect((caught as APIError).statusCode).toBe(502);
     expect((caught as APIError).message).toContain("from-fetch");
-    // Defends B5: a regression that bypasses the SDK-typed retry would either
-    // wrap as APIConnectionError or stop after 1 attempt.
+    // A regression that bypasses the SDK-typed retry would either wrap as
+    // APIConnectionError or stop after 1 attempt.
     expect(stub.calls.length).toBe(1 + MAX_RETRIES);
   }, 15_000);
 
@@ -643,9 +619,9 @@ describe("transport error pass-through to APIConnectionError", () => {
     expect(stub.calls.length).toBe(1 + MAX_RETRIES);
   }, 15_000);
 
-  it("re-throws non-transient APIError from a custom fetch with NO retry (B11)", async () => {
-    // Defends B11: SDK-typed errors thrown by a custom fetch pass through the
-    // same isTransient gate as response-status errors. A 400 (non-transient)
+  it("re-throws non-transient APIError from a custom fetch with NO retry", async () => {
+    // SDK-typed errors thrown by a custom fetch pass through the same
+    // isTransient gate as response-status errors. A 400 (non-transient)
     // must NOT retry — exactly one attempt, original error verbatim.
     const stub = makeStubFetch(new BadRequestError({ statusCode: 400, message: "from-fetch-400" }));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
@@ -662,9 +638,9 @@ describe("transport error pass-through to APIConnectionError", () => {
     expect(stub.calls.length).toBe(1);
   });
 
-  it("fetchStream passes SDK-typed errors verbatim (no double-wrap) (B11)", async () => {
-    // Defends B11 at the streaming layer. fetchStream's catch wraps native
-    // TypeError/AbortError as APIConnectionError, but an SDK-typed error from
+  it("fetchStream passes SDK-typed errors verbatim (no double-wrap)", async () => {
+    // fetchStream's catch wraps native TypeError/AbortError as
+    // APIConnectionError, but an SDK-typed error from
     // a custom fetch should pass through unchanged — no re-wrap chain.
     const sdkErr = new BadRequestError({ statusCode: 400, message: "from-fetch-stream" });
     const stub = makeStubFetch(sdkErr);
@@ -680,8 +656,6 @@ describe("transport error pass-through to APIConnectionError", () => {
     expect(caught).toBe(sdkErr);
   });
 });
-
-// --- fetchStream connect timeout & error pass-through ---
 
 describe("HttpClient.fetchStream", () => {
   it("returns the response when the headers arrive before the connect timeout", async () => {
@@ -794,14 +768,12 @@ describe("HttpClient.fetchStream", () => {
   });
 });
 
-// --- Per-attempt timeout fires then a fresh attempt succeeds ---
-
 describe("per-attempt request timeout", () => {
   it("transport timeout on the last attempt produces APIConnectionError with timeout cause path", async () => {
     // Use a really short requestTimeoutMs and a fetch that hangs forever.
     // Each attempt's AbortSignal.timeout fires; canRetry is true so we
     // retry up to MAX_RETRIES; the final attempt then takes the
-    // `transportTimedOut` branch (http.ts:173-174).
+    // `transportTimedOut` branch.
     const stub = makeStubFetch(
       ...Array.from(
         { length: 1 + MAX_RETRIES },

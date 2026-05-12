@@ -38,7 +38,7 @@ describe("normalizeUrl", () => {
   });
 
   it("throws TypeError when input is whitespace only", () => {
-    // Mirrors src/internal/url.ts:22 — the empty-after-trim throw branch.
+    // Empty-after-trim throw branch.
     expect(() => normalizeUrl("   ")).toThrow(TypeError);
     expect(() => normalizeUrl("   ")).toThrow(/ISOLA_URL/);
   });

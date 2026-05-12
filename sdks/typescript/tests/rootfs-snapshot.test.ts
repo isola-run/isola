@@ -41,8 +41,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// --- create() / get() basic round-trip ---
-
 describe("RootfsSnapshots.create + get", () => {
   it("create() with all fields sends the right body and returns the snapshot", async () => {
     const fixture = { ...rootfsSnapshotResponseFixture(), ttlSecondsAfterFinished: 600 };
@@ -107,8 +105,6 @@ describe("RootfsSnapshots.create + get", () => {
     expect(call.url).toBe(`${URL_BASE}/v1/rootfs-snapshots/snapshot-123`);
   });
 });
-
-// --- Polling behavior ---
 
 describe("RootfsSnapshots.create polling", () => {
   it("waits until status reaches Succeeded", async () => {
@@ -281,8 +277,6 @@ describe("RootfsSnapshots.create polling", () => {
   });
 });
 
-// --- Timeout tests ---
-
 describe("RootfsSnapshots.create timeout", () => {
   it("raises IsolaTimeoutError when maxWaitMs is exhausted", async () => {
     // Fast-forward performance.now() so each call adds 2000ms; with
@@ -345,8 +339,6 @@ describe("RootfsSnapshots.create timeout", () => {
   });
 });
 
-// --- Signal forwarding to underlying HTTP layer ---
-
 describe("RootfsSnapshots signal forwarding", () => {
   it("get() forwards req.signal to the GET request", async () => {
     const ctrl = new AbortController();
@@ -384,8 +376,6 @@ describe("RootfsSnapshots signal forwarding", () => {
     expect(stub.calls[1]?.signal).toBeDefined();
   });
 });
-
-// --- Non-NotFound errors during wait propagate immediately ---
 
 describe("waitUntilComplete non-404 error propagation", () => {
   it("re-throws InternalError without retrying", async () => {

@@ -34,8 +34,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// --- create() flat resources mapping ---
-
 describe("create() flat resources mapping", () => {
   it("maps cpu/memory/ephemeralStorage onto BOTH limits and requests in podTemplate", async () => {
     const stub = makeStubFetch(jsonResponse(sandboxResponseFixture(), { status: 201 }));
@@ -102,8 +100,6 @@ describe("create() flat resources mapping", () => {
   });
 });
 
-// --- list() ---
-
 describe("list()", () => {
   it("returns SandboxSummary[] with id, status, creationTimestamp", async () => {
     const stub = makeStubFetch(jsonResponse(sandboxSummaryResponseFixture()));
@@ -124,8 +120,6 @@ describe("list()", () => {
   });
 });
 
-// --- get() and delete() ---
-
 describe("get() and delete()", () => {
   it("issues GET /v1/sandboxes/{id} and DELETE /v1/sandboxes/{id}", async () => {
     const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), emptyResponse(204));
@@ -143,8 +137,6 @@ describe("get() and delete()", () => {
     expect(stub.calls[1]?.url).toBe(`${URL_BASE}/v1/sandboxes/sandbox-123`);
   });
 });
-
-// --- Network acronym aliases round-trip ---
 
 describe("Network acronym aliases round-trip", () => {
   it("sends and receives allowClusterDNS, allowedEgressCIDRs, allowIPv6Egress with exact OpenAPI casing", async () => {
@@ -188,8 +180,6 @@ describe("Network acronym aliases round-trip", () => {
   });
 });
 
-// --- Symbol.asyncDispose ---
-
 describe("Symbol.asyncDispose", () => {
   it("await using sandbox calls sandbox.delete() on exit", async () => {
     const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), emptyResponse(204));
@@ -223,9 +213,53 @@ describe("Symbol.asyncDispose", () => {
     expect(caught).toBe(boom);
     expect(stub.calls[1]?.method).toBe("DELETE");
   });
-});
 
-// --- create() validation ---
+  it("dispose swallows NotFoundError so already-deleted sandbox doesn't mask block exception", async () => {
+    // Server-side timeout / manual delete / pod eviction can race: by the
+    // time dispose fires, the sandbox is already gone. A propagating 404
+    // would become a SuppressedError and shadow whatever the user's block
+    // was raising.
+    const stub = makeStubFetch(
+      jsonResponse(sandboxResponseFixture()),
+      jsonResponse({ detail: "not found" }, { status: 404 }),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const boom = new Error("user-block-error");
+
+    let caught: unknown;
+    try {
+      await using sandbox = await client.sandboxes.get("sandbox-123");
+      expect(sandbox.id).toBe("sandbox-123");
+      throw boom;
+    } catch (err) {
+      caught = err;
+    }
+    // The user's exception survives intact; no SuppressedError wrapping.
+    expect(caught).toBe(boom);
+    expect(stub.calls[1]?.method).toBe("DELETE");
+  });
+
+  it("dispose propagates non-404 errors from delete", async () => {
+    // Idempotency is scoped to NotFoundError only. A 500 (or any other
+    // failure) must still surface.
+    const stub = makeStubFetch(
+      jsonResponse(sandboxResponseFixture()),
+      jsonResponse({ detail: "boom" }, { status: 500 }),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+
+    let caught: unknown;
+    try {
+      await using sandbox = await client.sandboxes.get("sandbox-123");
+      expect(sandbox.id).toBe("sandbox-123");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeDefined();
+    // 500 maps to InternalError (subclass of APIError).
+    expect((caught as Error).constructor.name).toBe("InternalError");
+  });
+});
 
 describe("create() validation", () => {
   it("throws when both image and containers are provided", async () => {
@@ -303,8 +337,6 @@ describe("create() validation", () => {
   });
 });
 
-// --- rootfsSnapshotName on single-container ---
-
 describe("rootfsSnapshotName on single-container", () => {
   it("includes rootfsSnapshotName in the wire containers[0]", async () => {
     const responseBody = sandboxResponseFixture();
@@ -323,8 +355,6 @@ describe("rootfsSnapshotName on single-container", () => {
     expect(sandbox.containers[0]?.rootfsSnapshotName).toBe("my-snapshot");
   });
 });
-
-// --- Multi-container containers: [...] ---
 
 describe("multi-container containers", () => {
   it("serialises each Container in the list", async () => {
@@ -366,8 +396,6 @@ describe("multi-container containers", () => {
   });
 });
 
-// --- terminationPolicy: SnapshotRootfs ---
-
 describe("terminationPolicy: SnapshotRootfs", () => {
   it("wraps an empty SnapshotRootfs into { type, snapshotRootfs: {} }", async () => {
     const responseBody = sandboxResponseFixture();
@@ -408,8 +436,6 @@ describe("terminationPolicy: SnapshotRootfs", () => {
     });
   });
 });
-
-// --- Polling ---
 
 describe("polling — wait until Running", () => {
   beforeEach(() => {
@@ -457,8 +483,6 @@ describe("polling — wait until Running", () => {
   });
 });
 
-// --- maxWaitMs: 0 ---
-
 describe("maxWaitMs: 0", () => {
   it("returns immediately without polling", async () => {
     const stub = makeStubFetch(jsonResponse(makeSandboxResponse("Pending"), { status: 201 }));
@@ -471,8 +495,6 @@ describe("maxWaitMs: 0", () => {
     expect(stub.calls[0]?.method).toBe("POST");
   });
 });
-
-// --- Already terminal at create time ---
 
 describe("already terminal at create time", () => {
   it("throws IsolaError 'terminal state' when POST returns Failed", async () => {
@@ -500,8 +522,6 @@ describe("already terminal at create time", () => {
     expect(stub.calls).toHaveLength(1);
   });
 });
-
-// --- Terminal during wait ---
 
 describe("terminal during wait", () => {
   beforeEach(() => {
@@ -540,8 +560,6 @@ describe("terminal during wait", () => {
   });
 });
 
-// --- Already Running at create ---
-
 describe("already Running at create", () => {
   it("skips wait entirely (no GETs)", async () => {
     const stub = makeStubFetch(jsonResponse(makeSandboxResponse("Running"), { status: 201 }));
@@ -553,8 +571,6 @@ describe("already Running at create", () => {
     expect(stub.calls[0]?.method).toBe("POST");
   });
 });
-
-// --- startupTimeoutSeconds ---
 
 describe("startupTimeoutSeconds", () => {
   it("is sent in the request payload and exposed as a Sandbox property", async () => {
@@ -573,8 +589,6 @@ describe("startupTimeoutSeconds", () => {
     expect(sandbox.startupTimeoutSeconds).toBe(45);
   });
 });
-
-// --- Eventual consistency: GET 404 then 200 ---
 
 describe("eventual consistency", () => {
   beforeEach(() => {
@@ -599,8 +613,6 @@ describe("eventual consistency", () => {
     expect(stub.calls).toHaveLength(5);
   });
 });
-
-// --- Timeout on max wait ---
 
 describe("timeout on max wait", () => {
   beforeEach(() => {
@@ -655,8 +667,6 @@ describe("timeout on max wait", () => {
   });
 });
 
-// --- Non-NotFound errors during wait propagate immediately ---
-
 describe("waitUntilRunning non-404 error propagation", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -686,8 +696,6 @@ describe("waitUntilRunning non-404 error propagation", () => {
   });
 });
 
-// --- Signal forwarding to underlying HTTP layer ---
-
 describe("Sandboxes signal forwarding", () => {
   it("get() forwards req.signal to the GET request", async () => {
     const ctrl = new AbortController();
@@ -714,7 +722,7 @@ describe("Sandboxes signal forwarding", () => {
   });
 
   it("create() forwards req.signal to polling GETs (waitUntilRunning)", async () => {
-    // Covers sandbox.ts:157 — the signal-spread inside waitUntilRunning.
+    // The signal-spread inside waitUntilRunning.
     const ctrl = new AbortController();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
@@ -744,8 +752,6 @@ describe("Sandboxes signal forwarding", () => {
   });
 });
 
-// --- Individual resource-list field coverage ---
-
 describe("buildResources individual fields", () => {
   it("includes only cpu when only cpu is set", async () => {
     const stub = makeStubFetch(jsonResponse(sandboxResponseFixture(), { status: 201 }));
@@ -772,8 +778,6 @@ describe("buildResources individual fields", () => {
   });
 });
 
-// --- Sandbox getter coverage ---
-
 describe("Sandbox accessors", () => {
   it("exposes creationTimestamp, network=null, and timeoutSeconds=null when absent", async () => {
     // Response with no timeoutSeconds, no network.
@@ -788,11 +792,10 @@ describe("Sandbox accessors", () => {
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
     const sandbox = await client.sandboxes.get("sandbox-x");
 
-    // sandbox.ts:270 — creationTimestamp getter.
     expect(sandbox.creationTimestamp).toEqual(new Date("2026-03-15T12:30:00Z"));
-    // sandbox.ts:274 — network getter when undefined → null.
+    // network getter when undefined → null.
     expect(sandbox.network).toBeNull();
-    // sandbox.ts:278 — timeoutSeconds getter when undefined → null.
+    // timeoutSeconds getter when undefined → null.
     expect(sandbox.timeoutSeconds).toBeNull();
     expect(sandbox.startupTimeoutSeconds).toBe(60);
     expect(sandbox.containers).toHaveLength(1);

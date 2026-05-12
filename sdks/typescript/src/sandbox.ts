@@ -166,24 +166,24 @@ function buildContainers(opts: CreateSandboxOptions): Container[] {
   const hasImage = raw.image !== undefined;
 
   if (hasContainers && hasImage) {
-    throw new Error("cannot specify both 'image' and 'containers'");
+    throw new TypeError("cannot specify both 'image' and 'containers'");
   }
   if (!hasContainers && !hasImage) {
-    throw new Error("must specify either 'image' or 'containers'");
+    throw new TypeError("must specify either 'image' or 'containers'");
   }
 
   if (hasContainers) {
     if (!Array.isArray(raw.containers)) {
-      throw new Error("'containers' must be an array");
+      throw new TypeError("'containers' must be an array");
     }
     if (raw.containers.length === 0) {
-      throw new Error("containers must be a non-empty array");
+      throw new TypeError("containers must be a non-empty array");
     }
     const offending = (["command", "env", "cpu", "memory", "ephemeralStorage", "rootfsSnapshotName"] as const).filter(
       (k) => raw[k] !== undefined,
     );
     if (offending.length > 0) {
-      throw new Error(
+      throw new TypeError(
         `cannot specify ${offending.map((k) => `'${k}'`).join(", ")} when using 'containers'; ` +
           "set these on each Container instead",
       );
@@ -193,7 +193,7 @@ function buildContainers(opts: CreateSandboxOptions): Container[] {
 
   const single = opts as SingleContainerOptions;
   if (typeof single.image !== "string") {
-    throw new Error("'image' must be a string");
+    throw new TypeError("'image' must be a string");
   }
   const resources = buildResources(single.cpu, single.memory, single.ephemeralStorage);
   const container: Container = { image: single.image };
@@ -423,7 +423,8 @@ export class Sandbox {
 
   /** When the sandbox was created. */
   get creationTimestamp(): Date {
-    return this._data.creationTimestamp;
+    // Clone so callers cannot mutate the handle's internal state via `.setTime`.
+    return new Date(this._data.creationTimestamp.getTime());
   }
 
   /** Network configuration, or `null` if using defaults. */
@@ -462,6 +463,10 @@ export class Sandbox {
    * enters `Terminating` state while the termination policy runs,
    * then the Sandbox resource is deleted and {@link Sandboxes.get}
    * would return `NotFoundError`.
+   *
+   * @throws {NotFoundError} If the sandbox has already been deleted.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
    */
   async delete(req: RequestOptions = {}): Promise<void> {
     await this._api.requestNoContent({
@@ -472,6 +477,13 @@ export class Sandbox {
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    await this.delete();
+    // Swallow NotFoundError so disposing a sandbox that was already deleted
+    // (server-side timeout, manual delete, pod eviction) doesn't mask the
+    // user's original exception with a SuppressedError on scope exit.
+    try {
+      await this.delete();
+    } catch (err) {
+      if (!(err instanceof NotFoundError)) throw err;
+    }
   }
 }

@@ -24,10 +24,13 @@ function setErrorName(err: Error, name: string): void {
 
 /** Base exception for all Isola SDK errors. */
 export class IsolaError extends Error {
+  /** @internal Minifier-safe error name; survives class-name mangling. */
   protected static readonly errorName: string = "IsolaError";
 
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
+    // Restore prototype chain for ES5/ES2015 transpile targets.
+    Object.setPrototypeOf(this, new.target.prototype);
     const ctor = new.target as typeof IsolaError;
     setErrorName(this, ctor.errorName);
   }
@@ -81,8 +84,8 @@ export class BadGatewayError extends APIError {
   protected static override readonly errorName: string = "BadGatewayError";
 }
 
-// Status codes 401/403/503/504 fall through to the base APIError, matching
-// Python _exceptions.py:95-102.
+// Status codes 401/403/503/504 intentionally fall through to base APIError
+// (no dedicated subclass) for parity with the Python SDK.
 
 /** A timeout expired while waiting for an operation to complete. */
 export class IsolaTimeoutError extends IsolaError {
@@ -123,12 +126,8 @@ export function isAbortError(err: unknown): boolean {
 
 function decodeBodyDetail(body: Uint8Array | null): string | null {
   if (!body || body.length === 0) return null;
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: false }).decode(body);
-  } catch {
-    return null;
-  }
+  // fatal: false → invalid bytes become U+FFFD, decode never throws.
+  const text = new TextDecoder("utf-8", { fatal: false }).decode(body);
   let payload: unknown;
   try {
     payload = JSON.parse(text);

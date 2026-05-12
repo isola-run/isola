@@ -87,17 +87,7 @@ export interface WaitOptions {
   signal?: AbortSignal;
 }
 
-function spawnPayload(args: string[], opts: SpawnOptions | undefined): CreateCommandPayload {
-  const payload: CreateCommandPayload = { args };
-  if (opts?.env !== undefined) payload.env = opts.env;
-  if (opts?.cwd !== undefined) payload.cwd = opts.cwd;
-  if (opts?.timeoutSeconds !== undefined) payload.timeoutSeconds = opts.timeoutSeconds;
-  return payload;
-}
-
-function statusParams(): { waitSeconds: number } {
-  return { waitSeconds: LONG_POLL_WAIT_SECONDS };
-}
+const STATUS_PARAMS = { waitSeconds: LONG_POLL_WAIT_SECONDS } as const;
 
 function buildWaitSignal(
   userSignal: AbortSignal | undefined,
@@ -151,9 +141,12 @@ export class Commands {
    */
   async spawn(args: string[], opts: SpawnOptions = {}, req: RequestOptions = {}): Promise<Command> {
     if (!Array.isArray(args) || args.length === 0) {
-      throw new Error("at least one argument (the command) is required");
+      throw new TypeError("at least one argument (the command) is required");
     }
-    const payload = spawnPayload(args, opts);
+    const payload: CreateCommandPayload = { args };
+    if (opts.env !== undefined) payload.env = opts.env;
+    if (opts.cwd !== undefined) payload.cwd = opts.cwd;
+    if (opts.timeoutSeconds !== undefined) payload.timeoutSeconds = opts.timeoutSeconds;
     const data = await this._api.requestModel<CreateCommandResponse>(
       {
         method: "POST",
@@ -201,17 +194,17 @@ export class Commands {
       await cmd.closeStdin(req);
     }
 
-    // waitTimeoutMs bounds the entire wait+read phase (spec F13). Build one
-    // AbortSignal composed from the user signal, an internalController (to
-    // cancel siblings when any of stdout/stderr/wait rejects), and the
-    // optional run-phase deadline; pass it to all three concurrent waits.
+    // waitTimeoutMs bounds the entire wait+read phase. Build one AbortSignal
+    // composed from the user signal, an internalController (to cancel
+    // siblings when any of stdout/stderr/wait rejects), and the optional
+    // run-phase deadline; pass it to all three concurrent waits.
     const internalController = new AbortController();
     const signals: AbortSignal[] = [internalController.signal];
     if (req.signal) signals.push(req.signal);
     const runTimeoutSignal = opts.waitTimeoutMs !== undefined ? AbortSignal.timeout(opts.waitTimeoutMs) : undefined;
     if (runTimeoutSignal) signals.push(runTimeoutSignal);
-    // Always at least one signal (internalController), so the AbortSignal.any
-    // fallback fires only when 2+ signals are involved.
+    // signals has >=1 entries (internalController is unconditional); use
+    // AbortSignal.any only when there are >=2 to compose.
     const composedSignal: AbortSignal = signals.length === 1 ? internalController.signal : AbortSignal.any(signals);
 
     try {
@@ -329,23 +322,29 @@ export class Command {
    */
   async wait(opts: WaitOptions = {}): Promise<number> {
     const path = commandStatusPath(this._sandboxId, this._commandId);
-    const params = statusParams();
     const { signal, timeoutSignal } = buildWaitSignal(opts.signal, opts.timeoutMs);
     while (true) {
+      // Honor abort/timeout fired between iterations before starting another
+      // 20s long-poll. Without this, an abort that arrives during status
+      // decoding would still trigger one more round-trip.
+      if (opts.signal?.aborted) throw opts.signal.reason;
+      if (timeoutSignal?.aborted) {
+        throw new IsolaTimeoutError(`command ${this._commandId} did not complete within ${opts.timeoutMs}ms`);
+      }
       try {
         const status = await this._api.requestModel<CommandStatusResponse>(
           {
             method: "GET",
             path,
-            params,
+            params: STATUS_PARAMS,
             ...(signal ? { signal } : {}),
           },
           CommandStatusResponseModel.fromWire,
         );
         if (status.exitCode !== null) return status.exitCode;
       } catch (err) {
-        // User cancel wins over the wait deadline if both fired: caller intent
-        // is preserved (mirrors Anthropic client.ts:980-988).
+        // User cancel wins over the wait deadline if both fired: caller
+        // intent is preserved.
         if (opts.signal?.aborted) throw opts.signal.reason ?? err;
         if (timeoutSignal?.aborted) {
           throw new IsolaTimeoutError(`command ${this._commandId} did not complete within ${opts.timeoutMs}ms`, {
@@ -362,6 +361,8 @@ export class Command {
    *
    * @param data - Text or bytes to write. Strings are encoded as
    * UTF-8.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
    */
   async writeStdin(data: string | Uint8Array, req: RequestOptions = {}): Promise<void> {
     const raw: Uint8Array = typeof data === "string" ? new TextEncoder().encode(data) : data;
@@ -379,6 +380,9 @@ export class Command {
    *
    * Call this after writing all input so the command knows there is
    * no more data coming (like pressing Ctrl-D).
+   *
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
    */
   async closeStdin(req: RequestOptions = {}): Promise<void> {
     await this._api.requestNoContent({
@@ -388,7 +392,12 @@ export class Command {
     });
   }
 
-  /** Terminate the command immediately. */
+  /**
+   * Terminate the command immediately.
+   *
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
   async kill(req: RequestOptions = {}): Promise<void> {
     await this._api.requestNoContent({
       method: "DELETE",

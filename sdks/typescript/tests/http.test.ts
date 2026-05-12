@@ -24,7 +24,6 @@ describe("sleep abort semantics", () => {
     const ctrl = new AbortController();
     ctrl.abort(reason);
 
-    // Covers http.ts:81-83 (the pre-aborted short-circuit branch).
     await expect(sleep(1_000, ctrl.signal)).rejects.toBe(reason);
   });
 
@@ -32,8 +31,6 @@ describe("sleep abort semantics", () => {
     const reason = new Error("aborted-while-sleeping");
     const ctrl = new AbortController();
 
-    // Covers http.ts:85-87 (the onAbort listener path that clears the timer
-    // and rejects with the abort reason).
     const promise = sleep(10_000, ctrl.signal);
     setTimeout(() => ctrl.abort(reason), 5);
 
@@ -61,7 +58,6 @@ describe("isReplayableBody classification", () => {
     expect(isReplayableBody(new Uint8Array([1, 2, 3]))).toBe(true);
     expect(isReplayableBody(new ArrayBuffer(4))).toBe(true);
     expect(isReplayableBody(new Blob(["x"]))).toBe(true);
-    // Covers http.ts:105 — URLSearchParams classification.
     expect(isReplayableBody(new URLSearchParams("a=1"))).toBe(true);
   });
 
@@ -72,8 +68,6 @@ describe("isReplayableBody classification", () => {
         c.close();
       },
     });
-    // Covers http.ts:106 — the final `return false` for unrecognised body
-    // types.
     expect(isReplayableBody(stream)).toBe(false);
   });
 

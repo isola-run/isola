@@ -58,7 +58,8 @@ export interface CreateSnapshotOptions {
   ttlSecondsAfterFinished?: number;
   /**
    * How long this method polls for completion, in milliseconds.
-   * Client-side only. Defaults to 310_000ms.
+   * Client-side only. Defaults to 310_000ms. Set to 0 to return
+   * immediately without waiting.
    */
   maxWaitMs?: number;
 }

@@ -330,6 +330,25 @@ jobs:
         run: pnpm build
       - name: Verify package
         run: pnpm verify-package
+      # Re-run the runtime smokes here so a tag push that bypasses the
+      # path-filtered typescript-sdk workflow still proves the published
+      # artifact works under each target runtime.
+      - name: Smoke test (Node CJS)
+        run: node examples/runtime-smoke.cjs
+      - name: Smoke test (Node ESM)
+        run: node --import tsx examples/runtime-smoke.ts
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+      - name: Smoke test (Bun)
+        run: bun examples/runtime-smoke.ts
+      - name: Set up Deno
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2.0.4
+        with:
+          deno-version: v2.7.14
+      - name: Smoke test (Deno)
+        run: deno run --allow-net --allow-env --allow-read examples/runtime-smoke.ts
       - name: Publish to npm
         # pnpm 11 publishes with OIDC trusted publishing and provenance natively.
         run: pnpm publish --provenance --access public --no-git-checks

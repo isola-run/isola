@@ -80,6 +80,8 @@ export class Filesystem {
    * {@link UploadBody}).
    * @param opts - File options (e.g. `container` for multi-container
    * sandboxes).
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
    */
   async write(path: string, data: UploadBody, opts: FileOptions = {}, req: RequestOptions = {}): Promise<void> {
     const { body, bodyKind } = classify(data);
@@ -111,6 +113,9 @@ export class Filesystem {
    * sandboxes).
    * @returns File contents as bytes. Decode with `TextDecoder` for
    * text.
+   * @throws {NotFoundError} If the file does not exist.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
    */
   async read(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<Uint8Array> {
     const params: Record<string, string> = { path };

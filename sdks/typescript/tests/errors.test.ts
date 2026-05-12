@@ -60,7 +60,6 @@ describe("error class names", () => {
   });
 
   it("APIError preserves cause when provided", () => {
-    // Covers errors.ts:46 — the ternary's truthy branch passing { cause }.
     const inner = new Error("inner");
     const e = new APIError({ statusCode: 500, message: "boom", cause: inner });
     expect(e.cause).toBe(inner);

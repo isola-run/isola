@@ -73,8 +73,15 @@ function optionalStringRecord(v: unknown): Record<string, string> | undefined {
   return out;
 }
 
+// RFC 3339 / ISO 8601 with required Z or numeric offset. `new Date` is more
+// permissive (e.g. "03/15/2025") and engine-dependent; refuse anything that
+// isn't a strict ISO 8601 timestamp so SDKs parse the gateway's responses
+// identically regardless of host JS engine.
+const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/;
+
 function requiredDate(v: unknown): Date {
   if (typeof v !== "string") throw new TypeError("expected timestamp string");
+  if (!ISO_8601.test(v)) throw new TypeError("invalid timestamp");
   const d = new Date(v);
   if (Number.isNaN(d.valueOf())) throw new TypeError("invalid timestamp");
   return d;
@@ -83,7 +90,7 @@ function requiredDate(v: unknown): Date {
 // Drops `undefined` AND `null` properties so outgoing JSON matches Python's
 // `model_dump(by_alias=True, exclude_none=True)`. Empty submodels are
 // preserved to match SnapshotRootfs() round-tripping as `{}`.
-function dropUndefined<T extends Record<string, unknown>>(obj: T): Wire {
+function dropNullish<T extends Record<string, unknown>>(obj: T): Wire {
   const out: Wire = {};
   for (const [k, v] of Object.entries(obj)) {
     if (v != null) out[k] = v;
@@ -175,7 +182,7 @@ export const Network = {
     return out;
   },
   toWire(n: Network): Wire {
-    return dropUndefined(n as Record<string, unknown>);
+    return dropNullish(n as Record<string, unknown>);
   },
 };
 
@@ -204,7 +211,7 @@ export const ResourceList = {
     return out;
   },
   toWire(r: ResourceList): Wire {
-    return dropUndefined(r as Record<string, unknown>);
+    return dropNullish(r as Record<string, unknown>);
   },
 };
 
@@ -371,7 +378,7 @@ export const SnapshotRootfs = {
     return out;
   },
   toWire(s: SnapshotRootfs): Wire {
-    return dropUndefined(s as Record<string, unknown>);
+    return dropNullish(s as Record<string, unknown>);
   },
 };
 
@@ -468,9 +475,8 @@ export interface TerminationPolicy {
 export const TerminationPolicy = {
   fromWire(json: unknown): TerminationPolicy {
     const o = record(json);
-    // Both enum values in api-gateway.yaml:567-573 are valid. The gateway's
-    // default is "Delete", so any sandbox created without an explicit
-    // terminationPolicy comes back with {type: "Delete"}.
+    // "Delete" is the gateway's default; a sandbox created without an
+    // explicit terminationPolicy comes back as {type: "Delete"}.
     if (o.type !== "SnapshotRootfs" && o.type !== "Delete") {
       throw new TypeError(`invalid TerminationPolicy.type: ${String(o.type)}`);
     }
@@ -479,8 +485,8 @@ export const TerminationPolicy = {
     return out;
   },
   // Wraps a user-supplied SnapshotRootfs into the discriminated wire shape.
-  // CreateSandboxPayload.toWire delegates here so the wrapping rule lives in
-  // exactly one place. Mirrors Python _sandbox.py:303-309.
+  // CreateSandboxPayload.toWire delegates here so the wrapping rule lives
+  // in exactly one place.
   toWire(input: SnapshotRootfs): Wire {
     return { type: "SnapshotRootfs", snapshotRootfs: SnapshotRootfs.toWire(input) };
   },

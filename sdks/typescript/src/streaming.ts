@@ -18,11 +18,9 @@
 // Reconnect counter resets only on successful **data** event, not on
 // heartbeat-only events.
 //
-// HTTP error path mirrors Python _streaming.py:113-114: errorFromHttp(status,
-// null, body) intentionally omits method/path (deliberate divergence from the
-// non-streaming error path). isTransient() classifies APIError; non-transient
-// errors raise immediately (no reconnect). Cause chained on reconnect-exhausted
-// error.
+// HTTP error path: errorFromHttp omits method/path here (deliberately
+// different from the non-streaming wrap, to match Python's streaming path).
+// Non-transient APIError raises without reconnect.
 
 import { APIConnectionError, APIError, connectionErrorFromError, errorFromHttp, isTransient } from "./errors";
 import type { HttpClient } from "./internal/http";
@@ -106,7 +104,10 @@ export class StreamReader implements AsyncIterable<string> {
     let reconnects = 0;
     while (true) {
       try {
-        const headers: Record<string, string> = {};
+        const headers: Record<string, string> = {
+          accept: "text/event-stream",
+          "cache-control": "no-store",
+        };
         if (this._lastEventId !== null) {
           headers["Last-Event-ID"] = this._lastEventId;
         }
@@ -125,8 +126,24 @@ export class StreamReader implements AsyncIterable<string> {
 
         if (!response.body) return;
 
+        // Reject a 2xx body that isn't text/event-stream so a misrouted
+        // request (captive portal, proxy login page, gateway misconfig)
+        // surfaces loudly instead of yielding silent garbage. Mirrors
+        // httpx-sse's _check_content_type.
+        const contentType = response.headers.get("content-type") ?? "";
+        if (!contentType.toLowerCase().includes("text/event-stream")) {
+          void response.body.cancel().catch(() => {});
+          throw new APIError({
+            statusCode: response.status,
+            message: `expected content-type text/event-stream, got "${contentType}"`,
+          });
+        }
+
         for await (const event of parseSSE(response.body, signal)) {
-          if (event.id !== null) this._lastEventId = event.id;
+          // WHATWG allows an empty id (resets last-event-id buffer), but Python
+          // ignores empty ids; match Python so reconnects don't send an empty
+          // Last-Event-ID header.
+          if (event.id !== null && event.id !== "") this._lastEventId = event.id;
           if (event.retryMs !== undefined) this._retryDelayMs = event.retryMs;
           if (event.data) {
             reconnects = 0;
@@ -136,10 +153,10 @@ export class StreamReader implements AsyncIterable<string> {
         return;
       } catch (err) {
         if (signal?.aborted) throw signal.reason ?? err;
-        // Retry only network-shaped or SDK transport/server errors. Anything
-        // else (TypeError from a parser bug, etc.) is a programming error and
-        // must propagate immediately rather than be hidden behind 5 reconnect
-        // attempts and a misleading "failed to reach Isola API" wrap.
+        // Native fetch raises TypeError on transport failures (network, DNS,
+        // TLS), so TypeError joins APIConnectionError and transient APIError
+        // in the retry set. Other thrown types (e.g. RangeError from a custom
+        // fetch) are programming bugs and propagate immediately.
         if (!(err instanceof APIError) && !(err instanceof APIConnectionError) && !(err instanceof TypeError)) {
           throw err;
         }

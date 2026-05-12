@@ -35,8 +35,6 @@ function bytesResponse(body: Uint8Array, init: ResponseInit = {}): Response {
   });
 }
 
-// --- Round-trip: write + read with container option ---
-
 describe("Filesystem.write/read", () => {
   it("write(Uint8Array) with container then read", async () => {
     const stub = makeStubFetch(
@@ -186,8 +184,6 @@ describe("Filesystem.write/read", () => {
   });
 });
 
-// --- Error handling ---
-
 describe("Filesystem error handling", () => {
   it("read() raises NotFoundError on 404", async () => {
     const stub = makeStubFetch(
@@ -260,8 +256,6 @@ describe("Filesystem error handling", () => {
   });
 });
 
-// --- Signal propagation: per-call abort ---
-
 describe("Filesystem signal propagation", () => {
   it("write() forwards req.signal to the underlying request", async () => {
     const ctrl = new AbortController();
@@ -276,8 +270,7 @@ describe("Filesystem signal propagation", () => {
       { signal: ctrl.signal },
     );
 
-    // The write call must have received an AbortSignal (filesystem.ts:64
-    // — the conditional signal-spread branch).
+    // The write call must have received an AbortSignal.
     expect(stub.calls[1]?.signal).toBeDefined();
   });
 
@@ -289,7 +282,6 @@ describe("Filesystem signal propagation", () => {
 
     await sandbox.filesystem.read("/workspace/file.txt", {}, { signal: ctrl.signal });
 
-    // Covers filesystem.ts:76.
     expect(stub.calls[1]?.signal).toBeDefined();
   });
 });

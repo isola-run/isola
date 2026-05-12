@@ -73,13 +73,14 @@ export async function* parseSSE(body: ReadableStream<Uint8Array>, signal?: Abort
 
   // Abort listener calls reader.cancel() so a user abort during
   // `await reader.read()` actually unblocks the read instead of waiting
-  // for the next chunk.
+  // for the next chunk. The cancel itself only rejects with the same
+  // reason we passed in; swallowing exactly that.
   const onAbort = (): void => {
-    void reader.cancel(signal?.reason).catch(() => {});
+    reader.cancel(signal?.reason).catch(noop);
   };
   if (signal?.aborted) {
     reader.releaseLock();
-    void body.cancel().catch(() => {});
+    body.cancel().catch(noop);
     throw signal.reason;
   }
   signal?.addEventListener("abort", onAbort, { once: true });
@@ -118,11 +119,20 @@ export async function* parseSSE(body: ReadableStream<Uint8Array>, signal?: Abort
     }
   } finally {
     signal?.removeEventListener("abort", onAbort);
+    // releaseLock throws TypeError if a read is pending. Don't rethrow
+    // anything from finally — biome's noUnsafeFinally is correct that doing
+    // so would overwrite the try/catch's control flow. Cleanup is
+    // best-effort here.
     try {
       reader.releaseLock();
     } catch {
-      // releaseLock throws if a read is pending; ignore.
+      // expected: TypeError when a read is in flight.
     }
-    void body.cancel().catch(() => {});
+    body.cancel().catch(noop);
   }
+}
+
+function noop(): void {
+  // Intentional no-op for fire-and-forget cleanup cancels whose
+  // rejection reason is already covered by the surrounding control flow.
 }

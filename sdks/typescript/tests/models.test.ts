@@ -438,8 +438,7 @@ describe("Container.fromWire validation", () => {
   });
 
   it("decodes env record with valid string values", () => {
-    // Covers optionalStringRecord's happy path: the loop body that
-    // populates the output object (models.ts:71).
+    // optionalStringRecord happy path: loop body populates the output object.
     const c = Container.fromWire({
       image: "alpine",
       env: { FOO: "1", BAR: "two" },
@@ -611,10 +610,10 @@ describe("RootfsSnapshotData.fromWire validation", () => {
     expect(data.containerName).toBe("worker");
   });
 
-  it("rejects non-string containerName (B6 strict-decoder)", () => {
-    // Defends B6: the decoder must reject `containerName: <number>` rather
-    // than coerce or accept. Public-API consumers depend on the typed
-    // containerName field being string | null.
+  it("rejects non-string containerName", () => {
+    // The decoder must reject `containerName: <number>` rather than coerce
+    // or accept. Public-API consumers depend on the typed containerName
+    // field being string | null.
     expect(() => RootfsSnapshotData.fromWire({ ...valid, containerName: 42 })).toThrow(TypeError);
   });
 

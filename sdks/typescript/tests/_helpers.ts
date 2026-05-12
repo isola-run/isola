@@ -250,7 +250,7 @@ export function expectRejection<T>(promise: Promise<T>): () => Promise<unknown> 
 
 // Convenience: settle a promise into an ok-or-err shape so tests can drive
 // fake timers between the promise call and the awaited result without leaving
-// an unhandled rejection. Mirrors the pattern in rootfs-snapshot.test.ts:215.
+// an unhandled rejection.
 export function settle<T>(promise: Promise<T>): Promise<{ ok: true; v: T } | { ok: false; e: unknown }> {
   return promise.then(
     (v) => ({ ok: true as const, v }),

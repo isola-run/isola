@@ -405,10 +405,67 @@ describe("StreamReader: defensive branches", () => {
     expect(stub.calls).toHaveLength(1);
   });
 
+  it("rejects 2xx body without text/event-stream content-type", async () => {
+    // A captive portal / proxy login page / gateway misconfig returning HTML
+    // with 200 would otherwise be parsed as SSE garbage. Match httpx-sse's
+    // _check_content_type and raise loudly.
+    const stub = makeStubFetch(
+      new Response("<html>...</html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+    const reader = new StreamReader(makeClient(stub), "/path");
+    const settled = expectRejection(reader.read());
+    await vi.runAllTimersAsync();
+    const caught = await settled();
+    expect(caught).toBeInstanceOf(APIError);
+    expect((caught as APIError).message).toContain("text/event-stream");
+    expect((caught as APIError).message).toContain("text/html");
+    // Single attempt: APIError (200, non-transient) is not retried.
+    expect(stub.calls).toHaveLength(1);
+  });
+
+  it("accepts content-type with parameters (e.g. charset)", async () => {
+    const stub = makeStubFetch(
+      new Response(sseResponseBody([{ data: "ok", id: 1 }]), {
+        status: 200,
+        headers: { "content-type": "text/event-stream; charset=utf-8" },
+      }),
+    );
+    const reader = new StreamReader(makeClient(stub), "/path");
+    expect(await readAll(reader)).toBe("ok");
+  });
+
+  it("sends Accept: text/event-stream and Cache-Control: no-store on stream requests", async () => {
+    const stub = makeStubFetch(sseResponse(sseResponseBody([{ data: "x", id: 1 }])));
+    const reader = new StreamReader(makeClient(stub), "/path");
+    await readAll(reader);
+    const headers = stub.calls[0]?.headers;
+    expect(headers?.get("accept")).toBe("text/event-stream");
+    expect(headers?.get("cache-control")).toBe("no-store");
+  });
+
+  it("ignores empty SSE id so Last-Event-ID isn't sent with empty value on reconnect", async () => {
+    // WHATWG allows empty id (resets buffer), but Python httpx-sse path
+    // ignores empty ids. Match Python so an emitted `id:` with empty value
+    // doesn't send `Last-Event-ID: ` on the reconnect attempt.
+    const stub = makeStubFetch(
+      sseRaiseAfter("id:\ndata: ab\n\n", new TypeError("drop")),
+      sseResponse(sseResponseBody([{ data: "cd", id: 4 }])),
+    );
+    const reader = new StreamReader(makeClient(stub), "/path");
+    expect(await readAll(reader)).toBe("abcd");
+    expect(stub.calls).toHaveLength(2);
+    // No Last-Event-ID header on reconnect (empty id was ignored).
+    const reconnectHeaders = stub.calls[1]?.headers;
+    expect(reconnectHeaders?.has("Last-Event-ID")).toBe(false);
+  });
+
   it("captures retry: from a server event and uses it on the next reconnect delay", async () => {
     // Drive: first attempt yields a data event with retry: 2000 then drops.
     // Second attempt succeeds. The reader's internal _retryDelayMs gets
-    // overwritten via streaming.ts:95 on the first event.
+    // overwritten by the SSE retry: field on the first event.
     const stub = makeStubFetch(
       sseRaiseAfter("data: ab\nid: 2\nretry: 2000\n\n", new TypeError("drop")),
       sseResponse(sseResponseBody([{ data: "cd", id: 4 }])),
