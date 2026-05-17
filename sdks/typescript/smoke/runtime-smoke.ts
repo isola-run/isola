@@ -1,7 +1,11 @@
-// Multi-runtime smoke test consumed by Bun and Deno CI matrix.
+// Multi-runtime smoke test consumed by the Bun, Deno, and Node CI smoke jobs.
 //
 // Imports the built SDK and exercises constructor + a no-network code path.
 // Does not require a live Isola API gateway.
+//
+// Lives in smoke/ -- outside the tsconfig `include` -- so `tsc` does not
+// typecheck it: it imports built ./dist, which only exists post-build.
+// Deno's CI run (`deno run`) typechecks it against the real build.
 
 import { APIError, BadRequestError, Isola, IsolaError, NotFoundError, VERSION } from "../dist/index.js";
 

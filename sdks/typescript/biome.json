@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**", "tests/**", "examples/**"]
+    "includes": ["src/**", "tests/**", "examples/**", "smoke/**"]
   },
   "formatter": {
     "enabled": true,
@@ -50,7 +50,7 @@
   },
   "overrides": [
     {
-      "includes": ["examples/**"],
+      "includes": ["examples/**", "smoke/**"],
       "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
     }
   ]
