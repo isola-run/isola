@@ -24,6 +24,7 @@ Install these before running the setup script:
 - [Helm](https://helm.sh/docs/intro/install/)
 - [Tilt](https://docs.tilt.dev/install.html)
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (for the Python SDK)
+- [Node.js](https://nodejs.org/) 22+ and [pnpm](https://pnpm.io/installation) (for the TypeScript SDK)
 - [golangci-lint](https://golangci-lint.run/welcome/install/) (for linting and formatting)
 - [setup-envtest](https://pkg.go.dev/sigs.k8s.io/controller-runtime/tools/setup-envtest) (for unit tests)
 
@@ -60,7 +61,7 @@ kind delete cluster --name isola-dev
 2. Make your changes.
 3. Run checks and tests locally:
    ```bash
-   make fix-all      # auto-fix formatting (Go + Python)
+   make fix-all      # auto-fix formatting (Go + Python + TypeScript)
    make check-all    # all lints and checks
    make test          # unit tests
    ```
@@ -100,6 +101,17 @@ make sdk-python-lint       # check
 make sdk-python-typecheck  # type checking
 ```
 
+### TypeScript SDK
+
+The TypeScript SDK is in `sdks/typescript/`, managed with pnpm. biome handles
+both linting and formatting:
+
+```bash
+make sdk-typescript-lint       # check (biome)
+make sdk-typescript-lint-fix   # check and auto-fix, including formatting
+make sdk-typescript-typecheck  # type checking
+```
+
 ## Testing
 
 ### Unit tests
@@ -115,6 +127,12 @@ make test-sidecar                  # sandbox sidecar tests
 
 ```bash
 make test-sdk-python
+```
+
+### TypeScript SDK tests
+
+```bash
+make test-sdk-typescript
 ```
 
 ### E2E tests

@@ -21,8 +21,11 @@ Create sandboxes from any OCI image, execute commands, stream output, read and w
 
 These examples assume a running Isola cluster. See [Deployment](#deployment) for production setup, or run `hack/setup.sh` to get a local development cluster with Kind.
 
+Install the SDK for your language:
+
 ```bash
-pip install isola-run   # requires Python 3.10+
+pip install isola-run        # Python 3.10+
+npm install @isola-run/sdk   # Node 22+
 ```
 
 Create a sandbox, run a command, and read files:
@@ -41,6 +44,25 @@ with Isola(url="http://localhost:8080") as client:  # or set ISOLA_URL env var
     print(data.decode())    # "Hello, World!"
 
     sandbox.delete()
+```
+
+The same workflow in TypeScript:
+
+```ts
+import { Isola } from "@isola-run/sdk";
+
+await using client = new Isola({ url: "http://localhost:8080" }); // or set ISOLA_URL env var
+
+const sandbox = await client.sandboxes.create({ image: "python:3.12-slim" });
+
+const result = await sandbox.commands.run(["python3", "-c", "print('hello from the sandbox')"]);
+console.log(result.stdout); // "hello from the sandbox\n"
+
+await sandbox.filesystem.write("/tmp/hello.txt", "Hello, World!");
+const data = await sandbox.filesystem.read("/tmp/hello.txt");
+console.log(new TextDecoder().decode(data)); // "Hello, World!"
+
+await sandbox.delete();
 ```
 
 Snapshot the filesystem and restore it in new sandboxes. Pre-warm an environment once and reuse it, or snapshot a working session and pick it up later:
@@ -67,7 +89,7 @@ with Isola(url="http://localhost:8080") as client:
     sandbox.delete()
 ```
 
-See the [Python SDK documentation](sdks/python/README.md) for the full API reference and the [OpenAPI spec](api/openapi/api-gateway.yaml) for the REST API.
+See the [Python SDK](sdks/python/README.md) and [TypeScript SDK](sdks/typescript/README.md) documentation for the full API reference, and the [OpenAPI spec](api/openapi/api-gateway.yaml) for the REST API.
 
 ## Why Isola?
 
@@ -85,7 +107,7 @@ See the [Python SDK documentation](sdks/python/README.md) for the full API refer
 
 - **Configurable network isolation.** Sandboxes have no network access by default. Enable internet egress or restrict traffic to specific CIDRs, per sandbox.
 
-- **Language SDKs.** Python SDK with sync and async clients. Any language can use the [REST API](api/openapi/api-gateway.yaml) directly. TypeScript SDK is on the roadmap.
+- **Language SDKs.** Python SDK with sync and async clients, and a TypeScript SDK for Node, Bun, Deno, and edge runtimes. Any language can use the [REST API](api/openapi/api-gateway.yaml) directly.
 
 
 ## What Isola is not
@@ -314,6 +336,7 @@ Credentials can be provided via workload identity (recommended), a pre-existing 
 | Resource | Description |
 |----------|-------------|
 | [Python SDK](sdks/python/README.md) | Full SDK reference: sync/async clients, sandbox options, commands, files, snapshots, error handling |
+| [TypeScript SDK](sdks/typescript/README.md) | Full SDK reference for Node, Bun, Deno, and edge runtimes: sandboxes, commands, files, snapshots, streaming, error handling |
 | [API spec](api/openapi/api-gateway.yaml) | OpenAPI specification for the REST API |
 | [Helm values](charts/isola/values.yaml) | All configuration options for the Isola Helm chart |
 | [isola.run](https://isola.run) | Project website |

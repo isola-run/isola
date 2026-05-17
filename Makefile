@@ -109,10 +109,10 @@ check-manifests: manifests ## Verify generated manifests are up-to-date
 	fi
 
 .PHONY: check-all
-check-all: vet lint vulncheck check-openapi check-manifests sdk-python-check-all ## Run all checks (read-only, CI-safe)
+check-all: vet lint vulncheck check-openapi check-manifests sdk-python-check-all sdk-typescript-check-all ## Run all checks (read-only, CI-safe)
 
 .PHONY: fix-all
-fix-all: fmt lint-fix sdk-python-fix-all ## Fix all auto-fixable issues
+fix-all: fmt lint-fix sdk-python-fix-all sdk-typescript-fix-all ## Fix all auto-fixable issues
 
 ##@ Testing
 
@@ -185,6 +185,47 @@ test-sdk-python: ## Run Python SDK tests
 .PHONY: test-sdk-python-verbose
 test-sdk-python-verbose: ## Run Python SDK tests with verbose output
 	cd sdks/python && uv run --frozen --extra dev pytest -v
+
+##@ TypeScript SDK
+
+# Unlike `uv run`, pnpm has no implicit per-invocation environment bootstrap, so
+# each target installs from the frozen lockfile first. With node_modules already
+# present this is a fast no-op, mirroring how `uv run --frozen` re-verifies the
+# Python venv. biome is both linter and formatter, so there is no separate fmt
+# target (the Python SDK needs one because ruff splits format and check).
+
+.PHONY: sdk-typescript-sync
+sdk-typescript-sync: ## Sync TypeScript SDK dependencies from lockfile
+	cd sdks/typescript && pnpm install --frozen-lockfile
+
+.PHONY: sdk-typescript-lint
+sdk-typescript-lint: ## Lint TypeScript SDK (biome)
+	cd sdks/typescript && pnpm install --frozen-lockfile && pnpm lint
+
+.PHONY: sdk-typescript-lint-fix
+sdk-typescript-lint-fix: ## Lint TypeScript SDK with auto-fix (biome, includes formatting)
+	cd sdks/typescript && pnpm install --frozen-lockfile && pnpm lint:fix
+
+.PHONY: sdk-typescript-typecheck
+sdk-typescript-typecheck: ## Type-check TypeScript SDK
+	cd sdks/typescript && pnpm install --frozen-lockfile && pnpm typecheck
+
+.PHONY: sdk-typescript-check-all
+sdk-typescript-check-all: ## Run all TypeScript SDK checks (no tests)
+	$(MAKE) sdk-typescript-lint
+	$(MAKE) sdk-typescript-typecheck
+
+.PHONY: sdk-typescript-fix-all
+sdk-typescript-fix-all: ## Fix all auto-fixable TypeScript SDK issues
+	$(MAKE) sdk-typescript-lint-fix
+
+.PHONY: test-sdk-typescript
+test-sdk-typescript: ## Run TypeScript SDK tests
+	cd sdks/typescript && pnpm install --frozen-lockfile && pnpm test
+
+.PHONY: test-sdk-typescript-verbose
+test-sdk-typescript-verbose: ## Run TypeScript SDK tests with verbose output
+	cd sdks/typescript && pnpm install --frozen-lockfile && pnpm test --reporter verbose
 
 ##@ E2E Testing
 

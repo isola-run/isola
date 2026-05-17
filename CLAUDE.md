@@ -5,7 +5,7 @@
 Run `make help` for all available targets. Key commands:
 
 ```bash
-make check-all                     # All checks, no tests (Go + Python SDK)
+make check-all                     # All checks, no tests (Go + Python + TypeScript SDKs)
 make fix-all                       # Auto-fix formatting and lint
 make test                          # Unit tests with coverage
 make test-operator FOCUS="Name"    # Focused operator test
@@ -50,7 +50,7 @@ After modifying handler input/output types or route registrations, run `make ope
 
 **Compile-time type assertions** in gateway command/filesystem handlers (`_ = sidecarapi.CreateCommandRequest(CreateCommandRequest{})`) enforce structural compatibility with sidecar-api contract types. Do not remove these.
 
-**Long-poll timeout chain** -- values MUST satisfy: SDK (20s) < gateway max (25s) < sidecar max (30s) < gateway WriteTimeout (45s) < sidecar WriteTimeout (75s). Changing any value without adjusting the others causes cascading failures. Locations: SDK `_commands.py`, gateway `command.go`, sidecar `command.go`, gateway `main.go`, sidecar `main.go`.
+**Long-poll timeout chain** -- values MUST satisfy: SDK (20s) < gateway max (25s) < sidecar max (30s) < gateway WriteTimeout (45s) < sidecar WriteTimeout (75s). Changing any value without adjusting the others causes cascading failures. Locations: Python SDK `_commands.py`, TypeScript SDK `commands.ts`, gateway `command.go`, sidecar `command.go`, gateway `main.go`, sidecar `main.go`.
 
 **Operator metrics** use `promauto.With(metrics.Registry)` in `internal/operator/controller/metrics.go`. New metrics must use this registry, not the default.
 
@@ -65,6 +65,8 @@ After modifying handler input/output types or route registrations, run `make ope
 **Two-client pattern in operator tests:** `suite_test.go` uses `k8sClient` (direct, no cache delay) for test writes/assertions and `k8sCache` (cached, for field index queries). Use the direct client for new test assertions.
 
 **Python SDK:** `sdks/python/`, managed with uv. `Network` has manual `Field(alias=...)` overrides for acronyms (`allowClusterDNS`, `allowedEgressCIDRs`) that `to_camel` cannot handle -- new fields with acronyms need the same treatment. For SDK polling on eventually consistent resources, finite deadlines must still be enforced on `NotFoundError` branches; otherwise cache lag can turn bounded waits into unbounded ones.
+
+**TypeScript SDK:** `sdks/typescript/`, managed with pnpm. biome is both linter and formatter (one tool, unlike ruff's format/check split, so there is no separate `fmt` make target); vitest runs tests; tsdown produces the dual ESM/CJS build; `tsc --noEmit` type-checks. `vitest.config.ts` enforces coverage thresholds -- new `src/` code without matching tests fails CI, not just the coverage summary. `pnpm verify-package` (attw + publint) validates the dual-format export map; rerun it after changing `package.json` exports or the build config. The eventually-consistent polling deadline rule above applies equally to the TypeScript SDK.
 
 ## Tooling Versions
 
@@ -81,6 +83,10 @@ Tool versions are pinned and must be kept in sync across locations:
 | controller-gen | `hack/setup.sh` | `.github/workflows/codegen.yml` |
 | gVisor | `hack/setup.sh` | `.github/workflows/e2e.yml` |
 | Python | `sdks/python/pyproject.toml` | CI workflows |
+| Node | `sdks/typescript/.nvmrc` | `sdks/typescript/package.json` (`engines`), `typescript-sdk.yml` (test matrix) |
+| pnpm | `sdks/typescript/package.json` (`packageManager`) | `typescript-sdk.yml`, `release.yml` (`pnpm/action-setup`) |
+| Bun | `.github/workflows/typescript-sdk.yml` | `.github/workflows/release.yml` |
+| Deno | `.github/workflows/typescript-sdk.yml` | `.github/workflows/release.yml` |
 
 ## Comment Policy
 
