@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/danielgtaylor/huma/v2 v2.38.0
-	github.com/go-chi/chi/v5 v5.2.5
+	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/httplog/v2 v2.1.1
 	github.com/go-logr/logr v1.4.3
 	github.com/google/uuid v1.6.0
