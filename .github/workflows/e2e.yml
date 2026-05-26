@@ -33,7 +33,7 @@ jobs:
 
       # Build all images in parallel with caching
       - name: Build isola-operator image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
           context: .
           file: cmd/operator/Dockerfile
@@ -43,7 +43,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=operator
 
       - name: Build sandbox-sidecar image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
           context: .
           file: cmd/sandbox-sidecar/Dockerfile
@@ -53,7 +53,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=sidecar
 
       - name: Build isola-snapshot-uploader image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
           context: .
           file: cmd/snapshot-uploader/Dockerfile
@@ -63,7 +63,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=uploader
 
       - name: Build api-gateway image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
           context: .
           file: cmd/api-gateway/Dockerfile
@@ -73,7 +73,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=api
 
       - name: Build snapshot-mounter image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
           context: cmd/snapshot-mounter
           file: cmd/snapshot-mounter/Dockerfile
