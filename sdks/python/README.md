@@ -261,7 +261,7 @@ Other network options:
 Network(
     allow_internet_egress=False,             # block outbound internet traffic (default)
     allowed_egress_cidrs=["104.16.0.0/12"],  # fine-grained CIDR allowlist
-    allow_cluster_dns=False,                 # use the cluster's DNS service
+    allow_cluster_dns=False,                 # disable cluster DNS resolution (default)
     nameservers=["8.8.8.8"],                 # custom DNS nameservers
     allow_ipv6_egress=False,                 # extend egress config to IPv6
 )

@@ -290,9 +290,83 @@ jobs:
           # the same version would otherwise fail the workflow with "File already exists".
           skip-existing: true
 
+  release-npm:
+    name: Release TypeScript SDK
+    needs: [validate, release-chart]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@isola-run/sdk
+    permissions:
+      contents: read
+      id-token: write   # OIDC for npm Trusted Publishing
+    defaults:
+      run:
+        working-directory: sdks/typescript
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up pnpm
+        uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+        with:
+          version: 11.0.9 # keep in sync with package.json packageManager
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: sdks/typescript/.nvmrc
+          registry-url: 'https://registry.npmjs.org'
+          # Cache disabled: a poisoned PR cache could taint the published tarball
+          # (mirrors release-pypi rationale).
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Type check
+        run: pnpm typecheck
+      - name: Test with coverage
+        run: pnpm test:coverage
+      - name: Build
+        run: pnpm build
+      - name: Verify package
+        run: pnpm verify-package
+      # The typescript-sdk workflow only runs on branch pushes/PRs that touch
+      # sdks/typescript/**; it does not run on the release tag push. Re-run the
+      # runtime smokes here so the tagged artifact is still proven on each runtime.
+      - name: Smoke test (Node CJS)
+        run: node smoke/runtime-smoke.cjs
+      - name: Smoke test (Node ESM)
+        run: node --import tsx smoke/runtime-smoke.ts
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+      - name: Smoke test (Bun)
+        run: bun smoke/runtime-smoke.ts
+      - name: Set up Deno
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2.0.4
+        with:
+          deno-version: v2.7.14
+      - name: Smoke test (Deno)
+        run: deno run --allow-net --allow-env --allow-read smoke/runtime-smoke.ts
+      - name: Publish to npm
+        # Publishes via npm OIDC trusted publishing (tokenless). Requires
+        # pnpm >= 11.0.7 (11.0.0-11.0.6 had an OIDC regression); provenance is
+        # generated automatically under OIDC and --provenance keeps it explicit.
+        # NOTE: npm cannot configure a trusted publisher until the package
+        # exists, so the first-ever publish must be bootstrapped out-of-band.
+        # Prereleases publish under the `next` dist-tag so a bare
+        # `npm install @isola-run/sdk` never resolves to an RC.
+        env:
+          IS_PRERELEASE: ${{ needs.validate.outputs.is_prerelease }}
+        run: |
+          DIST_TAG=latest
+          [[ "$IS_PRERELEASE" == "true" ]] && DIST_TAG=next
+          pnpm publish --provenance --access public --no-git-checks --tag "$DIST_TAG"
+
   github-release:
     name: Create GitHub Release
-    needs: [validate, release-pypi]
+    needs: [validate, release-pypi, release-npm]
     runs-on: ubuntu-latest
     permissions:
       contents: write

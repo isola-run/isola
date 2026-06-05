@@ -3,14 +3,30 @@
 # Please see the documentation for all configuration options:
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
-  version: 2
-  updates:
-    - package-ecosystem: "gomod"
-      directory: "/"
-      schedule:
-        interval: "weekly"
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
 
-    - package-ecosystem: "github-actions"
-      directory: "/"
-      schedule:
-        interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "uv"
+    directory: "/sdks/python"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-sdk-deps:
+        patterns: ["*"]
+
+  - package-ecosystem: "npm"
+    directory: "/sdks/typescript"
+    schedule:
+      interval: "weekly"
+    groups:
+      typescript-sdk-deps:
+        patterns: ["*"]
