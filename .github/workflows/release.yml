@@ -355,7 +355,14 @@ jobs:
         # generated automatically under OIDC and --provenance keeps it explicit.
         # NOTE: npm cannot configure a trusted publisher until the package
         # exists, so the first-ever publish must be bootstrapped out-of-band.
-        run: pnpm publish --provenance --access public --no-git-checks
+        # Prereleases publish under the `next` dist-tag so a bare
+        # `npm install @isola-run/sdk` never resolves to an RC.
+        env:
+          IS_PRERELEASE: ${{ needs.validate.outputs.is_prerelease }}
+        run: |
+          DIST_TAG=latest
+          [[ "$IS_PRERELEASE" == "true" ]] && DIST_TAG=next
+          pnpm publish --provenance --access public --no-git-checks --tag "$DIST_TAG"
 
   github-release:
     name: Create GitHub Release
