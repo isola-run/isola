@@ -26,9 +26,6 @@ describe.sequential("e2e: error handling", () => {
   beforeAll(() => {
     client = new Isola({ url: ISOLA_URL });
   });
-  afterAll(async () => {
-    await client.close();
-  });
 
   it("get of nonexistent sandbox raises NotFoundError", async () => {
     await expect(client.sandboxes.get("does-not-exist-12345")).rejects.toThrow(NotFoundError);
@@ -40,7 +37,7 @@ describe.sequential("e2e: error handling", () => {
   }, 30_000);
 
   it("delete of nonexistent sandbox is idempotent (server returns 2xx)", async () => {
-    // Isola's DELETE is idempotent — deleting a missing sandbox does not error.
+    // Isola's DELETE is idempotent, deleting a missing sandbox does not error.
     // Mirrors test_sandbox_lifecycle.py:test_delete_idempotent equivalent behavior.
     await client._api.requestNoContent({
       method: "DELETE",
@@ -109,7 +106,7 @@ describe.sequential("e2e: error handling", () => {
   }, 30_000);
 });
 
-// Skipped: test_invalid_image_sandbox_fails — Python marks this @pytest.mark.skip
+// Skipped: test_invalid_image_sandbox_fails, Python marks this @pytest.mark.skip
 // citing an upstream operator bug (Pod with ImagePullBackOff stays Pending forever).
 // Mirroring that behavior here is not useful until the operator is fixed; see
 // sdks/python/tests/e2e/test_error_handling.py for the rationale.
@@ -123,7 +120,6 @@ describe.sequential("e2e: error handling (with sandbox)", () => {
   });
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("delete is idempotent on a real sandbox (delete twice succeeds)", async () => {

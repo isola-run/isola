@@ -14,13 +14,10 @@
 
 // Mirrors sdks/python/src/isola/_streaming.py:AsyncStreamReader.
 //
-// Single-use SSE iterator with Last-Event-ID resume across reconnects.
-// Reconnect counter resets only on successful **data** event, not on
-// heartbeat-only events.
-//
-// HTTP error path: errorFromHttp omits method/path here (deliberately
-// different from the non-streaming wrap, to match Python's streaming path).
-// Non-transient APIError raises without reconnect.
+// Single-use SSE iterator with Last-Event-ID resume across reconnects. The
+// reconnect budget resets once a data event is delivered. Server keepalives are
+// SSE comment lines that never surface as events (see internal/sse.ts), so they
+// do not reset the budget. A non-transient APIError stops without reconnecting.
 
 import { APIConnectionError, APIError, connectionErrorFromError, errorFromHttp, isTransient } from "./errors";
 import type { HttpClient } from "./internal/http";

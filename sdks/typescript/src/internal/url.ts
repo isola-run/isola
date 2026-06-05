@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// URL helpers. Matches the path construction logic in Python _client.py:285-289
-// and the per-resource path helpers across _sandbox.py / _commands.py /
-// _filesystem.py / _rootfs_snapshot.py.
+// URL helpers. Mirrors the URL normalization and per-resource path helpers in
+// the Python SDK (_client.py and the per-resource modules).
 
 export function normalizeUrl(url: string): string {
   const trimmed = url.trim().replace(/\/+$/, "");

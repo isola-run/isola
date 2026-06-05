@@ -32,7 +32,6 @@ describe.sequential("e2e: streaming", () => {
 
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("streams stdout chunk-by-chunk before exit", async () => {

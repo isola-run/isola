@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Direct tests for the internal/http.ts module helpers (sleep, isReplayableBody)
-// that are not easily exercised via the Isola client surface.
+// Direct tests for the internal/http.ts module helpers (sleep) that are not
+// easily exercised via the Isola client surface.
 
 import { describe, expect, it } from "vitest";
-import { isReplayableBody, sleep } from "../src/internal/http";
+import { sleep } from "../src/internal/http";
 
 describe("sleep abort semantics", () => {
   it("rejects synchronously when the supplied signal is already aborted", async () => {
@@ -44,37 +44,5 @@ describe("sleep abort semantics", () => {
   it("resolves normally when signal is supplied but never fires", async () => {
     const ctrl = new AbortController();
     await expect(sleep(1, ctrl.signal)).resolves.toBeUndefined();
-  });
-});
-
-describe("isReplayableBody classification", () => {
-  it("null and undefined are replayable (no body)", () => {
-    expect(isReplayableBody(null)).toBe(true);
-    expect(isReplayableBody(undefined)).toBe(true);
-  });
-
-  it("string, Uint8Array, ArrayBuffer, Blob, URLSearchParams are replayable", () => {
-    expect(isReplayableBody("hi")).toBe(true);
-    expect(isReplayableBody(new Uint8Array([1, 2, 3]))).toBe(true);
-    expect(isReplayableBody(new ArrayBuffer(4))).toBe(true);
-    expect(isReplayableBody(new Blob(["x"]))).toBe(true);
-    expect(isReplayableBody(new URLSearchParams("a=1"))).toBe(true);
-  });
-
-  it("ReadableStream is NOT replayable", () => {
-    const stream = new ReadableStream<Uint8Array>({
-      start(c) {
-        c.enqueue(new TextEncoder().encode("x"));
-        c.close();
-      },
-    });
-    expect(isReplayableBody(stream)).toBe(false);
-  });
-
-  it("arbitrary objects are NOT replayable", () => {
-    // Defensive: the type system permits BodyInit but at runtime we should
-    // not classify {} as replayable.
-    expect(isReplayableBody({ some: "object" })).toBe(false);
-    expect(isReplayableBody(42)).toBe(false);
   });
 });

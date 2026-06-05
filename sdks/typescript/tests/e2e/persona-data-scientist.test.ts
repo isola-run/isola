@@ -43,7 +43,7 @@ async function clusterHasEgress(client: Isola): Promise<boolean> {
   }
 }
 
-describe.sequential("e2e: persona — data scientist (long-lived sandbox, CSV pipeline)", () => {
+describe.sequential("e2e: persona, data scientist (long-lived sandbox, CSV pipeline)", () => {
   let client: Isola;
   let egress = false;
   const created: string[] = [];
@@ -55,7 +55,6 @@ describe.sequential("e2e: persona — data scientist (long-lived sandbox, CSV pi
 
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   // Pure-stdlib analysis: no pip needed, works on any cluster.
@@ -99,7 +98,7 @@ describe.sequential("e2e: persona — data scientist (long-lived sandbox, CSV pi
 
   // pandas variant: needs egress for pip install. Skip cleanly if the
   // cluster doesn't allow it. Even when egress is available, pip on Kind
-  // can be slow — we give it a generous timeout.
+  // can be slow, we give it a generous timeout.
   it("pandas analysis (pip install): conditional on egress", async (ctx) => {
     if (!egress) {
       ctx.skip();
@@ -116,14 +115,14 @@ describe.sequential("e2e: persona — data scientist (long-lived sandbox, CSV pi
     const csv = `${["x,y", "1,2", "3,4", "5,6"].join("\n")}\n`;
     await running.filesystem.write("/data/xy.csv", csv);
 
-    // Install pandas. May take a while on Kind — pip + Pypi over the
+    // Install pandas. May take a while on Kind, pip + Pypi over the
     // single-node cluster's NAT.
     const install = await running.commands.run(["pip", "install", "--quiet", "--disable-pip-version-check", "pandas"], {
       timeoutSeconds: 240,
     });
     if (install.exitCode !== 0) {
       // pip can flake on test infra; surface a clear message but don't
-      // hard-fail the suite — this is the "soft" requirement variant.
+      // hard-fail the suite, this is the "soft" requirement variant.
       console.warn(
         `[persona-data-scientist] pip install pandas failed (exit ${install.exitCode}): ${install.stderr.slice(0, 500)}`,
       );

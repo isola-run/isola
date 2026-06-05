@@ -49,7 +49,7 @@ Or pass it directly: `new Isola({ url: "http://isola-api-gateway.isola-system.sv
 ```ts
 import { Isola } from "@isola-run/sdk";
 
-await using client = new Isola();
+const client = new Isola();
 
 const sandbox = await client.sandboxes.create({ image: "alpine:3.21" });
 const result = await sandbox.commands.run(["echo", "hello world"]);
@@ -57,8 +57,6 @@ console.log(result.stdout);     // "hello world\n"
 console.log(result.exitCode);   // 0
 await sandbox.delete();
 ```
-
-The `await using` block calls `client[Symbol.asyncDispose]()` automatically when it exits, releasing any in-flight connections. You can also call `await client.close()` instead.
 
 Call `await sandbox.delete()` when you are done with a sandbox. Two alternatives: use `await using sandbox = ...` to delete automatically on exit, or set `timeoutSeconds` on `create()` to let the server delete the sandbox after a fixed duration.
 
@@ -329,7 +327,7 @@ const restored = await client.sandboxes.create({
 ```ts
 import { Isola } from "@isola-run/sdk";
 
-await using client = new Isola();
+const client = new Isola();
 
 // 1. Install a heavy stack once, with internet connectivity.
 {
@@ -463,19 +461,6 @@ try {
 ```
 
 The SDK automatically retries on transient errors (HTTP 502/503/504, transport failures): up to 6 total attempts, fixed 1 s delay between attempts. Per-attempt timeout is governed by `requestTimeoutMs`.
-
-## Conventions
-
-- The SDK is async-only. Use `await` and (optionally) `await using` for
-  automatic cleanup; the latter requires Node 22+ or the TC39 explicit
-  resource management proposal.
-- Argument names are camelCase (`maxWaitMs`, `startupTimeoutSeconds`,
-  `rootfsSnapshotName`).
-- Polling deadlines are in **milliseconds** (`maxWaitMs`), not seconds.
-- `requestTimeoutMs` on the client is a single wall-clock budget per HTTP
-  attempt.
-- `cmd.wait({ timeoutMs })` and `commands.run({ waitTimeoutMs })` bound
-  the client-side wait/read phase and throw `IsolaTimeoutError` on expiry.
 
 ## License
 

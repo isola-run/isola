@@ -31,7 +31,6 @@ describe.sequential("e2e: sandbox status state machine", () => {
   });
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("sandbox with sleep infinity reaches Running", async () => {
@@ -83,7 +82,7 @@ describe.sequential("e2e: sandbox status state machine", () => {
       expect(["Terminating", "Running"]).toContain(current.status);
     } catch (err) {
       if (!(err instanceof NotFoundError)) throw err;
-      // Already gone — acceptable.
+      // Already gone, acceptable.
     }
 
     // The sandbox should eventually disappear.

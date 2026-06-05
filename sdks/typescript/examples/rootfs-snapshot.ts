@@ -3,7 +3,7 @@
 import { Isola } from "../src";
 
 async function main(): Promise<void> {
-  await using client = new Isola();
+  const client = new Isola();
 
   // 1) Create a sandbox and write some state into it.
   const first = await client.sandboxes.create({ image: "alpine:3.21" });

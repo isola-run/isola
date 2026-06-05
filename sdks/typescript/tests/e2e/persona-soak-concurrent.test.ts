@@ -20,7 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Isola, type Sandbox } from "../../src";
 import { ISOLA_URL, safeDelete, waitForRunning } from "./_helpers";
 
-describe.sequential("e2e: persona — soak / concurrent sandbox creation", () => {
+describe.sequential("e2e: persona, soak / concurrent sandbox creation", () => {
   let client: Isola;
   const created: string[] = [];
 
@@ -30,7 +30,6 @@ describe.sequential("e2e: persona — soak / concurrent sandbox creation", () =>
   afterAll(async () => {
     // Best-effort: drain any sandboxes leaked by failing tests.
     await Promise.all(created.map((id) => safeDelete(client, id)));
-    await client.close();
   });
 
   // Single-node Kind cluster: 10 minimal sandboxes is enough to exercise
@@ -53,7 +52,7 @@ describe.sequential("e2e: persona — soak / concurrent sandbox creation", () =>
     // re-check cheap insurance.
     await Promise.all(sandboxes.map((sb) => waitForRunning(client, sb.id)));
 
-    // Run a unique command in each — confirms per-sandbox isolation under
+    // Run a unique command in each, confirms per-sandbox isolation under
     // concurrency (no cross-talk on the streaming pipeline).
     const results = await Promise.all(sandboxes.map((sb, idx) => sb.commands.run(["sh", "-c", `echo soak_${idx}`])));
     for (let i = 0; i < N; i++) {
@@ -69,7 +68,7 @@ describe.sequential("e2e: persona — soak / concurrent sandbox creation", () =>
       expect(listed.has(sb.id)).toBe(true);
     }
 
-    // Concurrent delete — verifies the gateway handles bursts of DELETEs.
+    // Concurrent delete, verifies the gateway handles bursts of DELETEs.
     await Promise.all(sandboxes.map((sb) => sb.delete()));
   }, 300_000);
 });

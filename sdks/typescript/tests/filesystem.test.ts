@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Mirrors sdks/python/tests/test_filesystem.py — same scenarios, adapted to
+// Mirrors sdks/python/tests/test_filesystem.py, same scenarios, adapted to
 // the TypeScript SDK's UploadBody types (Uint8Array, ArrayBuffer, Blob,
 // ReadableStream, string).
 
@@ -205,7 +205,7 @@ describe("Filesystem error handling", () => {
   });
 
   it("read() raises InternalError on 500", async () => {
-    // 500 is NOT transient — single attempt, no retries.
+    // 500 is NOT transient, single attempt, no retries.
     const stub = makeStubFetch(
       jsonResponse(sandboxResponseFixture()),
       jsonResponse({ detail: "internal server error" }, { status: 500 }),

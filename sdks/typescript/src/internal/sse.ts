@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Hand-rolled SSE parser modeled on Cloudflare's parseSSEFrames.
-// Adds id: parsing for Last-Event-ID resume per WHATWG.
-
 export interface SSEEvent {
   id: string | null;
   data: string;
@@ -119,10 +116,9 @@ export async function* parseSSE(body: ReadableStream<Uint8Array>, signal?: Abort
     }
   } finally {
     signal?.removeEventListener("abort", onAbort);
-    // releaseLock throws TypeError if a read is pending. Don't rethrow
-    // anything from finally — biome's noUnsafeFinally is correct that doing
-    // so would overwrite the try/catch's control flow. Cleanup is
-    // best-effort here.
+    // releaseLock throws TypeError if a read is pending. Don't rethrow from
+    // finally (biome's noUnsafeFinally): it would overwrite the try/catch
+    // control flow. Cleanup is best-effort here.
     try {
       reader.releaseLock();
     } catch {

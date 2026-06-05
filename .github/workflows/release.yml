@@ -330,9 +330,9 @@ jobs:
         run: pnpm build
       - name: Verify package
         run: pnpm verify-package
-      # Re-run the runtime smokes here so a tag push that bypasses the
-      # path-filtered typescript-sdk workflow still proves the published
-      # artifact works under each target runtime.
+      # The typescript-sdk workflow only runs on branch pushes/PRs that touch
+      # sdks/typescript/**; it does not run on the release tag push. Re-run the
+      # runtime smokes here so the tagged artifact is still proven on each runtime.
       - name: Smoke test (Node CJS)
         run: node smoke/runtime-smoke.cjs
       - name: Smoke test (Node ESM)
@@ -350,7 +350,11 @@ jobs:
       - name: Smoke test (Deno)
         run: deno run --allow-net --allow-env --allow-read smoke/runtime-smoke.ts
       - name: Publish to npm
-        # pnpm 11 publishes with OIDC trusted publishing and provenance natively.
+        # Publishes via npm OIDC trusted publishing (tokenless). Requires
+        # pnpm >= 11.0.7 (11.0.0-11.0.6 had an OIDC regression); provenance is
+        # generated automatically under OIDC and --provenance keeps it explicit.
+        # NOTE: npm cannot configure a trusted publisher until the package
+        # exists, so the first-ever publish must be bootstrapped out-of-band.
         run: pnpm publish --provenance --access public --no-git-checks
 
   github-release:

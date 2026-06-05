@@ -20,7 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Isola } from "../../src";
 import { ISOLA_URL, safeDelete, waitForRunning } from "./_helpers";
 
-describe.sequential("e2e: multi-container — realistic server+client workflow", () => {
+describe.sequential("e2e: multi-container, realistic server+client workflow", () => {
   let client: Isola;
   const created: string[] = [];
 
@@ -29,7 +29,6 @@ describe.sequential("e2e: multi-container — realistic server+client workflow",
   });
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   // python serves /server-data; alpine client wgets via 127.0.0.1 (shared

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Mirrors sdks/python/tests/test_rootfs_snapshot.py — same scenarios.
+// Mirrors sdks/python/tests/test_rootfs_snapshot.py, same scenarios.
 // Polling tests use fake timers (setTimeout/clearTimeout only) so the SDK's
 // sleep(POLL_INTERVAL_MS) is drained instantly via runAllTimersAsync().
 
@@ -77,7 +77,7 @@ describe("RootfsSnapshots.create + get", () => {
   });
 
   it("create() with only sandboxId omits all optional fields from the wire payload", async () => {
-    // The wire payload must contain only `sandboxId` — the SDK must not
+    // The wire payload must contain only `sandboxId`, the SDK must not
     // serialize undefined snapshotName/containerName/timeoutSeconds/ttl as
     // null or "" on the wire (Python parity: `exclude_none=True`).
     const stub = makeStubFetch(jsonResponse(makeRootfsSnapshotResponse("Succeeded"), { status: 201 }));
@@ -192,7 +192,7 @@ describe("RootfsSnapshots.create polling", () => {
     });
 
     expect(snapshot.status).toBe("Pending");
-    // Only the POST — no GET polls.
+    // Only the POST, no GET polls.
     expect(stub.calls).toHaveLength(1);
   });
 
@@ -306,7 +306,7 @@ describe("RootfsSnapshots.create timeout", () => {
       expect(result.e).toBeInstanceOf(IsolaTimeoutError);
       expect((result.e as IsolaTimeoutError).message).toMatch(/did not reach complete state within 5ms/);
     }
-    // Snapshot timeouts must not auto-DELETE — caller decides cleanup.
+    // Snapshot timeouts must not auto-DELETE, caller decides cleanup.
     expect(stub.calls.filter((c) => c.method === "DELETE")).toHaveLength(0);
   });
 

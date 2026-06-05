@@ -61,13 +61,10 @@ function resolveTimeout(value: number | null | undefined): number | null {
 }
 
 function resolveUrl(url: string | undefined): string {
-  // Matches Python `url or os.environ.get("ISOLA_URL")`: empty string also
-  // falls back to the env var.
-  let candidate = url;
-  if (candidate === undefined || candidate === "") {
-    candidate = typeof process !== "undefined" && process.env ? process.env.ISOLA_URL : undefined;
-  }
-  if (candidate === undefined || candidate === null || candidate === "") {
+  // Mirrors Python `url or os.environ.get("ISOLA_URL")`: an empty string falls
+  // back to the env var too. `process` is absent in some runtimes (browsers).
+  const candidate = url || (typeof process !== "undefined" ? process.env?.ISOLA_URL : undefined);
+  if (!candidate) {
     throw new Error("url must be provided either as argument or via the ISOLA_URL environment variable");
   }
   return normalizeUrl(candidate);
@@ -76,14 +73,11 @@ function resolveUrl(url: string | undefined): string {
 /**
  * Client for the Isola API.
  *
- * The client is async-disposable: use `await using` to close the
- * underlying HTTP connection automatically when the scope exits.
- *
  * @example
  * ```ts
  * import { Isola } from "@isola-run/sdk";
  *
- * await using client = new Isola();
+ * const client = new Isola();
  * await using sandbox = await client.sandboxes.create({
  *   image: "alpine:3.21",
  * });
@@ -99,7 +93,6 @@ export class Isola {
   readonly _api: HttpClient;
   readonly sandboxes: Sandboxes;
   readonly rootfsSnapshots: RootfsSnapshots;
-  private _closed = false;
 
   constructor(options: IsolaOptions = {}) {
     const url = resolveUrl(options.url);
@@ -116,26 +109,5 @@ export class Isola {
   /** The configured base URL of the Isola API gateway. */
   get url(): string {
     return this._api.url;
-  }
-
-  /** @internal exposed for tests. */
-  get isClosed(): boolean {
-    return this._closed;
-  }
-
-  /**
-   * Close the client.
-   *
-   * Called automatically when using the client with `await using`.
-   * The native fetch dispatcher does not need explicit shutdown; this
-   * flips an internal closed flag and exists so callers always have a
-   * symmetric `close()` method.
-   */
-  async close(): Promise<void> {
-    this._closed = true;
-  }
-
-  async [Symbol.asyncDispose](): Promise<void> {
-    await this.close();
   }
 }

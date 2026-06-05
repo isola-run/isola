@@ -21,7 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Isola, type Sandbox } from "../../src";
 import { ISOLA_URL, safeDelete, waitForRunning } from "./_helpers";
 
-describe.sequential("e2e: persona — CI/CD pipeline runner", () => {
+describe.sequential("e2e: persona, CI/CD pipeline runner", () => {
   let client: Isola;
   const created: string[] = [];
 
@@ -30,7 +30,6 @@ describe.sequential("e2e: persona — CI/CD pipeline runner", () => {
   });
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   // A successful pipeline: each step exits 0, the runner reports an

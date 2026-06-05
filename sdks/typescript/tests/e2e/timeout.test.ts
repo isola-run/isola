@@ -34,7 +34,6 @@ describe.sequential("e2e: timeout", () => {
 
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("active deadline: sandbox stops or disappears after timeoutSeconds", async () => {

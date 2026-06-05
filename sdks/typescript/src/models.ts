@@ -25,63 +25,27 @@
 //   TerminationPolicy.toWire (called from CreateSandboxPayload.toWire).
 
 // ---------- Decoder helpers (private) ----------
+//
+// Response decoding trusts the gateway's typed contract: `record` asserts the
+// payload is an object and views it as the expected model, required fields the
+// SDK dereferences are presence-checked, and timestamps are coerced to Date.
+// Optional fields are read straight off the wire without re-validating each
+// one's type, matching how first-party SDKs (openai, anthropic) decode.
 
 type Wire = Record<string, unknown>;
 
-function record(v: unknown): Wire {
+function record<T = Wire>(v: unknown): T {
   if (v === null || typeof v !== "object" || Array.isArray(v)) {
     throw new TypeError("expected object");
   }
-  return v as Wire;
+  return v as T;
 }
 
-function optionalString(v: unknown): string | undefined {
-  if (v == null) return undefined;
-  if (typeof v !== "string") throw new TypeError("expected string");
-  return v;
-}
-
-function optionalNumber(v: unknown): number | undefined {
-  if (v == null) return undefined;
-  if (typeof v !== "number" || !Number.isFinite(v)) throw new TypeError("expected number");
-  return v;
-}
-
-function optionalBoolean(v: unknown): boolean | undefined {
-  if (v == null) return undefined;
-  if (typeof v !== "boolean") throw new TypeError("expected boolean");
-  return v;
-}
-
-function optionalStringArray(v: unknown): string[] | undefined {
-  if (v == null) return undefined;
-  if (!Array.isArray(v)) throw new TypeError("expected array");
-  return v.map((x) => {
-    if (typeof x !== "string") throw new TypeError("expected string");
-    return x;
-  });
-}
-
-function optionalStringRecord(v: unknown): Record<string, string> | undefined {
-  if (v == null) return undefined;
-  const obj = record(v);
-  const out: Record<string, string> = {};
-  for (const [k, value] of Object.entries(obj)) {
-    if (typeof value !== "string") throw new TypeError("expected string value");
-    out[k] = value;
-  }
-  return out;
-}
-
-// RFC 3339 / ISO 8601 with required Z or numeric offset. `new Date` is more
-// permissive (e.g. "03/15/2025") and engine-dependent; refuse anything that
-// isn't a strict ISO 8601 timestamp so SDKs parse the gateway's responses
-// identically regardless of host JS engine.
-const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/;
-
+// `new Date` parses the gateway's RFC 3339 output; the ECMAScript Date Time
+// String Format is parsed identically across engines, so we only reject a
+// non-string or unparseable value.
 function requiredDate(v: unknown): Date {
   if (typeof v !== "string") throw new TypeError("expected timestamp string");
-  if (!ISO_8601.test(v)) throw new TypeError("invalid timestamp");
   const d = new Date(v);
   if (Number.isNaN(d.valueOf())) throw new TypeError("invalid timestamp");
   return d;
@@ -105,24 +69,6 @@ export type SandboxStatus = "Pending" | "Running" | "Terminating" | "Succeeded" 
 
 /** Lifecycle status of a rootfs snapshot. */
 export type RootfsSnapshotStatus = "Pending" | "Running" | "Succeeded" | "Failed";
-
-const SANDBOX_STATUSES: ReadonlySet<string> = new Set(["Pending", "Running", "Terminating", "Succeeded", "Failed"]);
-
-const ROOTFS_SNAPSHOT_STATUSES: ReadonlySet<string> = new Set(["Pending", "Running", "Succeeded", "Failed"]);
-
-function sandboxStatus(v: unknown): SandboxStatus {
-  if (typeof v !== "string" || !SANDBOX_STATUSES.has(v)) {
-    throw new TypeError(`invalid SandboxStatus: ${String(v)}`);
-  }
-  return v as SandboxStatus;
-}
-
-function rootfsSnapshotStatus(v: unknown): RootfsSnapshotStatus {
-  if (typeof v !== "string" || !ROOTFS_SNAPSHOT_STATUSES.has(v)) {
-    throw new TypeError(`invalid RootfsSnapshotStatus: ${String(v)}`);
-  }
-  return v as RootfsSnapshotStatus;
-}
 
 /**
  * Network configuration for a sandbox.
@@ -167,18 +113,13 @@ export interface Network {
 /** @internal */
 export const Network = {
   fromWire(json: unknown): Network {
-    const o = record(json);
+    const o = record<Network>(json);
     const out: Network = {};
-    const allowInternetEgress = optionalBoolean(o.allowInternetEgress);
-    if (allowInternetEgress !== undefined) out.allowInternetEgress = allowInternetEgress;
-    const allowedEgressCIDRs = optionalStringArray(o.allowedEgressCIDRs);
-    if (allowedEgressCIDRs !== undefined) out.allowedEgressCIDRs = allowedEgressCIDRs;
-    const allowClusterDNS = optionalBoolean(o.allowClusterDNS);
-    if (allowClusterDNS !== undefined) out.allowClusterDNS = allowClusterDNS;
-    const nameservers = optionalStringArray(o.nameservers);
-    if (nameservers !== undefined) out.nameservers = nameservers;
-    const allowIPv6Egress = optionalBoolean(o.allowIPv6Egress);
-    if (allowIPv6Egress !== undefined) out.allowIPv6Egress = allowIPv6Egress;
+    if (o.allowInternetEgress != null) out.allowInternetEgress = o.allowInternetEgress;
+    if (o.allowedEgressCIDRs != null) out.allowedEgressCIDRs = o.allowedEgressCIDRs;
+    if (o.allowClusterDNS != null) out.allowClusterDNS = o.allowClusterDNS;
+    if (o.nameservers != null) out.nameservers = o.nameservers;
+    if (o.allowIPv6Egress != null) out.allowIPv6Egress = o.allowIPv6Egress;
     return out;
   },
   toWire(n: Network): Wire {
@@ -200,14 +141,11 @@ export interface ResourceList {
 /** @internal */
 export const ResourceList = {
   fromWire(json: unknown): ResourceList {
-    const o = record(json);
+    const o = record<ResourceList>(json);
     const out: ResourceList = {};
-    const cpu = optionalString(o.cpu);
-    if (cpu !== undefined) out.cpu = cpu;
-    const memory = optionalString(o.memory);
-    if (memory !== undefined) out.memory = memory;
-    const ephemeralStorage = optionalString(o.ephemeralStorage);
-    if (ephemeralStorage !== undefined) out.ephemeralStorage = ephemeralStorage;
+    if (o.cpu != null) out.cpu = o.cpu;
+    if (o.memory != null) out.memory = o.memory;
+    if (o.ephemeralStorage != null) out.ephemeralStorage = o.ephemeralStorage;
     return out;
   },
   toWire(r: ResourceList): Wire {
@@ -278,17 +216,13 @@ export interface Container {
 /** @internal */
 export const Container = {
   fromWire(json: unknown): Container {
-    const o = record(json);
+    const o = record<Container>(json);
     if (typeof o.image !== "string") throw new TypeError("Container.image is required");
     const out: Container = { image: o.image };
-    const name = optionalString(o.name);
-    if (name !== undefined) out.name = name;
-    const rootfsSnapshotName = optionalString(o.rootfsSnapshotName);
-    if (rootfsSnapshotName !== undefined) out.rootfsSnapshotName = rootfsSnapshotName;
-    const command = optionalStringArray(o.command);
-    if (command !== undefined) out.command = command;
-    const env = optionalStringRecord(o.env);
-    if (env !== undefined) out.env = env;
+    if (o.name != null) out.name = o.name;
+    if (o.rootfsSnapshotName != null) out.rootfsSnapshotName = o.rootfsSnapshotName;
+    if (o.command != null) out.command = o.command;
+    if (o.env != null) out.env = o.env;
     if (o.resources != null) out.resources = ResourceRequirements.fromWire(o.resources);
     return out;
   },
@@ -329,14 +263,12 @@ export interface ContainerInfo {
 /** @internal */
 export const ContainerInfo = {
   fromWire(json: unknown): ContainerInfo {
-    const o = record(json);
+    const o = record<ContainerInfo>(json);
     if (typeof o.name !== "string") throw new TypeError("ContainerInfo.name is required");
     if (typeof o.image !== "string") throw new TypeError("ContainerInfo.image is required");
     const out: ContainerInfo = { name: o.name, image: o.image };
-    const rootfsSnapshotName = optionalString(o.rootfsSnapshotName);
-    if (rootfsSnapshotName !== undefined) out.rootfsSnapshotName = rootfsSnapshotName;
-    const command = optionalStringArray(o.command);
-    if (command !== undefined) out.command = command;
+    if (o.rootfsSnapshotName != null) out.rootfsSnapshotName = o.rootfsSnapshotName;
+    if (o.command != null) out.command = o.command;
     if (o.resources != null) out.resources = ResourceRequirements.fromWire(o.resources);
     return out;
   },
@@ -369,12 +301,10 @@ export interface SnapshotRootfs {
 /** @internal */
 export const SnapshotRootfs = {
   fromWire(json: unknown): SnapshotRootfs {
-    const o = record(json);
+    const o = record<SnapshotRootfs>(json);
     const out: SnapshotRootfs = {};
-    const snapshotName = optionalString(o.snapshotName);
-    if (snapshotName !== undefined) out.snapshotName = snapshotName;
-    const timeoutSeconds = optionalNumber(o.timeoutSeconds);
-    if (timeoutSeconds !== undefined) out.timeoutSeconds = timeoutSeconds;
+    if (o.snapshotName != null) out.snapshotName = o.snapshotName;
+    if (o.timeoutSeconds != null) out.timeoutSeconds = o.timeoutSeconds;
     return out;
   },
   toWire(s: SnapshotRootfs): Wire {
@@ -395,11 +325,11 @@ export interface SandboxSummary {
 /** @internal */
 export const SandboxSummary = {
   fromWire(json: unknown): SandboxSummary {
-    const o = record(json);
+    const o = record<SandboxSummary>(json);
     if (typeof o.id !== "string") throw new TypeError("SandboxSummary.id is required");
     return {
       id: o.id,
-      status: sandboxStatus(o.status),
+      status: o.status,
       creationTimestamp: requiredDate(o.creationTimestamp),
     };
   },
@@ -545,20 +475,19 @@ export interface SandboxData {
 /** @internal */
 export const SandboxData = {
   fromWire(json: unknown): SandboxData {
-    const o = record(json);
+    const o = record<SandboxData>(json);
     if (typeof o.id !== "string") throw new TypeError("SandboxData.id is required");
-    if (typeof o.startupTimeoutSeconds !== "number" || !Number.isFinite(o.startupTimeoutSeconds)) {
+    if (typeof o.startupTimeoutSeconds !== "number") {
       throw new TypeError("SandboxData.startupTimeoutSeconds is required");
     }
     const out: SandboxData = {
       id: o.id,
       podTemplate: PodTemplateInfo.fromWire(o.podTemplate),
-      status: sandboxStatus(o.status),
+      status: o.status,
       creationTimestamp: requiredDate(o.creationTimestamp),
       startupTimeoutSeconds: o.startupTimeoutSeconds,
     };
-    const timeoutSeconds = optionalNumber(o.timeoutSeconds);
-    if (timeoutSeconds !== undefined) out.timeoutSeconds = timeoutSeconds;
+    if (o.timeoutSeconds != null) out.timeoutSeconds = o.timeoutSeconds;
     if (o.network != null) out.network = Network.fromWire(o.network);
     if (o.terminationPolicy != null) out.terminationPolicy = TerminationPolicy.fromWire(o.terminationPolicy);
     return out;
@@ -601,24 +530,22 @@ export interface RootfsSnapshotData {
 /** @internal */
 export const RootfsSnapshotData = {
   fromWire(json: unknown): RootfsSnapshotData {
-    const o = record(json);
+    const o = record<RootfsSnapshotData>(json);
     if (typeof o.id !== "string") throw new TypeError("RootfsSnapshotData.id is required");
     if (typeof o.sandboxId !== "string") throw new TypeError("RootfsSnapshotData.sandboxId is required");
     if (typeof o.snapshotName !== "string") throw new TypeError("RootfsSnapshotData.snapshotName is required");
-    if (typeof o.timeoutSeconds !== "number" || !Number.isFinite(o.timeoutSeconds)) {
-      throw new TypeError("RootfsSnapshotData.timeoutSeconds is required");
-    }
-    if (typeof o.ttlSecondsAfterFinished !== "number" || !Number.isFinite(o.ttlSecondsAfterFinished)) {
+    if (typeof o.timeoutSeconds !== "number") throw new TypeError("RootfsSnapshotData.timeoutSeconds is required");
+    if (typeof o.ttlSecondsAfterFinished !== "number") {
       throw new TypeError("RootfsSnapshotData.ttlSecondsAfterFinished is required");
     }
     return {
       id: o.id,
       sandboxId: o.sandboxId,
       snapshotName: o.snapshotName,
-      containerName: optionalString(o.containerName) ?? null,
+      containerName: o.containerName ?? null,
       timeoutSeconds: o.timeoutSeconds,
       ttlSecondsAfterFinished: o.ttlSecondsAfterFinished,
-      status: rootfsSnapshotStatus(o.status),
+      status: o.status,
       creationTimestamp: requiredDate(o.creationTimestamp),
     };
   },

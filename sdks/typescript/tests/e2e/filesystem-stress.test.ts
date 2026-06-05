@@ -33,7 +33,6 @@ describe.sequential("e2e: filesystem stress (many small files in parallel)", () 
 
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("100 concurrent writes then 100 concurrent reads round-trip with integrity", async () => {

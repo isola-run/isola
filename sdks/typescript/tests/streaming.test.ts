@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Mirrors sdks/python/tests/test_streaming.py functionally — same scenarios,
+// Mirrors sdks/python/tests/test_streaming.py functionally, same scenarios,
 // same assertions where the abstractions line up.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,7 +31,7 @@ function makeClient(stubFetch: ReturnType<typeof makeStubFetch>): HttpClient {
 // equivalent of the Python `_FakeSyncResponse(..., raise_after=...)` path.
 //
 // IMPORTANT: WHATWG Streams discard any queued chunks the moment
-// controller.error() is called. So we cannot enqueue+error in start() — the
+// controller.error() is called. So we cannot enqueue+error in start(), the
 // reader would only see the error. Instead we drive enqueue from pull(),
 // and emit the error only after the buffered chunk has been consumed.
 function sseRaiseAfter(body: string, error: Error): Response {
@@ -258,7 +258,7 @@ describe("StreamReader: reconnection", () => {
   it("counter is NOT reset on a heartbeat-only response (no data event)", async () => {
     // To prove heartbeats do NOT reset the reconnect counter, set up 7
     // heartbeat-and-fail attempts. If heartbeats reset the counter, all 7
-    // would be tried. They aren't — attempt 6 (initial + MAX_RECONNECTS
+    // would be tried. They aren't, attempt 6 (initial + MAX_RECONNECTS
     // retries) raises.
     const dropResponders: Responder[] = [];
     for (let i = 0; i < MAX_RECONNECTS + 2; i++) {
@@ -281,7 +281,7 @@ describe("StreamReader: reconnection", () => {
 
 describe("StreamReader: MAX_RECONNECTS exhaustion", () => {
   it("MAX_RECONNECTS is 5 (6 attempts total)", () => {
-    // Sanity check on the exposed constant — keeps this test pinned to the
+    // Sanity check on the exposed constant, keeps this test pinned to the
     // contract documented in CLAUDE.md / streaming.ts.
     expect(MAX_RECONNECTS).toBe(5);
   });
@@ -309,7 +309,7 @@ describe("StreamReader: MAX_RECONNECTS exhaustion", () => {
     const settled = expectRejection(reader.read());
     await vi.runAllTimersAsync();
     const err = await settled();
-    // Mirrors Python parametrised assertion `pytest.raises(IsolaError)` — the
+    // Mirrors Python parametrised assertion `pytest.raises(IsolaError)`, the
     // last APIError is re-thrown rather than wrapped as APIConnectionError.
     expect(err).toBeInstanceOf(APIError);
     expect(err).toBeInstanceOf(IsolaError);
@@ -338,7 +338,7 @@ describe("StreamReader: HTTP errors", () => {
     await vi.runAllTimersAsync();
     const err = await settled();
     expect(err).toBeInstanceOf(NotFoundError);
-    // Mirrors Python _streaming.py:113-114 — error message has NO method/path
+    // Mirrors Python _streaming.py:113-114, error message has NO method/path
     // prefix because errorFromHttp is called with method/path omitted.
     expect((err as NotFoundError).message).not.toMatch(/GET\s/);
     expect((err as NotFoundError).message).not.toMatch(/\/path:/);
@@ -509,7 +509,7 @@ describe("StreamReader: defensive branches", () => {
         new ReadableStream<Uint8Array>({
           start(controller) {
             controller.enqueue(encoder.encode("data: a\n\n"));
-            // Don't close — wait for cancel via abort.
+            // Don't close, wait for cancel via abort.
           },
         }),
         { status: 200, headers: { "content-type": "text/event-stream" } },

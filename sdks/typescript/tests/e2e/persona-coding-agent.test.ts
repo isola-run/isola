@@ -21,7 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Isola } from "../../src";
 import { ISOLA_URL, safeDelete, waitForRunning } from "./_helpers";
 
-describe.sequential("e2e: persona — AI coding agent (per-task sandbox)", () => {
+describe.sequential("e2e: persona, AI coding agent (per-task sandbox)", () => {
   let client: Isola;
   const created: string[] = [];
 
@@ -30,7 +30,6 @@ describe.sequential("e2e: persona — AI coding agent (per-task sandbox)", () =>
   });
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   // 5 iterations: each spawns a sandbox, writes a small program with a

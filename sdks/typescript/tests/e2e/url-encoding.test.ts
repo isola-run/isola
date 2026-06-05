@@ -30,7 +30,6 @@ describe("query parameter encoding (gateway interop)", () => {
 
   afterAll(async () => {
     if (sandbox) await safeDelete(client, sandbox.id);
-    await client.close();
   });
 
   it("filesystem.write accepts a path containing spaces", async () => {

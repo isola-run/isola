@@ -3,7 +3,7 @@
 import { Isola } from "../src";
 
 async function main(): Promise<void> {
-  await using client = new Isola({ requestTimeoutMs: 30_000 });
+  const client = new Isola({ requestTimeoutMs: 30_000 });
   await using sandbox = await client.sandboxes.create({ image: "alpine:3.21" });
 
   // Per-method cancellation via AbortSignal.

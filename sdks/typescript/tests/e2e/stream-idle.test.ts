@@ -36,7 +36,6 @@ describe.sequential("e2e: stream idle gap", () => {
 
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("stream survives a 15s idle gap", async () => {

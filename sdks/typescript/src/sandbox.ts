@@ -158,7 +158,7 @@ function buildResources(
 }
 
 function buildContainers(opts: CreateSandboxOptions): Container[] {
-  // Decide mode by property presence, then validate the shape — so a JS caller
+  // Decide mode by property presence, then validate the shape, so a JS caller
   // passing `containers: <non-array>` gets a clear error rather than silently
   // dropping the value down the single-container path.
   const raw = opts as unknown as Record<string, unknown>;

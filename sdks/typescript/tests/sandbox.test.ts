@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Mirrors sdks/python/tests/test_sandbox.py — same scenarios, same assertions.
+// Mirrors sdks/python/tests/test_sandbox.py, same scenarios, same assertions.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Isola } from "../src/client";
@@ -89,7 +89,7 @@ describe("create() flat resources mapping", () => {
     // `roundHalfEven` is named generically; these pin the math.
     { cpu: -0.0015, expected: "-2m" }, // -1.5 -> -2 (even)
     { cpu: -0.0035, expected: "-4m" }, // -3.5 -> -4 (even)
-    { cpu: -0.0025, expected: "-2m" }, // -2.5 -> -2 (even — already)
+    { cpu: -0.0025, expected: "-2m" }, // -2.5 -> -2 (even, already)
   ])("CPU shorthand $cpu rounds half-to-even -> $expected", async ({ cpu, expected }) => {
     const stub = makeStubFetch(jsonResponse(sandboxResponseFixture(), { status: 201 }));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
@@ -437,7 +437,7 @@ describe("terminationPolicy: SnapshotRootfs", () => {
   });
 });
 
-describe("polling — wait until Running", () => {
+describe("polling, wait until Running", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   });
@@ -461,7 +461,7 @@ describe("polling — wait until Running", () => {
     expect(stub.calls[2]?.method).toBe("GET");
   });
 
-  it("Terminating is not in TERMINAL_STATUSES — keeps polling, not throwing", async () => {
+  it("Terminating is not in TERMINAL_STATUSES, keeps polling, not throwing", async () => {
     // Terminating is the in-progress termination state; it should NOT be
     // treated as a terminal-success state by waitUntilRunning. A regression
     // that added it to TERMINAL_STATUSES would throw a "terminal state" error
@@ -502,7 +502,7 @@ describe("already terminal at create time", () => {
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
 
     await expect(client.sandboxes.create({ image: "python:3.12" })).rejects.toThrow(/terminal state/);
-    // Only the POST happened — no GET should follow.
+    // Only the POST happened, no GET should follow.
     expect(stub.calls).toHaveLength(1);
     expect(stub.calls[0]?.method).toBe("POST");
   });
@@ -618,7 +618,7 @@ describe("timeout on max wait", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     // performance.now() advances by 2000ms each call so the 5_000ms
-    // deadline is exceeded after a few polls — mirrors Python's fake_monotonic.
+    // deadline is exceeded after a few polls, mirrors Python's fake_monotonic.
     spyMonotonicAdvancingBy(2000);
   });
 
@@ -640,7 +640,7 @@ describe("timeout on max wait", () => {
 
     expect(caught).toBeInstanceOf(IsolaTimeoutError);
     expect((caught as Error).message).toContain("did not reach running state within 5000ms");
-    // The SDK must NOT auto-DELETE on timeout — that's the caller's choice.
+    // The SDK must NOT auto-DELETE on timeout, that's the caller's choice.
     // A regression that added a "best-effort cleanup" would orphan sandboxes
     // belonging to a different caller (think race with `await using`).
     expect(stub.calls.filter((c) => c.method === "DELETE")).toHaveLength(0);

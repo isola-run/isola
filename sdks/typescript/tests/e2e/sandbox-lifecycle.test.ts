@@ -28,7 +28,6 @@ describe.sequential("e2e: sandbox lifecycle", () => {
   });
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("creates a minimal sandbox and reaches Running", async () => {
@@ -107,7 +106,7 @@ describe.sequential("e2e: sandbox lifecycle", () => {
     await waitForRunning(client, sb.id);
     await sb.delete();
     // The Sandbox enters Terminating, then is removed.
-    // We don't wait for full removal — just verify delete returns.
+    // We don't wait for full removal, just verify delete returns.
   }, 90_000);
 
   it("Symbol.asyncDispose triggers delete()", async () => {
@@ -131,7 +130,6 @@ describe.sequential("e2e: sandbox network defaults", () => {
   });
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("preserves Network acronym aliases on round-trip", async () => {
@@ -167,7 +165,6 @@ describe.sequential("e2e: sandbox lifecycle (extended)", () => {
 
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("default (no-command) sandbox stays alive: sleep infinity is injected", async () => {
@@ -234,7 +231,7 @@ describe.sequential("e2e: sandbox lifecycle (extended)", () => {
         timeoutSeconds: 30,
       });
     } catch (err) {
-      // Sandbox may have died mid-write — wait_for_status confirms the terminal state.
+      // Sandbox may have died mid-write, wait_for_status confirms the terminal state.
       if (!(err instanceof IsolaError) && !(err instanceof Error)) throw err;
     }
     await waitForStatus(client, sb.id, "Failed", 60_000);

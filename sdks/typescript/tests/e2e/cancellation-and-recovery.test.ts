@@ -34,7 +34,6 @@ describe.sequential("e2e: cancellation correctness + error recovery", () => {
 
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   // Client-side wait timeout → IsolaTimeoutError; then kill() works; then

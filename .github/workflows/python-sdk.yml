@@ -22,9 +22,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Floor matches requires-python / ruff target-version / mypy python_version
-        # in pyproject.toml; ceiling is the latest stable release. Mirrors the
-        # min/current Node matrix in typescript-sdk.yml.
         python: ['3.10', '3.14']
     defaults:
       run:
@@ -37,8 +34,6 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
-          # Sets UV_PYTHON, so uv sync/run below resolve against the matrix
-          # interpreter instead of whatever uv would otherwise discover.
           python-version: ${{ matrix.python }}
 
       - name: Sync dependencies

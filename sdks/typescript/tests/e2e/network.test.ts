@@ -29,7 +29,6 @@ describe.sequential("e2e: network", () => {
   });
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("default network: outbound connections fail (deny-all egress)", async () => {

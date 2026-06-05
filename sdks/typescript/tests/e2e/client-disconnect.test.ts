@@ -36,7 +36,6 @@ describe.sequential("e2e: client disconnect mid-poll", () => {
 
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("aborting a wait() mid-poll does not break the command", async () => {

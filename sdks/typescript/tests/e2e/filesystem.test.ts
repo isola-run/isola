@@ -37,7 +37,6 @@ describe.sequential("e2e: filesystem", () => {
 
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("write+read string round-trips", async () => {

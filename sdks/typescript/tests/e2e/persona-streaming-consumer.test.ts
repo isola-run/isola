@@ -14,7 +14,7 @@
 
 // Persona: long-running streaming consumer (logs / progress).
 // The SDK's StreamReader is single-use and reconnects internally on transient
-// errors — we cannot externally trigger a reconnect, so we instead verify the
+// errors, we cannot externally trigger a reconnect, so we instead verify the
 // "consumer kills mid-stream" path: the iterator closes cleanly and the
 // sandbox stays healthy.
 
@@ -22,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Isola, type Sandbox } from "../../src";
 import { ISOLA_URL, safeDelete, waitForRunning } from "./_helpers";
 
-describe.sequential("e2e: persona — streaming consumer", () => {
+describe.sequential("e2e: persona, streaming consumer", () => {
   let client: Isola;
   let sandbox: Sandbox;
   const created: string[] = [];
@@ -36,7 +36,6 @@ describe.sequential("e2e: persona — streaming consumer", () => {
 
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   // Long-running producer emits 1 chunk per 200ms for ~6s. Consumer collects
@@ -61,7 +60,7 @@ describe.sequential("e2e: persona — streaming consumer", () => {
         }
       }
     } catch {
-      // Some transports surface an error on abort; that's fine — we just
+      // Some transports surface an error on abort; that's fine, we just
       // want to confirm sandbox health below. Don't fail here.
     }
     await cmd.wait();

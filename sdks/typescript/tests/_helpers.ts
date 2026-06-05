@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Fetch-injection helpers — the multi-runtime-safe alternative to MSW.
+// Fetch-injection helpers, the multi-runtime-safe alternative to MSW.
 // Mirrors how respx is used in sdks/python/tests/.
 
 import { vi } from "vitest";
@@ -33,7 +33,7 @@ export interface StubFetch {
   calls: RecordedRequest[];
 }
 
-// Routing fetch — selects responses by `${METHOD} ${pathname}` matchers,
+// Routing fetch, selects responses by `${METHOD} ${pathname}` matchers,
 // since concurrent calls (e.g. inside `Commands.run`'s `Promise.all([...])`)
 // have implementation-defined order. Use this when responder selection must
 // be order-independent.

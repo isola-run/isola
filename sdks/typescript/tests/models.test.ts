@@ -125,16 +125,18 @@ describe("SandboxData round-trip", () => {
     expect(model.creationTimestamp).toBeInstanceOf(Date);
   });
 
-  it("rejects unknown SandboxStatus", () => {
-    expect(() =>
-      SandboxData.fromWire({
-        id: "x",
-        status: "Bogus",
-        creationTimestamp: "2026-03-15T12:30:00Z",
-        podTemplate: { containers: [{ name: "x", image: "y" }] },
-        startupTimeoutSeconds: 60,
-      }),
-    ).toThrow();
+  it("passes an unknown status through (forward-compatible with new server statuses)", () => {
+    // The decoder trusts the gateway: a status the SDK predates is carried
+    // through instead of throwing, so an additive server change does not break
+    // already-deployed clients.
+    const data = SandboxData.fromWire({
+      id: "x",
+      status: "Restoring",
+      creationTimestamp: "2026-03-15T12:30:00Z",
+      podTemplate: { containers: [{ name: "x", image: "y" }] },
+      startupTimeoutSeconds: 60,
+    });
+    expect(data.status).toBe("Restoring");
   });
 
   it("ignores unknown fields", () => {
@@ -251,8 +253,8 @@ describe("TerminationPolicy.toWire and fromWire", () => {
     expect(tp.snapshotRootfs?.snapshotName).toBe("x");
   });
 
-  it("decodes the Delete shape — the gateway's enum default", () => {
-    // api-gateway.yaml:567-573 — `Delete` is the default; any sandbox created
+  it("decodes the Delete shape, the gateway's enum default", () => {
+    // api-gateway.yaml:567-573, `Delete` is the default; any sandbox created
     // without an explicit terminationPolicy round-trips with this shape.
     const tp = TerminationPolicy.fromWire({ type: "Delete" });
     expect(tp.type).toBe("Delete");
@@ -279,7 +281,7 @@ describe("SnapshotRootfs.toWire", () => {
 // ---------- Decoder validation: rejects malformed inputs ----------
 
 // Type-only TypeErrors from internal helpers (`optionalString`, `optionalNumber`,
-// `record`, etc.) — the exact wording is a diagnostic, not a contract, so we
+// `record`, etc.), the exact wording is a diagnostic, not a contract, so we
 // pin only the class. Tests that assert specific messages (e.g. field-name
 // "X.foo is required") live below and pin the named-field contract.
 describe("decoder validation: top-level type guard", () => {
@@ -299,34 +301,14 @@ describe("decoder validation: top-level type guard", () => {
   });
 });
 
-describe("Network.fromWire field type validation", () => {
-  it("rejects non-boolean allowInternetEgress", () => {
-    expect(() => Network.fromWire({ allowInternetEgress: "yes" })).toThrow(TypeError);
-  });
-
-  it("rejects non-array allowedEgressCIDRs", () => {
-    expect(() => Network.fromWire({ allowedEgressCIDRs: "10.0.0.0/8" })).toThrow(TypeError);
-  });
-
-  it("rejects non-string entries in allowedEgressCIDRs", () => {
-    expect(() => Network.fromWire({ allowedEgressCIDRs: [42] })).toThrow(TypeError);
-  });
-
-  it("rejects non-array nameservers", () => {
-    expect(() => Network.fromWire({ nameservers: { foo: "bar" } })).toThrow(TypeError);
-  });
-
+describe("Network.fromWire", () => {
   it("treats null fields as undefined (no error)", () => {
     const n = Network.fromWire({ allowInternetEgress: null, allowedEgressCIDRs: null });
     expect(n).toEqual({});
   });
 });
 
-describe("ResourceList.fromWire field type validation", () => {
-  it("rejects non-string cpu", () => {
-    expect(() => ResourceList.fromWire({ cpu: 500 })).toThrow(TypeError);
-  });
-
+describe("ResourceList.fromWire", () => {
   it("populates all three fields when provided", () => {
     const r = ResourceList.fromWire({ cpu: "500m", memory: "1Gi", ephemeralStorage: "5Gi" });
     expect(r).toEqual({ cpu: "500m", memory: "1Gi", ephemeralStorage: "5Gi" });
@@ -366,7 +348,7 @@ describe("Container.toWire", () => {
   });
 
   it("emits 'image' first when 'name' is absent", () => {
-    // No `name` provided — image is the lone required key, so it shows first.
+    // No `name` provided, image is the lone required key, so it shows first.
     const wire = Container.toWire({ image: "alpine:3.21" });
     expect(Object.keys(wire as Record<string, unknown>)).toEqual(["image"]);
   });
@@ -418,15 +400,6 @@ describe("Container.fromWire validation", () => {
   it("requires image", () => {
     expect(() => Container.fromWire({})).toThrow(/Container.image is required/);
     expect(() => Container.fromWire({ image: 42 })).toThrow(/Container.image is required/);
-  });
-
-  it("rejects non-string env values", () => {
-    expect(() =>
-      Container.fromWire({
-        image: "x",
-        env: { FOO: 123 },
-      }),
-    ).toThrow(TypeError);
   });
 
   it("decodes resources sub-object", () => {
@@ -495,14 +468,13 @@ describe("SandboxSummary.fromWire validation", () => {
     ).toThrow(/SandboxSummary.id is required/);
   });
 
-  it("rejects invalid status", () => {
-    expect(() =>
-      SandboxSummary.fromWire({
-        id: "x",
-        status: "Bogus",
-        creationTimestamp: "2026-01-01T00:00:00Z",
-      }),
-    ).toThrow(/invalid SandboxStatus/);
+  it("passes an unknown status through", () => {
+    const s = SandboxSummary.fromWire({
+      id: "x",
+      status: "Restoring",
+      creationTimestamp: "2026-01-01T00:00:00Z",
+    });
+    expect(s.status).toBe("Restoring");
   });
 
   it("rejects invalid timestamp", () => {
@@ -549,31 +521,6 @@ describe("SandboxData.fromWire validation", () => {
     ).toThrow(/SandboxData.startupTimeoutSeconds is required/);
   });
 
-  it("rejects non-finite startupTimeoutSeconds", () => {
-    expect(() =>
-      SandboxData.fromWire({
-        id: "x",
-        status: "Running",
-        creationTimestamp: "2026-01-01T00:00:00Z",
-        podTemplate: { containers: [{ name: "n", image: "i" }] },
-        startupTimeoutSeconds: Number.POSITIVE_INFINITY,
-      }),
-    ).toThrow(/SandboxData.startupTimeoutSeconds is required/);
-  });
-
-  it("rejects non-finite optional timeoutSeconds", () => {
-    expect(() =>
-      SandboxData.fromWire({
-        id: "x",
-        status: "Running",
-        creationTimestamp: "2026-01-01T00:00:00Z",
-        podTemplate: { containers: [{ name: "n", image: "i" }] },
-        startupTimeoutSeconds: 60,
-        timeoutSeconds: Number.NaN,
-      }),
-    ).toThrow(TypeError);
-  });
-
   it("decodes optional terminationPolicy", () => {
     const data = SandboxData.fromWire({
       id: "x",
@@ -610,13 +557,6 @@ describe("RootfsSnapshotData.fromWire validation", () => {
     expect(data.containerName).toBe("worker");
   });
 
-  it("rejects non-string containerName", () => {
-    // The decoder must reject `containerName: <number>` rather than coerce
-    // or accept. Public-API consumers depend on the typed containerName
-    // field being string | null.
-    expect(() => RootfsSnapshotData.fromWire({ ...valid, containerName: 42 })).toThrow(TypeError);
-  });
-
   it("requires id", () => {
     const { id, ...rest } = valid;
     void id;
@@ -641,26 +581,15 @@ describe("RootfsSnapshotData.fromWire validation", () => {
     expect(() => RootfsSnapshotData.fromWire(rest)).toThrow(/RootfsSnapshotData.timeoutSeconds is required/);
   });
 
-  it("rejects non-finite timeoutSeconds", () => {
-    expect(() => RootfsSnapshotData.fromWire({ ...valid, timeoutSeconds: Number.POSITIVE_INFINITY })).toThrow(
-      /RootfsSnapshotData.timeoutSeconds is required/,
-    );
-  });
-
   it("requires ttlSecondsAfterFinished", () => {
     const { ttlSecondsAfterFinished, ...rest } = valid;
     void ttlSecondsAfterFinished;
     expect(() => RootfsSnapshotData.fromWire(rest)).toThrow(/RootfsSnapshotData.ttlSecondsAfterFinished is required/);
   });
 
-  it("rejects non-finite ttlSecondsAfterFinished", () => {
-    expect(() => RootfsSnapshotData.fromWire({ ...valid, ttlSecondsAfterFinished: Number.NaN })).toThrow(
-      /RootfsSnapshotData.ttlSecondsAfterFinished is required/,
-    );
-  });
-
-  it("rejects unknown status", () => {
-    expect(() => RootfsSnapshotData.fromWire({ ...valid, status: "Bogus" })).toThrow(/invalid RootfsSnapshotStatus/);
+  it("passes an unknown status through", () => {
+    const data = RootfsSnapshotData.fromWire({ ...valid, status: "Restoring" });
+    expect(data.status).toBe("Restoring");
   });
 });
 

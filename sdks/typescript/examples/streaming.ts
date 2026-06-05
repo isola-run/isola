@@ -3,7 +3,7 @@
 import { Isola } from "../src";
 
 async function main(): Promise<void> {
-  await using client = new Isola();
+  const client = new Isola();
   await using sandbox = await client.sandboxes.create({ image: "alpine:3.21" });
 
   const cmd = await sandbox.commands.spawn(["sh", "-c", "for i in 1 2 3 4 5; do echo line-$i; sleep 0.5; done"]);

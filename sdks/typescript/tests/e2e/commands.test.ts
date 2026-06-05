@@ -32,7 +32,6 @@ describe.sequential("e2e: commands", () => {
 
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("run('echo', 'hello') captures stdout", async () => {
@@ -117,7 +116,7 @@ describe.sequential("e2e: commands", () => {
     30_000,
   );
 
-  it("kill() is idempotent — second kill does not raise", async () => {
+  it("kill() is idempotent, second kill does not raise", async () => {
     const cmd = await sandbox.commands.spawn(["sleep", "300"], { timeoutSeconds: 15 });
     await cmd.kill();
     await cmd.wait();

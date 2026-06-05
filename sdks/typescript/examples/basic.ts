@@ -5,7 +5,7 @@
 import { Isola } from "../src";
 
 async function main(): Promise<void> {
-  await using client = new Isola();
+  const client = new Isola();
 
   await using sandbox = await client.sandboxes.create({ image: "alpine:3.21" });
   const result = await sandbox.commands.run(["echo", "hello world"]);

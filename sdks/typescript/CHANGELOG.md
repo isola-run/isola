@@ -1,31 +1,21 @@
 # @isola-run/sdk
 
-## 0.5.0
+## 0.6.0-rc.0
 
 Initial public release of the Isola TypeScript SDK. Feature parity with the
-Python SDK is the goal; TS-idiomatic extras (`await using`, `AbortSignal`,
-per-call timeouts, `ReadableStream` uploads) are layered on top.
+Python SDK, with TS-idiomatic ergonomics (`AbortSignal` cancellation, per-call
+timeouts, `ReadableStream` uploads).
 
 ### Highlights
 
-- `Isola` async client with `await using` automatic resource cleanup
-- Sandboxes: create, list, get, delete; single-container shorthand
-  (`image`/`cpu`/`memory`) and multi-container (`containers: [...]`)
-- Commands: `run` (blocking, optional `waitTimeoutMs`), `spawn` (non-blocking
-  with streaming `stdout`/`stderr`, `Last-Event-ID` resume on reconnect),
-  `kill`, `wait({ timeoutMs })`, `writeStdin`/`closeStdin`
-- Filesystem: `read`/`write` accepting `string`, `Uint8Array`, `Blob`, or
-  `ReadableStream` (streaming bodies are non-replayable)
-- Rootfs snapshots: `create`, `get`, `restore` via `rootfsSnapshotName`,
-  automatic snapshot on termination via `terminationPolicy`
-- Network policy: internet egress, CIDR allowlists, custom nameservers, IPv6
-- Per-call cancellation via `AbortSignal`; per-attempt `requestTimeoutMs`
-- Automatic retry on transient errors (HTTP 502/503/504, transport failures):
-  up to 6 attempts with a fixed 1 s delay between attempts
-- Typed error hierarchy: `IsolaError` -> `APIError` (`BadRequestError`,
-  `NotFoundError`, `ConflictError`, `ValidationError`, `InternalError`,
-  `BadGatewayError`), `IsolaTimeoutError`, `APIConnectionError`
-- Runtime support: Node 22+, Bun, Deno are exercised in CI; any runtime
-  providing the WHATWG Fetch API should work. No browser build.
-- Dual ESM + CJS publish with `attw`-verified types, npm provenance, and OIDC
-  trusted publishing.
+- `Isola` async client
+- Sandboxes: create, list, get, and delete, with single-container shorthand and
+  multi-container support
+- Commands: `run` (blocking) and `spawn` (non-blocking) with streaming
+  `stdout`/`stderr`, `kill`, `wait`, and stdin control
+- Filesystem: `read` and `write`
+- Rootfs snapshots: create, get, restore, and automatic snapshot on termination
+- Network policy: internet egress, CIDR allowlists, custom nameservers, and IPv6
+- Per-call cancellation via `AbortSignal` and automatic retry on transient errors
+- Typed error hierarchy
+- Runtime support: Node 22+, Bun, and Deno

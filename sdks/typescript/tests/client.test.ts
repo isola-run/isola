@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Mirrors sdks/python/tests/test_client.py — same scenarios, same assertions.
+// Mirrors sdks/python/tests/test_client.py, same scenarios, same assertions.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Isola } from "../src/client";
@@ -91,15 +91,14 @@ describe("URL handling", () => {
 });
 
 describe("User-Agent header", () => {
-  it("auto-sets a default User-Agent when caller did not provide one", async () => {
+  it("does not inject a custom User-Agent (aligns with the Python SDK)", async () => {
     const stub = makeStubFetch(jsonResponse({ sandboxes: [] }));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
     await client.sandboxes.list();
-    const ua = stub.calls[0]!.headers.get("user-agent");
-    expect(ua).toMatch(/^@isola-run\/sdk\//);
+    expect(stub.calls[0]!.headers.get("user-agent")).toBeNull();
   });
 
-  it("respects an explicit User-Agent header (does not overwrite)", async () => {
+  it("passes through a caller-provided User-Agent header", async () => {
     const stub = makeStubFetch(jsonResponse({ sandboxes: [] }));
     const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
     await api.request({
@@ -123,7 +122,7 @@ describe("error mapping", () => {
 
   for (const [status, Ctor] of cases) {
     it(`maps ${status} -> ${Ctor.name} with statusCode and detail`, async () => {
-      // 502 is transient and would retry — pre-load enough responders to exhaust.
+      // 502 is transient and would retry, pre-load enough responders to exhaust.
       const failures = Array.from({ length: 1 + MAX_RETRIES }, () =>
         jsonResponse({ status, detail: "test error" }, { status }),
       );
@@ -221,7 +220,7 @@ describe("response decoding failures", () => {
   it("user abort during response body read surfaces signal.reason, not 'invalid response payload'", async () => {
     // Body parking on a never-closed ReadableStream. While request() buffers
     // the body via arrayBuffer(), the user aborts. The catch must see
-    // signal.aborted and throw signal.reason verbatim — NOT wrap it as
+    // signal.aborted and throw signal.reason verbatim, NOT wrap it as
     // APIError("invalid response payload") or APIConnectionError, which
     // would mask a deliberate cancellation as a server/transport fault.
     const reason = new Error("user-abort-during-body-parse");
@@ -341,8 +340,8 @@ describe("retry behavior", () => {
       const promise = client.sandboxes.list();
 
       // After the first attempt the SDK should have scheduled a sleep of
-      // exactly RETRY_DELAY_MS before the second. Advance N-1 ms — no second
-      // call yet — then advance the last 1ms and assert it fired.
+      // exactly RETRY_DELAY_MS before the second. Advance N-1 ms, no second
+      // call yet, then advance the last 1ms and assert it fired.
       await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS - 1);
       expect(stub.calls).toHaveLength(1);
       await vi.advanceTimersByTimeAsync(1);
@@ -383,9 +382,8 @@ describe("body replay on retry", () => {
     expect(stub.calls[1]?.bodyText).toBe('{"some":"json"}');
   }, 15_000);
 
-  // Catches a regression where `ArrayBuffer.isView` is replaced with a narrower
-  // `body instanceof Uint8Array` — Int32Array/DataView are also views and must
-  // remain replayable on transient retries.
+  // Every non-stream body is held in memory and replayable, so typed-array
+  // views (Int32Array, DataView, etc.) must be resent on a transient retry.
   it.each([
     { label: "Int32Array", make: (): BodyInit => new Int32Array([1, 2, 3]) as unknown as BodyInit },
     { label: "DataView", make: (): BodyInit => new DataView(new ArrayBuffer(8)) as unknown as BodyInit },
@@ -417,11 +415,10 @@ describe("body replay on retry", () => {
         method: "POST",
         path: "/v1/sandboxes",
         body: stream,
-        bodyKind: "stream",
       }),
     ).rejects.toThrow(APIConnectionError);
 
-    // Stream bodies cannot be retried — exactly one attempt.
+    // Stream bodies cannot be retried, exactly one attempt.
     expect(stub.calls).toHaveLength(1);
   });
 });
@@ -456,7 +453,7 @@ describe("requestTimeoutMs", () => {
   });
 
   it("each retry attempt gets a fresh timeout budget", async () => {
-    // First attempt: real fetch hangs forever — abort fires per-attempt.
+    // First attempt: real fetch hangs forever, abort fires per-attempt.
     // Second attempt: succeed. If timeouts didn't reset per-attempt, the
     // second attempt would also see an aborted signal at request time.
     let attempts = 0;
@@ -477,7 +474,7 @@ describe("AbortSignal handling", () => {
   it("user-supplied signal cancels with the original signal.reason", async () => {
     const reason = new Error("user-cancelled");
     const ctrl = new AbortController();
-    // Hang forever — never resolves.
+    // Hang forever, never resolves.
     const stub = makeStubFetch((req): Promise<Response> => hangUntilAbort(req));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
 
@@ -541,48 +538,6 @@ describe("fetch injection", () => {
   });
 });
 
-describe("client lifecycle", () => {
-  it("await using calls close() via Symbol.asyncDispose", async () => {
-    const stub = makeStubFetch(jsonResponse({ sandboxes: [] }));
-    let leaked: Isola | undefined;
-    {
-      await using client = new Isola({ url: URL_BASE, fetch: stub.fetch });
-      leaked = client;
-      await client.sandboxes.list();
-      expect(client.isClosed).toBe(false);
-    }
-    expect(leaked.isClosed).toBe(true);
-  });
-
-  it("close() is idempotent", async () => {
-    const stub = makeStubFetch();
-    const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
-    await client.close();
-    await client.close();
-    expect(client.isClosed).toBe(true);
-  });
-
-  it("await using calls close() even when the block throws", async () => {
-    // A regression that wired Isola.[Symbol.asyncDispose] to only fire on
-    // normal exit (or made close() observe a flag set before throw) would
-    // leave isClosed false after the exceptional unwind.
-    const stub = makeStubFetch();
-    let captured: Isola | undefined;
-    const boom = new Error("from-inside-block");
-
-    let caught: unknown;
-    try {
-      await using client = new Isola({ url: URL_BASE, fetch: stub.fetch });
-      captured = client;
-      throw boom;
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBe(boom);
-    expect(captured?.isClosed).toBe(true);
-  });
-});
-
 describe("transport error pass-through to APIConnectionError", () => {
   it("re-throws an APIError(502) from a custom fetch verbatim after retries exhaust", async () => {
     // A custom fetch throwing an APIError(502) goes through the SDK-typed
@@ -622,7 +577,7 @@ describe("transport error pass-through to APIConnectionError", () => {
   it("re-throws non-transient APIError from a custom fetch with NO retry", async () => {
     // SDK-typed errors thrown by a custom fetch pass through the same
     // isTransient gate as response-status errors. A 400 (non-transient)
-    // must NOT retry — exactly one attempt, original error verbatim.
+    // must NOT retry, exactly one attempt, original error verbatim.
     const stub = makeStubFetch(new BadRequestError({ statusCode: 400, message: "from-fetch-400" }));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
 
@@ -641,7 +596,7 @@ describe("transport error pass-through to APIConnectionError", () => {
   it("fetchStream passes SDK-typed errors verbatim (no double-wrap)", async () => {
     // fetchStream's catch wraps native TypeError/AbortError as
     // APIConnectionError, but an SDK-typed error from
-    // a custom fetch should pass through unchanged — no re-wrap chain.
+    // a custom fetch should pass through unchanged, no re-wrap chain.
     const sdkErr = new BadRequestError({ statusCode: 400, message: "from-fetch-stream" });
     const stub = makeStubFetch(sdkErr);
     const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
@@ -851,7 +806,7 @@ describe("response body read failures", () => {
 
   it("requestModel wraps exhausted body-read failures as APIConnectionError (NOT 'invalid response payload')", async () => {
     // The bug being fixed: before, a transport-shaped body-read failure
-    // surfaced as APIError(200, "invalid response payload") — non-transient,
+    // surfaced as APIError(200, "invalid response payload"), non-transient,
     // unretryable, and indistinguishable from server-side malformed JSON.
     // After the fix, it must surface as the retryable APIConnectionError.
     const stub = makeStubFetch(
@@ -873,7 +828,7 @@ describe("response body read failures", () => {
   it("requestModel still raises APIError for actually-malformed JSON (no retry)", async () => {
     // Regression guard for the fix: when the body arrives intact but the
     // payload itself isn't JSON, that's a server-side fault, not a transport
-    // one — retain APIError("invalid response payload") and do NOT retry.
+    // one, retain APIError("invalid response payload") and do NOT retry.
     const stub = makeStubFetch(
       new Response("<html>not json</html>", { status: 200, headers: { "content-type": "text/html" } }),
     );
@@ -926,7 +881,6 @@ describe("response body read failures", () => {
         method: "POST",
         path: "/v1/x",
         body: requestStream,
-        bodyKind: "stream",
       });
     } catch (err) {
       caught = err;

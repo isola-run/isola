@@ -15,7 +15,7 @@
 // Mirrors sdks/python/src/isola/_filesystem.py:AsyncFilesystem.
 
 import type { RequestOptions } from "./client";
-import type { BodyKind, HttpClient } from "./internal/http";
+import type { HttpClient } from "./internal/http";
 import { filesystemPath } from "./internal/url";
 
 /** Options for {@link Filesystem.read} and {@link Filesystem.write}. */
@@ -29,24 +29,10 @@ export interface FileOptions {
 /**
  * Body types accepted by {@link Filesystem.write}.
  *
- * `string` is encoded as UTF-8. `Uint8Array`, `ArrayBuffer`, and
- * `Blob` bodies are replayable (transport errors are retried).
- * `ReadableStream` bodies are streamed once: transport errors on
- * stream bodies are NOT retried, and Node fetch requires
- * `duplex: "half"`.
+ * `string` is encoded as UTF-8. A `ReadableStream` body is sent once;
+ * unlike the in-memory body types it is not retried on transport errors.
  */
 export type UploadBody = string | Uint8Array | ArrayBuffer | Blob | ReadableStream<Uint8Array>;
-
-function classify(data: UploadBody): { body: BodyInit; bodyKind: BodyKind } {
-  if (typeof data === "string") {
-    return { body: new TextEncoder().encode(data), bodyKind: "replayable" };
-  }
-  if (typeof ReadableStream !== "undefined" && data instanceof ReadableStream) {
-    return { body: data, bodyKind: "stream" };
-  }
-  // Uint8Array | ArrayBuffer | Blob
-  return { body: data as BodyInit, bodyKind: "replayable" };
-}
 
 /** Read and write files inside a sandbox. */
 export class Filesystem {
@@ -84,7 +70,7 @@ export class Filesystem {
    * @throws {APIConnectionError} If the request cannot reach the API.
    */
   async write(path: string, data: UploadBody, opts: FileOptions = {}, req: RequestOptions = {}): Promise<void> {
-    const { body, bodyKind } = classify(data);
+    const body = typeof data === "string" ? new TextEncoder().encode(data) : data;
     const params: Record<string, string> = { path };
     if (opts.container) params.container = opts.container;
 
@@ -93,7 +79,6 @@ export class Filesystem {
       path: filesystemPath(this._sandboxId),
       params,
       body,
-      bodyKind,
       headers: { "content-type": "application/octet-stream" },
       ...(req.signal ? { signal: req.signal } : {}),
     });

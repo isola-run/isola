@@ -3,7 +3,7 @@
 import { Isola } from "../src";
 
 async function main(): Promise<void> {
-  await using client = new Isola();
+  const client = new Isola();
   const resources = { limits: { cpu: "100m", memory: "128Mi" } };
   await using sandbox = await client.sandboxes.create({
     containers: [

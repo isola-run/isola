@@ -37,9 +37,9 @@ import {
 } from "./models";
 import { StreamReader } from "./streaming";
 
-// Long-poll interval. Must stay <= api-gateway's maximum:"25".
-// Full chain (per CLAUDE.md): SDK 20s < gateway 25s < sidecar 30s
-//                             < gateway WriteTimeout 45s < sidecar WriteTimeout 75s
+// Long-poll wait. Must stay below the api-gateway's maximum (25s). Part of the
+// timeout chain: SDK 20s < gateway 25s < sidecar 30s < gateway WriteTimeout 45s
+// < sidecar WriteTimeout 75s.
 const LONG_POLL_WAIT_SECONDS = 20;
 
 /** Options for {@link Commands.spawn}. */
@@ -369,7 +369,7 @@ export class Command {
     await this._api.requestNoContent({
       method: "POST",
       path: commandStdinPath(this._sandboxId, this._commandId),
-      body: raw as unknown as BodyInit,
+      body: raw,
       headers: { "content-type": "application/octet-stream" },
       ...(req.signal ? { signal: req.signal } : {}),
     });

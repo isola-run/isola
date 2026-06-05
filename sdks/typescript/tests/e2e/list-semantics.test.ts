@@ -30,7 +30,6 @@ describe.sequential("e2e: list() semantics", () => {
   });
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   // Create N sandboxes, eventually-consistently observe all N in list(),

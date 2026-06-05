@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Mirrors sdks/python/tests/test_commands.py functionally — same scenarios,
+// Mirrors sdks/python/tests/test_commands.py functionally, same scenarios,
 // same assertions where the abstractions line up.
 
 import { describe, expect, it } from "vitest";
@@ -106,7 +106,7 @@ describe("Commands.run", () => {
     expect(result.id).toBe(cmdId);
   });
 
-  it("does NOT throw on non-zero exit code — returns CommandResult { exitCode: 17 }", async () => {
+  it("does NOT throw on non-zero exit code, returns CommandResult { exitCode: 17 }", async () => {
     // README contract: run() returns a CommandResult; a non-zero exit code is
     // a normal completion, not an error. (Mirrors Python parity.) This pins
     // the behavior so a regression that started throwing on exitCode > 0
@@ -160,7 +160,7 @@ describe("Commands.run", () => {
       },
       [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: () => {
         waitOpened = true;
-        // Wait must run only AFTER stdin & close — verify ordering.
+        // Wait must run only AFTER stdin & close, verify ordering.
         expect(stdinSeen).toBe(true);
         expect(stdinCloseSeen).toBe(true);
         return jsonResponse({ exitCode: 0 });
@@ -409,7 +409,7 @@ describe("Command.wait", () => {
       // Always return null. The status request itself either returns null
       // and loops, OR returns aborted via the AbortSignal once the timeout
       // fires. Here the responder is sync so by the time the abort fires
-      // we may have already returned a body — the loop will then start
+      // we may have already returned a body, the loop will then start
       // another request with an already-aborted signal, which `fetch`
       // rejects with AbortError, and `wait()` translates that into
       // IsolaTimeoutError because timeoutSignal.aborted is true.
@@ -459,7 +459,7 @@ describe("Commands.run sibling cancellation", () => {
     const sbId = "sandbox-123";
     const cmdId = "cmd-fail";
 
-    // Track whether stderr and wait observed an aborted signal — i.e. the
+    // Track whether stderr and wait observed an aborted signal, i.e. the
     // sibling cancellation path on the run() catch
     // actually reached them.
     let stderrAborted = false;
@@ -481,7 +481,7 @@ describe("Commands.run sibling cancellation", () => {
           stderrAborted = true;
         });
       },
-      // wait/status: same — must be aborted by the sibling cancellation.
+      // wait/status: same, must be aborted by the sibling cancellation.
       [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) => {
         waitSeen.count += 1;
         return hangUntilAbort(req, () => {
@@ -653,7 +653,7 @@ describe("Command.wait error pass-through", () => {
     const sandbox = await client.sandboxes.get(sbId);
     const cmd = await sandbox.commands.spawn(["sleep", "100"]);
 
-    // wait() with no timeout, no signal — the catch path falls through the
+    // wait() with no timeout, no signal, the catch path falls through the
     // timeout/signal branches and into the verbatim re-throw.
     await expect(cmd.wait()).rejects.toThrow(InternalError);
   });
@@ -683,7 +683,7 @@ describe("Command.wait user-signal abort", () => {
 
     let caught: unknown;
     try {
-      // No timeoutMs — solely user-signal driven so the catch falls to the
+      // No timeoutMs, solely user-signal driven so the catch falls to the
       // opts.signal?.aborted branch.
       await cmd.wait({ signal: ctrl.signal });
     } catch (err) {

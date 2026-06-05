@@ -30,7 +30,6 @@ describe.sequential("e2e: advanced sandbox lifecycle", () => {
   });
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("three sandboxes coexist and all appear in list()", async () => {
@@ -84,7 +83,7 @@ describe.sequential("e2e: advanced sandbox lifecycle", () => {
     const sb = await client.sandboxes.create({
       image: "alpine:3.21",
       command: ["true"],
-      maxWaitMs: 0, // Don't wait for Running — sandbox may transition straight through.
+      maxWaitMs: 0, // Don't wait for Running, sandbox may transition straight through.
     });
     created.push(sb.id);
 

@@ -34,7 +34,6 @@ describe.sequential("e2e: advanced commands", () => {
 
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("container env vars accessible inside command", async () => {
@@ -142,7 +141,7 @@ describe.sequential("e2e: advanced commands", () => {
     expect(output.length).toBe(TOTAL);
 
     // Scan for contiguous runs. Each writer uses a unique char so no two
-    // adjacent runs share a char — every run must be exactly BLOCK_SIZE.
+    // adjacent runs share a char, every run must be exactly BLOCK_SIZE.
     let i = 0;
     while (i < output.length) {
       const ch = output[i];

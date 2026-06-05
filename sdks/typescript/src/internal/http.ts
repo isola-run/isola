@@ -22,7 +22,6 @@ import {
   isAbortError,
   isTransient,
 } from "../errors";
-import { VERSION } from "../version";
 import { buildUrl } from "./url";
 
 // Total per-attempt wall-clock budget. AbortSignal.timeout() aborts the whole
@@ -33,8 +32,6 @@ import { buildUrl } from "./url";
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 export const MAX_RETRIES = 5;
 export const RETRY_DELAY_MS = 1_000;
-
-const DEFAULT_USER_AGENT = `@isola-run/sdk/${VERSION}`;
 
 const STREAM_CONNECT_TIMEOUT_MS = 5_000;
 
@@ -54,14 +51,13 @@ export interface RequestOpts {
   path: string;
   params?: Record<string, string | number | undefined>;
   jsonBody?: unknown;
-  body?: BodyInit;
-  bodyKind?: BodyKind; // for retry classification
+  // Uint8Array is accepted alongside BodyInit: it is a valid fetch body at
+  // runtime, but since TS 5.7 made Uint8Array generic it no longer matches
+  // lib.dom's BodyInit. Reconciled with a single assertion in request().
+  body?: BodyInit | Uint8Array;
   headers?: Record<string, string>;
   signal?: AbortSignal;
 }
-
-/** @internal */
-export type BodyKind = "replayable" | "stream" | "none";
 
 interface AttemptSignal {
   userSignal: AbortSignal | undefined;
@@ -106,23 +102,11 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-// Replayable body kinds: string | ArrayBufferView (Uint8Array, Int8Array, etc.)
-// | ArrayBuffer | Blob | URLSearchParams.
-// Streams are non-replayable; FormData would be too if we supported it.
-export function isReplayableBody(body: unknown): boolean {
-  if (body == null) return true;
-  if (typeof body === "string") return true;
-  if (body instanceof ArrayBuffer) return true;
-  if (ArrayBuffer.isView(body)) return true; // covers Uint8Array, Int8Array, DataView, etc.
-  if (typeof Blob !== "undefined" && body instanceof Blob) return true;
-  if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) return true;
-  return false;
-}
-
-interface BodyAttempt {
-  body: BodyInit | undefined;
-  duplex?: "half";
-  canRetry: boolean;
+// A ReadableStream body is consumed once and cannot be replayed, so a request
+// carrying one is not retried. Every other body kind (string, bytes, Blob, etc.)
+// is held in memory and safe to resend. Mirrors the Python SDK's can_retry check.
+function isStreamBody(body: BodyInit | undefined): boolean {
+  return typeof ReadableStream !== "undefined" && body instanceof ReadableStream;
 }
 
 // Native fetch + arrayBuffer reject with TypeError on network/DNS/TLS/stream
@@ -149,40 +133,20 @@ export class HttpClient {
     this._fetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
-  private resolveBody(opts: RequestOpts): BodyAttempt {
-    if (opts.jsonBody !== undefined) {
-      return { body: JSON.stringify(opts.jsonBody), canRetry: true };
-    }
-    if (opts.body === undefined) {
-      return { body: undefined, canRetry: true };
-    }
-    if (opts.bodyKind === "stream") {
-      return { body: opts.body, duplex: "half", canRetry: false };
-    }
-    return { body: opts.body, canRetry: isReplayableBody(opts.body) };
-  }
-
   // Body is consumed inside the retry loop so mid-stream drops and per-attempt
   // timeouts retry like a headers-phase fetch() rejection, matching Python httpx.
   async request(opts: RequestOpts): Promise<{ response: Response; bodyBytes: Uint8Array }> {
     const url = buildUrl(this.url, opts.path, opts.params);
-    const { body, duplex, canRetry } = this.resolveBody(opts);
+    // The lone BodyInit assertion for the whole SDK: opts.body may be a
+    // Uint8Array (see the RequestOpts.body note). Both arms are real fetch bodies.
+    const body: BodyInit | undefined =
+      opts.jsonBody !== undefined ? JSON.stringify(opts.jsonBody) : (opts.body as BodyInit | undefined);
+    const streaming = isStreamBody(body);
+    const canRetry = !streaming;
 
     const headers = new Headers(opts.headers);
     if (opts.jsonBody !== undefined && !headers.has("content-type")) {
       headers.set("content-type", "application/json");
-    }
-    // User-Agent is rejected by some runtimes (Workers, browser-fetch in older
-    // Node) so add it only if the runtime allows it. Worker runtimes ignore
-    // attempts to set it; Node and Bun accept it. Send a best-effort default.
-    if (!headers.has("user-agent")) {
-      try {
-        headers.set("user-agent", DEFAULT_USER_AGENT);
-      } catch (err) {
-        // TypeError on a forbidden-header runtime is expected; anything else
-        // is a real bug.
-        if (!(err instanceof TypeError)) throw err;
-      }
     }
 
     let lastError: unknown;
@@ -194,7 +158,7 @@ export class HttpClient {
       };
       init.headers = headers;
       if (body !== undefined) init.body = body;
-      if (duplex !== undefined) init.duplex = duplex;
+      if (streaming) init.duplex = "half";
       if (attemptSignal.fetchSignal) init.signal = attemptSignal.fetchSignal;
 
       let response: Response;
@@ -295,12 +259,9 @@ export class HttpClient {
     return bodyBytes;
   }
 
-  // Stream connect timeout via manual AbortController + clearTimeout after
-  // await fetch() returns headers. Native fetch takes one signal, so simply
-  // composing user+timeout signals would also abort the body when the 5s timer
-  // fires. The connect controller is composed with the user signal via
-  // AbortSignal.any for the fetch call only; body lifetime is then governed
-  // solely by the user signal.
+  // Bounds the connect phase without bounding the body: a dedicated
+  // AbortController fires after STREAM_CONNECT_TIMEOUT_MS and is cleared once
+  // headers arrive. Body lifetime is then governed by the user signal alone.
   async fetchStream(
     path: string,
     opts: { headers?: Record<string, string>; signal?: AbortSignal } = {},
@@ -329,11 +290,9 @@ export class HttpClient {
     } catch (err) {
       clearTimeout(timer);
       if (opts.signal?.aborted) throw opts.signal.reason ?? err;
-      // Wrap connect-timeout and transport-shaped failures so the StreamReader
-      // catch can classify them via isTransient() and retry. Native fetch
-      // throws TypeError on network/DNS/TLS errors; AbortError indicates the
-      // connect timer fired. SDK-typed errors are forwarded verbatim so a
-      // custom fetch can already classify failures.
+      // Wrap connect-timeout and transport failures (TypeError / AbortError) as
+      // APIConnectionError so StreamReader can classify and retry them. SDK-typed
+      // errors pass through for a custom fetch to classify.
       if (err instanceof APIError || err instanceof APIConnectionError) throw err;
       if (connectTimedOut || connectController.signal.aborted || isAbortError(err) || err instanceof TypeError) {
         throw connectionErrorFromError(err, { method: "GET", path });

@@ -27,7 +27,6 @@ describe.sequential("e2e: multi-container sandbox", () => {
   });
   afterAll(async () => {
     for (const id of created) await safeDelete(client, id);
-    await client.close();
   });
 
   it("creates a multi-container sandbox", async () => {
