@@ -51,7 +51,7 @@ The same workflow in TypeScript:
 ```ts
 import { Isola } from "@isola-run/sdk";
 
-await using client = new Isola({ url: "http://localhost:8080" }); // or set ISOLA_URL env var
+const client = new Isola({ url: "http://localhost:8080" }); // or set ISOLA_URL env var
 
 const sandbox = await client.sandboxes.create({ image: "python:3.12-slim" });
 
