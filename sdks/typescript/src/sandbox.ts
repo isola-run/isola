@@ -18,7 +18,8 @@ import type { RequestOptions } from "./client";
 import { Commands } from "./commands";
 import { IsolaError, IsolaTimeoutError, NotFoundError } from "./errors";
 import { Filesystem } from "./filesystem";
-import { type HttpClient, sleep } from "./internal/http";
+import type { HttpClient } from "./internal/http";
+import { pollUntilDone } from "./internal/poll";
 import { sandboxesPath, sandboxPath } from "./internal/url";
 import {
   type Container,
@@ -210,45 +211,30 @@ function checkTerminal(sandboxId: string, status: SandboxStatus): void {
   }
 }
 
-async function waitUntilRunning(
+function waitUntilRunning(
   api: HttpClient,
   sandboxId: string,
   maxWaitMs: number,
   signal: AbortSignal | undefined,
 ): Promise<SandboxData> {
-  const deadline = performance.now() + maxWaitMs;
-  while (true) {
-    let data: SandboxData;
-    try {
-      data = await api.requestModel<SandboxData>(
-        {
-          method: "GET",
-          path: sandboxPath(sandboxId),
-          ...(signal ? { signal } : {}),
-        },
+  return pollUntilDone<SandboxData>({
+    poll: (s) =>
+      api.requestModel<SandboxData>(
+        { method: "GET", path: sandboxPath(sandboxId), ...(s ? { signal: s } : {}) },
         SandboxDataModel.fromWire,
+      ),
+    isDone: (data) => data.status === "Running",
+    assertNotFailed: (data) => checkTerminal(sandboxId, data.status),
+    intervalMs: POLL_INTERVAL_MS,
+    maxWaitMs,
+    signal,
+    onTimeout: (cause) => {
+      throw new IsolaTimeoutError(
+        `sandbox ${sandboxId} did not reach running state within ${maxWaitMs}ms`,
+        cause !== undefined ? { cause } : undefined,
       );
-    } catch (err) {
-      if (err instanceof NotFoundError) {
-        if (performance.now() >= deadline) {
-          throw new IsolaTimeoutError(`sandbox ${sandboxId} did not reach running state within ${maxWaitMs}ms`, {
-            cause: err,
-          });
-        }
-        await sleep(POLL_INTERVAL_MS, signal);
-        continue;
-      }
-      throw err;
-    }
-
-    if (data.status === "Running") return data;
-    checkTerminal(sandboxId, data.status);
-
-    if (performance.now() >= deadline) {
-      throw new IsolaTimeoutError(`sandbox ${sandboxId} did not reach running state within ${maxWaitMs}ms`);
-    }
-    await sleep(POLL_INTERVAL_MS, signal);
-  }
+    },
+  });
 }
 
 /** Create, list, and retrieve sandboxes. */

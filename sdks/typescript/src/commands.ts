@@ -17,6 +17,7 @@
 import type { RequestOptions } from "./client";
 import { IsolaTimeoutError } from "./errors";
 import type { HttpClient } from "./internal/http";
+import { combineSignals } from "./internal/signal";
 import {
   commandBasePath,
   commandPath,
@@ -97,13 +98,7 @@ function buildWaitSignal(
     return { signal: userSignal, timeoutSignal: undefined };
   }
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const signals: AbortSignal[] = [];
-  if (userSignal) signals.push(userSignal);
-  signals.push(timeoutSignal);
-  return {
-    signal: signals.length === 1 ? signals[0] : AbortSignal.any(signals),
-    timeoutSignal,
-  };
+  return { signal: combineSignals(userSignal, timeoutSignal), timeoutSignal };
 }
 
 /** Execute commands inside a sandbox. */
@@ -199,13 +194,11 @@ export class Commands {
     // siblings when any of stdout/stderr/wait rejects), and the optional
     // run-phase deadline; pass it to all three concurrent waits.
     const internalController = new AbortController();
-    const signals: AbortSignal[] = [internalController.signal];
-    if (req.signal) signals.push(req.signal);
     const runTimeoutSignal = opts.waitTimeoutMs !== undefined ? AbortSignal.timeout(opts.waitTimeoutMs) : undefined;
-    if (runTimeoutSignal) signals.push(runTimeoutSignal);
-    // signals has >=1 entries (internalController is unconditional); use
-    // AbortSignal.any only when there are >=2 to compose.
-    const composedSignal: AbortSignal = signals.length === 1 ? internalController.signal : AbortSignal.any(signals);
+    // internalController is always present, so the composite is never undefined
+    // (the `??` is the type-level proof of that, never taken at runtime).
+    const composedSignal =
+      combineSignals(internalController.signal, req.signal, runTimeoutSignal) ?? internalController.signal;
 
     try {
       const [stdout, stderr, exitCode] = await Promise.all([

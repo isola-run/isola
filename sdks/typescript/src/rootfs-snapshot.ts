@@ -16,8 +16,9 @@
 // AsyncRootfsSnapshot.
 
 import type { RequestOptions } from "./client";
-import { IsolaError, IsolaTimeoutError, NotFoundError } from "./errors";
-import { type HttpClient, sleep } from "./internal/http";
+import { IsolaError, IsolaTimeoutError } from "./errors";
+import type { HttpClient } from "./internal/http";
+import { pollUntilDone } from "./internal/poll";
 import { rootfsSnapshotsPath, snapshotPath } from "./internal/url";
 import {
   type CreateRootfsSnapshotPayload,
@@ -70,45 +71,30 @@ function checkFailed(snapshotId: string, status: RootfsSnapshotStatus): void {
   }
 }
 
-async function waitUntilComplete(
+function waitUntilComplete(
   api: HttpClient,
   snapshotId: string,
   maxWaitMs: number,
   signal: AbortSignal | undefined,
 ): Promise<RootfsSnapshotData> {
-  const deadline = performance.now() + maxWaitMs;
-  while (true) {
-    let data: RootfsSnapshotData;
-    try {
-      data = await api.requestModel<RootfsSnapshotData>(
-        {
-          method: "GET",
-          path: snapshotPath(snapshotId),
-          ...(signal ? { signal } : {}),
-        },
+  return pollUntilDone<RootfsSnapshotData>({
+    poll: (s) =>
+      api.requestModel<RootfsSnapshotData>(
+        { method: "GET", path: snapshotPath(snapshotId), ...(s ? { signal: s } : {}) },
         RootfsSnapshotDataModel.fromWire,
+      ),
+    isDone: (data) => data.status === "Succeeded",
+    assertNotFailed: (data) => checkFailed(snapshotId, data.status),
+    intervalMs: POLL_INTERVAL_MS,
+    maxWaitMs,
+    signal,
+    onTimeout: (cause) => {
+      throw new IsolaTimeoutError(
+        `rootfs snapshot ${snapshotId} did not reach complete state within ${maxWaitMs}ms`,
+        cause !== undefined ? { cause } : undefined,
       );
-    } catch (err) {
-      if (err instanceof NotFoundError) {
-        if (performance.now() >= deadline) {
-          throw new IsolaTimeoutError(
-            `rootfs snapshot ${snapshotId} did not reach complete state within ${maxWaitMs}ms`,
-            { cause: err },
-          );
-        }
-        await sleep(POLL_INTERVAL_MS, signal);
-        continue;
-      }
-      throw err;
-    }
-
-    if (data.status === "Succeeded") return data;
-    checkFailed(snapshotId, data.status);
-    if (performance.now() >= deadline) {
-      throw new IsolaTimeoutError(`rootfs snapshot ${snapshotId} did not reach complete state within ${maxWaitMs}ms`);
-    }
-    await sleep(POLL_INTERVAL_MS, signal);
-  }
+    },
+  });
 }
 
 /**

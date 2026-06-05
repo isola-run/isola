@@ -22,6 +22,7 @@ import {
   isAbortError,
   isTransient,
 } from "../errors";
+import { combineSignals } from "./signal";
 import { buildUrl } from "./url";
 
 // Total per-attempt wall-clock budget. AbortSignal.timeout() aborts the whole
@@ -69,19 +70,7 @@ function buildAttemptSignal(userSignal: AbortSignal | undefined, requestTimeoutM
   if (userSignal?.aborted) throw userSignal.reason;
 
   const timeoutSignal = requestTimeoutMs === null ? undefined : AbortSignal.timeout(requestTimeoutMs);
-
-  const signals: AbortSignal[] = [];
-  if (userSignal) signals.push(userSignal);
-  if (timeoutSignal) signals.push(timeoutSignal);
-
-  let fetchSignal: AbortSignal | undefined;
-  if (signals.length === 1) {
-    fetchSignal = signals[0];
-  } else if (signals.length > 1) {
-    fetchSignal = AbortSignal.any(signals);
-  }
-
-  return { userSignal, timeoutSignal, fetchSignal };
+  return { userSignal, timeoutSignal, fetchSignal: combineSignals(userSignal, timeoutSignal) };
 }
 
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -276,9 +265,7 @@ export class HttpClient {
       connectController.abort(new DOMException("stream connect timeout", "TimeoutError"));
     }, STREAM_CONNECT_TIMEOUT_MS);
 
-    const signals = [connectController.signal];
-    if (opts.signal) signals.push(opts.signal);
-    const composedSignal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+    const composedSignal = combineSignals(connectController.signal, opts.signal);
 
     try {
       const init: RequestInit = { method: "GET" };
