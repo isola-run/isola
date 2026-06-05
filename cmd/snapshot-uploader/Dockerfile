@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM --platform=$BUILDPLATFORM golang:1.26.3-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.4-bookworm AS builder
 
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown

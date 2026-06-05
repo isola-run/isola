@@ -35,7 +35,7 @@ type Info struct {
 	GitCommit    string `json:"gitCommit,omitempty"    example:"abc1234"`
 	GitTreeState string `json:"gitTreeState,omitempty" example:"clean"`
 	BuildDate    string `json:"buildDate,omitempty"    example:"2026-04-17T12:00:00Z"`
-	GoVersion    string `json:"goVersion"              example:"go1.26.3"`
+	GoVersion    string `json:"goVersion"              example:"go1.26.4"`
 	Platform     string `json:"platform"               example:"linux/amd64"`
 }
 
