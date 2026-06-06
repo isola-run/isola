@@ -1,6 +1,6 @@
 {
   "name": "@isola-run/sdk",
-  "version": "0.6.0-rc.0",
+  "version": "0.6.0-rc.1",
   "description": "TypeScript SDK for the Isola sandbox platform",
   "license": "Apache-2.0",
   "homepage": "https://github.com/isola-run/isola",
@@ -59,7 +59,6 @@
     "verify-package": "pnpm build && attw --pack . && publint",
     "prepublishOnly": "pnpm run build"
   },
-  "dependencies": {},
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.2",
     "@biomejs/biome": "2.4.15",

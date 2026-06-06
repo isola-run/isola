@@ -1,2 +1,2 @@
 # Managed by hack/bump-version.sh, do not edit.
-__version__ = "0.6.0-rc.0"
+__version__ = "0.6.0-rc.1"
