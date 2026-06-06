@@ -60,15 +60,15 @@
     "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "0.18.2",
-    "@biomejs/biome": "2.4.15",
-    "@types/node": "^22.10.0",
-    "@vitest/coverage-v8": "4.1.4",
-    "publint": "0.3.20",
-    "tsdown": "0.22.0",
+    "@arethetypeswrong/cli": "0.18.3",
+    "@biomejs/biome": "2.4.16",
+    "@types/node": "^25.9.2",
+    "@vitest/coverage-v8": "4.1.8",
+    "publint": "0.3.21",
+    "tsdown": "0.22.2",
     "tsx": "^4.19.2",
-    "typescript": "5.9.2",
-    "vitest": "4.1.4"
+    "typescript": "6.0.3",
+    "vitest": "4.1.8"
   },
   "publishConfig": {
     "access": "public",
