@@ -58,7 +58,10 @@ EOF
     cd sdks/typescript
     # pnpm version preserves package.json formatting better than yq and keeps
     # the bump script within the pnpm toolchain we use everywhere else.
-    pnpm version --no-git-tag-version --allow-same-version "$NEW_VERSION"
+    # --no-git-checks: this script intentionally edits the other version files
+    # first, so the tree is already dirty here; without it pnpm aborts with
+    # ERR_PNPM_UNCLEAN_WORKING_TREE. The batch is reviewed and committed after.
+    pnpm version --no-git-tag-version --no-git-checks --allow-same-version "$NEW_VERSION"
     # Refresh pnpm-lock.yaml without touching node_modules.
     pnpm install --lockfile-only
 )
