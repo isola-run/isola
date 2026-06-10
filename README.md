@@ -301,6 +301,12 @@ Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/conta
 [runsc_config]
   allow-rootfs-tar-annotation = "true"
   systemd-cgroup = "true"
+  # Required for egress rate limiting: ceilings that per-sandbox limits can
+  # only lower. runsc validates its config after each annotation it applies,
+  # so per-pod tbf annotations fail intermittently unless the runtime config
+  # already carries nonzero rate/burst values.
+  qdisc-tbf-rate = "1000000000000"
+  qdisc-tbf-burst = "4294967295"
 ```
 
 Add the runtime to your containerd config (typically `/etc/containerd/config.toml`):

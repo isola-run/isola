@@ -94,6 +94,13 @@ install_gvisor_in_node() {
   # https://gvisor.dev/docs/user_guide/systemd/
   # https://github.com/google/gvisor/issues/10371
   systemd-cgroup = "true"
+  # Egress rate-limit ceilings (dev.gvisor.flag.qdisc-tbf-* pod annotations can
+  # only lower these). Nonzero runtime values are also REQUIRED for per-pod tbf
+  # annotations to apply: runsc validates the config after each annotation in
+  # map order, so qdisc=tbf with runtime rate/burst of 0 fails when it happens
+  # to be applied first. Values match the CRD bounds (1 TB/s, 2^32-1 bytes).
+  qdisc-tbf-rate = "1000000000000"
+  qdisc-tbf-burst = "4294967295"
 TOML'
 
         docker exec "$node" sh -c 'cat >> /etc/containerd/config.toml << "TOML"
