@@ -203,6 +203,24 @@ components:
       required:
         - podTemplate
       type: object
+    EgressRateLimit:
+      additionalProperties: false
+      properties:
+        burstBytes:
+          description: Token bucket depth in bytes. When omitted the operator derives min(max(rate/10, 131072), 4294967295) at pod creation.
+          format: int64
+          maximum: 4294967295
+          minimum: 131072
+          type: integer
+        rateBytesPerSecond:
+          description: Sustained egress rate in bytes per second
+          format: int64
+          maximum: 1000000000000
+          minimum: 1
+          type: integer
+      required:
+        - rateBytesPerSecond
+      type: object
     ErrorDetail:
       additionalProperties: false
       properties:
@@ -360,6 +378,9 @@ components:
           type:
             - array
             - "null"
+        egressRateLimit:
+          $ref: "#/components/schemas/EgressRateLimit"
+          description: Egress traffic shaping (token bucket). Requires gVisor release-20260601.0+ on cluster nodes.
         nameservers:
           description: Custom DNS servers (max 3)
           items:

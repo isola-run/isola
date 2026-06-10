@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"maps"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -322,6 +323,17 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		sandboxPod.Annotations = map[string]string{}
 	}
 	sandboxPod.Annotations["dev.gvisor.flag.overlay2"] = "root:self"
+
+	// Egress traffic shaping via gVisor token bucket (requires runsc release-20260601.0+;
+	// older runsc rejects these annotations and the pod fails to start). gVisor requires
+	// both rate and burst when qdisc=tbf, so burst is always derived when unset; the
+	// derived value exists only on the pod, never written back to the spec.
+	if sandbox.Spec.Network != nil && sandbox.Spec.Network.EgressRateLimit != nil {
+		rl := sandbox.Spec.Network.EgressRateLimit
+		sandboxPod.Annotations["dev.gvisor.flag.qdisc"] = "tbf"
+		sandboxPod.Annotations["dev.gvisor.flag.qdisc-tbf-rate"] = strconv.FormatInt(rl.RateBytesPerSecond, 10)
+		sandboxPod.Annotations["dev.gvisor.flag.qdisc-tbf-burst"] = strconv.FormatInt(netbuilder.EffectiveEgressBurstBytes(rl), 10)
+	}
 
 	if len(sandbox.Spec.RootfsSnapshotSources) > 0 {
 		if terminal, err := r.validateRootfsRestoreConfig(ctx); err != nil {

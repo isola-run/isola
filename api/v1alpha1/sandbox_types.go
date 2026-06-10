@@ -71,6 +71,28 @@ type TerminationPolicy struct {
 	SnapshotRootfs *SnapshotRootfsTermination `json:"snapshotRootfs,omitempty"`
 }
 
+// EgressRateLimit configures token-bucket egress traffic shaping (gVisor --qdisc=tbf).
+// Orthogonal to egress policy: it shapes whatever egress the NetworkPolicy allows.
+// Requires gVisor release-20260601.0 or later; older runsc rejects the
+// dev.gvisor.flag.qdisc* annotations and the pod fails to start.
+type EgressRateLimit struct {
+	// RateBytesPerSecond is the sustained egress rate in bytes per second.
+	// +required
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=1000000000000
+	RateBytesPerSecond int64 `json:"rateBytesPerSecond"`
+
+	// BurstBytes is the token bucket depth in bytes. When omitted, the operator derives
+	// min(max(rateBytesPerSecond/10, 131072), 4294967295) at pod creation; the spec is
+	// not mutated. Minimum 131072 (128 KiB) because gVisor refuses to start when the
+	// bucket is smaller than the max packet size (~64 KiB + headers with host GSO).
+	// Maximum 4294967295 (2^32-1) is gVisor's flag limit.
+	// +optional
+	// +kubebuilder:validation:Minimum=131072
+	// +kubebuilder:validation:Maximum=4294967295
+	BurstBytes *int64 `json:"burstBytes,omitempty"`
+}
+
 // Network defines network isolation for a sandbox.
 // If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
 // +kubebuilder:validation:XValidation:rule="!has(self.nameservers) || (has(self.allowIPv6Egress) && self.allowIPv6Egress == true) || self.nameservers.all(s, ip(s).family() == 4)",message="IPv6 nameservers require allowIPv6Egress to be true"
@@ -119,6 +141,10 @@ type Network struct {
 	// +listType=atomic
 	// +optional
 	Nameservers []string `json:"nameservers,omitempty"`
+
+	// EgressRateLimit shapes (rate-limits) egress traffic using a gVisor token bucket.
+	// +optional
+	EgressRateLimit *EgressRateLimit `json:"egressRateLimit,omitempty"`
 }
 
 // RootfsSnapshotSource specifies a rootfs snapshot to restore into a container at creation time.

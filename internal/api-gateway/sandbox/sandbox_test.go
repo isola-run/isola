@@ -69,7 +69,8 @@ var _ = Describe("Sandbox Endpoints", func() {
 					"allowInternetEgress": true,
 					"allowClusterDNS": true,
 					"allowedEgressCIDRs": ["10.0.0.0/8"],
-					"nameservers": ["8.8.8.8"]
+					"nameservers": ["8.8.8.8"],
+					"egressRateLimit": {"rateBytesPerSecond": 10000000, "burstBytes": 262144}
 				}
 			}`
 
@@ -94,6 +95,9 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(*body.Network.AllowClusterDNS).To(BeTrue())
 			Expect(body.Network.AllowedEgressCIDRs).To(ConsistOf("10.0.0.0/8"))
 			Expect(body.Network.Nameservers).To(ConsistOf("8.8.8.8"))
+			Expect(body.Network.EgressRateLimit).NotTo(BeNil())
+			Expect(body.Network.EgressRateLimit.RateBytesPerSecond).To(Equal(int64(10000000)))
+			Expect(*body.Network.EgressRateLimit.BurstBytes).To(Equal(int64(262144)))
 
 			// Env vars are write-only — response must not leak them
 			var raw map[string]json.RawMessage
@@ -188,6 +192,24 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(resp.Code).To(Equal(422))
 		})
 
+		It("rejects egressRateLimit without rateBytesPerSecond with 422", func() {
+			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimit":{"burstBytes":262144}}}`
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(422))
+		})
+
+		It("rejects egressRateLimit rateBytesPerSecond of 0 with 422", func() {
+			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimit":{"rateBytesPerSecond":0}}}`
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(422))
+		})
+
+		It("rejects egressRateLimit burstBytes below 131072 with 422", func() {
+			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimit":{"rateBytesPerSecond":1000000,"burstBytes":65536}}}`
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(422))
+		})
+
 		It("rejects timeoutSeconds of 0", func() {
 			reqBody := `{"podTemplate":{"containers":[{"image":"x"}]},"timeoutSeconds":0}`
 			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
@@ -229,6 +251,27 @@ var _ = Describe("Sandbox Endpoints", func() {
 				return k8sClient.Get(ctx, keyFor(body.ID), sb)
 			}).Should(Succeed())
 			Expect(sb.Spec.Network).To(BeNil())
+		})
+
+		It("passes egressRateLimit through without defaulting burst", func() {
+			// Burst defaulting is the operator's job at pod creation — the gateway
+			// must not write a derived burst into the response or the CR.
+			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimit":{"rateBytesPerSecond":1000000}}}`
+			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
+			Expect(resp.Code).To(Equal(201))
+
+			var body SandboxResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
+			Expect(body.Network.EgressRateLimit).NotTo(BeNil())
+			Expect(body.Network.EgressRateLimit.RateBytesPerSecond).To(Equal(int64(1000000)))
+			Expect(body.Network.EgressRateLimit.BurstBytes).To(BeNil())
+
+			sb := &sandboxv1alpha1.Sandbox{}
+			Eventually(func() error {
+				return k8sClient.Get(ctx, keyFor(body.ID), sb)
+			}).Should(Succeed())
+			Expect(sb.Spec.Network.EgressRateLimit.RateBytesPerSecond).To(Equal(int64(1000000)))
+			Expect(sb.Spec.Network.EgressRateLimit.BurstBytes).To(BeNil())
 		})
 	})
 

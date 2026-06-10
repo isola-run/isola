@@ -20,6 +20,7 @@ import {
   ContainerInfo,
   CreateCommandResponse,
   CreateSandboxPayload,
+  EgressRateLimit,
   ListSandboxesResponse,
   Network,
   PodTemplateInfo,
@@ -80,6 +81,45 @@ describe("Network acronym aliases", () => {
     // Python's exclude_none=True semantics on both, so the wire stays clean.
     const dumped = Network.toWire({ allowClusterDNS: true, nameservers: null as never });
     expect(Object.keys(dumped)).toEqual(["allowClusterDNS"]);
+  });
+
+  it("decodes nested egressRateLimit", () => {
+    const net = Network.fromWire({
+      egressRateLimit: { rateBytesPerSecond: 10_000_000, burstBytes: 262_144 },
+    });
+    expect(net.egressRateLimit).toEqual({ rateBytesPerSecond: 10_000_000, burstBytes: 262_144 });
+  });
+
+  it("encodes nested egressRateLimit through EgressRateLimit.toWire", () => {
+    // burstBytes: null pins that the nested object is re-encoded rather than
+    // passed through dropNullish at the top level only.
+    const dumped = Network.toWire({
+      egressRateLimit: { rateBytesPerSecond: 10_000_000, burstBytes: null as never },
+    });
+    expect(dumped).toEqual({ egressRateLimit: { rateBytesPerSecond: 10_000_000 } });
+  });
+});
+
+describe("EgressRateLimit", () => {
+  it("fromWire requires rateBytesPerSecond", () => {
+    expect(() => EgressRateLimit.fromWire({ burstBytes: 262_144 })).toThrow(TypeError);
+  });
+
+  it("fromWire decodes burstBytes when present", () => {
+    const rl = EgressRateLimit.fromWire({ rateBytesPerSecond: 10_000_000, burstBytes: 262_144 });
+    expect(rl.rateBytesPerSecond).toBe(10_000_000);
+    expect(rl.burstBytes).toBe(262_144);
+  });
+
+  it("fromWire omits burstBytes when absent", () => {
+    const rl = EgressRateLimit.fromWire({ rateBytesPerSecond: 10_000_000 });
+    expect(rl).toEqual({ rateBytesPerSecond: 10_000_000 });
+  });
+
+  it("toWire drops nullish burstBytes", () => {
+    // TS forbids null here; JS callers can pass it (same convention as the Network tests).
+    const dumped = EgressRateLimit.toWire({ rateBytesPerSecond: 1_000_000, burstBytes: null as never });
+    expect(Object.keys(dumped)).toEqual(["rateBytesPerSecond"]);
   });
 });
 

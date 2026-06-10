@@ -267,6 +267,22 @@ Network(
 )
 ```
 
+Cap outbound bandwidth with an egress rate limit (token bucket, enforced by gVisor inside the sandbox):
+
+```python
+from isola import EgressRateLimit, Network
+
+sandbox = client.sandboxes.create(
+    image="alpine:3.21",
+    network=Network(
+        allow_internet_egress=True,
+        egress_rate_limit=EgressRateLimit(rate_bytes_per_second=10_000_000),  # 10 MB/s
+    ),
+)
+```
+
+`burst_bytes` (the bucket depth) is derived server-side when omitted. Requires gVisor release-20260601.0 or later on cluster nodes.
+
 ## Rootfs snapshots
 
 > Requires rootfs snapshots to be enabled and a storage bucket configured in your Helm values (`operator.sandboxRuntime.rootfssnapshot`).

@@ -129,13 +129,20 @@ func crdNetworkToREST(n *sandboxv1alpha1.Network) *Network {
 		return nil
 	}
 
-	return &Network{
+	rest := &Network{
 		AllowInternetEgress: n.AllowInternetEgress,
 		AllowClusterDNS:     n.AllowClusterDNS,
 		AllowIPv6Egress:     n.AllowIPv6Egress,
 		AllowedEgressCIDRs:  n.AllowedEgressCIDRs,
 		Nameservers:         n.Nameservers,
 	}
+	if n.EgressRateLimit != nil {
+		rest.EgressRateLimit = &EgressRateLimit{
+			RateBytesPerSecond: n.EgressRateLimit.RateBytesPerSecond,
+			BurstBytes:         n.EgressRateLimit.BurstBytes,
+		}
+	}
+	return rest
 }
 
 func requestToSandboxCR(req CreateSandboxRequest, name, namespace string) (*sandboxv1alpha1.Sandbox, error) {
@@ -248,13 +255,20 @@ func restNetworkToCRD(n *Network) *sandboxv1alpha1.Network {
 		return nil
 	}
 
-	return &sandboxv1alpha1.Network{
+	crd := &sandboxv1alpha1.Network{
 		AllowInternetEgress: n.AllowInternetEgress,
 		AllowClusterDNS:     n.AllowClusterDNS,
 		AllowIPv6Egress:     n.AllowIPv6Egress,
 		AllowedEgressCIDRs:  n.AllowedEgressCIDRs,
 		Nameservers:         n.Nameservers,
 	}
+	if n.EgressRateLimit != nil {
+		crd.EgressRateLimit = &sandboxv1alpha1.EgressRateLimit{
+			RateBytesPerSecond: n.EgressRateLimit.RateBytesPerSecond,
+			BurstBytes:         n.EgressRateLimit.BurstBytes,
+		}
+	}
+	return crd
 }
 
 func restTerminationPolicyToCRD(rest *TerminationPolicy) *sandboxv1alpha1.TerminationPolicy {

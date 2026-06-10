@@ -77,12 +77,18 @@ type ResourceList struct {
 	EphemeralStorage string `json:"ephemeralStorage,omitempty" example:"1Gi" doc:"Ephemeral storage (K8s quantity)"`
 }
 
+type EgressRateLimit struct {
+	RateBytesPerSecond int64  `json:"rateBytesPerSecond" required:"true" minimum:"1" maximum:"1000000000000" doc:"Sustained egress rate in bytes per second"`
+	BurstBytes         *int64 `json:"burstBytes,omitempty" minimum:"131072" maximum:"4294967295" doc:"Token bucket depth in bytes. When omitted the operator derives min(max(rate/10, 131072), 4294967295) at pod creation."`
+}
+
 type Network struct {
-	AllowInternetEgress *bool    `json:"allowInternetEgress,omitempty" doc:"Allow public internet egress"`
-	AllowClusterDNS     *bool    `json:"allowClusterDNS,omitempty" doc:"Allow cluster DNS queries"`
-	AllowIPv6Egress     *bool    `json:"allowIPv6Egress,omitempty" doc:"Enable IPv6 in egress configuration (default: IPv4 only)"`
-	AllowedEgressCIDRs  []string `json:"allowedEgressCIDRs,omitempty" maxItems:"16" maxLength:"43" doc:"Allowed egress CIDRs"`
-	Nameservers         []string `json:"nameservers,omitempty" maxItems:"3" doc:"Custom DNS servers (max 3)"`
+	AllowInternetEgress *bool            `json:"allowInternetEgress,omitempty" doc:"Allow public internet egress"`
+	AllowClusterDNS     *bool            `json:"allowClusterDNS,omitempty" doc:"Allow cluster DNS queries"`
+	AllowIPv6Egress     *bool            `json:"allowIPv6Egress,omitempty" doc:"Enable IPv6 in egress configuration (default: IPv4 only)"`
+	AllowedEgressCIDRs  []string         `json:"allowedEgressCIDRs,omitempty" maxItems:"16" maxLength:"43" doc:"Allowed egress CIDRs"`
+	Nameservers         []string         `json:"nameservers,omitempty" maxItems:"3" doc:"Custom DNS servers (max 3)"`
+	EgressRateLimit     *EgressRateLimit `json:"egressRateLimit,omitempty" doc:"Egress traffic shaping (token bucket). Requires gVisor release-20260601.0+ on cluster nodes."`
 }
 
 type GetSandboxInput struct {

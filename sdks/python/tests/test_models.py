@@ -17,6 +17,7 @@ from __future__ import annotations
 from isola._models import (
     Container,
     CreateSandboxPayload,
+    EgressRateLimit,
     ListSandboxesResponse,
     Network,
     PodTemplate,
@@ -55,6 +56,11 @@ class TestNetworkAliases:
         net = Network(nameservers=["8.8.8.8"])
         dumped = net.model_dump(by_alias=True, exclude_none=True)
         assert "nameservers" in dumped
+
+    def test_egress_rate_limit_uses_standard_camel(self) -> None:
+        net = Network(egress_rate_limit=EgressRateLimit(rate_bytes_per_second=10_000_000))
+        dumped = net.model_dump(by_alias=True, exclude_none=True)
+        assert dumped == {"egressRateLimit": {"rateBytesPerSecond": 10_000_000}}
 
 
 # --- Validation by both name and alias ---
@@ -104,6 +110,22 @@ class TestValidateByNameAndAlias:
         )
         assert net.allow_cluster_dns is False
         assert net.allowed_egress_cidrs == ["192.168.0.0/16"]
+
+    def test_egress_rate_limit_by_alias(self) -> None:
+        net = Network.model_validate(
+            {"egressRateLimit": {"rateBytesPerSecond": 10_000_000, "burstBytes": 262_144}}
+        )
+        assert net.egress_rate_limit is not None
+        assert net.egress_rate_limit.rate_bytes_per_second == 10_000_000
+        assert net.egress_rate_limit.burst_bytes == 262_144
+
+    def test_egress_rate_limit_by_name(self) -> None:
+        net = Network.model_validate(
+            {"egress_rate_limit": {"rate_bytes_per_second": 10_000_000, "burst_bytes": 262_144}}
+        )
+        assert net.egress_rate_limit is not None
+        assert net.egress_rate_limit.rate_bytes_per_second == 10_000_000
+        assert net.egress_rate_limit.burst_bytes == 262_144
 
 
 # --- Round-trip serialization ---
@@ -202,6 +224,18 @@ class TestRoundTrip:
         reparsed = Network.model_validate(dumped)
         assert reparsed.allow_cluster_dns is True
         assert reparsed.allowed_egress_cidrs == ["172.16.0.0/12"]
+
+    def test_egress_rate_limit_round_trip(self) -> None:
+        net = Network(
+            egress_rate_limit=EgressRateLimit(rate_bytes_per_second=10_000_000, burst_bytes=262_144),
+        )
+        dumped = net.model_dump(by_alias=True, mode="json", exclude_none=True)
+        assert dumped["egressRateLimit"] == {"rateBytesPerSecond": 10_000_000, "burstBytes": 262_144}
+
+        reparsed = Network.model_validate(dumped)
+        assert reparsed.egress_rate_limit is not None
+        assert reparsed.egress_rate_limit.rate_bytes_per_second == 10_000_000
+        assert reparsed.egress_rate_limit.burst_bytes == 262_144
 
     def test_list_sandboxes_response_round_trip(self) -> None:
         data = {

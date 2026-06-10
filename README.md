@@ -201,6 +201,22 @@ sandbox = client.sandboxes.create(
 
 Private IP ranges and cloud metadata endpoints are blocked automatically when internet egress is enabled.
 
+Outbound bandwidth can be capped per sandbox with an egress rate limit:
+
+```python
+from isola import EgressRateLimit, Network
+
+sandbox = client.sandboxes.create(
+    image="alpine:3.21",
+    network=Network(
+        allow_internet_egress=True,
+        egress_rate_limit=EgressRateLimit(rate_bytes_per_second=10_000_000),  # 10 MB/s
+    ),
+)
+```
+
+The limit is a token bucket enforced by gVisor inside the sandbox (not by NetworkPolicy), so it works with any CNI and composes with any egress policy. The optional `burst_bytes` bucket depth is derived from the rate when omitted. Requires gVisor [`release-20260601.0`](https://storage.googleapis.com/gvisor/releases/release/20260601/x86_64/runsc) or later on cluster nodes.
+
 Network isolation relies on Kubernetes [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/) and requires a CNI that enforces it. Most managed Kubernetes services (EKS, AKS, GKE) support this natively or through built-in options.
 
 ### Multi-container sandboxes
@@ -277,7 +293,7 @@ Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/conta
 
 0. Ensure your cluster uses [containerd](https://containerd.io/docs/2.2/getting-started/) (the default container runtime on EKS, AKS, GKE and most clusters).
 
-1. Install the `runsc` binary and `containerd-shim-runsc-v1` on each node. See the [gVisor quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions. If you plan to use rootfs snapshots, install [`release-20260126.0`](https://storage.googleapis.com/gvisor/releases/release/20260126/x86_64/runsc) or later.
+1. Install the `runsc` binary and `containerd-shim-runsc-v1` on each node. See the [gVisor quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions. If you plan to use rootfs snapshots, install [`release-20260126.0`](https://storage.googleapis.com/gvisor/releases/release/20260126/x86_64/runsc) or later; egress rate limiting (`network.egressRateLimit`) requires [`release-20260601.0`](https://storage.googleapis.com/gvisor/releases/release/20260601/x86_64/runsc) or later.
 
 2. Configure the containerd runtime. Create `/etc/containerd/runsc.toml`:
 

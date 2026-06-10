@@ -14,7 +14,8 @@
 
 // Mirrors sdks/python/tests/e2e/test_network.py.
 // Exercises Network spec end-to-end: default deny, internet egress,
-// custom nameservers, allowedEgressCIDRs, DNS sink, cluster DNS.
+// custom nameservers, allowedEgressCIDRs, DNS sink, cluster DNS,
+// egress rate limiting.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Isola } from "../../src";
@@ -122,6 +123,51 @@ describe.sequential("e2e: network", () => {
     expect(fetched.network?.allowInternetEgress).toBe(true);
     expect(fetched.network?.nameservers).toContain("8.8.8.8");
     expect(fetched.network?.nameservers).toContain("1.1.1.1");
+  }, 90_000);
+
+  it("egressRateLimit spec is reflected on get(); omitted burst stays unset", async () => {
+    const sb = await client.sandboxes.create({
+      image: "alpine:3.21",
+      network: { egressRateLimit: { rateBytesPerSecond: 10_000_000, burstBytes: 262_144 } },
+    });
+    created.push(sb.id);
+    await waitForRunning(client, sb.id);
+
+    const fetched = await client.sandboxes.get(sb.id);
+    expect(fetched.network?.egressRateLimit).toEqual({
+      rateBytesPerSecond: 10_000_000,
+      burstBytes: 262_144,
+    });
+
+    // Omitted burst is derived by the operator on the pod, never written to the spec.
+    const sbNoBurst = await client.sandboxes.create({
+      image: "alpine:3.21",
+      network: { egressRateLimit: { rateBytesPerSecond: 10_000_000 } },
+    });
+    created.push(sbNoBurst.id);
+    await waitForRunning(client, sbNoBurst.id);
+
+    const fetchedNoBurst = await client.sandboxes.get(sbNoBurst.id);
+    expect(fetchedNoBurst.network?.egressRateLimit).toEqual({ rateBytesPerSecond: 10_000_000 });
+  }, 90_000);
+
+  it("egressRateLimit: connectivity still works under a rate limit", async () => {
+    const sb = await client.sandboxes.create({
+      image: "alpine:3.21",
+      network: {
+        allowInternetEgress: true,
+        nameservers: ["8.8.8.8", "1.1.1.1"],
+        egressRateLimit: { rateBytesPerSecond: 1_000_000 },
+      },
+    });
+    created.push(sb.id);
+    const running = await waitForRunning(client, sb.id);
+
+    const r = await running.commands.run(["wget", "-q", "-O-", "--timeout=5", "http://1.1.1.1"], {
+      timeoutSeconds: 10,
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.length).toBeGreaterThan(0);
   }, 90_000);
 
   it("allowClusterDNS=true: resolv.conf does not contain the sink", async () => {

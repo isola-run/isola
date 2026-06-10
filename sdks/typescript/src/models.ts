@@ -71,6 +71,40 @@ export type SandboxStatus = "Pending" | "Running" | "Terminating" | "Succeeded" 
 export type RootfsSnapshotStatus = "Pending" | "Running" | "Succeeded" | "Failed";
 
 /**
+ * Egress traffic shaping (token bucket) for a sandbox.
+ *
+ * Limits the sandbox's sustained outbound bandwidth. Enforced by gVisor
+ * inside the sandbox, independent of the egress policy: it shapes whatever
+ * egress is allowed, including none. Requires gVisor release-20260601.0 or
+ * later on cluster nodes.
+ */
+export interface EgressRateLimit {
+  /** Sustained egress rate in bytes per second. */
+  rateBytesPerSecond: number;
+  /**
+   * Token bucket depth in bytes (min 131072, max 2^32 - 1). When omitted,
+   * the server derives `min(max(rate / 10, 131072), 2^32 - 1)`.
+   */
+  burstBytes?: number;
+}
+
+/** @internal */
+export const EgressRateLimit = {
+  fromWire(json: unknown): EgressRateLimit {
+    const o = record<EgressRateLimit>(json);
+    if (typeof o.rateBytesPerSecond !== "number") {
+      throw new TypeError("EgressRateLimit.rateBytesPerSecond is required");
+    }
+    const out: EgressRateLimit = { rateBytesPerSecond: o.rateBytesPerSecond };
+    if (o.burstBytes != null) out.burstBytes = o.burstBytes;
+    return out;
+  },
+  toWire(e: EgressRateLimit): Wire {
+    return dropNullish(e as unknown as Record<string, unknown>);
+  },
+};
+
+/**
  * Network configuration for a sandbox.
  *
  * Sandboxes have no network access by default. Use this to enable
@@ -108,6 +142,11 @@ export interface Network {
    * `allowedEgressCIDRs` and `nameservers`.
    */
   allowIPv6Egress?: boolean;
+  /**
+   * Egress traffic shaping (token bucket). Requires gVisor
+   * release-20260601.0 or later on cluster nodes.
+   */
+  egressRateLimit?: EgressRateLimit;
 }
 
 /** @internal */
@@ -120,10 +159,13 @@ export const Network = {
     if (o.allowClusterDNS != null) out.allowClusterDNS = o.allowClusterDNS;
     if (o.nameservers != null) out.nameservers = o.nameservers;
     if (o.allowIPv6Egress != null) out.allowIPv6Egress = o.allowIPv6Egress;
+    if (o.egressRateLimit != null) out.egressRateLimit = EgressRateLimit.fromWire(o.egressRateLimit);
     return out;
   },
   toWire(n: Network): Wire {
-    return dropNullish(n as Record<string, unknown>);
+    const out = dropNullish(n as Record<string, unknown>);
+    if (n.egressRateLimit != null) out.egressRateLimit = EgressRateLimit.toWire(n.egressRateLimit);
+    return out;
   },
 };
 
