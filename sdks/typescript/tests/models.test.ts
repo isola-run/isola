@@ -20,7 +20,6 @@ import {
   ContainerInfo,
   CreateCommandResponse,
   CreateSandboxPayload,
-  EgressRateLimit,
   ListSandboxesResponse,
   Network,
   PodTemplateInfo,
@@ -83,38 +82,21 @@ describe("Network acronym aliases", () => {
     expect(Object.keys(dumped)).toEqual(["allowClusterDNS"]);
   });
 
-  it("decodes nested egressRateLimit", () => {
-    const net = Network.fromWire({
-      egressRateLimit: { rateBytesPerSecond: 10_000_000 },
-    });
-    expect(net.egressRateLimit).toEqual({ rateBytesPerSecond: 10_000_000 });
+  it("decodes egressRateLimitBytesPerSecond", () => {
+    const net = Network.fromWire({ egressRateLimitBytesPerSecond: 10_000_000 });
+    expect(net.egressRateLimitBytesPerSecond).toBe(10_000_000);
   });
 
-  it("encodes nested egressRateLimit through EgressRateLimit.toWire", () => {
-    // rateBytesPerSecond: null pins that the nested object is re-encoded
-    // rather than passed through dropNullish at the top level only.
+  it("encodes egressRateLimitBytesPerSecond and drops it when nullish", () => {
+    // TS forbids null here, JS callers can pass it (same convention as the other Network tests).
     const dumped = Network.toWire({
-      egressRateLimit: { rateBytesPerSecond: null as never },
+      allowInternetEgress: true,
+      egressRateLimitBytesPerSecond: null as never,
     });
-    expect(dumped).toEqual({ egressRateLimit: {} });
-  });
-});
+    expect(Object.keys(dumped)).toEqual(["allowInternetEgress"]);
 
-describe("EgressRateLimit", () => {
-  it("fromWire decodes rateBytesPerSecond when present", () => {
-    const rl = EgressRateLimit.fromWire({ rateBytesPerSecond: 10_000_000 });
-    expect(rl).toEqual({ rateBytesPerSecond: 10_000_000 });
-  });
-
-  it("fromWire omits rateBytesPerSecond when absent", () => {
-    const rl = EgressRateLimit.fromWire({});
-    expect(rl).toEqual({});
-  });
-
-  it("toWire drops nullish rateBytesPerSecond", () => {
-    // TS forbids null here, JS callers can pass it (same convention as the Network tests).
-    const dumped = EgressRateLimit.toWire({ rateBytesPerSecond: null as never });
-    expect(Object.keys(dumped)).toEqual([]);
+    const present = Network.toWire({ egressRateLimitBytesPerSecond: 10_000_000 });
+    expect(present).toEqual({ egressRateLimitBytesPerSecond: 10_000_000 });
   });
 });
 

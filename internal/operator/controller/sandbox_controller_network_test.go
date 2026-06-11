@@ -127,13 +127,11 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(np).To(BeNil())
 		})
 
-		It("should stamp gvisor tbf annotations when egressRateLimit is set", func() {
+		It("should stamp gvisor tbf annotations when egressRateLimitBytesPerSecond is set", func() {
 			sandboxName := "sandbox-tbf-set"
 
 			network := &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{
-					RateBytesPerSecond: ptr.To[int64](10000000),
-				},
+				EgressRateLimitBytesPerSecond: ptr.To[int64](10000000),
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
@@ -154,9 +152,7 @@ var _ = Describe("Sandbox Controller", func() {
 			sandboxName := "sandbox-tbf-floor"
 
 			network := &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{
-					RateBytesPerSecond: ptr.To[int64](1000),
-				},
+				EgressRateLimitBytesPerSecond: ptr.To[int64](1000),
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)
@@ -170,27 +166,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Annotations).To(HaveKeyWithValue("dev.gvisor.flag.qdisc-tbf-burst", "131072"))
 		})
 
-		It("should not stamp qdisc annotations when egressRateLimit has no rate", func() {
-			sandboxName := "sandbox-tbf-no-rate"
-
-			network := &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{},
-			}
-			createSandboxWithNetwork(ctx, sandboxName, network)
-			defer deleteSandbox(ctx, sandboxName)
-			defer deletePod(ctx, sandboxName+"-pod")
-
-			_, err := doReconcile(ctx, reconciler, sandboxName)
-			Expect(err).NotTo(HaveOccurred())
-
-			pod := getPod(ctx, sandboxName+"-pod")
-			Expect(pod).NotTo(BeNil())
-			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.qdisc"))
-			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.qdisc-tbf-rate"))
-			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.qdisc-tbf-burst"))
-		})
-
-		It("should not stamp qdisc annotations when network has no egressRateLimit", func() {
+		It("should not stamp qdisc annotations when network has no egress rate limit", func() {
 			sandboxName := "sandbox-tbf-absent"
 
 			network := &sandboxv1alpha1.Network{
@@ -210,15 +186,13 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.qdisc-tbf-burst"))
 		})
 
-		It("should not create custom NetworkPolicy when only egressRateLimit is set", func() {
+		It("should not create custom NetworkPolicy when only the egress rate limit is set", func() {
 			// Shaping is enforced by gVisor inside the pod, not by NetworkPolicy.
 			// The sandbox keeps the default deny-all egress.
 			sandboxName := "sandbox-tbf-no-netpol"
 
 			network := &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{
-					RateBytesPerSecond: ptr.To[int64](1000000),
-				},
+				EgressRateLimitBytesPerSecond: ptr.To[int64](1000000),
 			}
 			createSandboxWithNetwork(ctx, sandboxName, network)
 			defer deleteSandbox(ctx, sandboxName)

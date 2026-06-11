@@ -105,13 +105,13 @@ var _ = Describe("Sandbox CRD validation", func() {
 			sb.Spec.Network = &sandboxv1alpha1.Network{AllowClusterDNS: ptr.To(true)}
 			Expect(k8sClient.Update(ctx, sb)).To(Succeed())
 		})
-		It("rejects change to a nested egressRateLimit field", func() {
+		It("rejects change to egressRateLimitBytesPerSecond", func() {
 			sb := minimalSandbox("sb")
 			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: ptr.To[int64](1000000)},
+				EgressRateLimitBytesPerSecond: ptr.To[int64](1000000),
 			}
 			Expect(k8sClient.Create(ctx, sb)).To(Succeed())
-			sb.Spec.Network.EgressRateLimit.RateBytesPerSecond = ptr.To[int64](2000000)
+			sb.Spec.Network.EgressRateLimitBytesPerSecond = ptr.To[int64](2000000)
 			Expect(k8sClient.Update(ctx, sb)).ToNot(Succeed())
 		})
 	})
@@ -275,32 +275,25 @@ var _ = Describe("Sandbox CRD validation", func() {
 		})
 	})
 
-	Describe("Network egressRateLimit bounds", func() {
+	Describe("Network egressRateLimitBytesPerSecond bounds", func() {
 		It("accepts a valid rate", func() {
 			sb := minimalSandbox("sb")
 			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: ptr.To[int64](1000000)},
-			}
-			Expect(k8sClient.Create(ctx, sb)).To(Succeed())
-		})
-		It("accepts an empty egressRateLimit", func() {
-			sb := minimalSandbox("sb")
-			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{},
+				EgressRateLimitBytesPerSecond: ptr.To[int64](1000000),
 			}
 			Expect(k8sClient.Create(ctx, sb)).To(Succeed())
 		})
 		It("rejects rate of 0", func() {
 			sb := minimalSandbox("sb")
 			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: ptr.To[int64](0)},
+				EgressRateLimitBytesPerSecond: ptr.To[int64](0),
 			}
 			Expect(k8sClient.Create(ctx, sb)).ToNot(Succeed())
 		})
 		It("rejects rate above 1000000000000", func() {
 			sb := minimalSandbox("sb")
 			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: ptr.To[int64](1000000000001)},
+				EgressRateLimitBytesPerSecond: ptr.To[int64](1000000000001),
 			}
 			Expect(k8sClient.Create(ctx, sb)).ToNot(Succeed())
 		})

@@ -270,13 +270,13 @@ Network(
 Cap outbound bandwidth with an egress rate limit (token bucket, enforced by gVisor inside the sandbox):
 
 ```python
-from isola import EgressRateLimit, Network
+from isola import Network
 
 sandbox = client.sandboxes.create(
     image="alpine:3.21",
     network=Network(
         allow_internet_egress=True,
-        egress_rate_limit=EgressRateLimit(rate_bytes_per_second=10_000_000),  # 10 MB/s
+        egress_rate_limit_bytes_per_second=10_000_000,  # 10 MB/s
     ),
 )
 ```

@@ -71,31 +71,6 @@ export type SandboxStatus = "Pending" | "Running" | "Terminating" | "Succeeded" 
 export type RootfsSnapshotStatus = "Pending" | "Running" | "Succeeded" | "Failed";
 
 /**
- * Egress traffic shaping (token bucket) for a sandbox.
- *
- * Limits the sandbox's sustained outbound bandwidth. Enforced by gVisor
- * inside the sandbox, independent of the egress policy. It shapes whatever
- * egress is allowed, including none.
- */
-export interface EgressRateLimit {
-  /** Sustained egress rate in bytes per second. When omitted, egress is not rate limited. */
-  rateBytesPerSecond?: number;
-}
-
-/** @internal */
-export const EgressRateLimit = {
-  fromWire(json: unknown): EgressRateLimit {
-    const o = record<EgressRateLimit>(json);
-    const out: EgressRateLimit = {};
-    if (o.rateBytesPerSecond != null) out.rateBytesPerSecond = o.rateBytesPerSecond;
-    return out;
-  },
-  toWire(e: EgressRateLimit): Wire {
-    return dropNullish(e as unknown as Record<string, unknown>);
-  },
-};
-
-/**
  * Network configuration for a sandbox.
  *
  * Sandboxes have no network access by default. Use this to enable
@@ -133,8 +108,12 @@ export interface Network {
    * `allowedEgressCIDRs` and `nameservers`.
    */
   allowIPv6Egress?: boolean;
-  /** Egress traffic shaping (token bucket). */
-  egressRateLimit?: EgressRateLimit;
+  /**
+   * Cap sustained egress at this rate in bytes per second (token bucket,
+   * enforced by gVisor inside the sandbox, independent of the egress
+   * policy). When omitted, egress is not rate limited.
+   */
+  egressRateLimitBytesPerSecond?: number;
 }
 
 /** @internal */
@@ -147,13 +126,11 @@ export const Network = {
     if (o.allowClusterDNS != null) out.allowClusterDNS = o.allowClusterDNS;
     if (o.nameservers != null) out.nameservers = o.nameservers;
     if (o.allowIPv6Egress != null) out.allowIPv6Egress = o.allowIPv6Egress;
-    if (o.egressRateLimit != null) out.egressRateLimit = EgressRateLimit.fromWire(o.egressRateLimit);
+    if (o.egressRateLimitBytesPerSecond != null) out.egressRateLimitBytesPerSecond = o.egressRateLimitBytesPerSecond;
     return out;
   },
   toWire(n: Network): Wire {
-    const out = dropNullish(n as Record<string, unknown>);
-    if (n.egressRateLimit != null) out.egressRateLimit = EgressRateLimit.toWire(n.egressRateLimit);
-    return out;
+    return dropNullish(n as Record<string, unknown>);
   },
 };
 

@@ -302,7 +302,7 @@ const sandbox = await client.sandboxes.create({
   image: "alpine:3.21",
   network: {
     allowInternetEgress: true,
-    egressRateLimit: { rateBytesPerSecond: 10_000_000 }, // 10 MB/s
+    egressRateLimitBytesPerSecond: 10_000_000, // 10 MB/s
   },
 });
 ```

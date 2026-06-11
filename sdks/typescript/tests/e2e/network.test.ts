@@ -125,18 +125,18 @@ describe.sequential("e2e: network", () => {
     expect(fetched.network?.nameservers).toContain("1.1.1.1");
   }, 90_000);
 
-  it("egressRateLimit spec is reflected on get()", async () => {
+  it("egressRateLimitBytesPerSecond spec is reflected on get()", async () => {
     // A rate-limited sandbox starts (runsc accepts the qdisc annotations)
     // and the spec round-trips through get().
     const sb = await client.sandboxes.create({
       image: "alpine:3.21",
-      network: { egressRateLimit: { rateBytesPerSecond: 10_000_000 } },
+      network: { egressRateLimitBytesPerSecond: 10_000_000 },
     });
     created.push(sb.id);
     await waitForRunning(client, sb.id);
 
     const fetched = await client.sandboxes.get(sb.id);
-    expect(fetched.network?.egressRateLimit).toEqual({ rateBytesPerSecond: 10_000_000 });
+    expect(fetched.network?.egressRateLimitBytesPerSecond).toBe(10_000_000);
   }, 90_000);
 
   it("allowClusterDNS=true: resolv.conf does not contain the sink", async () => {

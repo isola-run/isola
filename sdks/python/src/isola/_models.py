@@ -58,21 +58,6 @@ class SandboxStatus(str, Enum):
     FAILED = "Failed"
 
 
-class EgressRateLimit(IsolaModel):
-    """Egress traffic shaping (token bucket) for a sandbox.
-
-    Limits the sandbox's sustained outbound bandwidth. Enforced by gVisor
-    inside the sandbox, independent of the egress policy. It shapes whatever
-    egress is allowed, including none.
-
-    Attributes:
-        rate_bytes_per_second: Sustained egress rate in bytes per second.
-            When omitted, egress is not rate limited.
-    """
-
-    rate_bytes_per_second: int | None = None
-
-
 class Network(IsolaModel):
     """Network configuration for a sandbox.
 
@@ -97,7 +82,10 @@ class Network(IsolaModel):
         allow_ipv6_egress: Enable IPv6 across egress configuration.
             Extends allow_internet_egress to cover IPv6, and allows
             IPv6 addresses in allowed_egress_cidrs and nameservers.
-        egress_rate_limit: Egress traffic shaping (token bucket).
+        egress_rate_limit_bytes_per_second: Cap sustained egress at this rate
+            in bytes per second (token bucket, enforced by gVisor inside the
+            sandbox, independent of the egress policy). When omitted, egress
+            is not rate limited.
     """
 
     allow_internet_egress: bool | None = None
@@ -105,7 +93,7 @@ class Network(IsolaModel):
     allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
     nameservers: list[str] | None = None
     allow_ipv6_egress: bool | None = Field(None, alias="allowIPv6Egress")
-    egress_rate_limit: EgressRateLimit | None = None
+    egress_rate_limit_bytes_per_second: int | None = None
 
 
 class ResourceList(IsolaModel):

@@ -99,19 +99,16 @@ spec:
                     x-kubernetes-validations:
                     - message: must be valid CIDR notation (e.g. 10.0.0.0/8 or 2001:db8::/32)
                       rule: self.all(s, isCIDR(s))
-                  egressRateLimit:
-                    description: EgressRateLimit shapes (rate-limits) egress traffic
-                      using a gVisor token bucket.
-                    properties:
-                      rateBytesPerSecond:
-                        description: |-
-                          RateBytesPerSecond is the sustained egress rate in bytes per second.
-                          When unset, egress is not rate limited.
-                        format: int64
-                        maximum: 1000000000000
-                        minimum: 1
-                        type: integer
-                    type: object
+                  egressRateLimitBytesPerSecond:
+                    description: |-
+                      EgressRateLimitBytesPerSecond caps sustained egress at the given rate in bytes
+                      per second using a gVisor token bucket (--qdisc=tbf). Orthogonal to egress
+                      policy: it shapes whatever egress the NetworkPolicy allows.
+                      When unset, egress is not rate limited.
+                    format: int64
+                    maximum: 1000000000000
+                    minimum: 1
+                    type: integer
                   nameservers:
                     description: |-
                       Nameservers are DNS server IPs to inject into the pod.

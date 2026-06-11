@@ -36,7 +36,6 @@ export type {
   CommandResult,
   Container,
   ContainerInfo,
-  EgressRateLimit,
   Network,
   ResourceList,
   ResourceRequirements,

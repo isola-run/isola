@@ -71,17 +71,6 @@ type TerminationPolicy struct {
 	SnapshotRootfs *SnapshotRootfsTermination `json:"snapshotRootfs,omitempty"`
 }
 
-// EgressRateLimit configures token-bucket egress traffic shaping (gVisor --qdisc=tbf).
-// Orthogonal to egress policy: it shapes whatever egress the NetworkPolicy allows.
-type EgressRateLimit struct {
-	// RateBytesPerSecond is the sustained egress rate in bytes per second.
-	// When unset, egress is not rate limited.
-	// +optional
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=1000000000000
-	RateBytesPerSecond *int64 `json:"rateBytesPerSecond,omitempty"`
-}
-
 // Network defines network isolation for a sandbox.
 // If not specified, the sandbox has deny-all egress with sink DNS (queries fail fast).
 // +kubebuilder:validation:XValidation:rule="!has(self.nameservers) || (has(self.allowIPv6Egress) && self.allowIPv6Egress == true) || self.nameservers.all(s, ip(s).family() == 4)",message="IPv6 nameservers require allowIPv6Egress to be true"
@@ -131,9 +120,14 @@ type Network struct {
 	// +optional
 	Nameservers []string `json:"nameservers,omitempty"`
 
-	// EgressRateLimit shapes (rate-limits) egress traffic using a gVisor token bucket.
+	// EgressRateLimitBytesPerSecond caps sustained egress at the given rate in bytes
+	// per second using a gVisor token bucket (--qdisc=tbf). Orthogonal to egress
+	// policy: it shapes whatever egress the NetworkPolicy allows.
+	// When unset, egress is not rate limited.
 	// +optional
-	EgressRateLimit *EgressRateLimit `json:"egressRateLimit,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=1000000000000
+	EgressRateLimitBytesPerSecond *int64 `json:"egressRateLimitBytesPerSecond,omitempty"`
 }
 
 // RootfsSnapshotSource specifies a rootfs snapshot to restore into a container at creation time.

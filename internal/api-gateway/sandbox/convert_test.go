@@ -61,21 +61,18 @@ var _ = Describe("Conversion functions", func() {
 			Expect(sb.Spec.PodTemplate.Spec.Containers[0].Command).To(BeNil())
 		})
 
-		It("passes egressRateLimit through to the CRD", func() {
+		It("passes egressRateLimitBytesPerSecond through to the CRD", func() {
 			req := CreateSandboxRequest{
 				PodTemplate: PodTemplate{
 					Containers: []Container{{Image: "alpine:latest"}},
 				},
 				Network: &Network{
-					EgressRateLimit: &EgressRateLimit{
-						RateBytesPerSecond: ptr.To[int64](10000000),
-					},
+					EgressRateLimitBytesPerSecond: ptr.To[int64](10000000),
 				},
 			}
 			sb, err := requestToSandboxCR(req, "test-sb", "default")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(sb.Spec.Network.EgressRateLimit).NotTo(BeNil())
-			Expect(*sb.Spec.Network.EgressRateLimit.RateBytesPerSecond).To(Equal(int64(10000000)))
+			Expect(*sb.Spec.Network.EgressRateLimitBytesPerSecond).To(Equal(int64(10000000)))
 		})
 
 		It("defaults container name to sandbox0 when omitted", func() {
@@ -521,18 +518,15 @@ var _ = Describe("Conversion functions", func() {
 			Entry("only allowClusterDNS", &sandboxv1alpha1.Network{AllowClusterDNS: ptr.To(true)}, false),
 			Entry("only allowedEgressCIDRs", &sandboxv1alpha1.Network{AllowedEgressCIDRs: []string{"10.0.0.0/8"}}, false),
 			Entry("only allowIPv6Egress", &sandboxv1alpha1.Network{AllowIPv6Egress: ptr.To(true)}, false),
-			Entry("only egressRateLimit", &sandboxv1alpha1.Network{EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: ptr.To[int64](1000000)}}, false),
+			Entry("only egressRateLimitBytesPerSecond", &sandboxv1alpha1.Network{EgressRateLimitBytesPerSecond: ptr.To[int64](1000000)}, false),
 		)
 
-		It("maps egressRateLimit back to REST", func() {
+		It("maps egressRateLimitBytesPerSecond back to REST", func() {
 			n := &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{
-					RateBytesPerSecond: ptr.To[int64](10000000),
-				},
+				EgressRateLimitBytesPerSecond: ptr.To[int64](10000000),
 			}
 			rest := crdNetworkToREST(n)
-			Expect(rest.EgressRateLimit).NotTo(BeNil())
-			Expect(*rest.EgressRateLimit.RateBytesPerSecond).To(Equal(int64(10000000)))
+			Expect(*rest.EgressRateLimitBytesPerSecond).To(Equal(int64(10000000)))
 		})
 	})
 

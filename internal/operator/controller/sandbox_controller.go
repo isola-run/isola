@@ -329,8 +329,8 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// pod fails to start. gVisor requires both rate and burst when qdisc=tbf, so
 	// the burst is derived from the rate. The derived value exists only on the
 	// pod, never written back to the spec.
-	if sandbox.Spec.Network != nil && sandbox.Spec.Network.EgressRateLimit != nil && sandbox.Spec.Network.EgressRateLimit.RateBytesPerSecond != nil {
-		rate := *sandbox.Spec.Network.EgressRateLimit.RateBytesPerSecond
+	if sandbox.Spec.Network != nil && sandbox.Spec.Network.EgressRateLimitBytesPerSecond != nil {
+		rate := *sandbox.Spec.Network.EgressRateLimitBytesPerSecond
 		sandboxPod.Annotations["dev.gvisor.flag.qdisc"] = "tbf"
 		sandboxPod.Annotations["dev.gvisor.flag.qdisc-tbf-rate"] = strconv.FormatInt(rate, 10)
 		sandboxPod.Annotations["dev.gvisor.flag.qdisc-tbf-burst"] = strconv.FormatInt(netbuilder.EffectiveEgressBurstBytes(rate), 10)

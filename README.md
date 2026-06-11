@@ -204,13 +204,13 @@ Private IP ranges and cloud metadata endpoints are blocked automatically when in
 Outbound bandwidth can be capped per sandbox with an egress rate limit:
 
 ```python
-from isola import EgressRateLimit, Network
+from isola import Network
 
 sandbox = client.sandboxes.create(
     image="alpine:3.21",
     network=Network(
         allow_internet_egress=True,
-        egress_rate_limit=EgressRateLimit(rate_bytes_per_second=10_000_000),  # 10 MB/s
+        egress_rate_limit_bytes_per_second=10_000_000,  # 10 MB/s
     ),
 )
 ```
@@ -293,7 +293,7 @@ Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/conta
 
 0. Ensure your cluster uses [containerd](https://containerd.io/docs/2.2/getting-started/) (the default container runtime on EKS, AKS, GKE and most clusters).
 
-1. Install the `runsc` binary and `containerd-shim-runsc-v1` on each node. See the [gVisor quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions. If you plan to use rootfs snapshots, install [`release-20260126.0`](https://storage.googleapis.com/gvisor/releases/release/20260126/x86_64/runsc) or later; egress rate limiting (`network.egressRateLimit`) requires [`release-20260601.0`](https://storage.googleapis.com/gvisor/releases/release/20260601/x86_64/runsc) or later.
+1. Install the `runsc` binary and `containerd-shim-runsc-v1` on each node. See the [gVisor quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions. If you plan to use rootfs snapshots, install [`release-20260126.0`](https://storage.googleapis.com/gvisor/releases/release/20260126/x86_64/runsc) or later; egress rate limiting (`network.egressRateLimitBytesPerSecond`) requires [`release-20260601.0`](https://storage.googleapis.com/gvisor/releases/release/20260601/x86_64/runsc) or later.
 
 2. Configure the containerd runtime. Create `/etc/containerd/runsc.toml`:
 

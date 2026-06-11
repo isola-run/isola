@@ -70,7 +70,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 					"allowClusterDNS": true,
 					"allowedEgressCIDRs": ["10.0.0.0/8"],
 					"nameservers": ["8.8.8.8"],
-					"egressRateLimit": {"rateBytesPerSecond": 10000000}
+					"egressRateLimitBytesPerSecond": 10000000
 				}
 			}`
 
@@ -95,8 +95,7 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(*body.Network.AllowClusterDNS).To(BeTrue())
 			Expect(body.Network.AllowedEgressCIDRs).To(ConsistOf("10.0.0.0/8"))
 			Expect(body.Network.Nameservers).To(ConsistOf("8.8.8.8"))
-			Expect(body.Network.EgressRateLimit).NotTo(BeNil())
-			Expect(*body.Network.EgressRateLimit.RateBytesPerSecond).To(Equal(int64(10000000)))
+			Expect(*body.Network.EgressRateLimitBytesPerSecond).To(Equal(int64(10000000)))
 
 			// Env vars are write-only — response must not leak them
 			var raw map[string]json.RawMessage
@@ -191,20 +190,14 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(resp.Code).To(Equal(422))
 		})
 
-		It("accepts egressRateLimit without rateBytesPerSecond", func() {
-			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimit":{}}}`
-			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
-			Expect(resp.Code).To(Equal(201))
-		})
-
-		It("rejects egressRateLimit rateBytesPerSecond of 0 with 422", func() {
-			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimit":{"rateBytesPerSecond":0}}}`
+		It("rejects egressRateLimitBytesPerSecond of 0 with 422", func() {
+			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimitBytesPerSecond":0}}`
 			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})
 
-		It("rejects egressRateLimit rateBytesPerSecond above 1000000000000 with 422", func() {
-			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimit":{"rateBytesPerSecond":1000000000001}}}`
+		It("rejects egressRateLimitBytesPerSecond above 1000000000000 with 422", func() {
+			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimitBytesPerSecond":1000000000001}}`
 			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})
@@ -252,21 +245,20 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(sb.Spec.Network).To(BeNil())
 		})
 
-		It("passes egressRateLimit through to the CR and response", func() {
-			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimit":{"rateBytesPerSecond":1000000}}}`
+		It("passes egressRateLimitBytesPerSecond through to the CR and response", func() {
+			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimitBytesPerSecond":1000000}}`
 			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(201))
 
 			var body SandboxResponse
 			Expect(json.NewDecoder(resp.Body).Decode(&body)).To(Succeed())
-			Expect(body.Network.EgressRateLimit).NotTo(BeNil())
-			Expect(*body.Network.EgressRateLimit.RateBytesPerSecond).To(Equal(int64(1000000)))
+			Expect(*body.Network.EgressRateLimitBytesPerSecond).To(Equal(int64(1000000)))
 
 			sb := &sandboxv1alpha1.Sandbox{}
 			Eventually(func() error {
 				return k8sClient.Get(ctx, keyFor(body.ID), sb)
 			}).Should(Succeed())
-			Expect(*sb.Spec.Network.EgressRateLimit.RateBytesPerSecond).To(Equal(int64(1000000)))
+			Expect(*sb.Spec.Network.EgressRateLimitBytesPerSecond).To(Equal(int64(1000000)))
 		})
 	})
 

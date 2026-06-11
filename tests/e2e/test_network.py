@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from isola import EgressRateLimit, Isola, Network, Sandbox
+from isola import Isola, Network, Sandbox
 
 from utils import wait_for_running
 
@@ -200,16 +200,13 @@ def test_egress_rate_limit_spec_reflected_in_get(
     spec round-trips through GET."""
     sb = sandbox_factory(
         image="alpine:3.21",
-        network=Network(
-            egress_rate_limit=EgressRateLimit(rate_bytes_per_second=10_000_000),
-        ),
+        network=Network(egress_rate_limit_bytes_per_second=10_000_000),
     )
     wait_for_running(isola_client, sb.id)
 
     fetched = isola_client.sandboxes.get(sb.id)
     assert fetched.network is not None
-    assert fetched.network.egress_rate_limit is not None
-    assert fetched.network.egress_rate_limit.rate_bytes_per_second == 10_000_000
+    assert fetched.network.egress_rate_limit_bytes_per_second == 10_000_000
 
 
 @pytest.mark.timeout(90)
