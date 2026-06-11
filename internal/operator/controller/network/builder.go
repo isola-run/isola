@@ -31,6 +31,7 @@ This package builds custom NetworkPolicies only when needed (and allowInternetEg
 package network
 
 import (
+	"math"
 	"net/netip"
 
 	corev1 "k8s.io/api/core/v1"
@@ -51,8 +52,8 @@ const (
 	// (~64 KiB + headers with host GSO).
 	MinEgressBurstBytes = 131072
 
-	// MaxEgressBurstBytes is gVisor's --qdisc-tbf-burst flag limit (2^32 - 1).
-	MaxEgressBurstBytes = 4294967295
+	// MaxEgressBurstBytes is gVisor's --qdisc-tbf-burst flag limit.
+	MaxEgressBurstBytes = math.MaxUint32
 )
 
 // EffectiveEgressBurstBytes returns the token bucket depth for a sandbox's egress
