@@ -108,10 +108,10 @@ var _ = Describe("Sandbox CRD validation", func() {
 		It("rejects change to a nested egressRateLimit field", func() {
 			sb := minimalSandbox("sb")
 			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: 1000000},
+				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: ptr.To[int64](1000000)},
 			}
 			Expect(k8sClient.Create(ctx, sb)).To(Succeed())
-			sb.Spec.Network.EgressRateLimit.RateBytesPerSecond = 2000000
+			sb.Spec.Network.EgressRateLimit.RateBytesPerSecond = ptr.To[int64](2000000)
 			Expect(k8sClient.Update(ctx, sb)).ToNot(Succeed())
 		})
 	})
@@ -276,54 +276,31 @@ var _ = Describe("Sandbox CRD validation", func() {
 	})
 
 	Describe("Network egressRateLimit bounds", func() {
-		It("accepts rate without burst", func() {
+		It("accepts a valid rate", func() {
 			sb := minimalSandbox("sb")
 			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: 1000000},
+				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: ptr.To[int64](1000000)},
 			}
 			Expect(k8sClient.Create(ctx, sb)).To(Succeed())
 		})
-		It("accepts rate with explicit burst", func() {
+		It("accepts an empty egressRateLimit", func() {
 			sb := minimalSandbox("sb")
 			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{
-					RateBytesPerSecond: 1000000,
-					BurstBytes:         ptr.To[int64](262144),
-				},
+				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{},
 			}
 			Expect(k8sClient.Create(ctx, sb)).To(Succeed())
 		})
 		It("rejects rate of 0", func() {
 			sb := minimalSandbox("sb")
 			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: 0},
+				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: ptr.To[int64](0)},
 			}
 			Expect(k8sClient.Create(ctx, sb)).ToNot(Succeed())
 		})
 		It("rejects rate above 1000000000000", func() {
 			sb := minimalSandbox("sb")
 			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: 1000000000001},
-			}
-			Expect(k8sClient.Create(ctx, sb)).ToNot(Succeed())
-		})
-		It("rejects burst below 131072", func() {
-			sb := minimalSandbox("sb")
-			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{
-					RateBytesPerSecond: 1000000,
-					BurstBytes:         ptr.To[int64](65536),
-				},
-			}
-			Expect(k8sClient.Create(ctx, sb)).ToNot(Succeed())
-		})
-		It("rejects burst above 4294967295", func() {
-			sb := minimalSandbox("sb")
-			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{
-					RateBytesPerSecond: 1000000,
-					BurstBytes:         ptr.To[int64](4294967296),
-				},
+				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: ptr.To[int64](1000000000001)},
 			}
 			Expect(k8sClient.Create(ctx, sb)).ToNot(Succeed())
 		})

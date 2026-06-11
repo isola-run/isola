@@ -112,7 +112,7 @@ jobs:
             # https://gvisor.dev/docs/user_guide/systemd/
             # https://github.com/google/gvisor/issues/10371
             systemd-cgroup = "true"
-            # Egress rate-limit ceilings; nonzero runtime values are required for
+            # Egress rate-limit ceilings. Nonzero runtime values are required for
             # per-pod qdisc-tbf annotations to apply (see hack/setup.sh).
             qdisc-tbf-rate = "1000000000000"
             qdisc-tbf-burst = "4294967295"

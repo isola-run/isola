@@ -307,8 +307,6 @@ const sandbox = await client.sandboxes.create({
 });
 ```
 
-`burstBytes` (the bucket depth) is derived server-side when omitted. Requires gVisor release-20260601.0 or later on cluster nodes.
-
 ## Rootfs snapshots
 
 > Requires rootfs snapshots to be enabled and a storage bucket configured in your Helm values (`operator.sandboxRuntime.rootfssnapshot`).

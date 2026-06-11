@@ -99,26 +99,14 @@ spec:
                     description: EgressRateLimit shapes (rate-limits) egress traffic
                       using a gVisor token bucket.
                     properties:
-                      burstBytes:
-                        description: |-
-                          BurstBytes is the token bucket depth in bytes. When omitted, the operator derives
-                          min(max(rateBytesPerSecond/10, 131072), 4294967295) at pod creation; the spec is
-                          not mutated. Minimum 131072 (128 KiB) because gVisor refuses to start when the
-                          bucket is smaller than the max packet size (~64 KiB + headers with host GSO).
-                          Maximum 4294967295 (2^32-1) is gVisor's flag limit.
-                        format: int64
-                        maximum: 4294967295
-                        minimum: 131072
-                        type: integer
                       rateBytesPerSecond:
-                        description: RateBytesPerSecond is the sustained egress rate
-                          in bytes per second.
+                        description: |-
+                          RateBytesPerSecond is the sustained egress rate in bytes per second.
+                          When unset, egress is not rate limited.
                         format: int64
                         maximum: 1000000000000
                         minimum: 1
                         type: integer
-                    required:
-                    - rateBytesPerSecond
                     type: object
                   nameservers:
                     description: |-

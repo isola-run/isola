@@ -215,7 +215,7 @@ sandbox = client.sandboxes.create(
 )
 ```
 
-The limit is a token bucket enforced by gVisor inside the sandbox (not by NetworkPolicy), so it works with any CNI and composes with any egress policy. The optional `burst_bytes` bucket depth is derived from the rate when omitted. Requires gVisor [`release-20260601.0`](https://storage.googleapis.com/gvisor/releases/release/20260601/x86_64/runsc) or later on cluster nodes.
+The limit is a token bucket enforced by gVisor inside the sandbox (not by NetworkPolicy), so it works with any CNI and composes with any egress policy. Requires gVisor [`release-20260601.0`](https://storage.googleapis.com/gvisor/releases/release/20260601/x86_64/runsc) or later on cluster nodes.
 
 Network isolation relies on Kubernetes [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/) and requires a CNI that enforces it. Most managed Kubernetes services (EKS, AKS, GKE) support this natively or through built-in options.
 
@@ -301,10 +301,6 @@ Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/conta
 [runsc_config]
   allow-rootfs-tar-annotation = "true"
   systemd-cgroup = "true"
-  # Required for egress rate limiting: ceilings that per-sandbox limits can
-  # only lower. runsc validates its config after each annotation it applies,
-  # so per-pod tbf annotations fail intermittently unless the runtime config
-  # already carries nonzero rate/burst values.
   qdisc-tbf-rate = "1000000000000"
   qdisc-tbf-burst = "4294967295"
 ```

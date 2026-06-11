@@ -56,13 +56,10 @@ const (
 )
 
 // EffectiveEgressBurstBytes returns the token bucket depth for a sandbox's egress
-// rate limit: the explicit BurstBytes when set, otherwise ~100ms worth of the rate,
-// clamped to [MinEgressBurstBytes, MaxEgressBurstBytes].
-func EffectiveEgressBurstBytes(rl *sandboxv1alpha1.EgressRateLimit) int64 {
-	if rl.BurstBytes != nil {
-		return *rl.BurstBytes
-	}
-	burst := rl.RateBytesPerSecond / 10
+// rate limit, roughly 100ms worth of the rate, clamped to
+// [MinEgressBurstBytes, MaxEgressBurstBytes].
+func EffectiveEgressBurstBytes(rateBytesPerSecond int64) int64 {
+	burst := rateBytesPerSecond / 10
 	if burst < MinEgressBurstBytes {
 		return MinEgressBurstBytes
 	}

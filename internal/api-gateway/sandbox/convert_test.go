@@ -68,30 +68,14 @@ var _ = Describe("Conversion functions", func() {
 				},
 				Network: &Network{
 					EgressRateLimit: &EgressRateLimit{
-						RateBytesPerSecond: 10000000,
-						BurstBytes:         ptr.To[int64](262144),
+						RateBytesPerSecond: ptr.To[int64](10000000),
 					},
 				},
 			}
 			sb, err := requestToSandboxCR(req, "test-sb", "default")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(sb.Spec.Network.EgressRateLimit).NotTo(BeNil())
-			Expect(sb.Spec.Network.EgressRateLimit.RateBytesPerSecond).To(Equal(int64(10000000)))
-			Expect(*sb.Spec.Network.EgressRateLimit.BurstBytes).To(Equal(int64(262144)))
-		})
-
-		It("leaves egressRateLimit burstBytes nil when omitted", func() {
-			req := CreateSandboxRequest{
-				PodTemplate: PodTemplate{
-					Containers: []Container{{Image: "alpine:latest"}},
-				},
-				Network: &Network{
-					EgressRateLimit: &EgressRateLimit{RateBytesPerSecond: 1000000},
-				},
-			}
-			sb, err := requestToSandboxCR(req, "test-sb", "default")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(sb.Spec.Network.EgressRateLimit.BurstBytes).To(BeNil())
+			Expect(*sb.Spec.Network.EgressRateLimit.RateBytesPerSecond).To(Equal(int64(10000000)))
 		})
 
 		It("defaults container name to sandbox0 when omitted", func() {
@@ -537,20 +521,18 @@ var _ = Describe("Conversion functions", func() {
 			Entry("only allowClusterDNS", &sandboxv1alpha1.Network{AllowClusterDNS: ptr.To(true)}, false),
 			Entry("only allowedEgressCIDRs", &sandboxv1alpha1.Network{AllowedEgressCIDRs: []string{"10.0.0.0/8"}}, false),
 			Entry("only allowIPv6Egress", &sandboxv1alpha1.Network{AllowIPv6Egress: ptr.To(true)}, false),
-			Entry("only egressRateLimit", &sandboxv1alpha1.Network{EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: 1000000}}, false),
+			Entry("only egressRateLimit", &sandboxv1alpha1.Network{EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: ptr.To[int64](1000000)}}, false),
 		)
 
 		It("maps egressRateLimit back to REST", func() {
 			n := &sandboxv1alpha1.Network{
 				EgressRateLimit: &sandboxv1alpha1.EgressRateLimit{
-					RateBytesPerSecond: 10000000,
-					BurstBytes:         ptr.To[int64](262144),
+					RateBytesPerSecond: ptr.To[int64](10000000),
 				},
 			}
 			rest := crdNetworkToREST(n)
 			Expect(rest.EgressRateLimit).NotTo(BeNil())
-			Expect(rest.EgressRateLimit.RateBytesPerSecond).To(Equal(int64(10000000)))
-			Expect(*rest.EgressRateLimit.BurstBytes).To(Equal(int64(262144)))
+			Expect(*rest.EgressRateLimit.RateBytesPerSecond).To(Equal(int64(10000000)))
 		})
 	})
 

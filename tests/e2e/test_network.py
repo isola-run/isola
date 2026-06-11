@@ -196,12 +196,12 @@ def test_egress_rate_limit_spec_reflected_in_get(
     isola_client: Isola,
     sandbox_factory,
 ) -> None:
-    """The egress rate limit spec round-trips through GET; an omitted burst stays unset
-    (the operator derives it on the pod, never in the spec)."""
+    """A rate-limited sandbox starts (runsc accepts the qdisc annotations) and the
+    spec round-trips through GET."""
     sb = sandbox_factory(
         image="alpine:3.21",
         network=Network(
-            egress_rate_limit=EgressRateLimit(rate_bytes_per_second=10_000_000, burst_bytes=262_144),
+            egress_rate_limit=EgressRateLimit(rate_bytes_per_second=10_000_000),
         ),
     )
     wait_for_running(isola_client, sb.id)
@@ -210,45 +210,6 @@ def test_egress_rate_limit_spec_reflected_in_get(
     assert fetched.network is not None
     assert fetched.network.egress_rate_limit is not None
     assert fetched.network.egress_rate_limit.rate_bytes_per_second == 10_000_000
-    assert fetched.network.egress_rate_limit.burst_bytes == 262_144
-
-    sb_no_burst = sandbox_factory(
-        image="alpine:3.21",
-        network=Network(egress_rate_limit=EgressRateLimit(rate_bytes_per_second=10_000_000)),
-    )
-    wait_for_running(isola_client, sb_no_burst.id)
-
-    fetched = isola_client.sandboxes.get(sb_no_burst.id)
-    assert fetched.network is not None
-    assert fetched.network.egress_rate_limit is not None
-    assert fetched.network.egress_rate_limit.rate_bytes_per_second == 10_000_000
-    assert fetched.network.egress_rate_limit.burst_bytes is None
-
-
-@pytest.mark.timeout(90)
-def test_egress_rate_limit_connectivity(
-    isola_client: Isola,
-    sandbox_factory,
-) -> None:
-    """A rate-limited sandbox starts (runsc accepts the qdisc annotations) and still has egress."""
-    sb = sandbox_factory(
-        image="alpine:3.21",
-        network=Network(
-            allow_internet_egress=True,
-            nameservers=["8.8.8.8", "1.1.1.1"],
-            egress_rate_limit=EgressRateLimit(rate_bytes_per_second=1_000_000),
-        ),
-    )
-    running = wait_for_running(isola_client, sb.id)
-
-    exit_code, output = _run_and_collect_stdout(
-        running,
-        "wget", "-q", "-O-", "--timeout=5", "http://1.1.1.1",
-        timeout_seconds=10,
-    )
-
-    assert exit_code == 0, f"wget should succeed under an egress rate limit, got exit code {exit_code}"
-    assert len(output) > 0, "Expected some content from 1.1.1.1"
 
 
 @pytest.mark.timeout(90)

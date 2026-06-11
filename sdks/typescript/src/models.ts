@@ -74,29 +74,20 @@ export type RootfsSnapshotStatus = "Pending" | "Running" | "Succeeded" | "Failed
  * Egress traffic shaping (token bucket) for a sandbox.
  *
  * Limits the sandbox's sustained outbound bandwidth. Enforced by gVisor
- * inside the sandbox, independent of the egress policy: it shapes whatever
- * egress is allowed, including none. Requires gVisor release-20260601.0 or
- * later on cluster nodes.
+ * inside the sandbox, independent of the egress policy. It shapes whatever
+ * egress is allowed, including none.
  */
 export interface EgressRateLimit {
-  /** Sustained egress rate in bytes per second. */
-  rateBytesPerSecond: number;
-  /**
-   * Token bucket depth in bytes (min 131072, max 2^32 - 1). When omitted,
-   * the server derives `min(max(rate / 10, 131072), 2^32 - 1)`.
-   */
-  burstBytes?: number;
+  /** Sustained egress rate in bytes per second. When omitted, egress is not rate limited. */
+  rateBytesPerSecond?: number;
 }
 
 /** @internal */
 export const EgressRateLimit = {
   fromWire(json: unknown): EgressRateLimit {
     const o = record<EgressRateLimit>(json);
-    if (typeof o.rateBytesPerSecond !== "number") {
-      throw new TypeError("EgressRateLimit.rateBytesPerSecond is required");
-    }
-    const out: EgressRateLimit = { rateBytesPerSecond: o.rateBytesPerSecond };
-    if (o.burstBytes != null) out.burstBytes = o.burstBytes;
+    const out: EgressRateLimit = {};
+    if (o.rateBytesPerSecond != null) out.rateBytesPerSecond = o.rateBytesPerSecond;
     return out;
   },
   toWire(e: EgressRateLimit): Wire {
@@ -142,10 +133,7 @@ export interface Network {
    * `allowedEgressCIDRs` and `nameservers`.
    */
   allowIPv6Egress?: boolean;
-  /**
-   * Egress traffic shaping (token bucket). Requires gVisor
-   * release-20260601.0 or later on cluster nodes.
-   */
+  /** Egress traffic shaping (token bucket). */
   egressRateLimit?: EgressRateLimit;
 }
 

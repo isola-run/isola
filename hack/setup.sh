@@ -94,11 +94,10 @@ install_gvisor_in_node() {
   # https://gvisor.dev/docs/user_guide/systemd/
   # https://github.com/google/gvisor/issues/10371
   systemd-cgroup = "true"
-  # Egress rate-limit ceilings (dev.gvisor.flag.qdisc-tbf-* pod annotations can
-  # only lower these). Nonzero runtime values are also REQUIRED for per-pod tbf
-  # annotations to apply: runsc validates the config after each annotation in
-  # map order, so qdisc=tbf with runtime rate/burst of 0 fails when it happens
-  # to be applied first. Values match the CRD bounds (1 TB/s, 2^32-1 bytes).
+  # Egress rate-limit ceilings. Per-pod dev.gvisor.flag.qdisc-tbf-* annotations
+  # can only lower these. A runsc validation bug also makes nonzero runtime
+  # values a requirement for the per-pod annotations to apply at all. That
+  # requirement is temporary, a fix is being upstreamed to gVisor.
   qdisc-tbf-rate = "1000000000000"
   qdisc-tbf-burst = "4294967295"
 TOML'
@@ -110,7 +109,7 @@ TOML'
   runtime_type = "io.containerd.runsc.v1"
   # Allow gVisor annotations to pass through to runsc.
   # Required for dev.gvisor.flag.* annotations (e.g., overlay2) to work.
-  # By default containerd filters out all annotations; this allowlist enables gVisor-specific ones.
+  # By default containerd filters out all annotations. This allowlist enables gVisor-specific ones.
   pod_annotations = ["dev.gvisor.*"]
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
   TypeUrl = "io.containerd.runsc.v1.options"

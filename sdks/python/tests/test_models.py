@@ -112,20 +112,14 @@ class TestValidateByNameAndAlias:
         assert net.allowed_egress_cidrs == ["192.168.0.0/16"]
 
     def test_egress_rate_limit_by_alias(self) -> None:
-        net = Network.model_validate(
-            {"egressRateLimit": {"rateBytesPerSecond": 10_000_000, "burstBytes": 262_144}}
-        )
+        net = Network.model_validate({"egressRateLimit": {"rateBytesPerSecond": 10_000_000}})
         assert net.egress_rate_limit is not None
         assert net.egress_rate_limit.rate_bytes_per_second == 10_000_000
-        assert net.egress_rate_limit.burst_bytes == 262_144
 
     def test_egress_rate_limit_by_name(self) -> None:
-        net = Network.model_validate(
-            {"egress_rate_limit": {"rate_bytes_per_second": 10_000_000, "burst_bytes": 262_144}}
-        )
+        net = Network.model_validate({"egress_rate_limit": {"rate_bytes_per_second": 10_000_000}})
         assert net.egress_rate_limit is not None
         assert net.egress_rate_limit.rate_bytes_per_second == 10_000_000
-        assert net.egress_rate_limit.burst_bytes == 262_144
 
 
 # --- Round-trip serialization ---
@@ -227,15 +221,14 @@ class TestRoundTrip:
 
     def test_egress_rate_limit_round_trip(self) -> None:
         net = Network(
-            egress_rate_limit=EgressRateLimit(rate_bytes_per_second=10_000_000, burst_bytes=262_144),
+            egress_rate_limit=EgressRateLimit(rate_bytes_per_second=10_000_000),
         )
         dumped = net.model_dump(by_alias=True, mode="json", exclude_none=True)
-        assert dumped["egressRateLimit"] == {"rateBytesPerSecond": 10_000_000, "burstBytes": 262_144}
+        assert dumped["egressRateLimit"] == {"rateBytesPerSecond": 10_000_000}
 
         reparsed = Network.model_validate(dumped)
         assert reparsed.egress_rate_limit is not None
         assert reparsed.egress_rate_limit.rate_bytes_per_second == 10_000_000
-        assert reparsed.egress_rate_limit.burst_bytes == 262_144
 
     def test_list_sandboxes_response_round_trip(self) -> None:
         data = {

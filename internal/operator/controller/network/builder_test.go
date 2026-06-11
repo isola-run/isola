@@ -88,31 +88,19 @@ func TestEffectiveNameservers_ClusterDNSSkipsAutoDefault(t *testing.T) {
 	g.Expect(EffectiveNameservers(network)).To(BeNil())
 }
 
-func TestEffectiveEgressBurstBytes_ExplicitBurst(t *testing.T) {
-	g := NewWithT(t)
-	rl := &sandboxv1alpha1.EgressRateLimit{
-		RateBytesPerSecond: 10000000,
-		BurstBytes:         ptr.To[int64](262144),
-	}
-	g.Expect(EffectiveEgressBurstBytes(rl)).To(Equal(int64(262144)))
-}
-
 func TestEffectiveEgressBurstBytes_DerivedFromRate(t *testing.T) {
 	g := NewWithT(t)
-	rl := &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: 10000000}
-	g.Expect(EffectiveEgressBurstBytes(rl)).To(Equal(int64(1000000)))
+	g.Expect(EffectiveEgressBurstBytes(10000000)).To(Equal(int64(1000000)))
 }
 
 func TestEffectiveEgressBurstBytes_FloorApplied(t *testing.T) {
 	g := NewWithT(t)
-	rl := &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: 1000}
-	g.Expect(EffectiveEgressBurstBytes(rl)).To(Equal(int64(MinEgressBurstBytes)))
+	g.Expect(EffectiveEgressBurstBytes(1000)).To(Equal(int64(MinEgressBurstBytes)))
 }
 
 func TestEffectiveEgressBurstBytes_CapApplied(t *testing.T) {
 	g := NewWithT(t)
-	rl := &sandboxv1alpha1.EgressRateLimit{RateBytesPerSecond: 1000000000000}
-	g.Expect(EffectiveEgressBurstBytes(rl)).To(Equal(int64(MaxEgressBurstBytes)))
+	g.Expect(EffectiveEgressBurstBytes(1000000000000)).To(Equal(int64(MaxEgressBurstBytes)))
 }
 
 func TestBuildCustomNetworkPolicy_ClusterDNSWithCIDRsNoAutoDNSRules(t *testing.T) {

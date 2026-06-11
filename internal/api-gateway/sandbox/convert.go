@@ -139,7 +139,6 @@ func crdNetworkToREST(n *sandboxv1alpha1.Network) *Network {
 	if n.EgressRateLimit != nil {
 		rest.EgressRateLimit = &EgressRateLimit{
 			RateBytesPerSecond: n.EgressRateLimit.RateBytesPerSecond,
-			BurstBytes:         n.EgressRateLimit.BurstBytes,
 		}
 	}
 	return rest
@@ -265,7 +264,6 @@ func restNetworkToCRD(n *Network) *sandboxv1alpha1.Network {
 	if n.EgressRateLimit != nil {
 		crd.EgressRateLimit = &sandboxv1alpha1.EgressRateLimit{
 			RateBytesPerSecond: n.EgressRateLimit.RateBytesPerSecond,
-			BurstBytes:         n.EgressRateLimit.BurstBytes,
 		}
 	}
 	return crd
