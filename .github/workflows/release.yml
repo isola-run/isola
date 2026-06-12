@@ -94,14 +94,17 @@ jobs:
             dockerfile: cmd/snapshot-uploader/Dockerfile
           - name: snapshot-mounter
             dockerfile: cmd/snapshot-mounter/Dockerfile
+          - name: gvisor-installer
+            dockerfile: cmd/gvisor-installer/Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
-      # snapshot-mounter runs apk in the target arch (no cross-compile), so arm64 needs QEMU.
-      # The Go Dockerfiles cross-compile via $BUILDPLATFORM and don't.
+      # Alpine-based images (snapshot-mounter, gvisor-installer) run apk in the
+      # target arch (no cross-compile), so arm64 needs QEMU. The pure-Go
+      # Dockerfiles cross-compile via $BUILDPLATFORM and don't.
       - name: Set up QEMU
-        if: matrix.image.name == 'snapshot-mounter'
+        if: contains(fromJSON('["snapshot-mounter", "gvisor-installer"]'), matrix.image.name)
         uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4
 
       - name: Set up buildx

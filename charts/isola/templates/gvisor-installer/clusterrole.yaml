@@ -1,0 +1,17 @@
+{{- if .Values.gvisor.autoInstall.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "isola.gvisorInstaller.fullname" . }}
+  labels:
+    {{- include "isola.gvisorInstaller.labels" . | nindent 4 }}
+rules:
+  # Stamp isola.run/gvisor* readiness/version labels on nodes.
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "patch"]
+  # Surface install progress/failures as events on Node objects.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+{{- end }}

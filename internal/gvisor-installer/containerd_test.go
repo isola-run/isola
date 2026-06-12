@@ -1,0 +1,225 @@
+// Copyright The Isola Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package gvisorinstaller
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/BurntSushi/toml"
+)
+
+// kindStyleConfig mirrors the shape of a kind node's config.toml: an explicit
+// version = 2 header, comments, and an existing runc runtime.
+const kindStyleConfig = `# explicitly use v2 config format
+version = 2
+
+[plugins."io.containerd.grpc.v1.cri"]
+  sandbox_image = "registry.k8s.io/pause:3.10"
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+  runtime_type = "io.containerd.runc.v2"
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+  SystemdCgroup = true
+`
+
+func TestConfigSchemaVersion(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+		want int
+	}{
+		{"kind style v2", kindStyleConfig, 2},
+		{"v3", "version = 3\n[plugins]\n", 3},
+		{"no version", "[plugins]\n", 0},
+		{"empty", "", 0},
+		{"version only inside table is not root", "[grpc]\nversion = 2\n", 0},
+		{"comment before version", "# hello\nversion = 2\n", 2},
+		{"version with trailing comment", "version = 2 # v2 format\n", 2},
+		{"indented version", "  version = 4\n", 4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := configSchemaVersion([]byte(tt.data)); got != tt.want {
+				t.Errorf("configSchemaVersion() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCriPluginID(t *testing.T) {
+	if id, err := criPluginID(2); err != nil || id != criPluginIDV2 {
+		t.Errorf("v2: got (%q, %v)", id, err)
+	}
+	if id, err := criPluginID(3); err != nil || id != criPluginIDV3 {
+		t.Errorf("v3: got (%q, %v)", id, err)
+	}
+	if id, err := criPluginID(4); err != nil || id != criPluginIDV3 {
+		t.Errorf("v4: got (%q, %v)", id, err)
+	}
+	for _, v := range []int{0, 1} {
+		if _, err := criPluginID(v); err == nil {
+			t.Errorf("version %d: expected error", v)
+		}
+	}
+}
+
+func TestRenderManagedBlockIsValidTOML(t *testing.T) {
+	block := renderManagedBlock(criPluginIDV2, "runsc", "/opt/isola/bin/containerd-shim-runsc-v1", "/etc/containerd/isola-runsc.toml")
+	var doc map[string]any
+	if err := toml.Unmarshal([]byte(block), &doc); err != nil {
+		t.Fatalf("rendered block is not valid TOML: %v\n%s", err, block)
+	}
+	rt, ok := tomlLookup(doc, "plugins", criPluginIDV2, "containerd", "runtimes", "runsc")
+	if !ok {
+		t.Fatalf("runtime table missing in rendered block:\n%s", block)
+	}
+	m := rt.(map[string]any)
+	if m["runtime_type"] != runscRuntimeType {
+		t.Errorf("runtime_type = %v", m["runtime_type"])
+	}
+	if m["runtime_path"] != "/opt/isola/bin/containerd-shim-runsc-v1" {
+		t.Errorf("runtime_path = %v", m["runtime_path"])
+	}
+	opts, ok := tomlLookup(doc, "plugins", criPluginIDV2, "containerd", "runtimes", "runsc", "options")
+	if !ok {
+		t.Fatal("options table missing")
+	}
+	if opts.(map[string]any)["ConfigPath"] != "/etc/containerd/isola-runsc.toml" {
+		t.Errorf("ConfigPath = %v", opts.(map[string]any)["ConfigPath"])
+	}
+}
+
+func TestSpliceManagedBlock(t *testing.T) {
+	block := renderManagedBlock(criPluginIDV2, "runsc", "/opt/isola/bin/containerd-shim-runsc-v1", "/etc/containerd/isola-runsc.toml")
+
+	// Append to a file without markers.
+	spliced, err := spliceManagedBlock([]byte(kindStyleConfig), block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(spliced), kindStyleConfig) {
+		t.Error("original content was modified")
+	}
+	got, found, err := managedBlock(spliced)
+	if err != nil || !found || got != block {
+		t.Fatalf("managedBlock after splice: found=%v err=%v\ngot:  %q\nwant: %q", found, err, got, block)
+	}
+	// Whole file must remain valid TOML and contain both runtimes.
+	var doc map[string]any
+	if err := toml.Unmarshal(spliced, &doc); err != nil {
+		t.Fatalf("spliced config is not valid TOML: %v\n%s", err, spliced)
+	}
+	if _, ok := tomlLookup(doc, "plugins", criPluginIDV2, "containerd", "runtimes", "runc"); !ok {
+		t.Error("pre-existing runc runtime lost")
+	}
+	if _, ok := tomlLookup(doc, "plugins", criPluginIDV2, "containerd", "runtimes", "runsc"); !ok {
+		t.Error("runsc runtime not added")
+	}
+
+	// Splicing the same block again is a no-op (idempotent).
+	again, err := spliceManagedBlock(spliced, block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != string(spliced) {
+		t.Errorf("re-splice not idempotent:\n%s\nvs\n%s", again, spliced)
+	}
+
+	// Replacing with different content swaps only the managed section.
+	v3block := renderManagedBlock(criPluginIDV3, "runsc", "/x/shim", "/x/runsc.toml")
+	replaced, err := spliceManagedBlock(spliced, v3block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, found, err = managedBlock(replaced)
+	if err != nil || !found || got != v3block {
+		t.Fatalf("replace failed: found=%v err=%v got=%q", found, err, got)
+	}
+	if !strings.HasPrefix(string(replaced), kindStyleConfig) {
+		t.Error("replace touched content outside the managed section")
+	}
+	if strings.Count(string(replaced), beginMarker) != 1 || strings.Count(string(replaced), endMarker) != 1 {
+		t.Error("markers duplicated on replace")
+	}
+}
+
+func TestSpliceManagedBlockCorruptMarkers(t *testing.T) {
+	corrupt := kindStyleConfig + "\n" + beginMarker + "\nstuff\n" // no end marker
+	if _, err := spliceManagedBlock([]byte(corrupt), "x"); err == nil {
+		t.Error("expected error for begin marker without end marker")
+	}
+	if _, _, err := managedBlock([]byte(corrupt)); err == nil {
+		t.Error("expected error from managedBlock for corrupt markers")
+	}
+}
+
+func TestManagedBlockAbsent(t *testing.T) {
+	_, found, err := managedBlock([]byte(kindStyleConfig))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Error("unexpectedly found managed block")
+	}
+}
+
+// v3-shaped dump as containerd 2.x produces (migrated to the new CRI plugin
+// split regardless of the on-disk config version).
+const v3Dump = `version = 3
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc]
+  runtime_type = "io.containerd.runc.v2"
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc.options]
+  SystemdCgroup = true
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runsc]
+  runtime_type = "io.containerd.runsc.v1"
+`
+
+func TestRuntimeFromDump(t *testing.T) {
+	rt, found := runtimeFromDump([]byte(v3Dump), "runsc")
+	if !found {
+		t.Fatal("runsc not found in v3 dump")
+	}
+	if rt["runtime_type"] != runscRuntimeType {
+		t.Errorf("runtime_type = %v", rt["runtime_type"])
+	}
+
+	if _, found := runtimeFromDump([]byte(v3Dump), "kata"); found {
+		t.Error("unexpectedly found kata")
+	}
+
+	// v2-shaped dump (containerd 1.7).
+	v2dump := kindStyleConfig + `[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+  runtime_type = "io.containerd.runsc.v1"
+`
+	if _, found := runtimeFromDump([]byte(v2dump), "runsc"); !found {
+		t.Error("runsc not found in v2 dump")
+	}
+
+	if _, found := runtimeFromDump([]byte("not toml ["), "runsc"); found {
+		t.Error("found runtime in invalid TOML")
+	}
+}
+
+func TestSystemdCgroupFromDump(t *testing.T) {
+	if !systemdCgroupFromDump([]byte(v3Dump)) {
+		t.Error("expected systemd cgroup detection from v3 dump")
+	}
+	if !systemdCgroupFromDump([]byte(kindStyleConfig)) {
+		t.Error("expected systemd cgroup detection from v2 config")
+	}
+	if systemdCgroupFromDump([]byte("version = 2\n")) {
+		t.Error("expected false when runc options absent")
+	}
+}

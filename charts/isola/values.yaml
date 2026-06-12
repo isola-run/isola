@@ -95,7 +95,9 @@ operator:
   # Sandbox runtime configuration
   sandboxRuntime:
     # Kubernetes RuntimeClass name set on sandbox pods (pod.spec.runtimeClassName).
-    # Must reference a gVisor/runsc RuntimeClass in your cluster (kubectl get runtimeclass).
+    # Must reference a gVisor/runsc RuntimeClass in your cluster (kubectl get
+    # runtimeclass). With gvisor.autoInstall enabled, the chart creates this
+    # RuntimeClass and installs gVisor on the nodes for you.
     runtimeClassName: gvisor
 
     # Rootfs snapshot capability for gVisor sandboxes
@@ -114,7 +116,10 @@ operator:
       # gVisor/runsc paths for rootfs snapshot operations
       # These paths must match your cluster's gVisor installation
       runsc:
-        binaryPath: /usr/local/bin/runsc
+        # Path to runsc on the node. Leave empty for the automatic default:
+        # <gvisor.autoInstall.installDir>/runsc when gVisor auto-install is
+        # enabled, /usr/local/bin/runsc otherwise.
+        binaryPath: ""
         rootDir: /run/containerd/runsc/k8s.io
 
       # RootfsSnapshot storage configuration
@@ -242,6 +247,107 @@ operator:
 
   # PriorityClassName for sandbox pods
   sandboxPriorityClassName: ""
+
+
+gvisor:
+  # Automatic per-node gVisor (runsc) installation via a privileged DaemonSet.
+  #
+  # When enabled, the gvisor-installer DaemonSet downloads the pinned gVisor
+  # release (sha512-verified) onto each eligible node, registers a containerd
+  # runtime handler for it, restarts containerd once on first install (running
+  # containers are unaffected), and labels the node isola.run/gvisor=true after
+  # verifying the runtime is healthy. A RuntimeClass gated on that label is
+  # created so sandbox pods only schedule onto nodes that are actually ready.
+  #
+  # Scope and safety:
+  #   - Requires nodes with a standard containerd setup (config at
+  #     /etc/containerd/config.toml, systemd). kind, kubeadm, EKS, AKS and GKE
+  #     Ubuntu nodes qualify. k3s/RKE2/MicroK8s/k0s manage containerd config
+  #     differently and are detected and skipped with a clear node event.
+  #   - Nodes that already have a runsc handler (installed by other means) are
+  #     left completely untouched and labeled ready with version "unmanaged".
+  #   - containerd config edits are confined to a marker-delimited block; the
+  #     pristine config is backed up once to /etc/containerd/config.toml.isola-orig,
+  #     every change is validated before containerd is restarted, and rolled
+  #     back automatically if containerd does not come back healthy.
+  #   - Version upgrades replace binaries atomically and do NOT restart
+  #     containerd: running sandboxes keep the old version until they restart,
+  #     new sandboxes use the new one.
+  #   - Uninstalling the chart intentionally leaves gVisor on the nodes
+  #     (removing a runtime under running sandboxes breaks them). Manual
+  #     cleanup per node: remove the marker-delimited block from
+  #     /etc/containerd/config.toml (or restore the .isola-orig backup),
+  #     delete /etc/containerd/isola-runsc.toml and the installDir, restart
+  #     containerd, and remove the isola.run/gvisor* node labels.
+  #   - Exclude individual nodes by labeling them isola.run/gvisor-install=disabled.
+  #
+  # Pod Security Admission: the DaemonSet is privileged. If PSA is enforced on
+  # the release namespace, label it pod-security.kubernetes.io/enforce=privileged.
+  autoInstall:
+    enabled: false
+
+    # gVisor release to install (https://gvisor.dev/docs/user_guide/install/).
+    # Must be a dated release, not "latest". This default is updated
+    # periodically with isola releases.
+    version: "20260608.0"
+
+    # Release artifacts are fetched from <downloadURLBase>/<version>/<arch>/.
+    # Override for mirrors or air-gapped environments.
+    downloadURLBase: "https://storage.googleapis.com/gvisor/releases/release"
+
+    # containerd runtime handler name to register (also used as the
+    # RuntimeClass handler). Change it only to run isola's gVisor alongside an
+    # unrelated pre-existing "runsc" handler. Note: the operator's rootfs
+    # snapshot feature requires the handler to be "runsc" or "gvisor".
+    handler: runsc
+
+    # Host directory for the runsc and containerd-shim-runsc-v1 binaries.
+    # Deliberately isola-owned (not /usr/local/bin) so gVisor installations
+    # managed by other means are never overwritten.
+    installDir: /opt/isola/bin
+
+    # runsc flags written to the shim config on each node
+    # ([runsc_config] in /etc/containerd/isola-runsc.toml); the shim passes
+    # them to every runsc invocation. Values must be strings.
+    # systemd-cgroup is auto-detected from the node's runc configuration
+    # unless set here explicitly.
+    runscConfig:
+      # Required for isola rootfs snapshot restore.
+      allow-rootfs-tar-annotation: "true"
+
+    runtimeClass:
+      # Create the RuntimeClass (named operator.sandboxRuntime.runtimeClassName,
+      # with the handler above), restricted via scheduling.nodeSelector to
+      # nodes where installation succeeded. Set to false if the RuntimeClass
+      # already exists in the cluster.
+      create: true
+
+    image:
+      registry: ghcr.io/isola-run
+      repository: gvisor-installer
+      tag: ""  # Defaults to Chart.appVersion
+      digest: ""  # If set, takes precedence over tag (e.g., sha256:abc123...)
+      pullPolicy: IfNotPresent
+
+    logging:
+      level: info
+      devMode: false
+
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+    # The installer must run on every node that may host sandbox pods.
+    # Restrict it (and thereby gVisor) to a dedicated pool if desired.
+    nodeSelector:
+      kubernetes.io/os: linux
+    # Tolerate everything by default so dedicated/tainted sandbox node pools
+    # are covered.
+    tolerations:
+      - operator: Exists
+    podAnnotations: {}
+    priorityClassName: system-node-critical
 
 
 serviceMonitor:

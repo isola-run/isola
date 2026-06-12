@@ -110,6 +110,7 @@ Invoked from the operator deployment template to catch misconfigurations at inst
 {{- $messages = append $messages (include "isola.validateValues.runtimeClassName" .) -}}
 {{- $messages = append $messages (include "isola.validateValues.rootfssnapshot" .) -}}
 {{- $messages = append $messages (include "isola.validateValues.rootfssnapshotCredentials" .) -}}
+{{- $messages = append $messages (include "isola.validateValues.gvisorAutoInstall" .) -}}
 {{- $messages = without $messages "" -}}
 {{- $message := join "\n" $messages -}}
 {{- if $message -}}
@@ -167,6 +168,23 @@ isola: operator.sandboxRuntime.rootfssnapshot.storage.s3
     or use uploader.existingSecret/snapshotMounter.existingSecret,
     or leave both empty to use pod/workload identity (e.g. IRSA).
 {{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "isola.validateValues.gvisorAutoInstall" -}}
+{{- $ai := .Values.gvisor.autoInstall -}}
+{{- if $ai.enabled -}}
+{{- if or (not $ai.version) (eq $ai.version "latest") -}}
+isola: gvisor.autoInstall.version
+    version must be a dated gVisor release (e.g. "20260608.0"), not empty or "latest":
+    the installer pins and verifies exact release artifacts.
+{{- else if not $ai.handler -}}
+isola: gvisor.autoInstall.handler
+    handler must not be empty (containerd runtime handler name, e.g. "runsc").
+{{- else if not (hasPrefix "/" $ai.installDir) -}}
+isola: gvisor.autoInstall.installDir
+    installDir must be an absolute host path (e.g. /opt/isola/bin).
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -265,10 +283,18 @@ RootfsSnapshot enabled flag
 {{- end }}
 
 {{/*
-gVisor runsc binary path (only used when rootfssnapshot enabled)
+gVisor runsc binary path (only used when rootfssnapshot enabled).
+Defaults to the auto-installer's location when gvisor.autoInstall is enabled,
+so the two features compose without extra configuration.
 */}}
 {{- define "isola.operator.gvisorRunscPath" -}}
+{{- if .Values.operator.sandboxRuntime.rootfssnapshot.runsc.binaryPath -}}
 {{- .Values.operator.sandboxRuntime.rootfssnapshot.runsc.binaryPath -}}
+{{- else if .Values.gvisor.autoInstall.enabled -}}
+{{- printf "%s/runsc" .Values.gvisor.autoInstall.installDir -}}
+{{- else -}}
+/usr/local/bin/runsc
+{{- end -}}
 {{- end }}
 
 {{/*
@@ -446,6 +472,43 @@ Snapshot mounter selector labels
 app.kubernetes.io/name: {{ include "isola.name" . }}-snapshot-mounter
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: snapshot-mounter
+{{- end }}
+
+{{/* ==========================================================================
+   gVisor Installer Helpers
+   ========================================================================== */}}
+
+{{/*
+gVisor installer fullname
+*/}}
+{{- define "isola.gvisorInstaller.fullname" -}}
+{{- printf "%s-gvisor-installer" (include "isola.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+gVisor installer labels
+*/}}
+{{- define "isola.gvisorInstaller.labels" -}}
+{{ include "isola.labels" . }}
+app.kubernetes.io/name: {{ include "isola.name" . }}-gvisor-installer
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: gvisor-installer
+{{- end }}
+
+{{/*
+gVisor installer selector labels
+*/}}
+{{- define "isola.gvisorInstaller.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "isola.name" . }}-gvisor-installer
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: gvisor-installer
+{{- end }}
+
+{{/*
+gVisor installer image
+*/}}
+{{- define "isola.gvisorInstaller.image" -}}
+{{- include "isola.image" (dict "imageConfig" .Values.gvisor.autoInstall.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
 
 {{/* ==========================================================================

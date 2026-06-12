@@ -240,7 +240,7 @@ Set CPU, memory, and ephemeral storage limits on every container. gVisor runs a 
 
 - A Kubernetes cluster (vanilla, EKS, AKS, GKE, or similar).
 - [Helm](https://helm.sh).
-- A [gVisor](https://gvisor.dev) RuntimeClass configured in your cluster (see [gVisor setup](#gvisor-setup) below).
+- A [gVisor](https://gvisor.dev) RuntimeClass configured in your cluster — or let the chart install it for you with `--set gvisor.autoInstall.enabled=true` (see [gVisor setup](#gvisor-setup) below).
 - (Optional) An S3, GCS, or Azure Blob Storage bucket for rootfs snapshots.
 
 ### Install with Helm
@@ -273,7 +273,25 @@ CRDs are upgraded automatically as part of the Helm chart. To manage CRDs extern
 
 ### gVisor setup
 
-Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) named `gvisor` in your cluster. If your cluster does not already have gVisor installed:
+Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) named `gvisor` in your cluster. There are two ways to get one.
+
+#### Option A: automatic installation (recommended)
+
+The chart can install and manage gVisor on your nodes for you:
+
+```bash
+helm install isola oci://ghcr.io/isola-run/charts/isola \
+  --namespace isola-system --create-namespace \
+  --set gvisor.autoInstall.enabled=true
+```
+
+This deploys a privileged DaemonSet that downloads the pinned gVisor release (sha512-verified) onto each node, registers the `runsc` containerd handler, restarts containerd once (running containers are unaffected; every change is validated first and rolled back automatically if containerd does not come back healthy), creates the RuntimeClass, and labels each node `isola.run/gvisor=true` once the runtime is verified. Sandboxes only schedule onto labeled nodes. Nodes that already have a `runsc` handler are detected and left untouched.
+
+It requires nodes with a standard containerd setup (config at `/etc/containerd/config.toml`, systemd) — kind, kubeadm, EKS, AKS, and GKE Ubuntu nodes qualify; k3s/RKE2/MicroK8s/k0s are detected and skipped with a clear node event. See the `gvisor.autoInstall` section of `values.yaml` for version pinning, upgrades, mirrors, per-node opt-out, and cleanup notes.
+
+#### Option B: manual installation
+
+If you prefer to manage gVisor yourself:
 
 0. Ensure your cluster uses [containerd](https://containerd.io/docs/2.2/getting-started/) (the default container runtime on EKS, AKS, GKE and most clusters).
 

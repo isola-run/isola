@@ -1,0 +1,17 @@
+{{- if and .Values.gvisor.autoInstall.enabled .Values.gvisor.autoInstall.runtimeClass.create }}
+{{/*
+  RuntimeClass for sandbox pods. scheduling.nodeSelector is merged into pod
+  nodeSelectors at admission, so sandboxes only schedule onto nodes where the
+  installer verified a healthy gVisor runtime.
+*/}}
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: {{ include "isola.operator.runtimeClassName" . }}
+  labels:
+    {{- include "isola.gvisorInstaller.labels" . | nindent 4 }}
+handler: {{ .Values.gvisor.autoInstall.handler }}
+scheduling:
+  nodeSelector:
+    isola.run/gvisor: "true"
+{{- end }}

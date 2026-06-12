@@ -251,6 +251,7 @@ build: ## Build all binaries
 	$(GO_BUILD) -o bin/sandbox-sidecar ./cmd/sandbox-sidecar
 	$(GO_BUILD) -o bin/snapshot-uploader ./cmd/snapshot-uploader
 	$(GO_BUILD) -o bin/api-gateway ./cmd/api-gateway
+	$(GO_BUILD) -o bin/gvisor-installer ./cmd/gvisor-installer
 
 .PHONY: run-operator
 run-operator: ## Run operator from your host

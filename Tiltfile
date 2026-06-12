@@ -72,6 +72,13 @@ docker_build(
     dockerfile='cmd/snapshot-mounter/Dockerfile',
 )
 
+docker_build(
+    'gvisor-installer',
+    context='.',
+    dockerfile='cmd/gvisor-installer/Dockerfile',
+    only=['cmd/gvisor-installer/', 'internal/', 'go.mod', 'go.sum'],
+)
+
 namespace_create('isola-system')
 namespace_create('isola-sandboxes')
 
@@ -85,6 +92,9 @@ k8s_yaml(helm(
 k8s_resource('isola-operator', port_forwards=[port_forward(8082, 8080, name='operator-metrics')], resource_deps=['localstack'], labels=['isola'])
 k8s_resource('isola-api-gateway', port_forwards=[port_forward(8080, 8080, name='api-gateway')], resource_deps=['isola-operator'], labels=['isola'])
 k8s_resource('isola-snapshot-mounter', resource_deps=['localstack'], labels=['isola'])
+# On the dev cluster the installer takes the "foreign install" path: setup.sh
+# already configured runsc, so it only verifies the runtime and labels nodes.
+k8s_resource('isola-gvisor-installer', labels=['isola'])
 
 # ==============================================================================
 # E2E Tests (manual trigger)

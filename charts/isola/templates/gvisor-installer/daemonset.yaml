@@ -1,0 +1,135 @@
+{{- if .Values.gvisor.autoInstall.enabled }}
+{{- $ai := .Values.gvisor.autoInstall }}
+{{/*
+  Privileged node agent that installs gVisor and registers it with containerd.
+  Privilege requirements:
+    - privileged + hostPID: nsenter into the host mount namespace to run
+      `systemctl restart containerd` and `containerd config dump`.
+    - Narrow hostPath mounts (not the whole host root): /etc/containerd for
+      config management, the install dir for binaries, /run/containerd for the
+      CRI health/verification socket.
+  If Pod Security Admission is enforced on this namespace, label it:
+    kubectl label namespace <release-ns> pod-security.kubernetes.io/enforce=privileged
+*/}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "isola.gvisorInstaller.fullname" . }}
+  labels:
+    {{- include "isola.gvisorInstaller.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "isola.gvisorInstaller.selectorLabels" . | nindent 6 }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # One node at a time: version rollouts replace binaries without a
+      # containerd restart, but first installs do restart containerd once and
+      # staggering bounds the blast radius of a bad configuration.
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        {{- include "isola.gvisorInstaller.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/runsc-config: {{ include (print $.Template.BasePath "/gvisor-installer/configmap.yaml") . | sha256sum }}
+        {{- with $ai.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "isola.gvisorInstaller.fullname" . }}
+      {{- with $ai.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      hostPID: true
+      terminationGracePeriodSeconds: 10
+      {{- include "isola.imagePullSecrets" . | nindent 6 }}
+      {{- with $ai.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $ai.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  # gVisor releases ship x86_64 and aarch64 binaries only.
+                  - key: kubernetes.io/arch
+                    operator: In
+                    values: ["amd64", "arm64"]
+                  # Per-node opt-out.
+                  - key: isola.run/gvisor-install
+                    operator: NotIn
+                    values: ["disabled"]
+      containers:
+        - name: installer
+          image: {{ include "isola.gvisorInstaller.image" . }}
+          imagePullPolicy: {{ $ai.image.pullPolicy }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: GVISOR_VERSION
+              value: {{ $ai.version | quote }}
+            - name: GVISOR_DOWNLOAD_URL_BASE
+              value: {{ $ai.downloadURLBase | quote }}
+            - name: GVISOR_HANDLER
+              value: {{ $ai.handler | quote }}
+            - name: GVISOR_INSTALL_DIR
+              value: {{ $ai.installDir | quote }}
+            - name: LOG_LEVEL
+              value: {{ $ai.logging.level | quote }}
+            - name: LOG_DEV_MODE
+              value: {{ $ai.logging.devMode | quote }}
+          securityContext:
+            privileged: true
+          resources:
+            {{- toYaml $ai.resources | nindent 12 }}
+          ports:
+            - name: health
+              containerPort: 8093
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          volumeMounts:
+            - name: containerd-etc
+              mountPath: /host/etc/containerd
+            - name: containerd-run
+              mountPath: /host/run/containerd
+            - name: install-dir
+              mountPath: /host{{ $ai.installDir }}
+            - name: runsc-config
+              mountPath: /etc/isola-gvisor
+              readOnly: true
+      volumes:
+        - name: containerd-etc
+          hostPath:
+            path: /etc/containerd
+            type: Directory
+        - name: containerd-run
+          hostPath:
+            path: /run/containerd
+            type: Directory
+        - name: install-dir
+          hostPath:
+            path: {{ $ai.installDir }}
+            type: DirectoryOrCreate
+        - name: runsc-config
+          configMap:
+            name: {{ include "isola.gvisorInstaller.fullname" . }}
+{{- end }}

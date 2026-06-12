@@ -59,6 +59,22 @@ operator:
             repository: snapshot-mounter
             tag: "dev"
 
+gvisor:
+  # Exercises the installer's "foreign install" path in dev: hack/setup.sh
+  # already installed gVisor and created the RuntimeClass, so the installer
+  # verifies the existing handler and labels the nodes without touching them.
+  autoInstall:
+    enabled: true
+    runtimeClass:
+      create: false  # RuntimeClass "gvisor" pre-exists (created by hack/setup.sh)
+    image:
+      registry: ""
+      repository: gvisor-installer
+      tag: "dev"
+    logging:
+      level: debug
+      devMode: true
+
 apiGateway:
   image:
     registry: ""
