@@ -221,6 +221,31 @@ print(data.decode())  # "Hello, World!"
 
 Parent directories are created automatically on uploads.
 
+### Managing files and directories
+
+```python
+# List a directory (symlinks are reported, not followed)
+for entry in sandbox.filesystem.list("/tmp"):
+    print(entry.name, entry.type, entry.size, entry.permissions)
+
+# Inspect a single path
+entry = sandbox.filesystem.stat("/tmp/hello.txt")
+print(entry.modified_time, entry.uid, entry.gid)
+
+# Check existence
+sandbox.filesystem.exists("/tmp/hello.txt")  # True
+
+# Create a directory (parents included, idempotent)
+sandbox.filesystem.mkdir("/tmp/output/reports")
+
+# Move or rename
+sandbox.filesystem.move("/tmp/hello.txt", "/tmp/output/greeting.txt")
+
+# Delete a file, or a directory tree with recursive=True
+sandbox.filesystem.delete("/tmp/data.bin")
+sandbox.filesystem.delete("/tmp/output", recursive=True)
+```
+
 ## Sandbox management
 
 ```python

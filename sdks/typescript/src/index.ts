@@ -30,12 +30,14 @@ export {
   NotFoundError,
   ValidationError,
 } from "./errors";
-export type { FileOptions, UploadBody } from "./filesystem";
+export type { DeleteFileOptions, FileOptions, UploadBody } from "./filesystem";
 export { Filesystem } from "./filesystem";
 export type {
   CommandResult,
   Container,
   ContainerInfo,
+  FilesystemEntry,
+  FilesystemEntryType,
   Network,
   ResourceList,
   ResourceRequirements,

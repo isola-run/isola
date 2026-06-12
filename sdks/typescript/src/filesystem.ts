@@ -15,15 +15,32 @@
 // Mirrors sdks/python/src/isola/_filesystem.py:AsyncFilesystem.
 
 import type { RequestOptions } from "./client";
+import { NotFoundError } from "./errors";
 import type { HttpClient } from "./internal/http";
-import { filesystemPath } from "./internal/url";
+import {
+  filesystemDirectoriesPath,
+  filesystemEntriesPath,
+  filesystemMovePath,
+  filesystemPath,
+  filesystemStatPath,
+} from "./internal/url";
+import { FilesystemEntry, ListFilesystemEntriesResponse } from "./models";
 
-/** Options for {@link Filesystem.read} and {@link Filesystem.write}. */
+/** Options for most {@link Filesystem} operations. */
 export interface FileOptions {
   /**
    * Target container name. Only needed for multi-container sandboxes.
    */
   container?: string;
+}
+
+/** Options for {@link Filesystem.delete}. */
+export interface DeleteFileOptions extends FileOptions {
+  /**
+   * Delete directories and their contents recursively. Required to
+   * delete a non-empty directory.
+   */
+  recursive?: boolean;
 }
 
 /**
@@ -34,7 +51,7 @@ export interface FileOptions {
  */
 export type UploadBody = string | Uint8Array | ArrayBuffer | Blob | ReadableStream<Uint8Array>;
 
-/** Read and write files inside a sandbox. */
+/** Read, write, and manage files inside a sandbox. */
 export class Filesystem {
   /** @internal */
   readonly _api: HttpClient;
@@ -110,6 +127,168 @@ export class Filesystem {
       method: "GET",
       path: filesystemPath(this._sandboxId),
       params,
+      ...(req.signal ? { signal: req.signal } : {}),
+    });
+  }
+
+  /**
+   * List directory entries in the sandbox.
+   *
+   * @example
+   * ```ts
+   * const entries = await sandbox.filesystem.list("/workspace");
+   * for (const entry of entries) console.log(entry.name, entry.type);
+   * ```
+   *
+   * @param path - Absolute path of a directory inside the sandbox.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @returns Metadata for each entry, sorted by name. Symlinks are
+   * reported, not followed.
+   * @throws {NotFoundError} If the directory does not exist.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async list(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<FilesystemEntry[]> {
+    const params: Record<string, string> = { path };
+    if (opts.container) params.container = opts.container;
+
+    const response = await this._api.requestModel(
+      {
+        method: "GET",
+        path: filesystemEntriesPath(this._sandboxId),
+        params,
+        ...(req.signal ? { signal: req.signal } : {}),
+      },
+      ListFilesystemEntriesResponse.fromWire,
+    );
+    return response.entries;
+  }
+
+  /**
+   * Get metadata for a file, directory, or symlink in the sandbox.
+   *
+   * Symlinks are reported, not followed.
+   *
+   * @param path - Absolute path inside the sandbox.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @returns Entry metadata.
+   * @throws {NotFoundError} If the path does not exist.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async stat(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<FilesystemEntry> {
+    const params: Record<string, string> = { path };
+    if (opts.container) params.container = opts.container;
+
+    return this._api.requestModel(
+      {
+        method: "GET",
+        path: filesystemStatPath(this._sandboxId),
+        params,
+        ...(req.signal ? { signal: req.signal } : {}),
+      },
+      FilesystemEntry.fromWire,
+    );
+  }
+
+  /**
+   * Check whether a path exists in the sandbox.
+   *
+   * @param path - Absolute path inside the sandbox.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @returns `true` if a file, directory, or symlink exists at the
+   * path.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async exists(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<boolean> {
+    try {
+      await this.stat(path, opts, req);
+    } catch (err) {
+      if (err instanceof NotFoundError) return false;
+      throw err;
+    }
+    return true;
+  }
+
+  /**
+   * Delete a file, empty directory, or symlink from the sandbox.
+   *
+   * @param path - Absolute path inside the sandbox.
+   * @param opts - Delete options. Set `recursive: true` to delete a
+   * directory and its contents.
+   * @throws {NotFoundError} If the path does not exist.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async delete(path: string, opts: DeleteFileOptions = {}, req: RequestOptions = {}): Promise<void> {
+    const params: Record<string, string> = { path };
+    if (opts.recursive) params.recursive = "true";
+    if (opts.container) params.container = opts.container;
+
+    await this._api.requestNoContent({
+      method: "DELETE",
+      path: filesystemPath(this._sandboxId),
+      params,
+      ...(req.signal ? { signal: req.signal } : {}),
+    });
+  }
+
+  /**
+   * Create a directory in the sandbox.
+   *
+   * Missing parent directories are created automatically. Succeeds
+   * without error if the directory already exists.
+   *
+   * @param path - Absolute path inside the sandbox.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async mkdir(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<void> {
+    const params: Record<string, string> = { path };
+    if (opts.container) params.container = opts.container;
+
+    await this._api.requestNoContent({
+      method: "POST",
+      path: filesystemDirectoriesPath(this._sandboxId),
+      params,
+      ...(req.signal ? { signal: req.signal } : {}),
+    });
+  }
+
+  /**
+   * Move or rename a file, directory, or symlink in the sandbox.
+   *
+   * Parent directories of the destination are created automatically.
+   * An existing destination file is overwritten.
+   *
+   * @param sourcePath - Absolute path to move.
+   * @param destinationPath - Absolute destination path.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @throws {NotFoundError} If the source path does not exist.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async move(
+    sourcePath: string,
+    destinationPath: string,
+    opts: FileOptions = {},
+    req: RequestOptions = {},
+  ): Promise<void> {
+    const params: Record<string, string> = {};
+    if (opts.container) params.container = opts.container;
+
+    await this._api.requestNoContent({
+      method: "POST",
+      path: filesystemMovePath(this._sandboxId),
+      params,
+      jsonBody: { sourcePath, destinationPath },
       ...(req.signal ? { signal: req.signal } : {}),
     });
   }

@@ -15,7 +15,9 @@
 package filesystem
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +25,7 @@ import (
 	"net/http"
 	"net/url"
 	"syscall"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,7 +33,29 @@ import (
 	apigateway "github.com/isola-run/isola/internal/api-gateway"
 	"github.com/isola-run/isola/internal/constants"
 	"github.com/isola-run/isola/internal/httputil"
+	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
+
+type FilesystemEntry struct {
+	Name          string    `json:"name" doc:"Entry name (final path component)"`
+	Path          string    `json:"path" doc:"Absolute path inside the container"`
+	Type          string    `json:"type" enum:"file,directory,symlink,other" doc:"Entry type. Symlinks are reported, not followed."`
+	Size          int64     `json:"size" doc:"Size in bytes"`
+	Permissions   string    `json:"permissions" doc:"Octal permission bits, e.g. 0644"`
+	UID           int       `json:"uid" doc:"Owner user ID"`
+	GID           int       `json:"gid" doc:"Owner group ID"`
+	ModifiedTime  time.Time `json:"modifiedTime" doc:"Last modification time"`
+	SymlinkTarget string    `json:"symlinkTarget,omitempty" doc:"Symlink target path. Only set for symlinks."`
+}
+
+type ListFilesystemEntriesResponse struct {
+	Entries []FilesystemEntry `json:"entries" doc:"Directory entries sorted by name"`
+}
+
+type MoveFilesystemEntryRequest struct {
+	SourcePath      string `json:"sourcePath" required:"true" minLength:"1" doc:"Path to move (absolute or relative to container cwd)"`
+	DestinationPath string `json:"destinationPath" required:"true" minLength:"1" doc:"Destination path (absolute or relative to container cwd). Parent directories are created automatically."`
+}
 
 type FilesystemWriteInput struct {
 	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
@@ -43,6 +68,45 @@ type FilesystemReadInput struct {
 	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
 	Path      string `query:"path" required:"true" minLength:"1" doc:"Source path (absolute or relative to container cwd)"`
 	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemListInput struct {
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Directory path (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemListOutput struct {
+	Body ListFilesystemEntriesResponse
+}
+
+type FilesystemStatInput struct {
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Path to stat (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemStatOutput struct {
+	Body FilesystemEntry
+}
+
+type FilesystemDeleteInput struct {
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Path to delete (absolute or relative to container cwd)"`
+	Recursive bool   `query:"recursive,omitempty" doc:"Delete directories and their contents recursively"`
+	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemMkdirInput struct {
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Directory path to create (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemMoveInput struct {
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
+	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+	Body      MoveFilesystemEntryRequest
 }
 
 type Handlers struct {
@@ -163,6 +227,142 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 	}, nil
 }
 
+// callSidecar resolves the ready sandbox, performs a request against its sidecar,
+// and maps transport and sidecar-side failures to Huma errors. On success the
+// caller must close the response body.
+func (h *Handlers) callSidecar(ctx context.Context, sandboxID, method, sidecarPath string, params url.Values, jsonBody any) (*http.Response, error) {
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, sandboxID, h.logger)
+	if err != nil {
+		return nil, err
+	}
+
+	sidecarURL := fmt.Sprintf("http://%s:%d%s", sb.Status.PodIP, h.sidecarPort, sidecarPath)
+	if len(params) > 0 {
+		sidecarURL += "?" + params.Encode()
+	}
+
+	var bodyReader io.Reader
+	if jsonBody != nil {
+		body, err := json.Marshal(jsonBody)
+		if err != nil {
+			h.logger.Error("failed to marshal sidecar request", "error", err)
+			return nil, huma.Error500InternalServerError("failed to marshal sidecar request")
+		}
+		bodyReader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, sidecarURL, bodyReader)
+	if err != nil {
+		h.logger.Error("failed to build sidecar request", "error", err)
+		return nil, huma.Error500InternalServerError("failed to build sidecar request")
+	}
+	if jsonBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		h.logger.Error("sidecar request failed", "error", err, "id", sandboxID)
+		return nil, huma.Error502BadGateway("failed to reach sidecar")
+	}
+
+	if resp.StatusCode >= 400 {
+		defer func() { _ = resp.Body.Close() }()
+		return nil, apigateway.HandleSidecarError(resp, sandboxID, h.logger)
+	}
+
+	return resp, nil
+}
+
+func pathParams(path, container string) url.Values {
+	params := url.Values{}
+	params.Set("path", path)
+	if container != "" {
+		params.Set("container", container)
+	}
+	return params
+}
+
+func (h *Handlers) ListFilesystemEntries(ctx context.Context, input *FilesystemListInput) (*FilesystemListOutput, error) {
+	resp, err := h.callSidecar(ctx, input.SandboxID, http.MethodGet, "/v1/filesystem/entries", pathParams(input.Path, input.Container), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var sidecarResp sidecarapi.ListFilesystemEntriesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sidecarResp); err != nil {
+		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.SandboxID)
+		return nil, huma.Error502BadGateway("invalid sidecar response")
+	}
+
+	_ = sidecarapi.FilesystemEntry(FilesystemEntry{}) // assert field compatibility
+	entries := make([]FilesystemEntry, len(sidecarResp.Entries))
+	for i, entry := range sidecarResp.Entries {
+		entries[i] = FilesystemEntry(entry)
+	}
+
+	return &FilesystemListOutput{Body: ListFilesystemEntriesResponse{Entries: entries}}, nil
+}
+
+func (h *Handlers) StatFilesystemEntry(ctx context.Context, input *FilesystemStatInput) (*FilesystemStatOutput, error) {
+	resp, err := h.callSidecar(ctx, input.SandboxID, http.MethodGet, "/v1/filesystem/stat", pathParams(input.Path, input.Container), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	_ = sidecarapi.FilesystemEntry(FilesystemEntry{}) // assert field compatibility
+	var sidecarResp sidecarapi.FilesystemEntry
+	if err := json.NewDecoder(resp.Body).Decode(&sidecarResp); err != nil {
+		h.logger.Error("failed to decode sidecar response", "error", err, "id", input.SandboxID)
+		return nil, huma.Error502BadGateway("invalid sidecar response")
+	}
+
+	return &FilesystemStatOutput{Body: FilesystemEntry(sidecarResp)}, nil
+}
+
+func (h *Handlers) DeleteFilesystemEntry(ctx context.Context, input *FilesystemDeleteInput) (*struct{}, error) {
+	params := pathParams(input.Path, input.Container)
+	if input.Recursive {
+		params.Set("recursive", "true")
+	}
+
+	resp, err := h.callSidecar(ctx, input.SandboxID, http.MethodDelete, "/v1/filesystem", params, nil)
+	if err != nil {
+		return nil, err
+	}
+	_ = resp.Body.Close()
+
+	return nil, nil
+}
+
+func (h *Handlers) CreateFilesystemDirectory(ctx context.Context, input *FilesystemMkdirInput) (*struct{}, error) {
+	resp, err := h.callSidecar(ctx, input.SandboxID, http.MethodPost, "/v1/filesystem/directories", pathParams(input.Path, input.Container), nil)
+	if err != nil {
+		return nil, err
+	}
+	_ = resp.Body.Close()
+
+	return nil, nil
+}
+
+func (h *Handlers) MoveFilesystemEntry(ctx context.Context, input *FilesystemMoveInput) (*struct{}, error) {
+	params := url.Values{}
+	if input.Container != "" {
+		params.Set("container", input.Container)
+	}
+
+	_ = sidecarapi.MoveFilesystemEntryRequest(MoveFilesystemEntryRequest{}) // assert field compatibility
+	resp, err := h.callSidecar(ctx, input.SandboxID, http.MethodPost, "/v1/filesystem/move", params, input.Body)
+	if err != nil {
+		return nil, err
+	}
+	_ = resp.Body.Close()
+
+	return nil, nil
+}
+
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "writeSandboxFilesystem",
@@ -204,4 +404,57 @@ func Register(api huma.API, h *Handlers) {
 		},
 		Errors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.GetFilesystem)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "listSandboxFilesystemEntries",
+		Method:      http.MethodGet,
+		Path:        "/sandboxes/{sandboxId}/filesystem/entries",
+		Summary:     "List directory entries in sandbox filesystem",
+		Description: "Returns metadata for each entry in the specified directory inside the sandbox container. Symlinks are reported, not followed.",
+		Tags:        []string{"sandboxes", "filesystem"},
+		Errors:      []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.ListFilesystemEntries)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "statSandboxFilesystemEntry",
+		Method:      http.MethodGet,
+		Path:        "/sandboxes/{sandboxId}/filesystem/stat",
+		Summary:     "Stat a path in sandbox filesystem",
+		Description: "Returns metadata for the file, directory, or symlink at the specified path inside the sandbox container. Symlinks are reported, not followed.",
+		Tags:        []string{"sandboxes", "filesystem"},
+		Errors:      []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.StatFilesystemEntry)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteSandboxFilesystemEntry",
+		Method:        http.MethodDelete,
+		Path:          "/sandboxes/{sandboxId}/filesystem",
+		Summary:       "Delete a file or directory from sandbox filesystem",
+		Description:   "Deletes the file, empty directory, or symlink at the specified path in the sandbox container. Set recursive=true to delete a directory and its contents.",
+		Tags:          []string{"sandboxes", "filesystem"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.DeleteFilesystemEntry)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "createSandboxFilesystemDirectory",
+		Method:        http.MethodPost,
+		Path:          "/sandboxes/{sandboxId}/filesystem/directories",
+		Summary:       "Create a directory in sandbox filesystem",
+		Description:   "Creates a directory at the specified path in the sandbox container, including missing parent directories. Idempotent if the directory already exists.",
+		Tags:          []string{"sandboxes", "filesystem"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.CreateFilesystemDirectory)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "moveSandboxFilesystemEntry",
+		Method:        http.MethodPost,
+		Path:          "/sandboxes/{sandboxId}/filesystem/move",
+		Summary:       "Move a file or directory within sandbox filesystem",
+		Description:   "Renames or moves a file, directory, or symlink inside the sandbox container. Parent directories of the destination are created automatically. An existing destination file is overwritten.",
+		Tags:          []string{"sandboxes", "filesystem"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.MoveFilesystemEntry)
 }
