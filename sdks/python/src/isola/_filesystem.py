@@ -18,6 +18,7 @@ from typing import BinaryIO
 from urllib.parse import quote
 
 from ._client import _AsyncAPI, _SyncAPI
+from ._models import FilesystemEntry, ListFilesystemEntriesResponse
 
 
 def _filesystem_path(sandbox_id: str) -> str:
@@ -75,6 +76,30 @@ class Filesystem:
 
         return self._api.request_bytes("GET", _filesystem_path(self._sandbox_id), params=params)
 
+    def list(self, path: str, *, container: str | None = None) -> list[FilesystemEntry]:
+        """List directory entries in the sandbox.
+
+        Args:
+            path: Absolute path of a directory inside the sandbox.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Returns:
+            Metadata for each entry, sorted by name. Symlinks are
+            reported, not followed.
+        """
+        params = {"path": path}
+        if container:
+            params["container"] = container
+
+        response = self._api.request_model(
+            "GET",
+            f"{_filesystem_path(self._sandbox_id)}/entries",
+            ListFilesystemEntriesResponse,
+            params=params,
+        )
+        return response.entries or []
+
 
 class AsyncFilesystem:
     """Async version of Filesystem."""
@@ -126,3 +151,27 @@ class AsyncFilesystem:
             params["container"] = container
 
         return await self._api.request_bytes("GET", _filesystem_path(self._sandbox_id), params=params)
+
+    async def list(self, path: str, *, container: str | None = None) -> list[FilesystemEntry]:
+        """List directory entries in the sandbox.
+
+        Args:
+            path: Absolute path of a directory inside the sandbox.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Returns:
+            Metadata for each entry, sorted by name. Symlinks are
+            reported, not followed.
+        """
+        params = {"path": path}
+        if container:
+            params["container"] = container
+
+        response = await self._api.request_model(
+            "GET",
+            f"{_filesystem_path(self._sandbox_id)}/entries",
+            ListFilesystemEntriesResponse,
+            params=params,
+        )
+        return response.entries or []

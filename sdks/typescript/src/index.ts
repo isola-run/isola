@@ -36,6 +36,8 @@ export type {
   CommandResult,
   Container,
   ContainerInfo,
+  FilesystemEntry,
+  FilesystemEntryType,
   Network,
   ResourceList,
   ResourceRequirements,

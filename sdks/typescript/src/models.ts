@@ -364,6 +364,55 @@ export const CommandResult = {
   },
 };
 
+/** Type of a filesystem entry. */
+export type FilesystemEntryType = "file" | "directory" | "symlink" | "other";
+
+/**
+ * Metadata for a file, directory, or symlink in a sandbox.
+ *
+ * Symlinks are reported, not followed.
+ */
+export interface FilesystemEntry {
+  /** Entry name (final path component). */
+  readonly name: string;
+  /** Absolute path inside the container. */
+  readonly path: string;
+  /** Entry type (file, directory, symlink, or other). */
+  readonly type: FilesystemEntryType;
+  /** Size in bytes. */
+  readonly size: number;
+  /** Octal permission bits, e.g. `"0644"`. */
+  readonly permissions: string;
+  /** Owner user ID. */
+  readonly uid: number;
+  /** Owner group ID. */
+  readonly gid: number;
+  /** Last modification time. */
+  readonly modifiedTime: Date;
+  /** Symlink target path. Only set for symlinks. */
+  readonly symlinkTarget?: string;
+}
+
+/** @internal */
+export const FilesystemEntry = {
+  fromWire(json: unknown): FilesystemEntry {
+    const o = record<FilesystemEntry>(json);
+    if (typeof o.name !== "string") throw new TypeError("FilesystemEntry.name is required");
+    if (typeof o.path !== "string") throw new TypeError("FilesystemEntry.path is required");
+    return {
+      name: o.name,
+      path: o.path,
+      type: o.type,
+      size: o.size,
+      permissions: o.permissions,
+      uid: o.uid,
+      gid: o.gid,
+      modifiedTime: requiredDate(o.modifiedTime),
+      ...(o.symlinkTarget !== undefined ? { symlinkTarget: o.symlinkTarget } : {}),
+    };
+  },
+};
+
 // ---------- Internal payload/data types ----------
 //
 // Every type below is @internal: used cross-file inside the package but not
@@ -457,6 +506,21 @@ export const ListSandboxesResponse = {
     if (o.sandboxes == null) return { sandboxes: [] };
     if (!Array.isArray(o.sandboxes)) throw new TypeError("sandboxes must be an array");
     return { sandboxes: o.sandboxes.map((s) => SandboxSummary.fromWire(s)) };
+  },
+};
+
+/** @internal */
+export interface ListFilesystemEntriesResponse {
+  entries: FilesystemEntry[];
+}
+
+/** @internal */
+export const ListFilesystemEntriesResponse = {
+  fromWire(json: unknown): ListFilesystemEntriesResponse {
+    const o = record(json);
+    if (o.entries == null) return { entries: [] };
+    if (!Array.isArray(o.entries)) throw new TypeError("entries must be an array");
+    return { entries: o.entries.map((e) => FilesystemEntry.fromWire(e)) };
   },
 };
 
