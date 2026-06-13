@@ -68,6 +68,11 @@ type FilesystemDeleteInput struct {
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 }
 
+type FilesystemMkdirInput struct {
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Directory path to create (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
 type Handlers struct {
 	logger      *slog.Logger
 	procFS      proc.ProcFS
@@ -381,6 +386,36 @@ func (h *Handlers) DeleteFilesystemEntry(_ context.Context, input *FilesystemDel
 	return nil, nil
 }
 
+func (h *Handlers) CreateFilesystemDirectory(_ context.Context, input *FilesystemMkdirInput) (*struct{}, error) {
+	pid, _, targetPath, err := h.resolveTarget(input.Path, input.Container)
+	if err != nil {
+		return nil, err
+	}
+
+	uid, gid, err := h.procFS.GetUIDGID(pid)
+	if err != nil {
+		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
+		return nil, huma.Error500InternalServerError("failed to get container uid/gid")
+	}
+
+	if info, err := os.Lstat(targetPath); err == nil {
+		if info.IsDir() {
+			return nil, nil // already exists; mkdir is idempotent
+		}
+		return nil, huma.Error409Conflict(fmt.Sprintf("path exists and is not a directory: %s", input.Path))
+	}
+
+	if err := mkdirAllChown(targetPath, uid, gid); err != nil {
+		h.logger.Error("failed to create directory", "error", err, "path", targetPath)
+		if errors.Is(err, errNotADirectory) || errors.Is(err, syscall.ENOTDIR) {
+			return nil, huma.Error409Conflict("a parent path component exists and is not a directory")
+		}
+		return nil, huma.Error500InternalServerError("failed to create directory")
+	}
+
+	return nil, nil
+}
+
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "postFilesystem",
@@ -453,4 +488,15 @@ func Register(api huma.API, h *Handlers) {
 		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusBadRequest, http.StatusNotFound},
 	}, h.DeleteFilesystemEntry)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "createFilesystemDirectory",
+		Method:        http.MethodPost,
+		Path:          "/filesystem/directories",
+		Summary:       "Create a directory in the sandbox filesystem",
+		Description:   "Creates a directory at the specified path, including missing parent directories. Idempotent if the directory already exists.",
+		Tags:          []string{"filesystem"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusBadRequest, http.StatusConflict},
+	}, h.CreateFilesystemDirectory)
 }

@@ -235,6 +235,9 @@ print(entry.modified_time, entry.uid, entry.gid)
 # Check existence
 sandbox.filesystem.exists("/tmp/hello.txt")  # True
 
+# Create a directory (parents included, idempotent)
+sandbox.filesystem.mkdir("/tmp/output/reports")
+
 # Delete a file, or a directory tree with recursive=True
 sandbox.filesystem.delete("/tmp/data.bin")
 sandbox.filesystem.delete("/tmp/output", recursive=True)

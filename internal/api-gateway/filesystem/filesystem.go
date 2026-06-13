@@ -92,6 +92,12 @@ type FilesystemDeleteInput struct {
 	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 }
 
+type FilesystemMkdirInput struct {
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Directory path to create (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
 type Handlers struct {
 	logger           *slog.Logger
 	k8sClient        client.Client
@@ -320,6 +326,16 @@ func (h *Handlers) DeleteFilesystemEntry(ctx context.Context, input *FilesystemD
 	return nil, nil
 }
 
+func (h *Handlers) CreateFilesystemDirectory(ctx context.Context, input *FilesystemMkdirInput) (*struct{}, error) {
+	resp, err := h.callSidecar(ctx, input.SandboxID, http.MethodPost, "/v1/filesystem/directories", pathParams(input.Path, input.Container), nil)
+	if err != nil {
+		return nil, err
+	}
+	_ = resp.Body.Close()
+
+	return nil, nil
+}
+
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "writeSandboxFilesystem",
@@ -392,4 +408,15 @@ func Register(api huma.API, h *Handlers) {
 		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.DeleteFilesystemEntry)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "createSandboxFilesystemDirectory",
+		Method:        http.MethodPost,
+		Path:          "/sandboxes/{sandboxId}/filesystem/directories",
+		Summary:       "Create a directory in sandbox filesystem",
+		Description:   "Creates a directory at the specified path in the sandbox container, including missing parent directories. Idempotent if the directory already exists.",
+		Tags:          []string{"sandboxes", "filesystem"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.CreateFilesystemDirectory)
 }

@@ -504,6 +504,54 @@ var _ = Describe("Filesystem", func() {
 			Expect(resp.Code).To(Equal(http.StatusBadRequest))
 		})
 	})
+
+	Describe("POST /filesystem/directories", func() {
+		It("creates nested directories", func() {
+			resp := doPostNoBody("/v1/filesystem/directories?path=/mkdir/deeply/nested")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			info, err := os.Stat(filepath.Join(testRootDir, "/mkdir/deeply/nested"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.IsDir()).To(BeTrue())
+		})
+
+		It("is idempotent for existing directory", func() {
+			Expect(os.MkdirAll(filepath.Join(testRootDir, "/mkdir/existing"), 0750)).To(Succeed())
+
+			resp := doPostNoBody("/v1/filesystem/directories?path=/mkdir/existing")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+		})
+
+		It("creates directory with relative path", func() {
+			resp := doPostNoBody("/v1/filesystem/directories?path=relmkdir")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			info, err := os.Stat(filepath.Join(testRootDir, testCwd, "relmkdir"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.IsDir()).To(BeTrue())
+		})
+
+		It("returns 409 when path exists as a file", func() {
+			hostPath := filepath.Join(testRootDir, "/mkdir/taken.txt")
+			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(hostPath, []byte("x"), 0600)).To(Succeed())
+
+			resp := doPostNoBody("/v1/filesystem/directories?path=/mkdir/taken.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+
+		It("returns 409 when a parent component is a file", func() {
+			hostPath := filepath.Join(testRootDir, "/mkdir/blocker.txt")
+			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(hostPath, []byte("x"), 0600)).To(Succeed())
+
+			resp := doPostNoBody("/v1/filesystem/directories?path=/mkdir/blocker.txt/sub")
+
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+	})
 })
 
 // errorMockProcFS returns errors for FindMarkedPID.
