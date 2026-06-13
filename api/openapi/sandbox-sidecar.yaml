@@ -591,6 +591,63 @@ paths:
       tags:
         - commands
   /v1/filesystem:
+    delete:
+      description: Deletes the file, empty directory, or symlink at the specified path. Set recursive=true to delete a directory and its contents.
+      operationId: deleteFilesystemEntry
+      parameters:
+        - description: Path to delete (absolute or relative to container cwd)
+          explode: false
+          in: query
+          name: path
+          required: true
+          schema:
+            description: Path to delete (absolute or relative to container cwd)
+            minLength: 1
+            type: string
+        - description: Delete directories and their contents recursively
+          explode: false
+          in: query
+          name: recursive
+          schema:
+            description: Delete directories and their contents recursively
+            type: boolean
+        - description: Container name. Defaults to the only container if there is one, otherwise it's required.
+          explode: false
+          in: query
+          name: container
+          schema:
+            description: Container name. Defaults to the only container if there is one, otherwise it's required.
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Bad Request
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+      summary: Delete a file or directory from the sandbox filesystem
+      tags:
+        - filesystem
     get:
       description: Reads a file from the specified path in the sandbox container
       operationId: getFilesystem

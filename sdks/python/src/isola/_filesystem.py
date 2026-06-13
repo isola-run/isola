@@ -145,6 +145,27 @@ class Filesystem:
             return False
         return True
 
+    def delete(self, path: str, *, recursive: bool = False, container: str | None = None) -> None:
+        """Delete a file, empty directory, or symlink from the sandbox.
+
+        Args:
+            path: Absolute path inside the sandbox.
+            recursive: Delete directories and their contents
+                recursively. Required to delete a non-empty directory.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Raises:
+            NotFoundError: If the path does not exist.
+        """
+        params = {"path": path}
+        if recursive:
+            params["recursive"] = "true"
+        if container:
+            params["container"] = container
+
+        self._api.request_no_content("DELETE", _filesystem_path(self._sandbox_id), params=params)
+
 
 class AsyncFilesystem:
     """Async version of Filesystem."""
@@ -264,3 +285,24 @@ class AsyncFilesystem:
         except NotFoundError:
             return False
         return True
+
+    async def delete(self, path: str, *, recursive: bool = False, container: str | None = None) -> None:
+        """Delete a file, empty directory, or symlink from the sandbox.
+
+        Args:
+            path: Absolute path inside the sandbox.
+            recursive: Delete directories and their contents
+                recursively. Required to delete a non-empty directory.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Raises:
+            NotFoundError: If the path does not exist.
+        """
+        params = {"path": path}
+        if recursive:
+            params["recursive"] = "true"
+        if container:
+            params["container"] = container
+
+        await self._api.request_no_content("DELETE", _filesystem_path(self._sandbox_id), params=params)

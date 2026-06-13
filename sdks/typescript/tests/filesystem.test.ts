@@ -408,6 +408,37 @@ describe("Filesystem.stat/exists", () => {
   });
 });
 
+describe("Filesystem.delete", () => {
+  it("sends DELETE with recursive param when set", async () => {
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), emptyResponse(204), emptyResponse(204));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+    await sandbox.filesystem.delete("/workspace/file.txt", { container: "worker" });
+    await sandbox.filesystem.delete("/workspace/dir", { recursive: true });
+
+    const plainCall = stub.calls[1]!;
+    expect(plainCall.method).toBe("DELETE");
+    expect(plainCall.url.startsWith(`${URL_BASE}/v1/sandboxes/sandbox-123/filesystem`)).toBe(true);
+    expect(getSearchParam(plainCall.url, "path")).toBe("/workspace/file.txt");
+    expect(getSearchParam(plainCall.url, "container")).toBe("worker");
+    expect(getSearchParam(plainCall.url, "recursive")).toBeNull();
+
+    const recursiveCall = stub.calls[2]!;
+    expect(getSearchParam(recursiveCall.url, "recursive")).toBe("true");
+  });
+
+  it("raises NotFoundError on 404", async () => {
+    const stub = makeStubFetch(
+      jsonResponse(sandboxResponseFixture()),
+      jsonResponse({ detail: "path not found" }, { status: 404 }),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+
+    await expect(sandbox.filesystem.delete("/workspace/missing.txt")).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
 describe("FilesystemEntry wire decoding", () => {
   it("rejects a missing name", async () => {
     const stub = makeStubFetch(
