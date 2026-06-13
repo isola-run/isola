@@ -125,3 +125,10 @@ func doDelete(path string) *httptest.ResponseRecorder {
 func doPostNoBody(path string) *httptest.ResponseRecorder {
 	return testAPI.Post(path)
 }
+
+func doMove(sourcePath, destinationPath string) *httptest.ResponseRecorder {
+	return testAPI.Post("/v1/filesystem/move", map[string]any{
+		"sourcePath":      sourcePath,
+		"destinationPath": destinationPath,
+	})
+}

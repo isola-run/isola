@@ -140,10 +140,11 @@ class _SyncAPI:
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
         content: bytes | BinaryIO | None = None,
         headers: dict[str, str] | None = None,
     ) -> None:
-        self.request(method, path, params=params, content=content, headers=headers)
+        self.request(method, path, params=params, json_body=json_body, content=content, headers=headers)
 
     def open_stream(
         self,
@@ -260,10 +261,11 @@ class _AsyncAPI:
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
         content: bytes | BinaryIO | None = None,
         headers: dict[str, str] | None = None,
     ) -> None:
-        await self.request(method, path, params=params, content=content, headers=headers)
+        await self.request(method, path, params=params, json_body=json_body, content=content, headers=headers)
 
     def open_stream(
         self,

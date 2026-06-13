@@ -222,6 +222,28 @@ components:
       required:
         - entries
       type: object
+    MoveFilesystemEntryRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/schemas/MoveFilesystemEntryRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        destinationPath:
+          description: Destination path (absolute or relative to container cwd). Parent directories are created automatically.
+          minLength: 1
+          type: string
+        sourcePath:
+          description: Path to move (absolute or relative to container cwd)
+          minLength: 1
+          type: string
+      required:
+        - sourcePath
+        - destinationPath
+      type: object
 info:
   description: Internal API for sandbox filesystem operations
   title: Isola Sandbox Sidecar API
@@ -866,6 +888,60 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Internal Server Error
       summary: List directory entries in the sandbox filesystem
+      tags:
+        - filesystem
+  /v1/filesystem/move:
+    post:
+      description: Renames or moves a file, directory, or symlink. Parent directories of the destination are created automatically. An existing destination file is overwritten.
+      operationId: moveFilesystemEntry
+      parameters:
+        - description: Container name. Defaults to the only container if there is one, otherwise it's required.
+          explode: false
+          in: query
+          name: container
+          schema:
+            description: Container name. Defaults to the only container if there is one, otherwise it's required.
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveFilesystemEntryRequest"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Bad Request
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+      summary: Move a file or directory within the sandbox filesystem
       tags:
         - filesystem
   /v1/filesystem/stat:
