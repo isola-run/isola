@@ -238,6 +238,9 @@ sandbox.filesystem.exists("/tmp/hello.txt")  # True
 # Create a directory (parents included, idempotent)
 sandbox.filesystem.mkdir("/tmp/output/reports")
 
+# Move or rename
+sandbox.filesystem.move("/tmp/hello.txt", "/tmp/output/greeting.txt")
+
 # Delete a file, or a directory tree with recursive=True
 sandbox.filesystem.delete("/tmp/data.bin")
 sandbox.filesystem.delete("/tmp/output", recursive=True)

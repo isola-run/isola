@@ -266,6 +266,9 @@ await sandbox.filesystem.exists("/tmp/hello.txt"); // true
 // Create a directory (parents included, idempotent)
 await sandbox.filesystem.mkdir("/tmp/output/reports");
 
+// Move or rename
+await sandbox.filesystem.move("/tmp/hello.txt", "/tmp/output/greeting.txt");
+
 // Delete a file, or a directory tree with recursive: true
 await sandbox.filesystem.delete("/tmp/data.bin");
 await sandbox.filesystem.delete("/tmp/output", { recursive: true });

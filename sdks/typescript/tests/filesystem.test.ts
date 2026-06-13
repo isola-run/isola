@@ -463,6 +463,36 @@ describe("Filesystem.mkdir", () => {
   });
 });
 
+describe("Filesystem.move", () => {
+  it("posts source and destination as JSON body", async () => {
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), emptyResponse(204));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+    await sandbox.filesystem.move("/workspace/a.txt", "/workspace/b.txt", { container: "worker" });
+
+    const moveCall = stub.calls[1]!;
+    expect(moveCall.method).toBe("POST");
+    expect(moveCall.url.startsWith(`${URL_BASE}/v1/sandboxes/sandbox-123/filesystem/move`)).toBe(true);
+    expect(getSearchParam(moveCall.url, "container")).toBe("worker");
+    expect(moveCall.headers.get("content-type")).toBe("application/json");
+    expect(JSON.parse(moveCall.bodyText)).toEqual({
+      sourcePath: "/workspace/a.txt",
+      destinationPath: "/workspace/b.txt",
+    });
+  });
+
+  it("raises NotFoundError when source is missing", async () => {
+    const stub = makeStubFetch(
+      jsonResponse(sandboxResponseFixture()),
+      jsonResponse({ detail: "source path not found" }, { status: 404 }),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+
+    await expect(sandbox.filesystem.move("/no-such", "/workspace/b.txt")).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
 describe("FilesystemEntry wire decoding", () => {
   it("rejects a missing name", async () => {
     const stub = makeStubFetch(

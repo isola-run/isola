@@ -133,12 +133,18 @@ sandbox = client.sandboxes.create(
 
 ### File I/O
 
-Read and write files inside sandboxes. Parent directories are created automatically.
+Read, write, and manage files inside sandboxes. Parent directories are created automatically.
 
 ```python
 sandbox.filesystem.write("/app/main.py", "print('hello from the sandbox')")
 data = sandbox.filesystem.read("/app/main.py")
 print(data.decode())  # "print('hello from the sandbox')"
+
+sandbox.filesystem.mkdir("/app/output")
+sandbox.filesystem.move("/app/main.py", "/app/output/main.py")
+for entry in sandbox.filesystem.list("/app/output"):
+    print(entry.name, entry.type, entry.size)
+sandbox.filesystem.delete("/app/output", recursive=True)
 ```
 
 ### Command execution

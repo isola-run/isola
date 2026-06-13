@@ -48,3 +48,8 @@ type FilesystemEntry struct {
 type ListFilesystemEntriesResponse struct {
 	Entries []FilesystemEntry `json:"entries" doc:"Directory entries sorted by name"`
 }
+
+type MoveFilesystemEntryRequest struct {
+	SourcePath      string `json:"sourcePath" required:"true" minLength:"1" doc:"Path to move (absolute or relative to container cwd)"`
+	DestinationPath string `json:"destinationPath" required:"true" minLength:"1" doc:"Destination path (absolute or relative to container cwd). Parent directories are created automatically."`
+}

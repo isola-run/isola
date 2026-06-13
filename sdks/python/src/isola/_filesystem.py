@@ -187,6 +187,32 @@ class Filesystem:
             params=params,
         )
 
+    def move(self, source_path: str, destination_path: str, *, container: str | None = None) -> None:
+        """Move or rename a file, directory, or symlink in the sandbox.
+
+        Parent directories of the destination are created automatically.
+        An existing destination file is overwritten.
+
+        Args:
+            source_path: Absolute path to move.
+            destination_path: Absolute destination path.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Raises:
+            NotFoundError: If the source path does not exist.
+        """
+        params: dict[str, str] = {}
+        if container:
+            params["container"] = container
+
+        self._api.request_no_content(
+            "POST",
+            f"{_filesystem_path(self._sandbox_id)}/move",
+            params=params,
+            json_body={"sourcePath": source_path, "destinationPath": destination_path},
+        )
+
 
 class AsyncFilesystem:
     """Async version of Filesystem."""
@@ -347,4 +373,30 @@ class AsyncFilesystem:
             "POST",
             f"{_filesystem_path(self._sandbox_id)}/directories",
             params=params,
+        )
+
+    async def move(self, source_path: str, destination_path: str, *, container: str | None = None) -> None:
+        """Move or rename a file, directory, or symlink in the sandbox.
+
+        Parent directories of the destination are created automatically.
+        An existing destination file is overwritten.
+
+        Args:
+            source_path: Absolute path to move.
+            destination_path: Absolute destination path.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Raises:
+            NotFoundError: If the source path does not exist.
+        """
+        params: dict[str, str] = {}
+        if container:
+            params["container"] = container
+
+        await self._api.request_no_content(
+            "POST",
+            f"{_filesystem_path(self._sandbox_id)}/move",
+            params=params,
+            json_body={"sourcePath": source_path, "destinationPath": destination_path},
         )
