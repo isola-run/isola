@@ -370,6 +370,69 @@ var _ = Describe("Filesystem", func() {
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 	})
+
+	Describe("GET /filesystem/stat", func() {
+		It("stats a regular file", func() {
+			hostPath := filepath.Join(testRootDir, "/statdir/stat-me.txt")
+			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(hostPath, []byte("123"), 0600)).To(Succeed())
+			Expect(os.Chmod(hostPath, 0640)).To(Succeed()) //nolint:gosec // exact mode asserted below
+
+			resp := doGet("/v1/filesystem/stat?path=/statdir/stat-me.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var entry sidecarapi.FilesystemEntry
+			Expect(json.Unmarshal(resp.Body.Bytes(), &entry)).To(Succeed())
+			Expect(entry.Name).To(Equal("stat-me.txt"))
+			Expect(entry.Path).To(Equal("/statdir/stat-me.txt"))
+			Expect(entry.Type).To(Equal("file"))
+			Expect(entry.Size).To(Equal(int64(3)))
+			Expect(entry.Permissions).To(Equal("0640"))
+		})
+
+		It("stats a directory", func() {
+			Expect(os.MkdirAll(filepath.Join(testRootDir, "/statdir/sub"), 0750)).To(Succeed())
+
+			resp := doGet("/v1/filesystem/stat?path=/statdir/sub")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var entry sidecarapi.FilesystemEntry
+			Expect(json.Unmarshal(resp.Body.Bytes(), &entry)).To(Succeed())
+			Expect(entry.Type).To(Equal("directory"))
+		})
+
+		It("stats a symlink without following it", func() {
+			Expect(os.MkdirAll(filepath.Join(testRootDir, "/statdir"), 0750)).To(Succeed())
+			linkPath := filepath.Join(testRootDir, "/statdir/stat-link")
+			Expect(os.Symlink("/statdir/stat-me.txt", linkPath)).To(Succeed())
+
+			resp := doGet("/v1/filesystem/stat?path=/statdir/stat-link")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var entry sidecarapi.FilesystemEntry
+			Expect(json.Unmarshal(resp.Body.Bytes(), &entry)).To(Succeed())
+			Expect(entry.Type).To(Equal("symlink"))
+			Expect(entry.SymlinkTarget).To(Equal("/statdir/stat-me.txt"))
+		})
+
+		It("stats with relative path", func() {
+			hostPath := filepath.Join(testRootDir, testCwd, "relstat.txt")
+			Expect(os.WriteFile(hostPath, []byte("r"), 0600)).To(Succeed())
+
+			resp := doGet("/v1/filesystem/stat?path=relstat.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var entry sidecarapi.FilesystemEntry
+			Expect(json.Unmarshal(resp.Body.Bytes(), &entry)).To(Succeed())
+			Expect(entry.Path).To(Equal("/workspace/relstat.txt"))
+		})
+
+		It("returns 404 for nonexistent path", func() {
+			resp := doGet("/v1/filesystem/stat?path=/no-such-path")
+
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+	})
 })
 
 // errorMockProcFS returns errors for FindMarkedPID.

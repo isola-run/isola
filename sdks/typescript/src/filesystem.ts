@@ -15,9 +15,10 @@
 // Mirrors sdks/python/src/isola/_filesystem.py:AsyncFilesystem.
 
 import type { RequestOptions } from "./client";
+import { NotFoundError } from "./errors";
 import type { HttpClient } from "./internal/http";
-import { filesystemEntriesPath, filesystemPath } from "./internal/url";
-import { type FilesystemEntry, ListFilesystemEntriesResponse } from "./models";
+import { filesystemEntriesPath, filesystemPath, filesystemStatPath } from "./internal/url";
+import { FilesystemEntry, ListFilesystemEntriesResponse } from "./models";
 
 /** Options for most {@link Filesystem} operations. */
 export interface FileOptions {
@@ -147,5 +148,54 @@ export class Filesystem {
       ListFilesystemEntriesResponse.fromWire,
     );
     return response.entries;
+  }
+
+  /**
+   * Get metadata for a file, directory, or symlink in the sandbox.
+   *
+   * Symlinks are reported, not followed.
+   *
+   * @param path - Absolute path inside the sandbox.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @returns Entry metadata.
+   * @throws {NotFoundError} If the path does not exist.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async stat(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<FilesystemEntry> {
+    const params: Record<string, string> = { path };
+    if (opts.container) params.container = opts.container;
+
+    return this._api.requestModel(
+      {
+        method: "GET",
+        path: filesystemStatPath(this._sandboxId),
+        params,
+        ...(req.signal ? { signal: req.signal } : {}),
+      },
+      FilesystemEntry.fromWire,
+    );
+  }
+
+  /**
+   * Check whether a path exists in the sandbox.
+   *
+   * @param path - Absolute path inside the sandbox.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @returns `true` if a file, directory, or symlink exists at the
+   * path.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async exists(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<boolean> {
+    try {
+      await this.stat(path, opts, req);
+    } catch (err) {
+      if (err instanceof NotFoundError) return false;
+      throw err;
+    }
+    return true;
   }
 }
