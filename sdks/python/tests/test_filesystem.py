@@ -436,3 +436,37 @@ def test_filesystem_exists(sandbox_response_copy: dict[str, object]) -> None:
         sandbox = client.sandboxes.get("sandbox-123")
         assert sandbox.filesystem.exists("/workspace/file.txt") is True
         assert sandbox.filesystem.exists("/workspace/missing.txt") is False
+
+
+@respx.mock
+def test_filesystem_delete(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    delete_route = respx.delete("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(204)
+    )
+
+    with Isola(url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        sandbox.filesystem.delete("/workspace/file.txt")
+        sandbox.filesystem.delete("/workspace/dir", recursive=True)
+
+    assert delete_route.calls[0].request.url.params["path"] == "/workspace/file.txt"
+    assert "recursive" not in delete_route.calls[0].request.url.params
+    assert delete_route.calls[1].request.url.params["recursive"] == "true"
+
+
+@respx.mock
+def test_filesystem_delete_not_found(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.delete("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(404, json={"title": "Not Found", "status": 404, "detail": "path not found"})
+    )
+
+    with Isola(url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        with pytest.raises(NotFoundError):
+            sandbox.filesystem.delete("/workspace/missing.txt")

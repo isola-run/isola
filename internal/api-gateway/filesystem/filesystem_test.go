@@ -533,4 +533,53 @@ var _ = Describe("Filesystem Entry Proxy", func() {
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 	})
+
+	Describe("DELETE /sandboxes/{sandboxId}/filesystem", func() {
+		It("proxies delete with recursive param", func() {
+			var capturedMethod, capturedRecursive string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedMethod = r.Method
+				capturedRecursive = r.URL.Query().Get("recursive")
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Delete(fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/workspace/dir&recursive=true", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			Expect(capturedMethod).To(Equal(http.MethodDelete))
+			Expect(capturedRecursive).To(Equal("true"))
+		})
+
+		It("omits recursive param when not set", func() {
+			var hasRecursive bool
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hasRecursive = r.URL.Query().Has("recursive")
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Delete(fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/workspace/f.txt", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			Expect(hasRecursive).To(BeFalse())
+		})
+
+		It("returns 409 when sandbox is not ready", func() {
+			api := newFilesystemTestAPI(&http.Client{}, 0)
+			sbName := createSandboxCR()
+
+			resp := api.Delete(fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/workspace/f.txt", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+	})
 })

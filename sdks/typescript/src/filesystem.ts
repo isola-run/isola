@@ -28,6 +28,15 @@ export interface FileOptions {
   container?: string;
 }
 
+/** Options for {@link Filesystem.delete}. */
+export interface DeleteFileOptions extends FileOptions {
+  /**
+   * Delete directories and their contents recursively. Required to
+   * delete a non-empty directory.
+   */
+  recursive?: boolean;
+}
+
 /**
  * Body types accepted by {@link Filesystem.write}.
  *
@@ -197,5 +206,28 @@ export class Filesystem {
       throw err;
     }
     return true;
+  }
+
+  /**
+   * Delete a file, empty directory, or symlink from the sandbox.
+   *
+   * @param path - Absolute path inside the sandbox.
+   * @param opts - Delete options. Set `recursive: true` to delete a
+   * directory and its contents.
+   * @throws {NotFoundError} If the path does not exist.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async delete(path: string, opts: DeleteFileOptions = {}, req: RequestOptions = {}): Promise<void> {
+    const params: Record<string, string> = { path };
+    if (opts.recursive) params.recursive = "true";
+    if (opts.container) params.container = opts.container;
+
+    await this._api.requestNoContent({
+      method: "DELETE",
+      path: filesystemPath(this._sandboxId),
+      params,
+      ...(req.signal ? { signal: req.signal } : {}),
+    });
   }
 }

@@ -433,6 +433,77 @@ var _ = Describe("Filesystem", func() {
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 	})
+
+	Describe("DELETE /filesystem", func() {
+		It("deletes a file", func() {
+			hostPath := filepath.Join(testRootDir, "/deldir/del-me.txt")
+			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(hostPath, []byte("x"), 0600)).To(Succeed())
+
+			resp := doDelete("/v1/filesystem?path=/deldir/del-me.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			_, err := os.Lstat(hostPath)
+			Expect(os.IsNotExist(err)).To(BeTrue())
+		})
+
+		It("deletes an empty directory", func() {
+			hostPath := filepath.Join(testRootDir, "/deldir/empty-sub")
+			Expect(os.MkdirAll(hostPath, 0750)).To(Succeed())
+
+			resp := doDelete("/v1/filesystem?path=/deldir/empty-sub")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			_, err := os.Lstat(hostPath)
+			Expect(os.IsNotExist(err)).To(BeTrue())
+		})
+
+		It("returns 400 for non-empty directory without recursive", func() {
+			hostPath := filepath.Join(testRootDir, "/deldir/full-sub")
+			Expect(os.MkdirAll(hostPath, 0750)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(hostPath, "f.txt"), []byte("x"), 0600)).To(Succeed())
+
+			resp := doDelete("/v1/filesystem?path=/deldir/full-sub")
+
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("deletes a non-empty directory with recursive=true", func() {
+			hostPath := filepath.Join(testRootDir, "/deldir/rec-sub")
+			Expect(os.MkdirAll(filepath.Join(hostPath, "nested"), 0750)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(hostPath, "nested/f.txt"), []byte("x"), 0600)).To(Succeed())
+
+			resp := doDelete("/v1/filesystem?path=/deldir/rec-sub&recursive=true")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			_, err := os.Lstat(hostPath)
+			Expect(os.IsNotExist(err)).To(BeTrue())
+		})
+
+		It("deletes a dangling symlink", func() {
+			Expect(os.MkdirAll(filepath.Join(testRootDir, "/deldir"), 0750)).To(Succeed())
+			linkPath := filepath.Join(testRootDir, "/deldir/dangling")
+			Expect(os.Symlink("/nonexistent/target", linkPath)).To(Succeed())
+
+			resp := doDelete("/v1/filesystem?path=/deldir/dangling")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			_, err := os.Lstat(linkPath)
+			Expect(os.IsNotExist(err)).To(BeTrue())
+		})
+
+		It("returns 404 for nonexistent path", func() {
+			resp := doDelete("/v1/filesystem?path=/no-such-path")
+
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("refuses to delete the filesystem root", func() {
+			resp := doDelete("/v1/filesystem?path=/")
+
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+	})
 })
 
 // errorMockProcFS returns errors for FindMarkedPID.
