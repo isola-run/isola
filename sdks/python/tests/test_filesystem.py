@@ -401,3 +401,38 @@ def test_filesystem_list_empty(sandbox_response_copy: dict[str, object]) -> None
         entries = sandbox.filesystem.list("/empty")
 
     assert entries == []
+
+
+@respx.mock
+def test_filesystem_stat(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    stat_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem/stat").mock(
+        return_value=httpx.Response(200, json=_SYMLINK_JSON)
+    )
+
+    with Isola(url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        entry = sandbox.filesystem.stat("/workspace/link")
+
+    assert stat_route.calls[0].request.url.params["path"] == "/workspace/link"
+    assert entry.type == FilesystemEntryType.SYMLINK
+    assert entry.symlink_target == "/workspace/file.txt"
+
+
+@respx.mock
+def test_filesystem_exists(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    stat_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem/stat")
+    stat_route.side_effect = [
+        httpx.Response(200, json=_ENTRY_JSON),
+        httpx.Response(404, json={"title": "Not Found", "status": 404, "detail": "path not found"}),
+    ]
+
+    with Isola(url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        assert sandbox.filesystem.exists("/workspace/file.txt") is True
+        assert sandbox.filesystem.exists("/workspace/missing.txt") is False
