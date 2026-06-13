@@ -255,6 +255,13 @@ Parent directories are created automatically on uploads. Streaming bodies (`Read
 for (const entry of await sandbox.filesystem.list("/tmp")) {
   console.log(entry.name, entry.type, entry.size, entry.permissions);
 }
+
+// Inspect a single path
+const entry = await sandbox.filesystem.stat("/tmp/hello.txt");
+console.log(entry.modifiedTime, entry.uid, entry.gid);
+
+// Check existence
+await sandbox.filesystem.exists("/tmp/hello.txt"); // true
 ```
 
 ## Sandbox management

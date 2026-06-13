@@ -227,6 +227,13 @@ Parent directories are created automatically on uploads.
 # List a directory (symlinks are reported, not followed)
 for entry in sandbox.filesystem.list("/tmp"):
     print(entry.name, entry.type, entry.size, entry.permissions)
+
+# Inspect a single path
+entry = sandbox.filesystem.stat("/tmp/hello.txt")
+print(entry.modified_time, entry.uid, entry.gid)
+
+# Check existence
+sandbox.filesystem.exists("/tmp/hello.txt")  # True
 ```
 
 ## Sandbox management

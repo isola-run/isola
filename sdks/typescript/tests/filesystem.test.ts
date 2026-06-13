@@ -361,7 +361,76 @@ describe("Filesystem.list", () => {
   });
 });
 
+describe("Filesystem.stat/exists", () => {
+  it("stat() parses a symlink entry", async () => {
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), jsonResponse(SYMLINK_JSON));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+    const entry = await sandbox.filesystem.stat("/workspace/link", { container: "worker" });
+
+    const statCall = stub.calls[1]!;
+    expect(statCall.url.startsWith(`${URL_BASE}/v1/sandboxes/sandbox-123/filesystem/stat`)).toBe(true);
+    expect(getSearchParam(statCall.url, "path")).toBe("/workspace/link");
+    expect(getSearchParam(statCall.url, "container")).toBe("worker");
+
+    expect(entry.type).toBe("symlink");
+    expect(entry.symlinkTarget).toBe("/workspace/file.txt");
+  });
+
+  it("exists() returns true when stat succeeds", async () => {
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), jsonResponse(ENTRY_JSON));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+
+    await expect(sandbox.filesystem.exists("/workspace/file.txt")).resolves.toBe(true);
+  });
+
+  it("exists() returns false on 404", async () => {
+    const stub = makeStubFetch(
+      jsonResponse(sandboxResponseFixture()),
+      jsonResponse({ detail: "path not found" }, { status: 404 }),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+
+    await expect(sandbox.filesystem.exists("/workspace/missing.txt")).resolves.toBe(false);
+  });
+
+  it("exists() rethrows non-404 errors", async () => {
+    const stub = makeStubFetch(
+      jsonResponse(sandboxResponseFixture()),
+      ...Array.from({ length: 1 + MAX_RETRIES }, () => jsonResponse({ detail: "boom" }, { status: 500 })),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+
+    await expect(sandbox.filesystem.exists("/workspace/file.txt")).rejects.toBeInstanceOf(InternalError);
+  });
+});
+
 describe("FilesystemEntry wire decoding", () => {
+  it("rejects a missing name", async () => {
+    const stub = makeStubFetch(
+      jsonResponse(sandboxResponseFixture()),
+      jsonResponse({ ...ENTRY_JSON, name: undefined }),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+
+    await expect(sandbox.filesystem.stat("/workspace/file.txt")).rejects.toThrow(/invalid response payload/);
+  });
+
+  it("rejects a missing path", async () => {
+    const stub = makeStubFetch(
+      jsonResponse(sandboxResponseFixture()),
+      jsonResponse({ ...ENTRY_JSON, path: undefined }),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+
+    await expect(sandbox.filesystem.stat("/workspace/file.txt")).rejects.toThrow(/invalid response payload/);
+  });
+
   it("rejects a non-array entries field", async () => {
     const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), jsonResponse({ entries: "nope" }));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });

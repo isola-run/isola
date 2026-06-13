@@ -18,6 +18,7 @@ from typing import BinaryIO
 from urllib.parse import quote
 
 from ._client import _AsyncAPI, _SyncAPI
+from ._exceptions import NotFoundError
 from ._models import FilesystemEntry, ListFilesystemEntriesResponse
 
 
@@ -100,6 +101,50 @@ class Filesystem:
         )
         return response.entries or []
 
+    def stat(self, path: str, *, container: str | None = None) -> FilesystemEntry:
+        """Get metadata for a file, directory, or symlink in the sandbox.
+
+        Symlinks are reported, not followed.
+
+        Args:
+            path: Absolute path inside the sandbox.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Returns:
+            Entry metadata.
+
+        Raises:
+            NotFoundError: If the path does not exist.
+        """
+        params = {"path": path}
+        if container:
+            params["container"] = container
+
+        return self._api.request_model(
+            "GET",
+            f"{_filesystem_path(self._sandbox_id)}/stat",
+            FilesystemEntry,
+            params=params,
+        )
+
+    def exists(self, path: str, *, container: str | None = None) -> bool:
+        """Check whether a path exists in the sandbox.
+
+        Args:
+            path: Absolute path inside the sandbox.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Returns:
+            True if a file, directory, or symlink exists at the path.
+        """
+        try:
+            self.stat(path, container=container)
+        except NotFoundError:
+            return False
+        return True
+
 
 class AsyncFilesystem:
     """Async version of Filesystem."""
@@ -175,3 +220,47 @@ class AsyncFilesystem:
             params=params,
         )
         return response.entries or []
+
+    async def stat(self, path: str, *, container: str | None = None) -> FilesystemEntry:
+        """Get metadata for a file, directory, or symlink in the sandbox.
+
+        Symlinks are reported, not followed.
+
+        Args:
+            path: Absolute path inside the sandbox.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Returns:
+            Entry metadata.
+
+        Raises:
+            NotFoundError: If the path does not exist.
+        """
+        params = {"path": path}
+        if container:
+            params["container"] = container
+
+        return await self._api.request_model(
+            "GET",
+            f"{_filesystem_path(self._sandbox_id)}/stat",
+            FilesystemEntry,
+            params=params,
+        )
+
+    async def exists(self, path: str, *, container: str | None = None) -> bool:
+        """Check whether a path exists in the sandbox.
+
+        Args:
+            path: Absolute path inside the sandbox.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+
+        Returns:
+            True if a file, directory, or symlink exists at the path.
+        """
+        try:
+            await self.stat(path, container=container)
+        except NotFoundError:
+            return False
+        return True

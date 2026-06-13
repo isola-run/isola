@@ -492,4 +492,45 @@ var _ = Describe("Filesystem Entry Proxy", func() {
 			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 	})
+
+	Describe("GET /sandboxes/{sandboxId}/filesystem/stat", func() {
+		It("proxies the stat request and decodes the entry", func() {
+			var capturedPath string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedPath = r.URL.Path
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"name":"link","path":"/workspace/link","type":"symlink","size":10,"permissions":"0777","uid":0,"gid":0,"modifiedTime":"2026-06-13T00:00:00Z","symlinkTarget":"/workspace/target"}`))
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem/stat?path=/workspace/link", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(capturedPath).To(Equal("/v1/filesystem/stat"))
+
+			var entry sidecarapi.FilesystemEntry
+			Expect(json.Unmarshal(resp.Body.Bytes(), &entry)).To(Succeed())
+			Expect(entry.Type).To(Equal("symlink"))
+			Expect(entry.SymlinkTarget).To(Equal("/workspace/target"))
+		})
+
+		It("forwards sidecar 404 errors", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem/stat?path=/no-such", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+	})
 })

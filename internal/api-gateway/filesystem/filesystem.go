@@ -58,6 +58,16 @@ type FilesystemListOutput struct {
 	Body sidecarapi.ListFilesystemEntriesResponse
 }
 
+type FilesystemStatInput struct {
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Path to stat (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemStatOutput struct {
+	Body sidecarapi.FilesystemEntry
+}
+
 type Handlers struct {
 	logger           *slog.Logger
 	k8sClient        client.Client
@@ -257,6 +267,14 @@ func (h *Handlers) ListFilesystemEntries(ctx context.Context, input *FilesystemL
 	return &FilesystemListOutput{Body: body}, nil
 }
 
+func (h *Handlers) StatFilesystemEntry(ctx context.Context, input *FilesystemStatInput) (*FilesystemStatOutput, error) {
+	body, err := fetchJSON[sidecarapi.FilesystemEntry](ctx, h, input.SandboxID, http.MethodGet, "/v1/filesystem/stat", pathParams(input.Path, input.Container), nil)
+	if err != nil {
+		return nil, err
+	}
+	return &FilesystemStatOutput{Body: body}, nil
+}
+
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "writeSandboxFilesystem",
@@ -308,4 +326,14 @@ func Register(api huma.API, h *Handlers) {
 		Tags:        []string{"sandboxes", "filesystem"},
 		Errors:      []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.ListFilesystemEntries)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "statSandboxFilesystemEntry",
+		Method:      http.MethodGet,
+		Path:        "/sandboxes/{sandboxId}/filesystem/stat",
+		Summary:     "Stat a path in sandbox filesystem",
+		Description: "Returns metadata for the file, directory, or symlink at the specified path inside the sandbox container. Symlinks are reported, not followed.",
+		Tags:        []string{"sandboxes", "filesystem"},
+		Errors:      []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.StatFilesystemEntry)
 }

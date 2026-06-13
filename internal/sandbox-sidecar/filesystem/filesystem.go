@@ -53,6 +53,15 @@ type FilesystemListOutput struct {
 	Body sidecarapi.ListFilesystemEntriesResponse
 }
 
+type FilesystemStatInput struct {
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Path to stat (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemStatOutput struct {
+	Body sidecarapi.FilesystemEntry
+}
+
 type Handlers struct {
 	logger      *slog.Logger
 	procFS      proc.ProcFS
@@ -312,6 +321,24 @@ func (h *Handlers) ListFilesystemEntries(_ context.Context, input *FilesystemLis
 	return &FilesystemListOutput{Body: sidecarapi.ListFilesystemEntriesResponse{Entries: entries}}, nil
 }
 
+func (h *Handlers) StatFilesystemEntry(_ context.Context, input *FilesystemStatInput) (*FilesystemStatOutput, error) {
+	_, resolvedPath, targetPath, err := h.resolveTarget(input.Path, input.Container)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := os.Lstat(targetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, huma.Error404NotFound(fmt.Sprintf("path not found: %s", input.Path))
+		}
+		h.logger.Error("failed to stat path", "error", err, "path", targetPath)
+		return nil, huma.Error500InternalServerError("failed to stat path")
+	}
+
+	return &FilesystemStatOutput{Body: entryFromInfo(filepath.Base(resolvedPath), resolvedPath, targetPath, info)}, nil
+}
+
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "postFilesystem",
@@ -363,4 +390,14 @@ func Register(api huma.API, h *Handlers) {
 		Tags:        []string{"filesystem"},
 		Errors:      []int{http.StatusBadRequest, http.StatusNotFound},
 	}, h.ListFilesystemEntries)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "statFilesystemEntry",
+		Method:      http.MethodGet,
+		Path:        "/filesystem/stat",
+		Summary:     "Stat a path in the sandbox filesystem",
+		Description: "Returns metadata for the file, directory, or symlink at the specified path. Symlinks are reported, not followed.",
+		Tags:        []string{"filesystem"},
+		Errors:      []int{http.StatusBadRequest, http.StatusNotFound},
+	}, h.StatFilesystemEntry)
 }
