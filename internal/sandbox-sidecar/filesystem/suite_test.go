@@ -121,3 +121,7 @@ func doGet(path string) *httptest.ResponseRecorder {
 func doDelete(path string) *httptest.ResponseRecorder {
 	return testAPI.Delete(path)
 }
+
+func doPostNoBody(path string) *httptest.ResponseRecorder {
+	return testAPI.Post(path)
+}

@@ -470,3 +470,20 @@ def test_filesystem_delete_not_found(sandbox_response_copy: dict[str, object]) -
         sandbox = client.sandboxes.get("sandbox-123")
         with pytest.raises(NotFoundError):
             sandbox.filesystem.delete("/workspace/missing.txt")
+
+
+@respx.mock
+def test_filesystem_mkdir(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    mkdir_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem/directories").mock(
+        return_value=httpx.Response(204)
+    )
+
+    with Isola(url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        sandbox.filesystem.mkdir("/workspace/new/dir", container="worker")
+
+    assert mkdir_route.calls[0].request.url.params["path"] == "/workspace/new/dir"
+    assert mkdir_route.calls[0].request.url.params["container"] == "worker"

@@ -439,6 +439,30 @@ describe("Filesystem.delete", () => {
   });
 });
 
+describe("Filesystem.mkdir", () => {
+  it("posts to the directories endpoint", async () => {
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), emptyResponse(204));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+    await sandbox.filesystem.mkdir("/workspace/new/dir", { container: "worker" });
+
+    const mkdirCall = stub.calls[1]!;
+    expect(mkdirCall.method).toBe("POST");
+    expect(mkdirCall.url.startsWith(`${URL_BASE}/v1/sandboxes/sandbox-123/filesystem/directories`)).toBe(true);
+    expect(getSearchParam(mkdirCall.url, "path")).toBe("/workspace/new/dir");
+    expect(getSearchParam(mkdirCall.url, "container")).toBe("worker");
+  });
+
+  it("omits container when not set", async () => {
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), emptyResponse(204));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+    await sandbox.filesystem.mkdir("/workspace/new");
+
+    expect(getSearchParam(stub.calls[1]!.url, "container")).toBeNull();
+  });
+});
+
 describe("FilesystemEntry wire decoding", () => {
   it("rejects a missing name", async () => {
     const stub = makeStubFetch(

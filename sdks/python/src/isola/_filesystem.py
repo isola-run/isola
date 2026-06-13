@@ -166,6 +166,27 @@ class Filesystem:
 
         self._api.request_no_content("DELETE", _filesystem_path(self._sandbox_id), params=params)
 
+    def mkdir(self, path: str, *, container: str | None = None) -> None:
+        """Create a directory in the sandbox.
+
+        Missing parent directories are created automatically. Succeeds
+        without error if the directory already exists.
+
+        Args:
+            path: Absolute path inside the sandbox.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+        """
+        params = {"path": path}
+        if container:
+            params["container"] = container
+
+        self._api.request_no_content(
+            "POST",
+            f"{_filesystem_path(self._sandbox_id)}/directories",
+            params=params,
+        )
+
 
 class AsyncFilesystem:
     """Async version of Filesystem."""
@@ -306,3 +327,24 @@ class AsyncFilesystem:
             params["container"] = container
 
         await self._api.request_no_content("DELETE", _filesystem_path(self._sandbox_id), params=params)
+
+    async def mkdir(self, path: str, *, container: str | None = None) -> None:
+        """Create a directory in the sandbox.
+
+        Missing parent directories are created automatically. Succeeds
+        without error if the directory already exists.
+
+        Args:
+            path: Absolute path inside the sandbox.
+            container: Target container name. Only needed for
+                multi-container sandboxes.
+        """
+        params = {"path": path}
+        if container:
+            params["container"] = container
+
+        await self._api.request_no_content(
+            "POST",
+            f"{_filesystem_path(self._sandbox_id)}/directories",
+            params=params,
+        )

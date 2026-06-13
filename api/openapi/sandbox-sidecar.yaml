@@ -762,6 +762,57 @@ paths:
       summary: Write a file to the sandbox filesystem
       tags:
         - filesystem
+  /v1/filesystem/directories:
+    post:
+      description: Creates a directory at the specified path, including missing parent directories. Idempotent if the directory already exists.
+      operationId: createFilesystemDirectory
+      parameters:
+        - description: Directory path to create (absolute or relative to container cwd)
+          explode: false
+          in: query
+          name: path
+          required: true
+          schema:
+            description: Directory path to create (absolute or relative to container cwd)
+            minLength: 1
+            type: string
+        - description: Container name. Defaults to the only container if there is one, otherwise it's required.
+          explode: false
+          in: query
+          name: container
+          schema:
+            description: Container name. Defaults to the only container if there is one, otherwise it's required.
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Bad Request
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
+      summary: Create a directory in the sandbox filesystem
+      tags:
+        - filesystem
   /v1/filesystem/entries:
     get:
       description: Returns metadata for each entry in the specified directory. Symlinks are reported, not followed.
