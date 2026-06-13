@@ -285,3 +285,88 @@ describe("Filesystem signal propagation", () => {
     expect(stub.calls[1]?.signal).toBeDefined();
   });
 });
+
+const ENTRY_JSON = {
+  name: "file.txt",
+  path: "/workspace/file.txt",
+  type: "file",
+  size: 5,
+  permissions: "0644",
+  uid: 1000,
+  gid: 1000,
+  modifiedTime: "2026-06-13T00:00:00Z",
+};
+
+const SYMLINK_JSON = {
+  name: "link",
+  path: "/workspace/link",
+  type: "symlink",
+  size: 10,
+  permissions: "0777",
+  uid: 0,
+  gid: 0,
+  modifiedTime: "2026-06-13T00:00:00Z",
+  symlinkTarget: "/workspace/file.txt",
+};
+
+describe("Filesystem.list", () => {
+  it("lists entries with container and parses metadata", async () => {
+    const stub = makeStubFetch(
+      jsonResponse(sandboxResponseFixture()),
+      jsonResponse({ entries: [ENTRY_JSON, SYMLINK_JSON] }),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+    const entries = await sandbox.filesystem.list("/workspace", { container: "worker" });
+
+    const listCall = stub.calls[1]!;
+    expect(listCall.method).toBe("GET");
+    expect(listCall.url.startsWith(`${URL_BASE}/v1/sandboxes/sandbox-123/filesystem/entries`)).toBe(true);
+    expect(getSearchParam(listCall.url, "path")).toBe("/workspace");
+    expect(getSearchParam(listCall.url, "container")).toBe("worker");
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]!.name).toBe("file.txt");
+    expect(entries[0]!.type).toBe("file");
+    expect(entries[0]!.size).toBe(5);
+    expect(entries[0]!.permissions).toBe("0644");
+    expect(entries[0]!.uid).toBe(1000);
+    expect(entries[0]!.gid).toBe(1000);
+    expect(entries[0]!.modifiedTime).toBeInstanceOf(Date);
+    expect(entries[0]!.modifiedTime.toISOString()).toBe("2026-06-13T00:00:00.000Z");
+    expect(entries[0]!.symlinkTarget).toBeUndefined();
+    expect(entries[1]!.type).toBe("symlink");
+    expect(entries[1]!.symlinkTarget).toBe("/workspace/file.txt");
+  });
+
+  it("returns empty array when entries is missing", async () => {
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), jsonResponse({}));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+    const entries = await sandbox.filesystem.list("/empty");
+
+    expect(entries).toEqual([]);
+    expect(getSearchParam(stub.calls[1]!.url, "container")).toBeNull();
+  });
+
+  it("raises NotFoundError on 404", async () => {
+    const stub = makeStubFetch(
+      jsonResponse(sandboxResponseFixture()),
+      jsonResponse({ detail: "directory not found" }, { status: 404 }),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+
+    await expect(sandbox.filesystem.list("/no-such")).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("FilesystemEntry wire decoding", () => {
+  it("rejects a non-array entries field", async () => {
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), jsonResponse({ entries: "nope" }));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+
+    await expect(sandbox.filesystem.list("/workspace")).rejects.toThrow(/invalid response payload/);
+  });
+});

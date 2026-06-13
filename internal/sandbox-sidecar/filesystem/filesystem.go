@@ -23,12 +23,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/isola-run/isola/internal/httputil"
 	sandboxsidecar "github.com/isola-run/isola/internal/sandbox-sidecar"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/proc"
+	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
 
 type FilesystemWriteInput struct {
@@ -40,6 +42,15 @@ type FilesystemWriteInput struct {
 type FilesystemReadInput struct {
 	Path      string `query:"path" required:"true" minLength:"1" doc:"Source path (absolute or relative to container cwd)"`
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemListInput struct {
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Directory path (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemListOutput struct {
+	Body sidecarapi.ListFilesystemEntriesResponse
 }
 
 type Handlers struct {
@@ -75,6 +86,69 @@ func (h *Handlers) resolveAbsolutePath(path string, pid int) (string, huma.Statu
 	return absolutePath, nil
 }
 
+// resolveTarget resolves the container PID and turns a user-supplied path into
+// both the container-visible absolute path and the host path under /proc/<pid>/root.
+func (h *Handlers) resolveTarget(path, container string) (pid int, resolvedPath, targetPath string, err error) {
+	pid, err = h.pidResolver.FindCachedContainerPID(container)
+	if err != nil {
+		if container == "" {
+			h.logger.Warn("failed to determine container pid", "error", err)
+		} else {
+			h.logger.Warn("failed to determine container pid", "error", err, "container", container)
+		}
+		return 0, "", "", huma.Error400BadRequest("failed to determine container pid")
+	}
+
+	resolvedPath, herr := h.resolveAbsolutePath(path, pid)
+	if herr != nil {
+		h.logger.Error("failed to resolve path", "error", herr, "path", path, "container", container)
+		return 0, "", "", herr
+	}
+
+	return pid, resolvedPath, filepath.Join(h.procFS.GetRoot(pid), resolvedPath), nil
+}
+
+func entryType(mode os.FileMode) string {
+	switch {
+	case mode.IsRegular():
+		return "file"
+	case mode.IsDir():
+		return "directory"
+	case mode&os.ModeSymlink != 0:
+		return "symlink"
+	default:
+		return "other"
+	}
+}
+
+// entryFromInfo builds a FilesystemEntry from lstat info. entryPath is the
+// container-visible path; hostPath is the corresponding /proc/<pid>/root path.
+func entryFromInfo(name, entryPath, hostPath string, info os.FileInfo) sidecarapi.FilesystemEntry {
+	entry := sidecarapi.FilesystemEntry{
+		Name:         name,
+		Path:         entryPath,
+		Type:         entryType(info.Mode()),
+		Size:         info.Size(),
+		Permissions:  fmt.Sprintf("%04o", info.Mode().Perm()),
+		ModifiedTime: info.ModTime().UTC(),
+	}
+	if st, ok := info.Sys().(*syscall.Stat_t); ok {
+		entry.UID = int(st.Uid)
+		entry.GID = int(st.Gid)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		// Readlink returns the raw link content, which is the container's own
+		// view of the target (host /proc prefix never leaks).
+		if target, err := os.Readlink(hostPath); err == nil {
+			entry.SymlinkTarget = target
+		}
+	}
+	return entry
+}
+
+// errNotADirectory reports that a path component exists but is not a directory.
+var errNotADirectory = errors.New("exists and is not a directory")
+
 // mkdirAllChown is like os.MkdirAll but chowns each newly created directory.
 // Existing directories are left untouched.
 func mkdirAllChown(path string, uid, gid int) error {
@@ -85,7 +159,7 @@ func mkdirAllChown(path string, uid, gid int) error {
 	fi, err := os.Stat(path)
 	if err == nil {
 		if !fi.IsDir() {
-			return fmt.Errorf("%s exists and is not a directory", path)
+			return fmt.Errorf("%s %w", path, errNotADirectory)
 		}
 		return nil
 	}
@@ -105,22 +179,8 @@ func mkdirAllChown(path string, uid, gid int) error {
 }
 
 func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput) (*struct{}, error) {
-	path := input.Path
-	container := input.Container
-
-	pid, err := h.pidResolver.FindCachedContainerPID(container)
+	pid, _, targetPath, err := h.resolveTarget(input.Path, input.Container)
 	if err != nil {
-		if container == "" {
-			h.logger.Warn("failed to determine container pid", "error", err)
-			return nil, huma.Error400BadRequest("failed to determine container pid")
-		}
-		h.logger.Warn("failed to determine container pid", "error", err, "container", container)
-		return nil, huma.Error400BadRequest("failed to determine container pid")
-	}
-
-	resolvedPath, err := h.resolveAbsolutePath(path, pid)
-	if err != nil {
-		h.logger.Error("failed to resolve path", "error", err, "path", path, "container", container)
 		return nil, err
 	}
 
@@ -130,12 +190,12 @@ func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput
 		return nil, huma.Error500InternalServerError("failed to get container uid/gid")
 	}
 
-	// Build the host path via /proc/<pid>/root
-	targetPath := filepath.Join(h.procFS.GetRoot(pid), resolvedPath)
-
 	parentDir := filepath.Dir(targetPath)
 	if err := mkdirAllChown(parentDir, uid, gid); err != nil {
 		h.logger.Error("failed to create parent directories", "error", err, "path", parentDir)
+		if errors.Is(err, errNotADirectory) || errors.Is(err, syscall.ENOTDIR) {
+			return nil, huma.Error409Conflict("a parent path component exists and is not a directory")
+		}
 		return nil, huma.Error500InternalServerError("failed to create parent directories")
 	}
 
@@ -170,26 +230,11 @@ func (h *Handlers) PostFilesystem(_ context.Context, input *FilesystemWriteInput
 
 func (h *Handlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) (*huma.StreamResponse, error) {
 	path := input.Path
-	container := input.Container
 
-	pid, err := h.pidResolver.FindCachedContainerPID(container)
+	_, _, targetPath, err := h.resolveTarget(path, input.Container)
 	if err != nil {
-		if container == "" {
-			h.logger.Warn("failed to determine container pid", "error", err)
-			return nil, huma.Error400BadRequest("failed to determine container pid")
-		}
-		h.logger.Warn("failed to determine container pid", "error", err, "container", container)
-		return nil, huma.Error400BadRequest("failed to determine container pid")
-	}
-
-	resolvedPath, err := h.resolveAbsolutePath(path, pid)
-	if err != nil {
-		h.logger.Error("failed to resolve path", "error", err, "path", path, "container", container)
 		return nil, err
 	}
-
-	// Build the host path via /proc/<pid>/root
-	targetPath := filepath.Join(h.procFS.GetRoot(pid), resolvedPath)
 
 	// Stat before Open to reject non-regular files (FIFOs, devices, sockets)
 	// without blocking — os.Open on a FIFO blocks until a writer connects.
@@ -236,6 +281,37 @@ func (h *Handlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) 
 	}, nil
 }
 
+func (h *Handlers) ListFilesystemEntries(_ context.Context, input *FilesystemListInput) (*FilesystemListOutput, error) {
+	_, resolvedPath, targetPath, err := h.resolveTarget(input.Path, input.Container)
+	if err != nil {
+		return nil, err
+	}
+
+	dirEntries, err := os.ReadDir(targetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, huma.Error404NotFound(fmt.Sprintf("directory not found: %s", input.Path))
+		}
+		if errors.Is(err, syscall.ENOTDIR) {
+			return nil, huma.Error400BadRequest(fmt.Sprintf("not a directory: %s", input.Path))
+		}
+		h.logger.Error("failed to read directory", "error", err, "path", targetPath)
+		return nil, huma.Error500InternalServerError("failed to read directory")
+	}
+
+	entries := make([]sidecarapi.FilesystemEntry, 0, len(dirEntries))
+	for _, dirEntry := range dirEntries {
+		info, err := dirEntry.Info()
+		if err != nil {
+			continue // entry removed between ReadDir and Info
+		}
+		name := dirEntry.Name()
+		entries = append(entries, entryFromInfo(name, filepath.Join(resolvedPath, name), filepath.Join(targetPath, name), info))
+	}
+
+	return &FilesystemListOutput{Body: sidecarapi.ListFilesystemEntriesResponse{Entries: entries}}, nil
+}
+
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "postFilesystem",
@@ -255,7 +331,7 @@ func Register(api huma.API, h *Handlers) {
 			},
 		},
 		DefaultStatus: http.StatusNoContent,
-		Errors:        []int{http.StatusBadRequest},
+		Errors:        []int{http.StatusBadRequest, http.StatusConflict},
 	}, h.PostFilesystem)
 
 	huma.Register(api, huma.Operation{
@@ -277,4 +353,14 @@ func Register(api huma.API, h *Handlers) {
 		},
 		Errors: []int{http.StatusBadRequest, http.StatusNotFound},
 	}, h.GetFilesystem)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "listFilesystemEntries",
+		Method:      http.MethodGet,
+		Path:        "/filesystem/entries",
+		Summary:     "List directory entries in the sandbox filesystem",
+		Description: "Returns metadata for each entry in the specified directory. Symlinks are reported, not followed.",
+		Tags:        []string{"filesystem"},
+		Errors:      []int{http.StatusBadRequest, http.StatusNotFound},
+	}, h.ListFilesystemEntries)
 }

@@ -248,6 +248,15 @@ console.log(new TextDecoder().decode(data));  // "Hello, World!"
 
 Parent directories are created automatically on uploads. Streaming bodies (`ReadableStream`) are supported but **non-replayable**: transient errors during a stream upload are not retried.
 
+### Managing files and directories
+
+```ts
+// List a directory (symlinks are reported, not followed)
+for (const entry of await sandbox.filesystem.list("/tmp")) {
+  console.log(entry.name, entry.type, entry.size, entry.permissions);
+}
+```
+
 ## Sandbox management
 
 ```ts

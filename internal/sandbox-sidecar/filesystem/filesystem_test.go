@@ -17,6 +17,7 @@ package filesystem
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -33,6 +34,7 @@ import (
 
 	sandboxsidecar "github.com/isola-run/isola/internal/sandbox-sidecar"
 	"github.com/isola-run/isola/internal/sandbox-sidecar/proc"
+	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
 
 var _ = Describe("Filesystem", func() {
@@ -270,6 +272,102 @@ var _ = Describe("Filesystem", func() {
 			resp := doPost("/v1/filesystem?path=/tmp/evil%00file.txt", content)
 
 			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
+		})
+
+		It("returns 409 when a parent path component is a file", func() {
+			hostPath := filepath.Join(testRootDir, "/tmp/parent-is-file.txt")
+			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(hostPath, []byte("x"), 0600)).To(Succeed())
+
+			resp := doPost("/v1/filesystem?path=/tmp/parent-is-file.txt/nested.txt", []byte("y"))
+
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+	})
+
+	Describe("GET /filesystem/entries", func() {
+		It("lists directory entries with metadata", func() {
+			base := filepath.Join(testRootDir, "/listdir")
+			Expect(os.MkdirAll(filepath.Join(base, "subdir"), 0750)).To(Succeed())
+			filePath := filepath.Join(base, "file.txt")
+			Expect(os.WriteFile(filePath, []byte("12345"), 0600)).To(Succeed())
+			Expect(os.Chmod(filePath, 0644)).To(Succeed()) //nolint:gosec // exact mode asserted below
+			Expect(os.Symlink("/listdir/file.txt", filepath.Join(base, "link.txt"))).To(Succeed())
+
+			resp := doGet("/v1/filesystem/entries?path=/listdir")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var body sidecarapi.ListFilesystemEntriesResponse
+			Expect(json.Unmarshal(resp.Body.Bytes(), &body)).To(Succeed())
+			Expect(body.Entries).To(HaveLen(3))
+
+			file := body.Entries[0]
+			Expect(file.Name).To(Equal("file.txt"))
+			Expect(file.Path).To(Equal("/listdir/file.txt"))
+			Expect(file.Type).To(Equal("file"))
+			Expect(file.Size).To(Equal(int64(5)))
+			Expect(file.Permissions).To(Equal("0644"))
+			Expect(file.UID).To(Equal(os.Getuid()))
+			Expect(file.GID).To(Equal(os.Getgid()))
+			Expect(file.ModifiedTime).NotTo(BeZero())
+			Expect(file.SymlinkTarget).To(BeEmpty())
+
+			link := body.Entries[1]
+			Expect(link.Name).To(Equal("link.txt"))
+			Expect(link.Type).To(Equal("symlink"))
+			Expect(link.SymlinkTarget).To(Equal("/listdir/file.txt"))
+
+			dir := body.Entries[2]
+			Expect(dir.Name).To(Equal("subdir"))
+			Expect(dir.Type).To(Equal("directory"))
+		})
+
+		It("lists directory with relative path", func() {
+			base := filepath.Join(testRootDir, testCwd, "rellistdir")
+			Expect(os.MkdirAll(base, 0750)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(base, "a.txt"), []byte("a"), 0600)).To(Succeed())
+
+			resp := doGet("/v1/filesystem/entries?path=rellistdir")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var body sidecarapi.ListFilesystemEntriesResponse
+			Expect(json.Unmarshal(resp.Body.Bytes(), &body)).To(Succeed())
+			Expect(body.Entries).To(HaveLen(1))
+			Expect(body.Entries[0].Path).To(Equal("/workspace/rellistdir/a.txt"))
+		})
+
+		It("returns empty entries for empty directory", func() {
+			Expect(os.MkdirAll(filepath.Join(testRootDir, "/emptydir"), 0750)).To(Succeed())
+
+			resp := doGet("/v1/filesystem/entries?path=/emptydir")
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			var body sidecarapi.ListFilesystemEntriesResponse
+			Expect(json.Unmarshal(resp.Body.Bytes(), &body)).To(Succeed())
+			Expect(body.Entries).NotTo(BeNil())
+			Expect(body.Entries).To(BeEmpty())
+		})
+
+		It("returns 404 for nonexistent directory", func() {
+			resp := doGet("/v1/filesystem/entries?path=/no-such-dir")
+
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("returns 400 for file path", func() {
+			hostPath := filepath.Join(testRootDir, "/tmp/list-a-file.txt")
+			Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(hostPath, []byte("x"), 0600)).To(Succeed())
+
+			resp := doGet("/v1/filesystem/entries?path=/tmp/list-a-file.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("returns 422 when path is missing", func() {
+			resp := doGet("/v1/filesystem/entries")
+
+			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 	})
 })

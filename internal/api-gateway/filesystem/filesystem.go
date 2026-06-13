@@ -15,7 +15,9 @@
 package filesystem
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -30,6 +32,7 @@ import (
 	apigateway "github.com/isola-run/isola/internal/api-gateway"
 	"github.com/isola-run/isola/internal/constants"
 	"github.com/isola-run/isola/internal/httputil"
+	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
 
 type FilesystemWriteInput struct {
@@ -43,6 +46,16 @@ type FilesystemReadInput struct {
 	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
 	Path      string `query:"path" required:"true" minLength:"1" doc:"Source path (absolute or relative to container cwd)"`
 	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemListInput struct {
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Directory path (absolute or relative to container cwd)"`
+	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
+type FilesystemListOutput struct {
+	Body sidecarapi.ListFilesystemEntriesResponse
 }
 
 type Handlers struct {
@@ -163,6 +176,87 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 	}, nil
 }
 
+// callSidecar resolves the ready sandbox, performs a request against its sidecar,
+// and maps transport and sidecar-side failures to Huma errors. On success the
+// caller must close the response body.
+func (h *Handlers) callSidecar(ctx context.Context, sandboxID, method, sidecarPath string, params url.Values, jsonBody any) (*http.Response, error) {
+	sb, err := apigateway.GetReadySandbox(ctx, h.k8sClient, h.sandboxNamespace, sandboxID, h.logger)
+	if err != nil {
+		return nil, err
+	}
+
+	sidecarURL := fmt.Sprintf("http://%s:%d%s", sb.Status.PodIP, h.sidecarPort, sidecarPath)
+	if len(params) > 0 {
+		sidecarURL += "?" + params.Encode()
+	}
+
+	var bodyReader io.Reader
+	if jsonBody != nil {
+		body, err := json.Marshal(jsonBody)
+		if err != nil {
+			h.logger.Error("failed to marshal sidecar request", "error", err)
+			return nil, huma.Error500InternalServerError("failed to marshal sidecar request")
+		}
+		bodyReader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, sidecarURL, bodyReader)
+	if err != nil {
+		h.logger.Error("failed to build sidecar request", "error", err)
+		return nil, huma.Error500InternalServerError("failed to build sidecar request")
+	}
+	if jsonBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		h.logger.Error("sidecar request failed", "error", err, "id", sandboxID)
+		return nil, huma.Error502BadGateway("failed to reach sidecar")
+	}
+
+	if resp.StatusCode >= 400 {
+		defer func() { _ = resp.Body.Close() }()
+		return nil, apigateway.HandleSidecarError(resp, sandboxID, h.logger)
+	}
+
+	return resp, nil
+}
+
+// fetchJSON performs a sidecar request via callSidecar and decodes its JSON
+// response body into T, a shared sidecar-api contract type.
+func fetchJSON[T any](ctx context.Context, h *Handlers, sandboxID, method, sidecarPath string, params url.Values, jsonBody any) (T, error) {
+	var out T
+	resp, err := h.callSidecar(ctx, sandboxID, method, sidecarPath, params, jsonBody)
+	if err != nil {
+		return out, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		h.logger.Error("failed to decode sidecar response", "error", err, "id", sandboxID)
+		return out, huma.Error502BadGateway("invalid sidecar response")
+	}
+	return out, nil
+}
+
+func pathParams(path, container string) url.Values {
+	params := url.Values{}
+	params.Set("path", path)
+	if container != "" {
+		params.Set("container", container)
+	}
+	return params
+}
+
+func (h *Handlers) ListFilesystemEntries(ctx context.Context, input *FilesystemListInput) (*FilesystemListOutput, error) {
+	body, err := fetchJSON[sidecarapi.ListFilesystemEntriesResponse](ctx, h, input.SandboxID, http.MethodGet, "/v1/filesystem/entries", pathParams(input.Path, input.Container), nil)
+	if err != nil {
+		return nil, err
+	}
+	return &FilesystemListOutput{Body: body}, nil
+}
+
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "writeSandboxFilesystem",
@@ -204,4 +298,14 @@ func Register(api huma.API, h *Handlers) {
 		},
 		Errors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.GetFilesystem)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "listSandboxFilesystemEntries",
+		Method:      http.MethodGet,
+		Path:        "/sandboxes/{sandboxId}/filesystem/entries",
+		Summary:     "List directory entries in sandbox filesystem",
+		Description: "Returns metadata for each entry in the specified directory inside the sandbox container. Symlinks are reported, not followed.",
+		Tags:        []string{"sandboxes", "filesystem"},
+		Errors:      []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.ListFilesystemEntries)
 }
