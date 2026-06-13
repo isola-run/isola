@@ -17,7 +17,7 @@
 import type { RequestOptions } from "./client";
 import { NotFoundError } from "./errors";
 import type { HttpClient } from "./internal/http";
-import { filesystemEntriesPath, filesystemPath, filesystemStatPath } from "./internal/url";
+import { filesystemDirectoriesPath, filesystemEntriesPath, filesystemPath, filesystemStatPath } from "./internal/url";
 import { FilesystemEntry, ListFilesystemEntriesResponse } from "./models";
 
 /** Options for most {@link Filesystem} operations. */
@@ -226,6 +226,30 @@ export class Filesystem {
     await this._api.requestNoContent({
       method: "DELETE",
       path: filesystemPath(this._sandboxId),
+      params,
+      ...(req.signal ? { signal: req.signal } : {}),
+    });
+  }
+
+  /**
+   * Create a directory in the sandbox.
+   *
+   * Missing parent directories are created automatically. Succeeds
+   * without error if the directory already exists.
+   *
+   * @param path - Absolute path inside the sandbox.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async mkdir(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<void> {
+    const params: Record<string, string> = { path };
+    if (opts.container) params.container = opts.container;
+
+    await this._api.requestNoContent({
+      method: "POST",
+      path: filesystemDirectoriesPath(this._sandboxId),
       params,
       ...(req.signal ? { signal: req.signal } : {}),
     });

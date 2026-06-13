@@ -582,4 +582,43 @@ var _ = Describe("Filesystem Entry Proxy", func() {
 			Expect(resp.Code).To(Equal(http.StatusConflict))
 		})
 	})
+
+	Describe("POST /sandboxes/{sandboxId}/filesystem/directories", func() {
+		It("proxies the mkdir request", func() {
+			var capturedPath, capturedQueryPath string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedPath = r.URL.Path
+				capturedQueryPath = r.URL.Query().Get("path")
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(fmt.Sprintf("/v1/sandboxes/%s/filesystem/directories?path=/workspace/newdir", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			Expect(capturedPath).To(Equal("/v1/filesystem/directories"))
+			Expect(capturedQueryPath).To(Equal("/workspace/newdir"))
+		})
+
+		It("forwards sidecar 409 errors", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				_ = json.NewEncoder(w).Encode(map[string]string{"detail": "path exists and is not a directory"})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Post(fmt.Sprintf("/v1/sandboxes/%s/filesystem/directories?path=/workspace/taken", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+	})
 })
