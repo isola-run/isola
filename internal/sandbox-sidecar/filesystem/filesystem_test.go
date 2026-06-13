@@ -552,6 +552,114 @@ var _ = Describe("Filesystem", func() {
 			Expect(resp.Code).To(Equal(http.StatusConflict))
 		})
 	})
+
+	Describe("POST /filesystem/move", func() {
+		It("renames a file", func() {
+			srcPath := filepath.Join(testRootDir, "/movedir/src.txt")
+			Expect(os.MkdirAll(filepath.Dir(srcPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(srcPath, []byte("move me"), 0600)).To(Succeed())
+
+			resp := doMove("/movedir/src.txt", "/movedir/dst.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			_, err := os.Lstat(srcPath)
+			Expect(os.IsNotExist(err)).To(BeTrue())
+			content, err := os.ReadFile(filepath.Join(testRootDir, "/movedir/dst.txt")) //nolint:gosec // test file path
+			Expect(err).NotTo(HaveOccurred())
+			Expect(content).To(Equal([]byte("move me")))
+		})
+
+		It("creates destination parent directories", func() {
+			srcPath := filepath.Join(testRootDir, "/movedir/parented.txt")
+			Expect(os.MkdirAll(filepath.Dir(srcPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(srcPath, []byte("x"), 0600)).To(Succeed())
+
+			resp := doMove("/movedir/parented.txt", "/movedir/new/deep/dst.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			_, err := os.Stat(filepath.Join(testRootDir, "/movedir/new/deep/dst.txt"))
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("moves a directory", func() {
+			srcDir := filepath.Join(testRootDir, "/movedir/srcdir")
+			Expect(os.MkdirAll(srcDir, 0750)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(srcDir, "f.txt"), []byte("x"), 0600)).To(Succeed())
+
+			resp := doMove("/movedir/srcdir", "/movedir/dstdir")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			_, err := os.Stat(filepath.Join(testRootDir, "/movedir/dstdir/f.txt"))
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("overwrites an existing destination file", func() {
+			srcPath := filepath.Join(testRootDir, "/movedir/over-src.txt")
+			dstPath := filepath.Join(testRootDir, "/movedir/over-dst.txt")
+			Expect(os.MkdirAll(filepath.Dir(srcPath), 0750)).To(Succeed())
+			Expect(os.WriteFile(srcPath, []byte("new"), 0600)).To(Succeed())
+			Expect(os.WriteFile(dstPath, []byte("old"), 0600)).To(Succeed())
+
+			resp := doMove("/movedir/over-src.txt", "/movedir/over-dst.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			content, err := os.ReadFile(dstPath) //nolint:gosec // test file path
+			Expect(err).NotTo(HaveOccurred())
+			Expect(content).To(Equal([]byte("new")))
+		})
+
+		It("resolves relative source and destination paths", func() {
+			srcPath := filepath.Join(testRootDir, testCwd, "relmove-src.txt")
+			Expect(os.WriteFile(srcPath, []byte("rel"), 0600)).To(Succeed())
+
+			resp := doMove("relmove-src.txt", "relmove-dst.txt")
+
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+			_, err := os.Stat(filepath.Join(testRootDir, testCwd, "relmove-dst.txt"))
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("returns 404 for nonexistent source", func() {
+			resp := doMove("/no-such-source", "/movedir/whatever")
+
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("returns 409 when destination is a non-empty directory", func() {
+			srcDir := filepath.Join(testRootDir, "/movedir/conflict-src")
+			dstDir := filepath.Join(testRootDir, "/movedir/conflict-dst")
+			Expect(os.MkdirAll(srcDir, 0750)).To(Succeed())
+			Expect(os.MkdirAll(dstDir, 0750)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(dstDir, "occupied.txt"), []byte("x"), 0600)).To(Succeed())
+
+			resp := doMove("/movedir/conflict-src", "/movedir/conflict-dst")
+
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+
+		It("returns 409 when moving a file onto a directory", func() {
+			srcPath := filepath.Join(testRootDir, "/movedir/type-src.txt")
+			dstDir := filepath.Join(testRootDir, "/movedir/type-dst")
+			Expect(os.MkdirAll(dstDir, 0750)).To(Succeed())
+			Expect(os.WriteFile(srcPath, []byte("x"), 0600)).To(Succeed())
+
+			resp := doMove("/movedir/type-src.txt", "/movedir/type-dst")
+
+			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+
+		It("refuses to move the filesystem root", func() {
+			resp := doMove("/", "/movedir/root-copy")
+
+			Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		})
+
+		It("returns 422 when sourcePath is missing", func() {
+			resp := testAPI.Post("/v1/filesystem/move", map[string]any{"destinationPath": "/somewhere"})
+
+			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
+		})
+	})
 })
 
 // errorMockProcFS returns errors for FindMarkedPID.

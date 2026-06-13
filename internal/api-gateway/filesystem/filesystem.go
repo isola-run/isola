@@ -81,6 +81,12 @@ type FilesystemMkdirInput struct {
 	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 }
 
+type FilesystemMoveInput struct {
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
+	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+	Body      sidecarapi.MoveFilesystemEntryRequest
+}
+
 type Handlers struct {
 	logger           *slog.Logger
 	k8sClient        client.Client
@@ -317,6 +323,17 @@ func (h *Handlers) CreateFilesystemDirectory(ctx context.Context, input *Filesys
 	return nil, nil
 }
 
+func (h *Handlers) MoveFilesystemEntry(ctx context.Context, input *FilesystemMoveInput) (*struct{}, error) {
+	params := url.Values{}
+	if input.Container != "" {
+		params.Set("container", input.Container)
+	}
+	if err := h.callSidecarNoContent(ctx, input.SandboxID, http.MethodPost, "/v1/filesystem/move", params, input.Body); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "writeSandboxFilesystem",
@@ -400,4 +417,15 @@ func Register(api huma.API, h *Handlers) {
 		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.CreateFilesystemDirectory)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "moveSandboxFilesystemEntry",
+		Method:        http.MethodPost,
+		Path:          "/sandboxes/{sandboxId}/filesystem/move",
+		Summary:       "Move a file or directory within sandbox filesystem",
+		Description:   "Renames or moves a file, directory, or symlink inside the sandbox container. Parent directories of the destination are created automatically. An existing destination file is overwritten.",
+		Tags:          []string{"sandboxes", "filesystem"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.MoveFilesystemEntry)
 }

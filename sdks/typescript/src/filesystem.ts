@@ -17,7 +17,13 @@
 import type { RequestOptions } from "./client";
 import { NotFoundError } from "./errors";
 import type { HttpClient } from "./internal/http";
-import { filesystemDirectoriesPath, filesystemEntriesPath, filesystemPath, filesystemStatPath } from "./internal/url";
+import {
+  filesystemDirectoriesPath,
+  filesystemEntriesPath,
+  filesystemMovePath,
+  filesystemPath,
+  filesystemStatPath,
+} from "./internal/url";
 import { FilesystemEntry, ListFilesystemEntriesResponse } from "./models";
 
 /** Options for most {@link Filesystem} operations. */
@@ -251,6 +257,38 @@ export class Filesystem {
       method: "POST",
       path: filesystemDirectoriesPath(this._sandboxId),
       params,
+      ...(req.signal ? { signal: req.signal } : {}),
+    });
+  }
+
+  /**
+   * Move or rename a file, directory, or symlink in the sandbox.
+   *
+   * Parent directories of the destination are created automatically.
+   * An existing destination file is overwritten.
+   *
+   * @param sourcePath - Absolute path to move.
+   * @param destinationPath - Absolute destination path.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @throws {NotFoundError} If the source path does not exist.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async move(
+    sourcePath: string,
+    destinationPath: string,
+    opts: FileOptions = {},
+    req: RequestOptions = {},
+  ): Promise<void> {
+    const params: Record<string, string> = {};
+    if (opts.container) params.container = opts.container;
+
+    await this._api.requestNoContent({
+      method: "POST",
+      path: filesystemMovePath(this._sandboxId),
+      params,
+      jsonBody: { sourcePath, destinationPath },
       ...(req.signal ? { signal: req.signal } : {}),
     });
   }

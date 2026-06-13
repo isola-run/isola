@@ -106,6 +106,10 @@ export function filesystemDirectoriesPath(sandboxId: string): string {
   return `${filesystemPath(sandboxId)}/directories`;
 }
 
+export function filesystemMovePath(sandboxId: string): string {
+  return `${filesystemPath(sandboxId)}/move`;
+}
+
 // Builds a URL with optional query string. Drops undefined/null values.
 // Uses quoteQueryComponent so spaces become `+` and !'()* are percent-encoded,
 // matching Python httpx's QueryParams.__str__ wire output.

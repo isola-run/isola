@@ -73,6 +73,11 @@ type FilesystemMkdirInput struct {
 	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
 }
 
+type FilesystemMoveInput struct {
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+	Body      sidecarapi.MoveFilesystemEntryRequest
+}
+
 type Handlers struct {
 	logger      *slog.Logger
 	procFS      proc.ProcFS
@@ -416,6 +421,64 @@ func (h *Handlers) CreateFilesystemDirectory(_ context.Context, input *Filesyste
 	return nil, nil
 }
 
+func (h *Handlers) MoveFilesystemEntry(_ context.Context, input *FilesystemMoveInput) (*struct{}, error) {
+	pid, resolvedSrc, hostSrc, err := h.resolveTarget(input.Body.SourcePath, input.Container)
+	if err != nil {
+		return nil, err
+	}
+
+	resolvedDst, herr := h.resolveAbsolutePath(input.Body.DestinationPath, pid)
+	if herr != nil {
+		h.logger.Error("failed to resolve path", "error", herr, "path", input.Body.DestinationPath, "container", input.Container)
+		return nil, herr
+	}
+	hostDst := filepath.Join(h.procFS.GetRoot(pid), resolvedDst)
+
+	if resolvedSrc == "/" || resolvedDst == "/" {
+		return nil, huma.Error400BadRequest("refusing to move filesystem root")
+	}
+
+	if _, err := os.Lstat(hostSrc); err != nil {
+		if os.IsNotExist(err) {
+			return nil, huma.Error404NotFound(fmt.Sprintf("source path not found: %s", input.Body.SourcePath))
+		}
+		h.logger.Error("failed to stat source path", "error", err, "path", hostSrc)
+		return nil, huma.Error500InternalServerError("failed to stat source path")
+	}
+
+	uid, gid, err := h.procFS.GetUIDGID(pid)
+	if err != nil {
+		h.logger.Error("failed to get container uid/gid", "error", err, "pid", pid)
+		return nil, huma.Error500InternalServerError("failed to get container uid/gid")
+	}
+
+	if err := mkdirAllChown(filepath.Dir(hostDst), uid, gid); err != nil {
+		h.logger.Error("failed to create parent directories", "error", err, "path", filepath.Dir(hostDst))
+		if errors.Is(err, errNotADirectory) || errors.Is(err, syscall.ENOTDIR) {
+			return nil, huma.Error409Conflict("a parent path component exists and is not a directory")
+		}
+		return nil, huma.Error500InternalServerError("failed to create parent directories")
+	}
+
+	if err := os.Rename(hostSrc, hostDst); err != nil {
+		switch {
+		case errors.Is(err, syscall.EXDEV):
+			// e.g. moving into or out of a tmpfs mount like /tmp
+			return nil, huma.Error400BadRequest("cannot move across filesystem boundaries")
+		case errors.Is(err, syscall.ENOTEMPTY), errors.Is(err, syscall.EEXIST),
+			errors.Is(err, syscall.EISDIR), errors.Is(err, syscall.ENOTDIR):
+			// exact errno varies by kernel and filesystem for the
+			// dest-is-directory / dest-not-empty / type-mismatch family
+			return nil, huma.Error409Conflict(fmt.Sprintf("destination conflicts with an existing entry: %s", input.Body.DestinationPath))
+		default:
+			h.logger.Error("failed to move path", "error", err, "source", hostSrc, "destination", hostDst)
+			return nil, huma.Error500InternalServerError("failed to move path")
+		}
+	}
+
+	return nil, nil
+}
+
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "postFilesystem",
@@ -499,4 +562,15 @@ func Register(api huma.API, h *Handlers) {
 		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusBadRequest, http.StatusConflict},
 	}, h.CreateFilesystemDirectory)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "moveFilesystemEntry",
+		Method:        http.MethodPost,
+		Path:          "/filesystem/move",
+		Summary:       "Move a file or directory within the sandbox filesystem",
+		Description:   "Renames or moves a file, directory, or symlink. Parent directories of the destination are created automatically. An existing destination file is overwritten.",
+		Tags:          []string{"filesystem"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict},
+	}, h.MoveFilesystemEntry)
 }
