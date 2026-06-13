@@ -85,6 +85,13 @@ type FilesystemStatOutput struct {
 	Body FilesystemEntry
 }
 
+type FilesystemDeleteInput struct {
+	SandboxID string `path:"sandboxId" minLength:"1" maxLength:"47" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$" doc:"Sandbox identifier"`
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Path to delete (absolute or relative to container cwd)"`
+	Recursive bool   `query:"recursive,omitempty" doc:"Delete directories and their contents recursively"`
+	Container string `query:"container,omitempty" minLength:"1" maxLength:"63" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
 type Handlers struct {
 	logger           *slog.Logger
 	k8sClient        client.Client
@@ -298,6 +305,21 @@ func (h *Handlers) StatFilesystemEntry(ctx context.Context, input *FilesystemSta
 	return &FilesystemStatOutput{Body: FilesystemEntry(sidecarResp)}, nil
 }
 
+func (h *Handlers) DeleteFilesystemEntry(ctx context.Context, input *FilesystemDeleteInput) (*struct{}, error) {
+	params := pathParams(input.Path, input.Container)
+	if input.Recursive {
+		params.Set("recursive", "true")
+	}
+
+	resp, err := h.callSidecar(ctx, input.SandboxID, http.MethodDelete, "/v1/filesystem", params, nil)
+	if err != nil {
+		return nil, err
+	}
+	_ = resp.Body.Close()
+
+	return nil, nil
+}
+
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "writeSandboxFilesystem",
@@ -359,4 +381,15 @@ func Register(api huma.API, h *Handlers) {
 		Tags:        []string{"sandboxes", "filesystem"},
 		Errors:      []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.StatFilesystemEntry)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteSandboxFilesystemEntry",
+		Method:        http.MethodDelete,
+		Path:          "/sandboxes/{sandboxId}/filesystem",
+		Summary:       "Delete a file or directory from sandbox filesystem",
+		Description:   "Deletes the file, empty directory, or symlink at the specified path in the sandbox container. Set recursive=true to delete a directory and its contents.",
+		Tags:          []string{"sandboxes", "filesystem"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+	}, h.DeleteFilesystemEntry)
 }

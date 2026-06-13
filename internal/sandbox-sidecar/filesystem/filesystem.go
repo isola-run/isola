@@ -62,6 +62,12 @@ type FilesystemStatOutput struct {
 	Body sidecarapi.FilesystemEntry
 }
 
+type FilesystemDeleteInput struct {
+	Path      string `query:"path" required:"true" minLength:"1" doc:"Path to delete (absolute or relative to container cwd)"`
+	Recursive bool   `query:"recursive,omitempty" doc:"Delete directories and their contents recursively"`
+	Container string `query:"container,omitempty" doc:"Container name. Defaults to the only container if there is one, otherwise it's required."`
+}
+
 type Handlers struct {
 	logger      *slog.Logger
 	procFS      proc.ProcFS
@@ -339,6 +345,42 @@ func (h *Handlers) StatFilesystemEntry(_ context.Context, input *FilesystemStatI
 	return &FilesystemStatOutput{Body: entryFromInfo(filepath.Base(resolvedPath), resolvedPath, targetPath, info)}, nil
 }
 
+func (h *Handlers) DeleteFilesystemEntry(_ context.Context, input *FilesystemDeleteInput) (*struct{}, error) {
+	_, resolvedPath, targetPath, err := h.resolveTarget(input.Path, input.Container)
+	if err != nil {
+		return nil, err
+	}
+
+	if resolvedPath == "/" {
+		return nil, huma.Error400BadRequest("refusing to delete filesystem root")
+	}
+
+	// Lstat (not Stat) so dangling symlinks are deletable.
+	if _, err := os.Lstat(targetPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, huma.Error404NotFound(fmt.Sprintf("path not found: %s", input.Path))
+		}
+		h.logger.Error("failed to stat path", "error", err, "path", targetPath)
+		return nil, huma.Error500InternalServerError("failed to stat path")
+	}
+
+	var rmErr error
+	if input.Recursive {
+		rmErr = os.RemoveAll(targetPath)
+	} else {
+		rmErr = os.Remove(targetPath)
+	}
+	if rmErr != nil {
+		if errors.Is(rmErr, syscall.ENOTEMPTY) || errors.Is(rmErr, syscall.EEXIST) {
+			return nil, huma.Error400BadRequest(fmt.Sprintf("directory not empty (use recursive=true): %s", input.Path))
+		}
+		h.logger.Error("failed to delete path", "error", rmErr, "path", targetPath)
+		return nil, huma.Error500InternalServerError("failed to delete path")
+	}
+
+	return nil, nil
+}
+
 func Register(api huma.API, h *Handlers) {
 	huma.Register(api, huma.Operation{
 		OperationID: "postFilesystem",
@@ -400,4 +442,15 @@ func Register(api huma.API, h *Handlers) {
 		Tags:        []string{"filesystem"},
 		Errors:      []int{http.StatusBadRequest, http.StatusNotFound},
 	}, h.StatFilesystemEntry)
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteFilesystemEntry",
+		Method:        http.MethodDelete,
+		Path:          "/filesystem",
+		Summary:       "Delete a file or directory from the sandbox filesystem",
+		Description:   "Deletes the file, empty directory, or symlink at the specified path. Set recursive=true to delete a directory and its contents.",
+		Tags:          []string{"filesystem"},
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusBadRequest, http.StatusNotFound},
+	}, h.DeleteFilesystemEntry)
 }

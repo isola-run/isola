@@ -262,6 +262,10 @@ console.log(entry.modifiedTime, entry.uid, entry.gid);
 
 // Check existence
 await sandbox.filesystem.exists("/tmp/hello.txt"); // true
+
+// Delete a file, or a directory tree with recursive: true
+await sandbox.filesystem.delete("/tmp/data.bin");
+await sandbox.filesystem.delete("/tmp/output", { recursive: true });
 ```
 
 ## Sandbox management
