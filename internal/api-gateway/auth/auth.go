@@ -50,18 +50,13 @@ func ApplySecurityScheme(config *huma.Config) {
 	config.Security = []map[string][]string{{securitySchemeName: {}}}
 }
 
-// Identity is a non-authoritative label for the authenticated caller, used only
-// for logging. It is deliberately NOT an authorization principal: the gateway is a
-// thin passthrough and must not make per-resource decisions from caller identity.
-type Identity struct {
-	Name string
-}
-
 // Authenticator validates the credentials on an incoming request. It is the single
-// seam through which future schemes can be added. An implementation must return
-// ErrUnauthenticated for missing or invalid credentials.
+// seam through which future schemes (k8s TokenReview, OIDC) can be added without
+// touching the middleware, the SDKs, or the OpenAPI contract. It returns nil when
+// the request is authenticated and ErrUnauthenticated for missing or invalid
+// credentials.
 type Authenticator interface {
-	Authenticate(ctx huma.Context) (Identity, error)
+	Authenticate(ctx huma.Context) error
 }
 
 // ErrUnauthenticated indicates missing or invalid credentials. The middleware maps
@@ -80,7 +75,7 @@ func Middleware(api huma.API, a Authenticator) func(huma.Context, func(huma.Cont
 			next(ctx)
 			return
 		}
-		if _, err := a.Authenticate(ctx); err != nil {
+		if err := a.Authenticate(ctx); err != nil {
 			ctx.SetHeader("WWW-Authenticate", `Bearer realm="isola"`)
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, ErrUnauthenticated.Error())
 			return // short-circuit: do not call next

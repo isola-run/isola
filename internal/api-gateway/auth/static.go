@@ -46,10 +46,13 @@ func NewStaticKeyAuthenticator(keys []string) (Authenticator, error) {
 	return &staticKeyAuthenticator{digests: digests}, nil
 }
 
-func (s *staticKeyAuthenticator) Authenticate(ctx huma.Context) (Identity, error) {
+func (s *staticKeyAuthenticator) Authenticate(ctx huma.Context) error {
 	header := ctx.Header(authHeader)
 	if !strings.HasPrefix(header, bearerPrefix) {
-		return Identity{}, ErrUnauthenticated
+		// Exiting before the constant-time loop leaks nothing: a malformed/missing
+		// header and a wrong key both yield ErrUnauthenticated, which the middleware
+		// renders as an identical 401, so timing reveals no missing-vs-wrong signal.
+		return ErrUnauthenticated
 	}
 	presented := sha256.Sum256([]byte(strings.TrimPrefix(header, bearerPrefix)))
 
@@ -60,9 +63,9 @@ func (s *staticKeyAuthenticator) Authenticate(ctx huma.Context) (Identity, error
 		matched |= subtle.ConstantTimeCompare(presented[:], s.digests[i][:])
 	}
 	if matched != 1 {
-		return Identity{}, ErrUnauthenticated
+		return ErrUnauthenticated
 	}
-	return Identity{Name: "static"}, nil
+	return nil
 }
 
 // ParseKeys splits a raw configuration value (comma- and/or newline-separated)
