@@ -28,6 +28,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 
+	"github.com/isola-run/isola/internal/api-gateway/auth"
 	"github.com/isola-run/isola/internal/api-gateway/command"
 	"github.com/isola-run/isola/internal/api-gateway/filesystem"
 	"github.com/isola-run/isola/internal/api-gateway/health"
@@ -82,6 +83,9 @@ func setupAPIGateway() huma.API {
 	r := chi.NewRouter()
 	config := huma.DefaultConfig("Isola Sandbox API", internalversion.Get().GitVersion)
 	config.Info.Description = "API for managing sandboxes"
+	// Mirror the gateway's security declaration so the generated spec matches the
+	// enforced contract (see internal/api-gateway/auth.ApplySecurityScheme).
+	auth.ApplySecurityScheme(&config)
 	api := humachi.New(r, config)
 
 	// nil dependencies - handlers won't be called, only their signatures are inspected

@@ -60,6 +60,26 @@ await sandbox.delete();
 
 Call `await sandbox.delete()` when you are done with a sandbox. Two alternatives: use `await using sandbox = ...` to delete automatically on exit, or set `timeoutSeconds` on `create()` to let the server delete the sandbox after a fixed duration.
 
+## Authentication
+
+If the api-gateway requires an API key, provide it with the `apiKey` option or the `ISOLA_API_KEY` environment variable. It is sent as `Authorization: Bearer <key>` on every request, including uploads and streams.
+
+```bash
+export ISOLA_API_KEY=isola_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+```ts
+import { Isola } from "@isola-run/sdk";
+
+// Reads ISOLA_URL and ISOLA_API_KEY from the environment:
+const client = new Isola();
+
+// Or pass them explicitly:
+const client = new Isola({ url: "http://localhost:8080", apiKey: "isola_..." });
+```
+
+When the gateway runs without authentication, omit the key. See the [deployment guide](../../README.md#authentication) for enabling auth and rotating keys.
+
 ## Sandbox options
 
 Customise resources, environment variables, and the startup command:

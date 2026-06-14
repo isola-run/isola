@@ -572,6 +572,11 @@ components:
             - SnapshotRootfs
           type: string
       type: object
+  securitySchemes:
+    bearerAuth:
+      bearerFormat: opaque
+      scheme: bearer
+      type: http
 info:
   description: API for managing sandboxes
   title: Isola Sandbox API
@@ -595,6 +600,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
+      security:
+        - {}
       summary: Health check
       tags:
         - health
@@ -615,6 +622,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
+      security:
+        - {}
       summary: Health check (alias)
       tags:
         - health
@@ -641,6 +650,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Service Unavailable
+      security:
+        - {}
       summary: Readiness check
       tags:
         - health
@@ -667,6 +678,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Service Unavailable
+      security:
+        - {}
       summary: Readiness check (alias)
       tags:
         - health
@@ -693,6 +706,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "409":
           content:
             application/problem+json:
@@ -736,6 +755,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/RootfsSnapshotResponse"
           description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "404":
           content:
             application/problem+json:
@@ -768,12 +793,18 @@ paths:
               schema:
                 $ref: "#/components/schemas/ListSandboxesResponse"
           description: OK
-        default:
+        "401":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
-          description: Error
+          description: Unauthorized
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
       summary: List sandboxes
       tags:
         - sandboxes
@@ -798,6 +829,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "409":
           content:
             application/problem+json:
@@ -836,12 +873,24 @@ paths:
       responses:
         "204":
           description: No Content
-        default:
+        "401":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
-          description: Error
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Internal Server Error
       summary: Delete a sandbox
       tags:
         - sandboxes
@@ -866,6 +915,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/SandboxResponse"
           description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "404":
           content:
             application/problem+json:
@@ -931,6 +986,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "404":
           content:
             application/problem+json:
@@ -991,6 +1052,12 @@ paths:
       responses:
         "204":
           description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "404":
           content:
             application/problem+json:
@@ -1065,6 +1132,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/CommandStatusResponse"
           description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "404":
           content:
             application/problem+json:
@@ -1135,6 +1208,12 @@ paths:
               schema:
                 type: string
           description: Command stderr stream
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "404":
           content:
             application/problem+json:
@@ -1203,6 +1282,12 @@ paths:
       responses:
         "204":
           description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "404":
           content:
             application/problem+json:
@@ -1263,6 +1348,12 @@ paths:
       responses:
         "204":
           description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "404":
           content:
             application/problem+json:
@@ -1333,6 +1424,12 @@ paths:
               schema:
                 type: string
           description: Command stdout stream
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "404":
           content:
             application/problem+json:
@@ -1416,6 +1513,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "404":
           content:
             application/problem+json:
@@ -1500,6 +1603,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Bad Request
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Unauthorized
         "404":
           content:
             application/problem+json:
@@ -1551,6 +1660,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
+      security:
+        - {}
       summary: Version info
       tags:
         - version
+security:
+  - bearerAuth: []

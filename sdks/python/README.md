@@ -57,6 +57,28 @@ The `with` block closes the HTTP client automatically when it exits. You can als
 
 Call `sandbox.delete()` when you are done with a sandbox. Two alternatives: use `with sandbox:` to delete automatically on exit, or set `timeout_seconds` on `create()` to let the server delete the sandbox after a fixed duration.
 
+## Authentication
+
+If the api-gateway requires an API key, provide it with the `api_key` argument or the `ISOLA_API_KEY` environment variable. It is sent as `Authorization: Bearer <key>` on every request, including uploads and streams.
+
+```bash
+export ISOLA_API_KEY=isola_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+```python
+from isola import Isola
+
+# Reads ISOLA_URL and ISOLA_API_KEY from the environment:
+with Isola() as client:
+    ...
+
+# Or pass them explicitly:
+with Isola(url="http://localhost:8080", api_key="isola_...") as client:
+    ...
+```
+
+When the gateway runs without authentication, omit the key. See the [deployment guide](../../README.md#authentication) for enabling auth and rotating keys.
+
 ## Async client
 
 Import `AsyncIsola` instead of `Isola` and use `await` with each call:

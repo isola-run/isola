@@ -43,6 +43,7 @@ export type FetchLike = typeof fetch;
 export interface HttpClientOptions {
   url: string;
   requestTimeoutMs: number | null;
+  apiKey?: string;
   fetch?: FetchLike;
 }
 
@@ -114,11 +115,16 @@ const UTF8_DECODER = new TextDecoder("utf-8", { fatal: false });
 export class HttpClient {
   readonly url: string;
   readonly requestTimeoutMs: number | null;
+  private readonly _apiKey?: string;
   private readonly _fetch: FetchLike;
 
   constructor(opts: HttpClientOptions) {
     this.url = opts.url;
     this.requestTimeoutMs = opts.requestTimeoutMs;
+    // Conditional assignment (not `this._apiKey = opts.apiKey`) keeps the
+    // optional property unset rather than explicitly undefined, which
+    // exactOptionalPropertyTypes forbids.
+    if (opts.apiKey !== undefined) this._apiKey = opts.apiKey;
     this._fetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
@@ -134,6 +140,9 @@ export class HttpClient {
     const canRetry = !streaming;
 
     const headers = new Headers(opts.headers);
+    // Set after opts.headers so octet-stream uploads (which only set
+    // content-type) still carry auth.
+    if (this._apiKey) headers.set("authorization", `Bearer ${this._apiKey}`);
     if (opts.jsonBody !== undefined && !headers.has("content-type")) {
       headers.set("content-type", "application/json");
     }
@@ -269,7 +278,11 @@ export class HttpClient {
 
     try {
       const init: RequestInit = { method: "GET" };
-      if (opts.headers) init.headers = opts.headers;
+      // fetchStream bypasses request(), so the auth header is applied here too;
+      // otherwise the SSE stdout/stderr streams and stdin data-plane would 401.
+      const headers = new Headers(opts.headers);
+      if (this._apiKey) headers.set("authorization", `Bearer ${this._apiKey}`);
+      init.headers = headers;
       if (composedSignal) init.signal = composedSignal;
       const response = await this._fetch(url, init);
       clearTimeout(timer);

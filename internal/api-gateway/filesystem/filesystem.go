@@ -182,7 +182,7 @@ func Register(api huma.API, h *Handlers) {
 			},
 		},
 		DefaultStatus: http.StatusNoContent,
-		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+		Errors:        []int{http.StatusUnauthorized, http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.PostFilesystem)
 
 	huma.Register(api, huma.Operation{
@@ -202,6 +202,6 @@ func Register(api huma.API, h *Handlers) {
 				},
 			},
 		},
-		Errors: []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+		Errors: []int{http.StatusUnauthorized, http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.GetFilesystem)
 }

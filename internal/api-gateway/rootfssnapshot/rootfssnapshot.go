@@ -148,7 +148,7 @@ func Register(api huma.API, h *Handlers) {
 		Description:   "Creates a snapshot of a sandbox's root filesystem overlay upper layer.",
 		Tags:          []string{"rootfs-snapshots"},
 		DefaultStatus: http.StatusCreated,
-		Errors:        []int{http.StatusBadRequest, http.StatusConflict},
+		Errors:        []int{http.StatusUnauthorized, http.StatusBadRequest, http.StatusConflict},
 	}, h.PostRootfsSnapshot)
 
 	huma.Register(api, huma.Operation{
@@ -158,6 +158,6 @@ func Register(api huma.API, h *Handlers) {
 		Summary:     "Get rootfs snapshot details",
 		Description: "Get the status and details of a rootfs snapshot. Eventually consistent: a recently created snapshot may briefly return 404. The Kubernetes resource is auto-deleted after ttlSecondsAfterFinished. The snapshot data in storage is not affected.",
 		Tags:        []string{"rootfs-snapshots"},
-		Errors:      []int{http.StatusNotFound},
+		Errors:      []int{http.StatusUnauthorized, http.StatusNotFound},
 	}, h.GetRootfsSnapshot)
 }

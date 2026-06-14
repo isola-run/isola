@@ -280,6 +280,16 @@ apiGateway:
     level: info
     devMode: false
 
+  auth:
+    # Authentication is OPTIONAL. Provide one or more API keys to REQUIRE callers to send
+    # `Authorization: Bearer <key>`. If left empty (and no existingSecret), the gateway runs
+    # UNAUTHENTICATED and logs a warning on every boot — use only on a trusted/network-isolated
+    # cluster or behind an authenticating proxy. The gateway accepts the SET of keys below;
+    # SDK clients each hold ONE key (ISOLA_API_KEY). Generate keys with `make gen-api-key`.
+    apiKeys: []
+    # BYO Secret containing key `ISOLA_API_KEYS`; takes precedence over apiKeys.
+    existingSecret: ""
+
   service:
     type: ClusterIP
     nodePort: null

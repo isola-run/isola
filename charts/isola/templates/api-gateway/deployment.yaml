@@ -14,9 +14,14 @@ spec:
     metadata:
       labels:
         {{- include "isola.apiGateway.selectorLabels" . | nindent 8 }}
-      {{- with .Values.apiGateway.podAnnotations }}
+      {{- if or .Values.apiGateway.podAnnotations (and (gt (len .Values.apiGateway.auth.apiKeys) 0) (not .Values.apiGateway.auth.existingSecret)) }}
       annotations:
+        {{- with .Values.apiGateway.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if and (gt (len .Values.apiGateway.auth.apiKeys) 0) (not .Values.apiGateway.auth.existingSecret) }}
+        checksum/auth-secret: {{ include (print $.Template.BasePath "/api-gateway/credentials.yaml") . | sha256sum }}
+        {{- end }}
       {{- end }}
     spec:
       serviceAccountName: {{ include "isola.apiGateway.serviceAccountName" . }}
@@ -38,6 +43,13 @@ spec:
           env:
             - name: ISOLA_SANDBOX_NAMESPACE
               value: {{ include "isola.sandboxNamespace" . | quote }}
+            {{- if or .Values.apiGateway.auth.existingSecret (gt (len .Values.apiGateway.auth.apiKeys) 0) }}
+            - name: ISOLA_API_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "isola.apiGateway.authSecretName" . }}
+                  key: ISOLA_API_KEYS
+            {{- end }}
           ports:
             - name: http
               containerPort: 8080

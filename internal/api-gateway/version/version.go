@@ -20,6 +20,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/isola-run/isola/internal/api-gateway/auth"
 	internalversion "github.com/isola-run/isola/internal/version"
 )
 
@@ -43,5 +44,6 @@ func Register(api huma.API, h *Handlers) {
 		Summary:     "Version info",
 		Description: "Returns build-time version and VCS metadata.",
 		Tags:        []string{"version"},
+		Security:    auth.PublicSecurity(),
 	}, h.GetVersion)
 }

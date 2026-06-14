@@ -263,6 +263,41 @@ export ISOLA_URL=http://localhost:8080
 
 For local development with Kind, `hack/setup.sh` automates the full cluster setup.
 
+### Authentication
+
+The API gateway authenticates callers with a bearer API key. Authentication is **optional but strongly recommended**: when no key is configured the gateway serves every request unauthenticated and logs a warning on each startup — acceptable only on a trusted, network-isolated cluster or behind an authenticating proxy. Because a sandbox runs arbitrary code, an exposed gateway with no key is effectively an open remote-code-execution endpoint.
+
+Generate a key:
+
+```bash
+make gen-api-key   # prints isola_<random>
+# or: printf 'isola_%s\n' "$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+```
+
+Enable authentication by providing one or more keys in your Helm values. The chart stores them in a Secret and wires them into the gateway:
+
+```yaml
+apiGateway:
+  auth:
+    apiKeys:
+      - isola_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    # Or bring your own Secret containing an ISOLA_API_KEYS key:
+    # existingSecret: my-isola-keys
+```
+
+The gateway accepts the **set** of keys above; each SDK client holds **one** key. Pass it to the SDK with the `apiKey` option or the `ISOLA_API_KEY` environment variable (see the [Python](sdks/python/README.md) and [TypeScript](sdks/typescript/README.md) SDK docs). Callers send it as `Authorization: Bearer <key>`:
+
+```bash
+export ISOLA_URL=http://localhost:8080
+export ISOLA_API_KEY=isola_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+The health (`/healthz`, `/readyz`) and version endpoints stay public so Kubernetes probes keep working.
+
+**Rotation and revocation.** Because multiple keys are valid at once, you can rotate with zero downtime: add the new key and `helm upgrade` (old and new are both accepted), roll your clients over, then remove the old key and `helm upgrade` again. To revoke one client, drop just its key and `helm upgrade` — other callers are unaffected. Changing the keys rolls the gateway automatically.
+
+**Transport security.** The gateway serves plain HTTP and is `ClusterIP` by default, so a bearer key on the wire is only as private as the connection. Terminate TLS at an ingress or service mesh before exposing the gateway outside the cluster.
+
 ### Upgrading
 
 ```bash

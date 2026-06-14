@@ -59,6 +59,10 @@ openapi: ## Generate OpenAPI specs for HTTP services
 	go run $(GO_FLAGS) ./cmd/openapi-gen -service api-gateway > api/openapi/api-gateway.yaml
 	go run $(GO_FLAGS) ./cmd/openapi-gen -service sandbox-sidecar > api/openapi/sandbox-sidecar.yaml
 
+.PHONY: gen-api-key
+gen-api-key: ## Generate a strong api-gateway API key (set under apiGateway.auth.apiKeys)
+	@printf 'isola_%s\n' "$$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+
 .PHONY: print-buildmeta
 print-buildmeta: ## Print build metadata as KEY=VALUE lines (for $GITHUB_OUTPUT)
 	@echo "version=$(VERSION)"

@@ -958,3 +958,67 @@ describe("response body read failures", () => {
     expect(caught).toBe(reason);
   });
 });
+
+describe("API key authentication", () => {
+  it("sends Authorization: Bearer on a JSON request via request()", async () => {
+    const stub = makeStubFetch(jsonResponse({ sandboxes: [] }));
+    const client = new Isola({ url: URL_BASE, apiKey: "secret-key", fetch: stub.fetch });
+    await client.sandboxes.list();
+    expect(stub.calls[0]!.headers.get("authorization")).toBe("Bearer secret-key");
+  });
+
+  it("sends Authorization: Bearer on an octet-stream upload", async () => {
+    const stub = makeStubFetch(jsonResponse({ ok: true }));
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, apiKey: "secret-key", fetch: stub.fetch });
+    await api.request({
+      method: "POST",
+      path: "/v1/sandboxes/sandbox-123/fs/write",
+      body: new TextEncoder().encode("file contents"),
+      headers: { "content-type": "application/octet-stream" },
+    });
+    // Auth header coexists with the upload's content-type (set after opts.headers).
+    expect(stub.calls[0]!.headers.get("authorization")).toBe("Bearer secret-key");
+    expect(stub.calls[0]!.headers.get("content-type")).toBe("application/octet-stream");
+  });
+
+  it("sends Authorization: Bearer on a fetchStream() request", async () => {
+    const stub = makeStubFetch(sseResponse(sseResponseBody([{ data: "x", id: 1 }])));
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, apiKey: "secret-key", fetch: stub.fetch });
+    const response = await api.fetchStream("/v1/sandboxes/sandbox-123/commands/cmd-1/stdout");
+    await response.body?.cancel();
+    expect(stub.calls[0]!.headers.get("authorization")).toBe("Bearer secret-key");
+  });
+
+  it("falls back to the ISOLA_API_KEY env var", async () => {
+    vi.stubEnv("ISOLA_API_KEY", "env-key");
+    const stub = makeStubFetch(jsonResponse({ sandboxes: [] }));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
+    await client.sandboxes.list();
+    expect(stub.calls[0]!.headers.get("authorization")).toBe("Bearer env-key");
+  });
+
+  it("explicit apiKey overrides the ISOLA_API_KEY env var", async () => {
+    vi.stubEnv("ISOLA_API_KEY", "env-key");
+    const stub = makeStubFetch(jsonResponse({ sandboxes: [] }));
+    const client = new Isola({ url: URL_BASE, apiKey: "explicit-key", fetch: stub.fetch });
+    await client.sandboxes.list();
+    expect(stub.calls[0]!.headers.get("authorization")).toBe("Bearer explicit-key");
+  });
+
+  it("sends no auth header on request() when no apiKey or env is set", async () => {
+    vi.stubEnv("ISOLA_API_KEY", "");
+    const stub = makeStubFetch(jsonResponse({ sandboxes: [] }));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
+    await client.sandboxes.list();
+    expect(stub.calls[0]!.headers.get("authorization")).toBeNull();
+  });
+
+  it("sends no auth header on fetchStream() when no apiKey or env is set", async () => {
+    vi.stubEnv("ISOLA_API_KEY", "");
+    const stub = makeStubFetch(sseResponse(sseResponseBody([{ data: "x", id: 1 }])));
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+    const response = await api.fetchStream("/path");
+    await response.body?.cancel();
+    expect(stub.calls[0]!.headers.get("authorization")).toBeNull();
+  });
+});

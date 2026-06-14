@@ -264,7 +264,7 @@ func Register(api huma.API, h *Handlers) {
 		Summary:       "Create a sandbox",
 		Tags:          []string{"sandboxes"},
 		DefaultStatus: http.StatusCreated,
-		Errors:        []int{http.StatusBadRequest, http.StatusConflict},
+		Errors:        []int{http.StatusUnauthorized, http.StatusBadRequest, http.StatusConflict},
 	}, h.PostSandbox)
 
 	huma.Register(api, huma.Operation{
@@ -274,6 +274,7 @@ func Register(api huma.API, h *Handlers) {
 		Summary:     "List sandboxes",
 		Description: "Eventually consistent: a sandbox returned by POST may not appear immediately in the list. Clients should retry or poll if a recently-created sandbox is missing.",
 		Tags:        []string{"sandboxes"},
+		Errors:      []int{http.StatusUnauthorized},
 	}, h.ListSandboxes)
 
 	huma.Register(api, huma.Operation{
@@ -283,7 +284,7 @@ func Register(api huma.API, h *Handlers) {
 		Summary:     "Get sandbox details",
 		Description: "Eventually consistent: a sandbox returned by POST may briefly return 404 on GET. Clients should retry if polling a recently-created sandbox.",
 		Tags:        []string{"sandboxes"},
-		Errors:      []int{http.StatusNotFound},
+		Errors:      []int{http.StatusUnauthorized, http.StatusNotFound},
 	}, h.GetSandbox)
 
 	huma.Register(api, huma.Operation{
@@ -292,5 +293,6 @@ func Register(api huma.API, h *Handlers) {
 		Path:        "/sandboxes/{id}",
 		Summary:     "Delete a sandbox",
 		Tags:        []string{"sandboxes"},
+		Errors:      []int{http.StatusUnauthorized},
 	}, h.DeleteSandbox)
 }

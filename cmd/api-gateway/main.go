@@ -43,6 +43,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	"github.com/isola-run/isola/internal/api-gateway/auth"
 	"github.com/isola-run/isola/internal/api-gateway/command"
 	"github.com/isola-run/isola/internal/api-gateway/filesystem"
 	"github.com/isola-run/isola/internal/api-gateway/health"
@@ -81,6 +82,7 @@ type config struct {
 	logLevel         string
 	devMode          bool
 	sandboxNamespace string
+	apiKeys          []string
 }
 
 func initControllerRuntime(ctx context.Context, logger *slog.Logger, cfg config) (ctrl.Manager, error) {
@@ -142,13 +144,23 @@ func main() {
 	flag.StringVar(&cfg.logLevel, "log-level", env.GetOrDefault("ISOLA_LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
 	flag.BoolVar(&cfg.devMode, "dev-mode", env.GetOrDefault("ISOLA_DEV_MODE", "") != "", "Enable development mode (text logging)")
 	flag.StringVar(&cfg.sandboxNamespace, "sandbox-namespace", os.Getenv("ISOLA_SANDBOX_NAMESPACE"), "Namespace where sandboxes are created (required)")
+	var rawAPIKeys string
+	flag.StringVar(&rawAPIKeys, "api-keys", os.Getenv("ISOLA_API_KEYS"), "Comma/newline-separated API keys accepted as 'Authorization: Bearer <key>'. Empty disables authentication.")
 	flag.Parse()
+	cfg.apiKeys = auth.ParseKeys(rawAPIKeys)
 
 	logger := logging.New(logging.Config{
 		Level:   cfg.logLevel,
 		DevMode: cfg.devMode,
 	})
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
+
+	if len(cfg.apiKeys) == 0 {
+		logger.Warn("authentication is DISABLED: no API keys configured (set ISOLA_API_KEYS or --api-keys). " +
+			"All requests are served without authentication; use only on a trusted network or behind an authenticating proxy.")
+	} else {
+		logger.Info("authentication enabled", "keyCount", len(cfg.apiKeys))
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -183,7 +195,25 @@ func main() {
 
 	humaConfig := huma.DefaultConfig("Isola Sandbox API", internalversion.Get().GitVersion)
 	humaConfig.Info.Description = "API for managing sandboxes"
+	// Declare bearer auth as the API-wide security requirement. This is the
+	// product's real contract and is documented regardless of whether a given
+	// deployment configures keys; public operations opt out individually. Huma
+	// does not enforce this at runtime — the auth middleware below does.
+	auth.ApplySecurityScheme(&humaConfig)
 	api := humachi.New(r, humaConfig)
+
+	// Enforce authentication before any operation handler runs. Registering on the
+	// api covers root operations and the shared /v1 group; public operations (health,
+	// version) opt out via an empty security requirement. Skipped entirely when no
+	// keys are configured (see the startup warning above).
+	if len(cfg.apiKeys) > 0 {
+		authenticator, err := auth.NewStaticKeyAuthenticator(cfg.apiKeys)
+		if err != nil {
+			logger.Error("unable to initialize authenticator", "error", err)
+			os.Exit(1)
+		}
+		api.UseMiddleware(auth.Middleware(api, authenticator))
+	}
 
 	health.Register(api, health.New(logger, mgr.GetClient()))
 	version.Register(api, version.New())

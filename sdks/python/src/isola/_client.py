@@ -43,9 +43,10 @@ def _stream_pos(content: bytes | BinaryIO | None) -> int | None:
 
 
 class _SyncAPI:
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, api_key: str | None = None) -> None:
         self.url = _normalize_url(url)
-        self._client = httpx.Client(timeout=DEFAULT_TIMEOUT)
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        self._client = httpx.Client(timeout=DEFAULT_TIMEOUT, headers=headers)
 
     def close(self) -> None:
         self._client.close()
@@ -163,9 +164,10 @@ class _SyncAPI:
 
 
 class _AsyncAPI:
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, api_key: str | None = None) -> None:
         self.url = _normalize_url(url)
-        self._client = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        self._client = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT, headers=headers)
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -304,16 +306,21 @@ class Isola:
     Args:
         url: Isola API URL. If not provided, reads from the
             ISOLA_URL environment variable.
+        api_key: API key sent as an ``Authorization: Bearer`` header on every
+            request. If not provided, reads from the ISOLA_API_KEY environment
+            variable. If neither is set, requests are sent without an
+            Authorization header.
 
     Raises:
         ValueError: If no URL is provided or found in environment.
     """
 
-    def __init__(self, *, url: str | None = None) -> None:
+    def __init__(self, *, url: str | None = None, api_key: str | None = None) -> None:
         url = url or os.environ.get("ISOLA_URL")
         if not url:
             raise ValueError("url must be provided either as argument or via the ISOLA_URL environment variable")
-        self._api = _SyncAPI(url)
+        api_key = api_key or os.environ.get("ISOLA_API_KEY")
+        self._api = _SyncAPI(url, api_key)
         from ._rootfs_snapshot import RootfsSnapshots
         from ._sandbox import Sandboxes
 
@@ -350,16 +357,21 @@ class AsyncIsola:
     Args:
         url: Isola API URL. If not provided, reads from the
             ISOLA_URL environment variable.
+        api_key: API key sent as an ``Authorization: Bearer`` header on every
+            request. If not provided, reads from the ISOLA_API_KEY environment
+            variable. If neither is set, requests are sent without an
+            Authorization header.
 
     Raises:
         ValueError: If no URL is provided or found in environment.
     """
 
-    def __init__(self, *, url: str | None = None) -> None:
+    def __init__(self, *, url: str | None = None, api_key: str | None = None) -> None:
         url = url or os.environ.get("ISOLA_URL")
         if not url:
             raise ValueError("url must be provided either as argument or via the ISOLA_URL environment variable")
-        self._api = _AsyncAPI(url)
+        api_key = api_key or os.environ.get("ISOLA_API_KEY")
+        self._api = _AsyncAPI(url, api_key)
         from ._rootfs_snapshot import AsyncRootfsSnapshots
         from ._sandbox import AsyncSandboxes
 

@@ -362,7 +362,7 @@ func Register(api huma.API, h *Handlers) {
 		Description:   "Starts a new command in the sandbox container and returns a command ID for tracking. Commands always run as root (UID 0, GID 0).",
 		Tags:          []string{"sandboxes", "commands"},
 		DefaultStatus: http.StatusAccepted,
-		Errors:        []int{http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+		Errors:        []int{http.StatusUnauthorized, http.StatusBadRequest, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.PostCommand)
 
 	huma.Register(api, huma.Operation{
@@ -372,7 +372,7 @@ func Register(api huma.API, h *Handlers) {
 		Summary:     "Get command status",
 		Description: "Returns the exit code of the command, or null if still running. Supports long-polling via ?waitSeconds=N to block until the command exits or the wait expires.",
 		Tags:        []string{"sandboxes", "commands"},
-		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+		Errors:      []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.GetCommandStatus)
 
 	huma.Register(api, huma.Operation{
@@ -392,7 +392,7 @@ func Register(api huma.API, h *Handlers) {
 				},
 			},
 		},
-		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+		Errors: []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.GetCommandStdout)
 
 	huma.Register(api, huma.Operation{
@@ -412,7 +412,7 @@ func Register(api huma.API, h *Handlers) {
 				},
 			},
 		},
-		Errors: []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+		Errors: []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.GetCommandStderr)
 
 	huma.Register(api, huma.Operation{
@@ -431,7 +431,7 @@ func Register(api huma.API, h *Handlers) {
 			},
 		},
 		DefaultStatus: http.StatusNoContent,
-		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+		Errors:        []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.PostCommandStdin)
 
 	huma.Register(api, huma.Operation{
@@ -442,7 +442,7 @@ func Register(api huma.API, h *Handlers) {
 		Description:   "Closes the command's stdin pipe",
 		Tags:          []string{"sandboxes", "commands"},
 		DefaultStatus: http.StatusNoContent,
-		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+		Errors:        []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.CloseCommandStdin)
 
 	huma.Register(api, huma.Operation{
@@ -453,6 +453,6 @@ func Register(api huma.API, h *Handlers) {
 		Description:   "Kills the command process. Idempotent for already-exited commands.",
 		Tags:          []string{"sandboxes", "commands"},
 		DefaultStatus: http.StatusNoContent,
-		Errors:        []int{http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
+		Errors:        []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusBadGateway},
 	}, h.DeleteCommand)
 }

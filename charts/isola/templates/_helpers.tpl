@@ -495,3 +495,15 @@ API Gateway image
 {{- define "isola.apiGateway.image" -}}
 {{- include "isola.image" (dict "imageConfig" .Values.apiGateway.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
+
+{{/*
+API Gateway auth secret name.
+Resolution: apiGateway.auth.existingSecret > chart-managed ("<fullname>-auth")
+*/}}
+{{- define "isola.apiGateway.authSecretName" -}}
+{{- if .Values.apiGateway.auth.existingSecret -}}
+{{- .Values.apiGateway.auth.existingSecret -}}
+{{- else -}}
+{{- printf "%s-auth" (include "isola.apiGateway.fullname" .) -}}
+{{- end -}}
+{{- end }}

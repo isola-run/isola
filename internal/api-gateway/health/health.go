@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	"github.com/isola-run/isola/internal/api-gateway/auth"
 )
 
 type HealthResponse struct {
@@ -67,6 +68,7 @@ func Register(api huma.API, h *Handlers) {
 		Summary:     "Health check",
 		Description: "Returns the health status of the API",
 		Tags:        []string{"health"},
+		Security:    auth.PublicSecurity(),
 	}, h.GetHealth)
 
 	huma.Register(api, huma.Operation{
@@ -76,6 +78,7 @@ func Register(api huma.API, h *Handlers) {
 		Summary:     "Health check (alias)",
 		Description: "Returns the health status of the API",
 		Tags:        []string{"health"},
+		Security:    auth.PublicSecurity(),
 	}, h.GetHealth)
 
 	huma.Register(api, huma.Operation{
@@ -87,6 +90,7 @@ func Register(api huma.API, h *Handlers) {
 		Tags:          []string{"health"},
 		DefaultStatus: http.StatusOK,
 		Errors:        []int{http.StatusServiceUnavailable},
+		Security:      auth.PublicSecurity(),
 	}, h.GetReady)
 
 	huma.Register(api, huma.Operation{
@@ -98,5 +102,6 @@ func Register(api huma.API, h *Handlers) {
 		Tags:          []string{"health"},
 		DefaultStatus: http.StatusOK,
 		Errors:        []int{http.StatusServiceUnavailable},
+		Security:      auth.PublicSecurity(),
 	}, h.GetReady)
 }

@@ -27,6 +27,12 @@ export interface IsolaOptions {
    */
   url?: string;
   /**
+   * API key sent as `Authorization: Bearer <key>` on every request. If not
+   * provided, reads from the `ISOLA_API_KEY` environment variable. When unset,
+   * no auth header is sent.
+   */
+  apiKey?: string;
+  /**
    * Total wall-clock budget per HTTP attempt, in milliseconds. Default
    * 30_000. Pass `null` to disable.
    *
@@ -70,6 +76,12 @@ function resolveUrl(url: string | undefined): string {
   return normalizeUrl(candidate);
 }
 
+function resolveApiKey(apiKey: string | undefined): string | undefined {
+  // Mirrors resolveUrl's env fallback: an empty string falls back to the env
+  // var too. `process` is absent in some runtimes (browsers).
+  return apiKey || (typeof process !== "undefined" ? process.env?.ISOLA_API_KEY : undefined);
+}
+
 /**
  * Client for the Isola API.
  *
@@ -96,10 +108,12 @@ export class Isola {
 
   constructor(options: IsolaOptions = {}) {
     const url = resolveUrl(options.url);
+    const apiKey = resolveApiKey(options.apiKey);
     const requestTimeoutMs = resolveTimeout(options.requestTimeoutMs);
     this._api = new HttpClient({
       url,
       requestTimeoutMs,
+      ...(apiKey ? { apiKey } : {}),
       ...(options.fetch ? { fetch: options.fetch } : {}),
     });
     this.sandboxes = new Sandboxes(this._api);
