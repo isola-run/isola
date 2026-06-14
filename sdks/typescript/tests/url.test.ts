@@ -51,6 +51,12 @@ describe("normalizeUrl", () => {
   it("throws TypeError when input is the empty string", () => {
     expect(() => normalizeUrl("")).toThrow(TypeError);
   });
+
+  it("stays linear on slash-heavy input and preserves internal slashes (ReDoS guard)", () => {
+    // Worst case for /\/+$/: many internal slashes, non-slash final char.
+    const pathological = `http://example.com/${"/".repeat(100_000)}x`;
+    expect(normalizeUrl(pathological)).toBe(pathological);
+  });
 });
 
 describe("quoteSegment", () => {
