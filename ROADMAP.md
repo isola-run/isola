@@ -12,11 +12,7 @@ list, open an issue or start a
 
 A few areas matter more than any single feature:
 
-- Tightening the sandbox boundary with finer-grained egress controls, runtime
-  hardening, and supply-chain integrity. Signed images, SBOM attestations, and a
-  signed Helm chart already ship today.
-- Getting the REST API and CRDs out of alpha to a stable v1, with a documented
-  deprecation policy.
+- Getting the REST API and CRDs out of alpha to a stable v1.
 - Making Isola easy to deploy, observe, and run in production, with
   documentation that covers the common cases.
 - Broadening SDK coverage, moving to vendor-neutral governance through CNCF, and
