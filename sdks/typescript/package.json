@@ -52,7 +52,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "lint": "biome check src tests examples smoke",
     "lint:fix": "biome check --write src tests examples smoke",
     "typecheck": "tsc --noEmit",
