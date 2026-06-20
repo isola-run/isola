@@ -187,8 +187,6 @@ var _ = Describe("Sandbox Controller", func() {
 		})
 
 		It("should not create custom NetworkPolicy when only the egress rate limit is set", func() {
-			// Shaping is enforced by gVisor inside the pod, not by NetworkPolicy.
-			// The sandbox keeps the default deny-all egress.
 			sandboxName := "sandbox-tbf-no-netpol"
 
 			network := &sandboxv1alpha1.Network{

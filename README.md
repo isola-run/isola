@@ -215,7 +215,7 @@ sandbox = client.sandboxes.create(
 )
 ```
 
-The limit is a token bucket enforced by gVisor inside the sandbox (not by NetworkPolicy), so it works with any CNI and composes with any egress policy. Requires gVisor [`release-20260601.0`](https://storage.googleapis.com/gvisor/releases/release/20260601/x86_64/runsc) or later on cluster nodes.
+Egress rate limiting requires gVisor [`release-20260615.0`](https://github.com/google/gvisor/releases/tag/release-20260615.0) or later on cluster nodes.
 
 Network isolation relies on Kubernetes [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/) and requires a CNI that enforces it. Most managed Kubernetes services (EKS, AKS, GKE) support this natively or through built-in options.
 
@@ -293,7 +293,7 @@ Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/conta
 
 0. Ensure your cluster uses [containerd](https://containerd.io/docs/2.2/getting-started/) (the default container runtime on EKS, AKS, GKE and most clusters).
 
-1. Install the `runsc` binary and `containerd-shim-runsc-v1` on each node. See the [gVisor quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions. If you plan to use rootfs snapshots, install [`release-20260126.0`](https://storage.googleapis.com/gvisor/releases/release/20260126/x86_64/runsc) or later; egress rate limiting (`network.egressRateLimitBytesPerSecond`) requires [`release-20260601.0`](https://storage.googleapis.com/gvisor/releases/release/20260601/x86_64/runsc) or later.
+1. Install the `runsc` binary and `containerd-shim-runsc-v1` on each node. See the [gVisor quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions. If you plan to use rootfs snapshots, install [`release-20260126.0`](https://storage.googleapis.com/gvisor/releases/release/20260126/x86_64/runsc) or later. Egress rate limiting (`network.egressRateLimitBytesPerSecond`) requires [`release-20260615.0`](https://github.com/google/gvisor/releases/tag/release-20260615.0) or later.
 
 2. Configure the containerd runtime. Create `/etc/containerd/runsc.toml`:
 
@@ -301,8 +301,6 @@ Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/conta
 [runsc_config]
   allow-rootfs-tar-annotation = "true"
   systemd-cgroup = "true"
-  qdisc-tbf-rate = "1000000000000"
-  qdisc-tbf-burst = "4294967295"
 ```
 
 Add the runtime to your containerd config (typically `/etc/containerd/config.toml`):

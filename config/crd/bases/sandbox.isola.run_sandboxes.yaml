@@ -96,13 +96,10 @@ spec:
                     - message: must be valid CIDR notation (e.g. 10.0.0.0/8 or 2001:db8::/32)
                       rule: self.all(s, isCIDR(s))
                   egressRateLimitBytesPerSecond:
-                    description: |-
-                      EgressRateLimitBytesPerSecond caps sustained egress at the given rate in bytes
-                      per second using a gVisor token bucket (--qdisc=tbf). Orthogonal to egress
-                      policy: it shapes whatever egress the NetworkPolicy allows.
-                      When unset, egress is not rate limited.
+                    description: EgressRateLimitBytesPerSecond caps sustained egress
+                      at the given rate in bytes per second.
                     format: int64
-                    maximum: 1000000000000
+                    maximum: 4294967295000000000
                     minimum: 1
                     type: integer
                   nameservers:

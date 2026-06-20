@@ -83,9 +83,7 @@ class Network(IsolaModel):
             Extends allow_internet_egress to cover IPv6, and allows
             IPv6 addresses in allowed_egress_cidrs and nameservers.
         egress_rate_limit_bytes_per_second: Cap sustained egress at this rate
-            in bytes per second (token bucket, enforced by gVisor inside the
-            sandbox, independent of the egress policy). When omitted, egress
-            is not rate limited.
+            in bytes per second. When omitted, egress is not rate limited.
     """
 
     allow_internet_egress: bool | None = None

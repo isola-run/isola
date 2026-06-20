@@ -83,7 +83,7 @@ type Network struct {
 	AllowIPv6Egress               *bool    `json:"allowIPv6Egress,omitempty" doc:"Enable IPv6 in egress configuration (default: IPv4 only)"`
 	AllowedEgressCIDRs            []string `json:"allowedEgressCIDRs,omitempty" maxItems:"16" maxLength:"43" doc:"Allowed egress CIDRs"`
 	Nameservers                   []string `json:"nameservers,omitempty" maxItems:"3" doc:"Custom DNS servers (max 3)"`
-	EgressRateLimitBytesPerSecond *int64   `json:"egressRateLimitBytesPerSecond,omitempty" minimum:"1" maximum:"1000000000000" doc:"Cap sustained egress at this rate in bytes per second (token bucket)"`
+	EgressRateLimitBytesPerSecond *int64   `json:"egressRateLimitBytesPerSecond,omitempty" minimum:"1" maximum:"4294967295000000000" doc:"Cap sustained egress at this rate in bytes per second"`
 }
 
 type GetSandboxInput struct {

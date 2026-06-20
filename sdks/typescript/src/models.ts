@@ -109,9 +109,8 @@ export interface Network {
    */
   allowIPv6Egress?: boolean;
   /**
-   * Cap sustained egress at this rate in bytes per second (token bucket,
-   * enforced by gVisor inside the sandbox, independent of the egress
-   * policy). When omitted, egress is not rate limited.
+   * Cap sustained egress at this rate in bytes per second. When omitted,
+   * egress is not rate limited.
    */
   egressRateLimitBytesPerSecond?: number;
 }

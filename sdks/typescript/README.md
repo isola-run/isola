@@ -295,7 +295,7 @@ network: {
 
 The acronym field names (`allowedEgressCIDRs`, `allowClusterDNS`, `allowIPv6Egress`) match the OpenAPI casing; do not lowercase them.
 
-Cap outbound bandwidth with an egress rate limit (token bucket, enforced by gVisor inside the sandbox):
+Cap outbound bandwidth with an egress rate limit:
 
 ```ts
 const sandbox = await client.sandboxes.create({

@@ -196,8 +196,8 @@ var _ = Describe("Sandbox Endpoints", func() {
 			Expect(resp.Code).To(Equal(422))
 		})
 
-		It("rejects egressRateLimitBytesPerSecond above 1000000000000 with 422", func() {
-			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimitBytesPerSecond":1000000000001}}`
+		It("rejects egressRateLimitBytesPerSecond above gVisor's effective limit with 422", func() {
+			reqBody := `{"podTemplate":{"containers":[{"image":"alpine"}]},"network":{"egressRateLimitBytesPerSecond":4294967295000000001}}`
 			resp := testAPI.Post("/v1/sandboxes", strings.NewReader(reqBody))
 			Expect(resp.Code).To(Equal(422))
 		})

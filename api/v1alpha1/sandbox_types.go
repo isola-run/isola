@@ -120,13 +120,10 @@ type Network struct {
 	// +optional
 	Nameservers []string `json:"nameservers,omitempty"`
 
-	// EgressRateLimitBytesPerSecond caps sustained egress at the given rate in bytes
-	// per second using a gVisor token bucket (--qdisc=tbf). Orthogonal to egress
-	// policy: it shapes whatever egress the NetworkPolicy allows.
-	// When unset, egress is not rate limited.
+	// EgressRateLimitBytesPerSecond caps sustained egress at the given rate in bytes per second.
 	// +optional
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=1000000000000
+	// +kubebuilder:validation:Maximum=4294967295000000000
 	EgressRateLimitBytesPerSecond *int64 `json:"egressRateLimitBytesPerSecond,omitempty"`
 }
 

@@ -27,7 +27,7 @@ GOVULNCHECK_VERSION="v1.1.4"
 SETUP_ENVTEST_VERSION="release-0.24"
 CONTROLLER_GEN_VERSION="v0.20.0"
 LEFTHOOK_VERSION="v2.0.15"
-GVISOR_VERSION="20260601"
+GVISOR_VERSION="20260615"
 
 GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/${GVISOR_VERSION}"
 
@@ -94,12 +94,6 @@ install_gvisor_in_node() {
   # https://gvisor.dev/docs/user_guide/systemd/
   # https://github.com/google/gvisor/issues/10371
   systemd-cgroup = "true"
-  # Egress rate-limit ceilings. Per-pod dev.gvisor.flag.qdisc-tbf-* annotations
-  # can only lower these. A runsc validation bug also makes nonzero runtime
-  # values a requirement for the per-pod annotations to apply at all. That
-  # requirement is temporary, a fix is being upstreamed to gVisor.
-  qdisc-tbf-rate = "1000000000000"
-  qdisc-tbf-burst = "4294967295"
 TOML'
 
         docker exec "$node" sh -c 'cat >> /etc/containerd/config.toml << "TOML"

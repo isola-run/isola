@@ -324,11 +324,6 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	}
 	sandboxPod.Annotations["dev.gvisor.flag.overlay2"] = "root:self"
 
-	// Egress traffic shaping via gVisor token bucket. Requires nonzero qdisc-tbf
-	// ceilings in the node's runsc.toml (see README gVisor setup), otherwise the
-	// pod fails to start. gVisor requires both rate and burst when qdisc=tbf, so
-	// the burst is derived from the rate. The derived value exists only on the
-	// pod, never written back to the spec.
 	if sandbox.Spec.Network != nil && sandbox.Spec.Network.EgressRateLimitBytesPerSecond != nil {
 		rate := *sandbox.Spec.Network.EgressRateLimitBytesPerSecond
 		sandboxPod.Annotations["dev.gvisor.flag.qdisc"] = "tbf"

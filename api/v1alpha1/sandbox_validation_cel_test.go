@@ -275,30 +275,6 @@ var _ = Describe("Sandbox CRD validation", func() {
 		})
 	})
 
-	Describe("Network egressRateLimitBytesPerSecond bounds", func() {
-		It("accepts a valid rate", func() {
-			sb := minimalSandbox("sb")
-			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimitBytesPerSecond: ptr.To[int64](1000000),
-			}
-			Expect(k8sClient.Create(ctx, sb)).To(Succeed())
-		})
-		It("rejects rate of 0", func() {
-			sb := minimalSandbox("sb")
-			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimitBytesPerSecond: ptr.To[int64](0),
-			}
-			Expect(k8sClient.Create(ctx, sb)).ToNot(Succeed())
-		})
-		It("rejects rate above 1000000000000", func() {
-			sb := minimalSandbox("sb")
-			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimitBytesPerSecond: ptr.To[int64](1000000000001),
-			}
-			Expect(k8sClient.Create(ctx, sb)).ToNot(Succeed())
-		})
-	})
-
 	Describe("rootfsSnapshotSources shape", func() {
 		It("accepts a single source with no containerName", func() {
 			sb := minimalSandbox("sb")

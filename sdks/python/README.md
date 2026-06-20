@@ -267,7 +267,7 @@ Network(
 )
 ```
 
-Cap outbound bandwidth with an egress rate limit (token bucket, enforced by gVisor inside the sandbox):
+Cap outbound bandwidth with an egress rate limit:
 
 ```python
 from isola import Network
@@ -431,4 +431,3 @@ except IsolaError:
 ```
 
 The SDK automatically retries on transient errors.
-
