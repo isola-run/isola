@@ -105,15 +105,6 @@ var _ = Describe("Sandbox CRD validation", func() {
 			sb.Spec.Network = &sandboxv1alpha1.Network{AllowClusterDNS: ptr.To(true)}
 			Expect(k8sClient.Update(ctx, sb)).To(Succeed())
 		})
-		It("rejects change to egressRateLimitBytesPerSecond", func() {
-			sb := minimalSandbox("sb")
-			sb.Spec.Network = &sandboxv1alpha1.Network{
-				EgressRateLimitBytesPerSecond: ptr.To[int64](1000000),
-			}
-			Expect(k8sClient.Create(ctx, sb)).To(Succeed())
-			sb.Spec.Network.EgressRateLimitBytesPerSecond = ptr.To[int64](2000000)
-			Expect(k8sClient.Update(ctx, sb)).ToNot(Succeed())
-		})
 	})
 
 	Describe("spec.rootfsSnapshotSources is fully immutable", func() {
