@@ -47,18 +47,14 @@ import (
 var DefaultPublicNameservers = []string{"8.8.8.8", "1.1.1.1"}
 
 const (
-	// MinEgressBurstBytes is the floor for the derived token bucket depth (128 KiB).
-	// gVisor refuses to start when burst is smaller than the max packet size
-	// (~64 KiB + headers with host GSO).
-	MinEgressBurstBytes = 131072
+	// some buffer over 64KiB if e.g. HOSTGSo is used by gVisor
+	MinEgressBurstBytes = 128 * 1024
 
-	// MaxEgressBurstBytes is gVisor's --qdisc-tbf-burst flag limit.
 	MaxEgressBurstBytes = math.MaxUint32
 )
 
-// EffectiveEgressBurstBytes returns the token bucket depth for a sandbox's egress
-// rate limit, roughly 100ms worth of the rate, clamped to
-// [MinEgressBurstBytes, MaxEgressBurstBytes].
+// EffectiveEgressBurstBytes is a heuristic to calculate a reasonable burst size
+// instead of exposing it as a configuration knob, to reduce complexity for users.
 func EffectiveEgressBurstBytes(rateBytesPerSecond int64) int64 {
 	burst := rateBytesPerSecond / 10
 	if burst < MinEgressBurstBytes {
