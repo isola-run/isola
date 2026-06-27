@@ -93,7 +93,7 @@ jobs:
         run: |
           set -e
           NODE="${KIND_CLUSTER_NAME}-control-plane"
-          GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/20260615/x86_64"
+          GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/20260622/x86_64"
 
           echo "Installing gVisor binaries..."
           docker exec "$NODE" sh -c "
