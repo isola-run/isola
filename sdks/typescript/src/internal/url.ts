@@ -16,7 +16,8 @@
 // the Python SDK (_client.py and the per-resource modules).
 
 export function normalizeUrl(url: string): string {
-  const trimmed = url.trim().replace(/\/+$/, "");
+  // Lookbehind avoids quadratic backtracking on trailing-slash runs (ReDoS).
+  const trimmed = url.trim().replace(/(?<!\/)\/+$/, "");
   if (trimmed === "") {
     throw new TypeError("url must be provided either as argument or via the ISOLA_URL environment variable");
   }
