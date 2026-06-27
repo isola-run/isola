@@ -82,6 +82,8 @@ class Network(IsolaModel):
         allow_ipv6_egress: Enable IPv6 across egress configuration.
             Extends allow_internet_egress to cover IPv6, and allows
             IPv6 addresses in allowed_egress_cidrs and nameservers.
+        egress_rate_limit_bytes_per_second: Cap sustained egress at this rate
+            in bytes per second. When omitted, egress is not rate limited.
     """
 
     allow_internet_egress: bool | None = None
@@ -89,6 +91,7 @@ class Network(IsolaModel):
     allow_cluster_dns: bool | None = Field(None, alias="allowClusterDNS")
     nameservers: list[str] | None = None
     allow_ipv6_egress: bool | None = Field(None, alias="allowIPv6Egress")
+    egress_rate_limit_bytes_per_second: int | None = None
 
 
 class ResourceList(IsolaModel):

@@ -360,6 +360,12 @@ components:
           type:
             - array
             - "null"
+        egressRateLimitBytesPerSecond:
+          description: Cap sustained egress at this rate in bytes per second
+          format: int64
+          maximum: 4294967295000000000
+          minimum: 1
+          type: integer
         nameservers:
           description: Custom DNS servers (max 3)
           items:

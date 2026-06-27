@@ -27,7 +27,7 @@ GOVULNCHECK_VERSION="v1.1.4"
 SETUP_ENVTEST_VERSION="release-0.24"
 CONTROLLER_GEN_VERSION="v0.20.0"
 LEFTHOOK_VERSION="v2.0.15"
-GVISOR_VERSION="20260302"
+GVISOR_VERSION="20260622"
 
 GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/${GVISOR_VERSION}"
 
@@ -103,7 +103,7 @@ TOML'
   runtime_type = "io.containerd.runsc.v1"
   # Allow gVisor annotations to pass through to runsc.
   # Required for dev.gvisor.flag.* annotations (e.g., overlay2) to work.
-  # By default containerd filters out all annotations; this allowlist enables gVisor-specific ones.
+  # By default containerd filters out all annotations. This allowlist enables gVisor-specific ones.
   pod_annotations = ["dev.gvisor.*"]
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
   TypeUrl = "io.containerd.runsc.v1.options"

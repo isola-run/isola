@@ -295,6 +295,18 @@ network: {
 
 The acronym field names (`allowedEgressCIDRs`, `allowClusterDNS`, `allowIPv6Egress`) match the OpenAPI casing; do not lowercase them.
 
+Cap outbound bandwidth with an egress rate limit:
+
+```ts
+const sandbox = await client.sandboxes.create({
+  image: "alpine:3.21",
+  network: {
+    allowInternetEgress: true,
+    egressRateLimitBytesPerSecond: 10_000_000, // 10 MB/s
+  },
+});
+```
+
 ## Rootfs snapshots
 
 > Requires rootfs snapshots to be enabled and a storage bucket configured in your Helm values (`operator.sandboxRuntime.rootfssnapshot`).

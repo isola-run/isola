@@ -127,6 +127,82 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(np).To(BeNil())
 		})
 
+		It("should stamp gvisor tbf annotations when egressRateLimitBytesPerSecond is set", func() {
+			sandboxName := "sandbox-tbf-set"
+
+			network := &sandboxv1alpha1.Network{
+				EgressRateLimitBytesPerSecond: ptr.To[int64](10000000),
+			}
+			createSandboxWithNetwork(ctx, sandboxName, network)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, sandboxName+"-pod")
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Annotations).To(HaveKeyWithValue("dev.gvisor.flag.qdisc", "tbf"))
+			Expect(pod.Annotations).To(HaveKeyWithValue("dev.gvisor.flag.qdisc-tbf-rate", "10000000"))
+			// The burst is derived from the rate and exists only on the pod.
+			Expect(pod.Annotations).To(HaveKeyWithValue("dev.gvisor.flag.qdisc-tbf-burst", "1000000"))
+		})
+
+		It("should floor the derived burst at 131072 for small rates", func() {
+			sandboxName := "sandbox-tbf-floor"
+
+			network := &sandboxv1alpha1.Network{
+				EgressRateLimitBytesPerSecond: ptr.To[int64](1000),
+			}
+			createSandboxWithNetwork(ctx, sandboxName, network)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, sandboxName+"-pod")
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Annotations).To(HaveKeyWithValue("dev.gvisor.flag.qdisc-tbf-burst", "131072"))
+		})
+
+		It("should not stamp qdisc annotations when network has no egress rate limit", func() {
+			sandboxName := "sandbox-tbf-absent"
+
+			network := &sandboxv1alpha1.Network{
+				AllowInternetEgress: ptr.To(true),
+			}
+			createSandboxWithNetwork(ctx, sandboxName, network)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, sandboxName+"-pod")
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.qdisc"))
+			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.qdisc-tbf-rate"))
+			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.qdisc-tbf-burst"))
+		})
+
+		It("should not create custom NetworkPolicy when only the egress rate limit is set", func() {
+			sandboxName := "sandbox-tbf-no-netpol"
+
+			network := &sandboxv1alpha1.Network{
+				EgressRateLimitBytesPerSecond: ptr.To[int64](1000000),
+			}
+			createSandboxWithNetwork(ctx, sandboxName, network)
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			np := getNetworkPolicy(ctx, sandboxName+"-custom-netpol")
+			Expect(np).To(BeNil())
+		})
+
 		It("should create custom NetworkPolicy when nameservers specified without internet access", func() {
 			sandboxName := "sandbox-dns-allowed"
 

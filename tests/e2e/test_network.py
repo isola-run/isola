@@ -192,6 +192,24 @@ def test_network_spec_reflected_in_get(
 
 
 @pytest.mark.timeout(90)
+def test_egress_rate_limit_spec_reflected_in_get(
+    isola_client: Isola,
+    sandbox_factory,
+) -> None:
+    """A rate-limited sandbox starts (runsc accepts the qdisc annotations) and the
+    spec round-trips through GET."""
+    sb = sandbox_factory(
+        image="alpine:3.21",
+        network=Network(egress_rate_limit_bytes_per_second=10_000_000),
+    )
+    wait_for_running(isola_client, sb.id)
+
+    fetched = isola_client.sandboxes.get(sb.id)
+    assert fetched.network is not None
+    assert fetched.network.egress_rate_limit_bytes_per_second == 10_000_000
+
+
+@pytest.mark.timeout(90)
 def test_allow_cluster_dns(
     isola_client: Isola,
     sandbox_factory,

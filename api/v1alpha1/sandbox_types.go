@@ -119,6 +119,12 @@ type Network struct {
 	// +listType=atomic
 	// +optional
 	Nameservers []string `json:"nameservers,omitempty"`
+
+	// EgressRateLimitBytesPerSecond caps sustained egress at the given rate in bytes per second.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=4294967295000000000
+	EgressRateLimitBytesPerSecond *int64 `json:"egressRateLimitBytesPerSecond,omitempty"`
 }
 
 // RootfsSnapshotSource specifies a rootfs snapshot to restore into a container at creation time.

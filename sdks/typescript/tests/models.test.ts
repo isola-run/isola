@@ -81,6 +81,23 @@ describe("Network acronym aliases", () => {
     const dumped = Network.toWire({ allowClusterDNS: true, nameservers: null as never });
     expect(Object.keys(dumped)).toEqual(["allowClusterDNS"]);
   });
+
+  it("decodes egressRateLimitBytesPerSecond", () => {
+    const net = Network.fromWire({ egressRateLimitBytesPerSecond: 10_000_000 });
+    expect(net.egressRateLimitBytesPerSecond).toBe(10_000_000);
+  });
+
+  it("encodes egressRateLimitBytesPerSecond and drops it when nullish", () => {
+    // TS forbids null here, JS callers can pass it (same convention as the other Network tests).
+    const dumped = Network.toWire({
+      allowInternetEgress: true,
+      egressRateLimitBytesPerSecond: null as never,
+    });
+    expect(Object.keys(dumped)).toEqual(["allowInternetEgress"]);
+
+    const present = Network.toWire({ egressRateLimitBytesPerSecond: 10_000_000 });
+    expect(present).toEqual({ egressRateLimitBytesPerSecond: 10_000_000 });
+  });
 });
 
 describe("SandboxData round-trip", () => {

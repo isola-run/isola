@@ -31,6 +31,7 @@ This package builds custom NetworkPolicies only when needed (and allowInternetEg
 package network
 
 import (
+	"math"
 	"net/netip"
 
 	corev1 "k8s.io/api/core/v1"
@@ -44,6 +45,26 @@ import (
 )
 
 var DefaultPublicNameservers = []string{"8.8.8.8", "1.1.1.1"}
+
+const (
+	// some buffer over 64KiB if e.g. HOSTGSo is used by gVisor
+	MinEgressBurstBytes = 128 * 1024
+
+	MaxEgressBurstBytes = math.MaxUint32
+)
+
+// EffectiveEgressBurstBytes is a heuristic to calculate a reasonable burst size
+// instead of exposing it as a configuration knob, to reduce complexity for users.
+func EffectiveEgressBurstBytes(rateBytesPerSecond int64) int64 {
+	burst := rateBytesPerSecond / 10
+	if burst < MinEgressBurstBytes {
+		return MinEgressBurstBytes
+	}
+	if burst > MaxEgressBurstBytes {
+		return MaxEgressBurstBytes
+	}
+	return burst
+}
 
 // EffectiveNameservers returns the nameservers to configure for a sandbox pod.
 // Priority: user-provided > auto-default (when egress CIDRs are set and cluster DNS is off) > nil (sink).
