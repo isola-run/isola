@@ -103,6 +103,20 @@ func (r *RootfsSnapshotReconciler) ttlLeft(snap *sandboxv1alpha1.RootfsSnapshot)
 	return deleteAt.Sub(now)
 }
 
+func (r *RootfsSnapshotReconciler) cleanupSnapshotJob(ctx context.Context, snap *sandboxv1alpha1.RootfsSnapshot) error {
+	job := &batchv1.Job{}
+	jobName := podutil.GetSnapshotJobName(snap.Name)
+	err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: snap.Namespace}, job)
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	return r.deleteJob(ctx, job)
+}
+
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sandbox.isola.run,resources=rootfssnapshots/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
@@ -127,6 +141,11 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	isComplete := snap.Status.CompletionTime != nil
 	if isComplete {
+		if err := r.cleanupSnapshotJob(ctx, snap); err != nil {
+			log.Error(err, "Failed to clean up snapshot job")
+			return ctrl.Result{}, err
+		}
+
 		ttlLeft := r.ttlLeft(snap)
 		if ttlLeft <= 0 {
 			if err := r.Delete(ctx, snap); err != nil && !apierrors.IsNotFound(err) {
@@ -242,12 +261,8 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		if err != nil {
 			log.Error(err, "Failed to read upload result from termination message")
 			r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "TerminationLogReadFailed", "ReadFailed", "%s", err.Error())
-			r.deleteJob(ctx, job)
 			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Failed to read upload result: %v", err))
 		}
-
-		// Delete the job now that we've read the results
-		r.deleteJob(ctx, job)
 
 		return r.setSucceeded(ctx, baseSnap, snap, result)
 	}
@@ -258,9 +273,6 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 			message = fmt.Sprintf("Snapshot job failed: %s", condMsg)
 		}
 		log.Info(message, "job", jobName)
-
-		// Delete the job - no point keeping failed jobs until we hit to snapshotter TTL
-		r.deleteJob(ctx, job)
 
 		return r.setFailed(ctx, baseSnap, snap, message)
 	}
@@ -504,14 +516,15 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 	return nil
 }
 
-func (r *RootfsSnapshotReconciler) deleteJob(ctx context.Context, job *batchv1.Job) {
+func (r *RootfsSnapshotReconciler) deleteJob(ctx context.Context, job *batchv1.Job) error {
 	log := logf.FromContext(ctx)
 	if err := r.Delete(ctx, job, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
 		if !apierrors.IsNotFound(err) {
-			// Non-fatal: owner reference ensures cleanup when RootfsSnapshot is deleted
 			log.Error(err, "Failed to delete job", "job", job.Name)
+			return err
 		}
 	}
+	return nil
 }
 
 func (r *RootfsSnapshotReconciler) patchStatus(ctx context.Context, base, snap *sandboxv1alpha1.RootfsSnapshot, conditions []metav1.Condition) error {

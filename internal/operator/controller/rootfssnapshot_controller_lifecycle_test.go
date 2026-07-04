@@ -19,7 +19,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
@@ -176,6 +178,66 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			snap = getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
 			Expect(snap.DeletionTimestamp.IsZero()).To(BeTrue())
+		})
+
+		It("should clean up jobs for completed snapshots before TTL expires", func() {
+			snapName := "snap-complete-job-cleanup"
+			sandboxName := "sandbox-complete-job-cleanup"
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+
+			now := metav1.NewTime(fakeClock.Now())
+			snap.Status.CompletionTime = &now
+			snap.Status.SnapshotKey = "rootfssnapshots/" + testNamespace + "/" + snapName + ".tar"
+			meta.SetStatusCondition(&snap.Status.Conditions, metav1.Condition{
+				Type:               sandboxv1alpha1.RootfsSnapshotSucceededCondition,
+				Status:             metav1.ConditionTrue,
+				Reason:             sandboxv1alpha1.ReasonRootfsSnapshotSucceeded,
+				Message:            "Snapshot completed successfully",
+				ObservedGeneration: snap.Generation,
+			})
+			Expect(k8sClient.Status().Update(ctx, snap)).To(Succeed())
+
+			jobName := snapName + "-job"
+			job := &batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      jobName,
+					Namespace: testNamespace,
+				},
+				Spec: batchv1.JobSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers:    []corev1.Container{{Name: "snapshot-uploader", Image: "test"}},
+							RestartPolicy: corev1.RestartPolicyNever,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, job)).To(Succeed())
+			defer deleteSnapshotJob(ctx, jobName)
+			setSnapshotJobFailed(ctx, jobName, "container state already removed")
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+
+			Eventually(func() bool {
+				job := getSnapshotJob(ctx, jobName)
+				return job == nil || !job.DeletionTimestamp.IsZero()
+			}, testTimeout, testInterval).Should(BeTrue())
+
+			snap = getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, sandboxv1alpha1.RootfsSnapshotSucceededCondition)
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(snap.Status.SnapshotKey).To(Equal("rootfssnapshots/" + testNamespace + "/" + snapName + ".tar"))
 		})
 	})
 
