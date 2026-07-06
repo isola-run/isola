@@ -566,6 +566,53 @@ func TestReconcileImportOverridesManagedEntry(t *testing.T) {
 	}
 }
 
+// An import override must be caught even when it coincides with a managed
+// block transition: the pre-write path check is skipped while the block is
+// stale, so the post-rewrite recheck must flag the node before it is ever
+// labeled ready (not one reconcile later).
+func TestReconcileImportOverrideDuringTransition(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if got := env.node.label(LabelGVisorReady); got != "true" {
+		t.Fatalf("precondition: ready label = %q", got)
+	}
+
+	// A drop-in import repoints runtime_path; emulate containerd's merge by
+	// serving the on-disk config with the managed block's entry replaced by
+	// the import's values.
+	cfgPath := env.i.cfg.hostPath(containerdConfigPath)
+	env.host.dumpFunc = func() ([]byte, error) {
+		raw, err := os.ReadFile(cfgPath) //nolint:gosec // test fixture path
+		if err != nil {
+			return nil, err
+		}
+		stripped, err := spliceManagedBlock(raw, "")
+		if err != nil {
+			return nil, err
+		}
+		return append(stripped, []byte(`[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+  runtime_type = "io.containerd.runsc.v1"
+  runtime_path = "/usr/local/bin/rogue-shim"
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
+  TypeUrl = "io.containerd.runsc.v1.options"
+  ConfigPath = "/etc/containerd/isola-runsc.toml"
+`)...), nil
+	}
+	// Simultaneously, a transition makes the on-disk block stale, so the
+	// pre-write path check cannot run this round.
+	env.i.cfg.InstallDir = "/opt/isola/bin-v2"
+
+	err := env.i.Reconcile(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "runtime_path") {
+		t.Fatalf("expected override error after transition, got: %v", err)
+	}
+	if got := env.node.label(LabelGVisorReady); got != "false" {
+		t.Errorf("ready label = %q, want false when the rewritten block is overridden", got)
+	}
+}
+
 // A managed node whose binaries were wiped (and cannot be re-downloaded)
 // must not stay schedulable: handler registration alone does not make
 // sandboxes startable.

@@ -149,7 +149,8 @@ func (i *Installer) Reconcile(ctx context.Context) error {
 //     restart needed);
 //  5. ensure the managed block in containerd's config.toml — the only step
 //     that restarts containerd, guarded by validate/health-check/rollback —
-//     and verify the live runtime serves the handler.
+//     verify the live runtime serves the handler, and re-check the merged
+//     view after any rewrite (imports merge over the fresh block too).
 func (i *Installer) reconcile(ctx context.Context) (out reconcileOutcome, err error) {
 	if err := i.preflight(ctx); err != nil {
 		return out, err
@@ -178,17 +179,23 @@ func (i *Installer) reconcile(ctx context.Context) (out reconcileOutcome, err er
 	if err != nil {
 		return out, err
 	}
-	// The type check runs on the MERGED view unconditionally: even on a
-	// managed node, a drop-in import can override our handler entry with a
-	// different runtime_type (imports overwrite scalar fields), and such a
-	// node must never be considered gVisor-ready.
+	blockCurrent := false
+	if managed {
+		if desired, err := i.desiredManagedBlock(raw); err == nil {
+			blockCurrent = current == desired
+		}
+	}
+	// The MERGED view is checked unconditionally: even on a managed node, a
+	// drop-in import can override our handler entry (imports overwrite scalar
+	// fields), and such a node must never be considered gVisor-ready. Path
+	// pinning applies only while the on-disk block is current: foreign
+	// entries own their paths, and a stale block legitimately diverges from
+	// the merged view mid-transition (it is re-checked after the rewrite).
 	rt, handlerInDump := runtimeFromDump(dump, i.cfg.Handler)
 	if handlerInDump {
-		if rtType, _ := rt["runtime_type"].(string); rtType != runscRuntimeType {
+		if err := i.mergedEntryConflict(rt, managed && blockCurrent); err != nil {
 			out.conflict = true
-			return out, fmt.Errorf("containerd has a runtime handler %q with runtime_type %q (expected %s); "+
-				"resolve the conflict by removing it or by configuring a different gvisor.installer.handler",
-				i.cfg.Handler, rt["runtime_type"], runscRuntimeType)
+			return out, err
 		}
 	}
 	if !managed && handlerInDump {
@@ -199,21 +206,6 @@ func (i *Installer) reconcile(ctx context.Context) (out reconcileOutcome, err er
 		i.log.Info("pre-existing runsc handler detected; leaving node unmanaged", "handler", i.cfg.Handler)
 		return out, i.verifyServing(ctx)
 	}
-	if managed && handlerInDump {
-		// Same import risk for the fields the type check cannot see: a
-		// drop-in keeping runtime_type intact can still repoint runtime_path
-		// or ConfigPath away from the managed install. Only meaningful while
-		// the on-disk block is current — a stale block legitimately diverges
-		// from the merged view mid-upgrade and is about to be rewritten.
-		if desired, derr := i.desiredManagedBlock(raw); derr == nil && current == desired {
-			if field, got := mergedEntryOverride(rt, i.cfg.shimPath()); field != "" {
-				out.conflict = true
-				return out, fmt.Errorf("a containerd import overrides the managed runtime handler %q (%s is %q); "+
-					"sandboxes would not run the isola-managed gVisor: remove the conflicting drop-in",
-					i.cfg.Handler, field, got)
-			}
-		}
-	}
 
 	if _, err := i.ensureBinaries(ctx); err != nil {
 		return out, err
@@ -221,7 +213,49 @@ func (i *Installer) reconcile(ctx context.Context) (out reconcileOutcome, err er
 	if err := i.ensureRunscShimConfig(dump); err != nil {
 		return out, err
 	}
-	return out, i.ensureContainerdConfig(ctx, raw)
+	changed, err := i.ensureContainerdConfig(ctx, raw)
+	if err != nil {
+		return out, err
+	}
+	if changed {
+		// Imports merge over the fresh block exactly as over a stale one, and
+		// path pinning was skipped above while the block was stale; re-check
+		// the new merged view so a conflicting drop-in can never leave the
+		// node labeled ready, not even until the next reconcile.
+		dump, err := i.host.Run(ctx, "containerd", "config", "dump")
+		if err != nil {
+			return out, fmt.Errorf("containerd configuration failed to load after the managed block update: %w", err)
+		}
+		if rt, ok := runtimeFromDump(dump, i.cfg.Handler); ok {
+			if err := i.mergedEntryConflict(rt, true); err != nil {
+				out.conflict = true
+				return out, err
+			}
+		}
+	}
+	return out, nil
+}
+
+// mergedEntryConflict validates the merged-view runtime entry for the
+// configured handler. pinPaths additionally requires the entry's
+// runtime_path and options.ConfigPath to be the managed ones — demanded of
+// nodes whose managed block is (or was just) written, never of foreign
+// entries, which own their paths.
+func (i *Installer) mergedEntryConflict(rt map[string]any, pinPaths bool) error {
+	if rtType, _ := rt["runtime_type"].(string); rtType != runscRuntimeType {
+		return fmt.Errorf("containerd has a runtime handler %q with runtime_type %q (expected %s); "+
+			"resolve the conflict by removing it or by configuring a different gvisor.installer.handler",
+			i.cfg.Handler, rt["runtime_type"], runscRuntimeType)
+	}
+	if !pinPaths {
+		return nil
+	}
+	if field, got := mergedEntryOverride(rt, i.cfg.shimPath()); field != "" {
+		return fmt.Errorf("a containerd import overrides the managed runtime handler %q (%s is %q); "+
+			"sandboxes would not run the isola-managed gVisor: remove the conflicting drop-in",
+			i.cfg.Handler, field, got)
+	}
+	return nil
 }
 
 // desiredManagedBlock renders the managed block appropriate for raw's config
@@ -235,8 +269,9 @@ func (i *Installer) desiredManagedBlock(raw []byte) (string, error) {
 }
 
 // ensureContainerdConfig reconciles the managed block in config.toml and
-// verifies the live daemon serves the handler.
-func (i *Installer) ensureContainerdConfig(ctx context.Context, raw []byte) (err error) {
+// verifies the live daemon serves the handler. changed reports whether the
+// on-disk config was rewritten (the caller re-checks the merged view then).
+func (i *Installer) ensureContainerdConfig(ctx context.Context, raw []byte) (changed bool, err error) {
 	// Every success path below ends with the handler verified served, which
 	// is the condition the convergence-restart budget is scoped to.
 	defer func() {
@@ -247,19 +282,20 @@ func (i *Installer) ensureContainerdConfig(ctx context.Context, raw []byte) (err
 
 	desired, err := i.desiredManagedBlock(raw)
 	if err != nil {
-		return err
+		return false, err
 	}
 	current, found, err := managedBlock(raw)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !found || current != desired {
-		return i.applyConfigChange(ctx, raw, desired)
+		err := i.applyConfigChange(ctx, raw, desired)
+		return err == nil, err
 	}
 
 	servingErr := i.verifyServing(ctx)
 	if servingErr == nil {
-		return nil
+		return false, nil
 	}
 	// The on-disk config is correct but the live daemon does not serve the
 	// handler — a previous run was interrupted between writing the config
@@ -267,18 +303,18 @@ func (i *Installer) ensureContainerdConfig(ctx context.Context, raw []byte) (err
 	// regression to converge; never repeatedly, so a node that cannot
 	// converge does not get containerd restarted on every retry.
 	if i.convergeRestartedFor == desired {
-		return fmt.Errorf("runtime handler still not served after a convergence restart: %w", servingErr)
+		return false, fmt.Errorf("runtime handler still not served after a convergence restart: %w", servingErr)
 	}
 	i.log.Warn("containerd config is up to date but the running daemon does not serve the handler; restarting containerd to converge", "error", servingErr)
 	if _, err := i.host.Run(ctx, "systemctl", "restart", "containerd"); err != nil {
 		// Nothing was restarted; the retry budget is not spent.
-		return err
+		return false, err
 	}
 	i.convergeRestartedFor = desired
 	if err := i.awaitRuntimeReady(ctx); err != nil {
-		return err
+		return false, err
 	}
-	return i.verifyServing(ctx)
+	return false, i.verifyServing(ctx)
 }
 
 // applyConfigChange splices the desired managed block into the config and
