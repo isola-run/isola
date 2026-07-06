@@ -2,7 +2,7 @@
 
 Isola is an open-source sandbox platform for running untrusted and AI-generated code securely on your own Kubernetes cluster. This SDK lets you create sandboxes, execute commands, read and write files, and snapshot environments programmatically from TypeScript and JavaScript.
 
-The SDK targets server-side runtimes: Node 22+, Bun, Deno, Cloudflare Workers, and Vercel Edge.
+The SDK targets server-side runtimes: Node 22+, Bun, and Deno.
 
 ## Install
 
