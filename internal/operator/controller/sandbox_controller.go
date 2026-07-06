@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"maps"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -322,6 +323,13 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		sandboxPod.Annotations = map[string]string{}
 	}
 	sandboxPod.Annotations["dev.gvisor.flag.overlay2"] = "root:self"
+
+	if sandbox.Spec.Network != nil && sandbox.Spec.Network.EgressRateLimitBytesPerSecond != nil {
+		rate := *sandbox.Spec.Network.EgressRateLimitBytesPerSecond
+		sandboxPod.Annotations["dev.gvisor.flag.qdisc"] = "tbf"
+		sandboxPod.Annotations["dev.gvisor.flag.qdisc-tbf-rate"] = strconv.FormatInt(rate, 10)
+		sandboxPod.Annotations["dev.gvisor.flag.qdisc-tbf-burst"] = strconv.FormatInt(netbuilder.EffectiveEgressBurstBytes(rate), 10)
+	}
 
 	if len(sandbox.Spec.RootfsSnapshotSources) > 0 {
 		if terminal, err := r.validateRootfsRestoreConfig(ctx); err != nil {

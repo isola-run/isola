@@ -108,6 +108,11 @@ export interface Network {
    * `allowedEgressCIDRs` and `nameservers`.
    */
   allowIPv6Egress?: boolean;
+  /**
+   * Cap sustained egress at this rate in bytes per second. When omitted,
+   * egress is not rate limited.
+   */
+  egressRateLimitBytesPerSecond?: number;
 }
 
 /** @internal */
@@ -120,6 +125,7 @@ export const Network = {
     if (o.allowClusterDNS != null) out.allowClusterDNS = o.allowClusterDNS;
     if (o.nameservers != null) out.nameservers = o.nameservers;
     if (o.allowIPv6Egress != null) out.allowIPv6Egress = o.allowIPv6Egress;
+    if (o.egressRateLimitBytesPerSecond != null) out.egressRateLimitBytesPerSecond = o.egressRateLimitBytesPerSecond;
     return out;
   },
   toWire(n: Network): Wire {

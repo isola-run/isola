@@ -88,6 +88,22 @@ func TestEffectiveNameservers_ClusterDNSSkipsAutoDefault(t *testing.T) {
 	g.Expect(EffectiveNameservers(network)).To(BeNil())
 }
 
+func TestEffectiveEgressBurstBytes_DerivedFromRate(t *testing.T) {
+	g := NewWithT(t)
+	g.Expect(EffectiveEgressBurstBytes(10000000)).To(Equal(int64(1000000)))
+}
+
+func TestEffectiveEgressBurstBytes_FloorApplied(t *testing.T) {
+	g := NewWithT(t)
+	g.Expect(EffectiveEgressBurstBytes(1000)).To(Equal(int64(MinEgressBurstBytes)))
+}
+
+func TestEffectiveEgressBurstBytes_CapApplied(t *testing.T) {
+	g := NewWithT(t)
+	rateAboveDerivedBurstCap := int64(MaxEgressBurstBytes)*10 + 1
+	g.Expect(EffectiveEgressBurstBytes(rateAboveDerivedBurstCap)).To(Equal(int64(MaxEgressBurstBytes)))
+}
+
 func TestBuildCustomNetworkPolicy_ClusterDNSWithCIDRsNoAutoDNSRules(t *testing.T) {
 	g := NewWithT(t)
 	network := &sandboxv1alpha1.Network{

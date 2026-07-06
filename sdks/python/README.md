@@ -267,6 +267,20 @@ Network(
 )
 ```
 
+Cap outbound bandwidth with an egress rate limit:
+
+```python
+from isola import Network
+
+sandbox = client.sandboxes.create(
+    image="alpine:3.21",
+    network=Network(
+        allow_internet_egress=True,
+        egress_rate_limit_bytes_per_second=10_000_000,  # 10 MB/s
+    ),
+)
+```
+
 ## Rootfs snapshots
 
 > Requires rootfs snapshots to be enabled and a storage bucket configured in your Helm values (`operator.sandboxRuntime.rootfssnapshot`).
@@ -417,4 +431,3 @@ except IsolaError:
 ```
 
 The SDK automatically retries on transient errors.
-

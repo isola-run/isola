@@ -1,6 +1,6 @@
 {
   "name": "@isola-run/sdk",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "TypeScript SDK for the Isola sandbox platform",
   "license": "Apache-2.0",
   "homepage": "https://github.com/isola-run/isola",
@@ -52,7 +52,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "lint": "biome check src tests examples smoke",
     "lint:fix": "biome check --write src tests examples smoke",
     "typecheck": "tsc --noEmit",
@@ -60,15 +59,16 @@
     "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "0.18.3",
-    "@biomejs/biome": "2.4.16",
-    "@types/node": "^25.9.2",
-    "@vitest/coverage-v8": "4.1.8",
+    "@arethetypeswrong/cli": "0.18.4",
+    "@biomejs/biome": "2.5.1",
+    "@types/node": "^26.0.1",
+    "@vitest/coverage-v8": "4.1.9",
     "publint": "0.3.21",
-    "tsdown": "0.22.2",
+    "tsdown": "0.22.3",
     "tsx": "^4.19.2",
     "typescript": "6.0.3",
-    "vitest": "4.1.8"
+    "vite": "8.1.0",
+    "vitest": "4.1.9"
   },
   "publishConfig": {
     "access": "public",
