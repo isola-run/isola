@@ -18,7 +18,7 @@ import type { RequestOptions } from "./client";
 import type { HttpClient } from "./internal/http";
 import { filesystemPath } from "./internal/url";
 
-/** Options for {@link Filesystem.read} and {@link Filesystem.write}. */
+/** Options for the {@link Filesystem} read and write methods. */
 export interface FileOptions {
   /**
    * Target container name. Only needed for multi-container sandboxes.
@@ -27,12 +27,12 @@ export interface FileOptions {
 }
 
 /**
- * Body types accepted by {@link Filesystem.write}.
+ * Binary body types accepted by {@link Filesystem.writeBytes}.
  *
- * `string` is encoded as UTF-8. A `ReadableStream` body is sent once;
- * unlike the in-memory body types it is not retried on transport errors.
+ * A `ReadableStream` body is sent once; unlike the in-memory body types it is
+ * not retried on transport errors.
  */
-export type UploadBody = string | Uint8Array | ArrayBuffer | Blob | ReadableStream<Uint8Array>;
+export type BinaryBody = Uint8Array | ArrayBuffer | Blob | ReadableStream<Uint8Array>;
 
 /** Read and write files inside a sandbox. */
 export class Filesystem {
@@ -48,61 +48,49 @@ export class Filesystem {
   }
 
   /**
-   * Write a file to the sandbox.
+   * Read a file from the sandbox as UTF-8 text.
    *
-   * Creates the file if it does not exist, overwrites it if it does.
-   * Parent directories are created automatically.
-   *
-   * @example
-   * ```ts
-   * await sandbox.filesystem.write("/tmp/hello.txt", "hi");
-   * ```
-   *
-   * @param path - Absolute path inside the sandbox (e.g.
-   * `"/tmp/hello.txt"`).
-   * @param data - Content to write. Strings are encoded as UTF-8.
-   * Pass binary data as `Uint8Array`, `ArrayBuffer`, `Blob`, or a
-   * `ReadableStream<Uint8Array>` (streams are non-replayable; see
-   * {@link UploadBody}).
-   * @param opts - File options (e.g. `container` for multi-container
-   * sandboxes).
-   * @throws {APIError} If the API returns a non-2xx response.
-   * @throws {APIConnectionError} If the request cannot reach the API.
-   */
-  async write(path: string, data: UploadBody, opts: FileOptions = {}, req: RequestOptions = {}): Promise<void> {
-    const body = typeof data === "string" ? new TextEncoder().encode(data) : data;
-    const params: Record<string, string> = { path };
-    if (opts.container) params.container = opts.container;
-
-    await this._api.requestNoContent({
-      method: "POST",
-      path: filesystemPath(this._sandboxId),
-      params,
-      body,
-      headers: { "content-type": "application/octet-stream" },
-      ...(req.signal ? { signal: req.signal } : {}),
-    });
-  }
-
-  /**
-   * Read a file from the sandbox.
+   * For binary or non-UTF-8 content, use {@link Filesystem.readBytes}
+   * instead; this method throws if the file is not valid UTF-8.
    *
    * @example
    * ```ts
-   * const bytes = await sandbox.filesystem.read("/tmp/hello.txt");
-   * const text = new TextDecoder().decode(bytes);
+   * const text = await sandbox.filesystem.readText("/tmp/hello.txt");
    * ```
    *
    * @param path - Absolute path inside the sandbox.
    * @param opts - File options (e.g. `container` for multi-container
    * sandboxes).
-   * @returns File contents as bytes. Decode with `TextDecoder` for
-   * text.
+   * @returns The file's contents decoded as UTF-8.
+   * @throws {NotFoundError} If the file does not exist.
+   * @throws {TypeError} If the contents are not valid UTF-8.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async readText(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<string> {
+    // fatal: true so non-UTF-8 content throws instead of silently decoding to
+    // replacement characters; callers wanting raw bytes use readBytes. This
+    // matches the strict behavior of the Python SDK's bytes.decode().
+    return new TextDecoder("utf-8", { fatal: true }).decode(await this.readBytes(path, opts, req));
+  }
+
+  /**
+   * Read a file from the sandbox as raw bytes.
+   *
+   * @example
+   * ```ts
+   * const bytes = await sandbox.filesystem.readBytes("/tmp/data.bin");
+   * ```
+   *
+   * @param path - Absolute path inside the sandbox.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @returns The file's contents as bytes.
    * @throws {NotFoundError} If the file does not exist.
    * @throws {APIError} If the API returns a non-2xx response.
    * @throws {APIConnectionError} If the request cannot reach the API.
    */
-  async read(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<Uint8Array> {
+  async readBytes(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<Uint8Array> {
     const params: Record<string, string> = { path };
     if (opts.container) params.container = opts.container;
 
@@ -110,6 +98,63 @@ export class Filesystem {
       method: "GET",
       path: filesystemPath(this._sandboxId),
       params,
+      ...(req.signal ? { signal: req.signal } : {}),
+    });
+  }
+
+  /**
+   * Write UTF-8 text to a file in the sandbox.
+   *
+   * Creates the file if it does not exist, overwrites it if it does.
+   * Parent directories are created automatically.
+   *
+   * @example
+   * ```ts
+   * await sandbox.filesystem.writeText("/tmp/hello.txt", "hi");
+   * ```
+   *
+   * @param path - Absolute path inside the sandbox (e.g.
+   * `"/tmp/hello.txt"`).
+   * @param data - Text to write, encoded as UTF-8.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async writeText(path: string, data: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<void> {
+    await this.writeBytes(path, new TextEncoder().encode(data), opts, req);
+  }
+
+  /**
+   * Write raw bytes to a file in the sandbox.
+   *
+   * Creates the file if it does not exist, overwrites it if it does.
+   * Parent directories are created automatically.
+   *
+   * @example
+   * ```ts
+   * await sandbox.filesystem.writeBytes("/tmp/data.bin", new Uint8Array([0, 1, 2]));
+   * ```
+   *
+   * @param path - Absolute path inside the sandbox.
+   * @param data - Binary content as `Uint8Array`, `ArrayBuffer`, `Blob`, or a
+   * `ReadableStream<Uint8Array>` (streams are non-replayable; see
+   * {@link BinaryBody}).
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async writeBytes(path: string, data: BinaryBody, opts: FileOptions = {}, req: RequestOptions = {}): Promise<void> {
+    const params: Record<string, string> = { path };
+    if (opts.container) params.container = opts.container;
+
+    await this._api.requestNoContent({
+      method: "POST",
+      path: filesystemPath(this._sandboxId),
+      params,
+      body: data,
+      headers: { "content-type": "application/octet-stream" },
       ...(req.signal ? { signal: req.signal } : {}),
     });
   }

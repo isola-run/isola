@@ -233,17 +233,20 @@ try {
 
 ```ts
 // Write text
-await sandbox.filesystem.write("/tmp/hello.txt", "Hello, World!");
+await sandbox.filesystem.writeText("/tmp/hello.txt", "Hello, World!");
 
 // Write bytes
-await sandbox.filesystem.write("/tmp/data.bin", new Uint8Array([0, 1, 2]));
+await sandbox.filesystem.writeBytes("/tmp/data.bin", new Uint8Array([0, 1, 2]));
 
 // Stream a file body (Node's `Readable.toWeb()` works too)
-await sandbox.filesystem.write("/tmp/upload.tar.gz", fileBlob);
+await sandbox.filesystem.writeBytes("/tmp/upload.tar.gz", fileBlob);
 
-// Read a file
-const data = await sandbox.filesystem.read("/tmp/hello.txt");
-console.log(new TextDecoder().decode(data));  // "Hello, World!"
+// Read a file as text
+const text = await sandbox.filesystem.readText("/tmp/hello.txt");
+console.log(text);  // "Hello, World!"
+
+// Read a file as raw bytes
+const data = await sandbox.filesystem.readBytes("/tmp/data.bin");
 ```
 
 Parent directories are created automatically on uploads. Streaming bodies (`ReadableStream`) are supported but **non-replayable**: transient errors during a stream upload are not retried.
@@ -428,7 +431,7 @@ Target a specific container when running commands or writing files:
 
 ```ts
 const result = await sandbox.commands.run(["wget", "-qO-", "http://127.0.0.1:8080"], { container: "worker" });
-await sandbox.filesystem.write("/tmp/data.txt", "hello", { container: "app" });
+await sandbox.filesystem.writeText("/tmp/data.txt", "hello", { container: "app" });
 ```
 
 ## Error handling
