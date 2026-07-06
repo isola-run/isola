@@ -170,6 +170,23 @@ func runtimeFromDump(dump []byte, handler string) (map[string]any, bool) {
 	return nil, false
 }
 
+// mergedEntryOverride reports the first field of a merged runtime entry that
+// diverges from the values the managed block pins. Imports merge over the
+// main config, so a drop-in can repoint the handler at another shim or shim
+// config while keeping its runtime_type intact; such a node must not count
+// as gVisor-ready. Returns the field name and merged value, or "" when the
+// entry is intact.
+func mergedEntryOverride(rt map[string]any, shimPath string) (field, got string) {
+	if p, _ := rt["runtime_path"].(string); p != shimPath {
+		return "runtime_path", p
+	}
+	opts, _ := rt["options"].(map[string]any)
+	if cp, _ := opts["ConfigPath"].(string); cp != runscShimConfigPath {
+		return "options.ConfigPath", cp
+	}
+	return "", ""
+}
+
 // systemdCgroupFromDump reports whether the node's default runc runtime uses
 // the systemd cgroup driver, which gVisor must match (runsc's systemd-cgroup
 // flag). Defaults to false (runc's own default) when undetectable.

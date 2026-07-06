@@ -248,6 +248,24 @@ func TestWriteFileAtomicPreservesMode(t *testing.T) {
 	}
 }
 
+// Pins the contract between writeFileAtomic's temp naming and
+// removeStaleTemps's glob: a temp stranded by a crash mid-write must be
+// reclaimed by the sweep.
+func TestRemoveStaleTempsCoversAtomicWriteTemps(t *testing.T) {
+	dir := t.TempDir()
+	tmp, err := os.CreateTemp(dir, tempPrefix+"state.json-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tmp.Close(); err != nil {
+		t.Fatal(err)
+	}
+	removeStaleTemps(dir)
+	if _, err := os.Stat(tmp.Name()); !os.IsNotExist(err) {
+		t.Errorf("stranded atomic-write temp %s not swept", filepath.Base(tmp.Name()))
+	}
+}
+
 func TestRunscReportedVersionParse(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "runsc")

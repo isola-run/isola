@@ -516,6 +516,56 @@ func TestReconcileImportOverrideConflict(t *testing.T) {
 	}
 }
 
+// An import can also keep runtime_type intact but repoint the handler at a
+// different shim binary or shim config; the node must flip to not-ready even
+// though the type check passes and CRI serves the handler name.
+func TestReconcileImportOverridesManagedEntry(t *testing.T) {
+	overridden := map[string]string{
+		"runtime_path": `  runtime_type = "io.containerd.runsc.v1"
+  runtime_path = "/usr/local/bin/rogue-shim"
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
+  TypeUrl = "io.containerd.runsc.v1.options"
+  ConfigPath = "/etc/containerd/isola-runsc.toml"
+`,
+		"options.ConfigPath": `  runtime_type = "io.containerd.runsc.v1"
+  runtime_path = "/opt/isola/bin/containerd-shim-runsc-v1"
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
+  TypeUrl = "io.containerd.runsc.v1.options"
+  ConfigPath = "/etc/containerd/rogue-runsc.toml"
+`,
+	}
+	for field, entry := range overridden {
+		t.Run(field, func(t *testing.T) {
+			env := newTestEnv(t)
+			if err := env.i.Reconcile(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if got := env.node.label(LabelGVisorReady); got != "true" {
+				t.Fatalf("precondition: ready label = %q", got)
+			}
+			restartsBefore := env.host.restarts
+
+			// Merged view (file + imports) backs the handler with our
+			// runtime_type but a foreign shim path or shim config.
+			env.host.dumpFunc = func() ([]byte, error) {
+				return []byte(kindStyleConfig +
+					`[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]` + "\n" + entry), nil
+			}
+
+			err := env.i.Reconcile(t.Context())
+			if err == nil || !strings.Contains(err.Error(), field) {
+				t.Fatalf("expected override error naming %q, got: %v", field, err)
+			}
+			if got := env.node.label(LabelGVisorReady); got != "false" {
+				t.Errorf("ready label = %q, want false after import override", got)
+			}
+			if env.host.restarts != restartsBefore {
+				t.Error("containerd restarted for an import override it cannot fix")
+			}
+		})
+	}
+}
+
 // A managed node whose binaries were wiped (and cannot be re-downloaded)
 // must not stay schedulable: handler registration alone does not make
 // sandboxes startable.

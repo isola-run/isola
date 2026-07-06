@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"sync/atomic"
 	"time"
@@ -114,7 +115,27 @@ func backoffInterval(base time.Duration, failures int, maxWait time.Duration) ti
 	return d
 }
 
-// Reconcile drives the node to the desired state:
+// reconcileOutcome carries what reconcile observed for publishStatus, beyond
+// what its error can say.
+type reconcileOutcome struct {
+	// foreignOK: a pre-existing non-isola runsc handler was verified; the
+	// node is usable but unmanaged.
+	foreignOK bool
+	// conflict: the configured handler name is backed by something other than
+	// the isola-managed gVisor runtime; the node must never be ready.
+	conflict bool
+}
+
+// Reconcile drives the node to the desired state and, whatever happened,
+// publishes node labels reflecting the *observed* state, so a failed upgrade
+// on a previously working node keeps the node schedulable for sandboxes.
+func (i *Installer) Reconcile(ctx context.Context) error {
+	out, err := i.reconcile(ctx)
+	i.publishStatus(ctx, out, err)
+	return err
+}
+
+// reconcile:
 //
 //  1. preflight: refuse nodes that do not run containerd as the standard
 //     systemd unit loading /etc/containerd/config.toml (k3s/RKE2/... manage
@@ -129,24 +150,19 @@ func backoffInterval(base time.Duration, failures int, maxWait time.Duration) ti
 //  5. ensure the managed block in containerd's config.toml — the only step
 //     that restarts containerd, guarded by validate/health-check/rollback —
 //     and verify the live runtime serves the handler.
-//
-// Whatever happens, node labels are updated at the end to reflect the
-// *observed* state, so a failed upgrade on a previously working node keeps
-// the node schedulable for sandboxes.
-func (i *Installer) Reconcile(ctx context.Context) (err error) {
-	foreignOK, conflict := false, false
-	defer func() {
-		i.publishStatus(ctx, foreignOK, conflict, err)
-	}()
-
+func (i *Installer) reconcile(ctx context.Context) (out reconcileOutcome, err error) {
 	if err := i.preflight(ctx); err != nil {
-		return err
+		return out, err
 	}
 
-	raw, err := os.ReadFile(i.cfg.hostPath(containerdConfigPath)) //nolint:gosec // fixed managed path
+	cfgPath := i.cfg.hostPath(containerdConfigPath)
+	raw, err := os.ReadFile(cfgPath) //nolint:gosec // fixed managed path
 	if err != nil {
-		return fmt.Errorf("reading containerd config (a standard containerd installation with %s is required): %w", containerdConfigPath, err)
+		return out, fmt.Errorf("reading containerd config (a standard containerd installation with %s is required): %w", containerdConfigPath, err)
 	}
+	// All writes into the config dir are atomic-via-temp; sweep temps a crash
+	// may have stranded (ensureBinaries does the same for the install dir).
+	removeStaleTemps(filepath.Dir(cfgPath))
 
 	// `containerd config dump` is both the merged-config view (file +
 	// imports + defaults, post-migration) and the only validation containerd
@@ -155,12 +171,12 @@ func (i *Installer) Reconcile(ctx context.Context) (err error) {
 	// which is why serving is verified separately over CRI.
 	dump, err := i.host.Run(ctx, "containerd", "config", "dump")
 	if err != nil {
-		return fmt.Errorf("containerd's current configuration failed to load; refusing to modify anything: %w", err)
+		return out, fmt.Errorf("containerd's current configuration failed to load; refusing to modify anything: %w", err)
 	}
 
-	_, managed, err := managedBlock(raw)
+	current, managed, err := managedBlock(raw)
 	if err != nil {
-		return err
+		return out, err
 	}
 	// The type check runs on the MERGED view unconditionally: even on a
 	// managed node, a drop-in import can override our handler entry with a
@@ -169,8 +185,8 @@ func (i *Installer) Reconcile(ctx context.Context) (err error) {
 	rt, handlerInDump := runtimeFromDump(dump, i.cfg.Handler)
 	if handlerInDump {
 		if rtType, _ := rt["runtime_type"].(string); rtType != runscRuntimeType {
-			conflict = true
-			return fmt.Errorf("containerd has a runtime handler %q with runtime_type %q (expected %s); "+
+			out.conflict = true
+			return out, fmt.Errorf("containerd has a runtime handler %q with runtime_type %q (expected %s); "+
 				"resolve the conflict by removing it or by configuring a different gvisor.installer.handler",
 				i.cfg.Handler, rt["runtime_type"], runscRuntimeType)
 		}
@@ -179,66 +195,98 @@ func (i *Installer) Reconcile(ctx context.Context) (err error) {
 		// A handler we did not write already exists and is runsc-typed.
 		// Respect it: require the live daemon to serve it, but leave the
 		// node alone.
-		foreignOK = true
+		out.foreignOK = true
 		i.log.Info("pre-existing runsc handler detected; leaving node unmanaged", "handler", i.cfg.Handler)
-		return i.verifyServing(ctx)
+		return out, i.verifyServing(ctx)
+	}
+	if managed && handlerInDump {
+		// Same import risk for the fields the type check cannot see: a
+		// drop-in keeping runtime_type intact can still repoint runtime_path
+		// or ConfigPath away from the managed install. Only meaningful while
+		// the on-disk block is current — a stale block legitimately diverges
+		// from the merged view mid-upgrade and is about to be rewritten.
+		if desired, derr := i.desiredManagedBlock(raw); derr == nil && current == desired {
+			if field, got := mergedEntryOverride(rt, i.cfg.shimPath()); field != "" {
+				out.conflict = true
+				return out, fmt.Errorf("a containerd import overrides the managed runtime handler %q (%s is %q); "+
+					"sandboxes would not run the isola-managed gVisor: remove the conflicting drop-in",
+					i.cfg.Handler, field, got)
+			}
+		}
 	}
 
 	if _, err := i.ensureBinaries(ctx); err != nil {
-		return err
+		return out, err
 	}
 	if err := i.ensureRunscShimConfig(dump); err != nil {
-		return err
+		return out, err
 	}
-	return i.ensureContainerdConfig(ctx, raw)
+	return out, i.ensureContainerdConfig(ctx, raw)
+}
+
+// desiredManagedBlock renders the managed block appropriate for raw's config
+// schema version.
+func (i *Installer) desiredManagedBlock(raw []byte) (string, error) {
+	pluginID, err := criPluginID(configSchemaVersion(raw))
+	if err != nil {
+		return "", err
+	}
+	return renderManagedBlock(pluginID, i.cfg.Handler, i.cfg.shimPath(), runscShimConfigPath), nil
 }
 
 // ensureContainerdConfig reconciles the managed block in config.toml and
-// verifies the live daemon serves the handler. When a change is required it
-// follows the full safety chain: pristine backup → atomic write → validate →
-// restart → CRI health check → rollback on any failure. The installer pod
-// itself survives containerd restarts (shims keep containers running), which
-// is what makes in-place rollback possible.
-func (i *Installer) ensureContainerdConfig(ctx context.Context, raw []byte) error {
-	pluginID, err := criPluginID(configSchemaVersion(raw))
+// verifies the live daemon serves the handler.
+func (i *Installer) ensureContainerdConfig(ctx context.Context, raw []byte) (err error) {
+	// Every success path below ends with the handler verified served, which
+	// is the condition the convergence-restart budget is scoped to.
+	defer func() {
+		if err == nil {
+			i.convergeRestartedFor = ""
+		}
+	}()
+
+	desired, err := i.desiredManagedBlock(raw)
 	if err != nil {
 		return err
 	}
-	desired := renderManagedBlock(pluginID, i.cfg.Handler, i.cfg.shimPath(), runscShimConfigPath)
 	current, found, err := managedBlock(raw)
 	if err != nil {
 		return err
 	}
-	if found && current == desired {
-		servingErr := i.verifyServing(ctx)
-		if servingErr == nil {
-			i.convergeRestartedFor = ""
-			return nil
-		}
-		// The on-disk config is correct but the live daemon does not serve
-		// the handler — a previous run was interrupted between writing the
-		// config and restarting containerd, or the daemon regressed. Restart
-		// once per regression to converge; never repeatedly, so a node that
-		// cannot converge does not get containerd restarted on every retry.
-		if i.convergeRestartedFor == desired {
-			return fmt.Errorf("runtime handler still not served after a convergence restart: %w", servingErr)
-		}
-		i.log.Warn("containerd config is up to date but the running daemon does not serve the handler; restarting containerd to converge", "error", servingErr)
-		if _, err := i.host.Run(ctx, "systemctl", "restart", "containerd"); err != nil {
-			// Nothing was restarted; the retry budget is not spent.
-			return err
-		}
-		i.convergeRestartedFor = desired
-		if err := i.awaitRuntimeReady(ctx); err != nil {
-			return err
-		}
-		if err := i.verifyServing(ctx); err != nil {
-			return err
-		}
-		i.convergeRestartedFor = ""
-		return nil
+	if !found || current != desired {
+		return i.applyConfigChange(ctx, raw, desired)
 	}
 
+	servingErr := i.verifyServing(ctx)
+	if servingErr == nil {
+		return nil
+	}
+	// The on-disk config is correct but the live daemon does not serve the
+	// handler — a previous run was interrupted between writing the config
+	// and restarting containerd, or the daemon regressed. Restart once per
+	// regression to converge; never repeatedly, so a node that cannot
+	// converge does not get containerd restarted on every retry.
+	if i.convergeRestartedFor == desired {
+		return fmt.Errorf("runtime handler still not served after a convergence restart: %w", servingErr)
+	}
+	i.log.Warn("containerd config is up to date but the running daemon does not serve the handler; restarting containerd to converge", "error", servingErr)
+	if _, err := i.host.Run(ctx, "systemctl", "restart", "containerd"); err != nil {
+		// Nothing was restarted; the retry budget is not spent.
+		return err
+	}
+	i.convergeRestartedFor = desired
+	if err := i.awaitRuntimeReady(ctx); err != nil {
+		return err
+	}
+	return i.verifyServing(ctx)
+}
+
+// applyConfigChange splices the desired managed block into the config and
+// applies it through the full safety chain: pristine backup → atomic write →
+// validate → restart → CRI health check → rollback on any failure. The
+// installer pod itself survives containerd restarts (shims keep containers
+// running), which is what makes in-place rollback possible.
+func (i *Installer) applyConfigChange(ctx context.Context, raw []byte, desired string) error {
 	next, err := spliceManagedBlock(raw, desired)
 	if err != nil {
 		return err
@@ -253,7 +301,7 @@ func (i *Installer) ensureContainerdConfig(ctx context.Context, raw []byte) erro
 		}
 	}
 
-	i.log.Info("updating containerd config", "path", containerdConfigPath, "schemaPlugin", pluginID)
+	i.log.Info("updating containerd config", "path", containerdConfigPath, "schemaVersion", configSchemaVersion(raw))
 	if err := writeFileAtomic(cfgPath, next); err != nil {
 		return fmt.Errorf("writing containerd config: %w", err)
 	}
@@ -277,7 +325,6 @@ func (i *Installer) ensureContainerdConfig(ctx context.Context, raw []byte) erro
 	if err := i.verifyServing(ctx); err != nil {
 		return err
 	}
-	i.convergeRestartedFor = ""
 	i.log.Info("gVisor runtime handler registered with containerd", "handler", i.cfg.Handler)
 	i.node.Event(corev1.EventTypeNormal, "GVisorRuntimeConfigured",
 		fmt.Sprintf("Registered containerd runtime handler %q (gVisor %s)", i.cfg.Handler, i.cfg.Version))
@@ -353,21 +400,20 @@ func (i *Installer) verifyServing(ctx context.Context) error {
 // foreign handler, and no type conflict was detected — liveness (the running
 // daemon serves the handler), and, for managed nodes, intact binaries. A
 // same-named non-gVisor handler must never mark the node ready.
-func (i *Installer) publishStatus(ctx context.Context, foreignOK, conflict bool, reconcileErr error) {
+func (i *Installer) publishStatus(ctx context.Context, out reconcileOutcome, reconcileErr error) {
 	// The reconcile context may already be cancelled (shutdown); still try to
 	// publish with a short independent deadline.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 
 	identity := false
-	if !conflict {
-		if foreignOK {
+	if !out.conflict {
+		if out.foreignOK {
 			identity = true
 		} else if raw, err := os.ReadFile(i.cfg.hostPath(containerdConfigPath)); err == nil { //nolint:gosec // fixed managed path
 			// Mere marker presence is not enough: a stale block could
 			// register a different handler than the currently configured one.
-			if pluginID, err := criPluginID(configSchemaVersion(raw)); err == nil {
-				desired := renderManagedBlock(pluginID, i.cfg.Handler, i.cfg.shimPath(), runscShimConfigPath)
+			if desired, err := i.desiredManagedBlock(raw); err == nil {
 				current, found, _ := managedBlock(raw)
 				identity = found && current == desired
 			}
@@ -377,7 +423,7 @@ func (i *Installer) publishStatus(ctx context.Context, foreignOK, conflict bool,
 	readyLabel := "false"
 	versionLabel := ""
 	if identity && i.verifyServing(ctx) == nil {
-		if foreignOK {
+		if out.foreignOK {
 			readyLabel = "true"
 			versionLabel = VersionUnmanaged
 		} else if v := i.installedVersion(); v != "" {

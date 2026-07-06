@@ -40,6 +40,10 @@ const (
 	// stateFileName lives in the install dir so it survives pod restarts and
 	// node reboots, and disappears together with the binaries.
 	stateFileName = ".isola-gvisor-state.json"
+
+	// tempPrefix names every temp file (download staging, atomic writes) so
+	// removeStaleTemps can reclaim whatever a crash strands, with one sweep.
+	tempPrefix = ".isola-tmp."
 )
 
 // installState records what was installed so reconciles can short-circuit
@@ -109,7 +113,7 @@ func (i *Installer) ensureBinaries(ctx context.Context) (bool, error) {
 		}
 	}()
 	for _, name := range []string{runscBinary, shimBinary} {
-		tmp := filepath.Join(installDir, ".isola-tmp."+name)
+		tmp := filepath.Join(installDir, tempPrefix+name)
 		sum, err := downloadVerified(ctx, urlBase+"/"+name, tmp)
 		if err != nil {
 			return false, fmt.Errorf("downloading %s: %w", name, err)
@@ -279,10 +283,11 @@ func httpGet(ctx context.Context, url string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 }
 
-// removeStaleTemps cleans up staging files left by a previously interrupted
-// install attempt.
+// removeStaleTemps cleans up temp files left in dir by a previously
+// interrupted download or atomic write; both name their temps with the
+// .isola-tmp. prefix so this one sweep covers them.
 func removeStaleTemps(dir string) {
-	matches, err := filepath.Glob(filepath.Join(dir, ".isola-tmp.*"))
+	matches, err := filepath.Glob(filepath.Join(dir, tempPrefix+"*"))
 	if err != nil {
 		return
 	}
@@ -310,13 +315,15 @@ func writeJSONFile(p string, v any) error {
 // writeFileAtomic writes via a temp file + fsync + rename(2) in the same
 // directory, so readers (containerd, the shim) never observe a partial file
 // and a power loss right after the rename cannot surface a truncated one.
-// An existing file's mode is preserved; new files are created 0644.
+// An existing file's mode is preserved; new files are created 0644. The temp
+// name carries the .isola-tmp. prefix so removeStaleTemps reclaims it if
+// this process dies before the rename.
 func writeFileAtomic(p string, data []byte) error {
 	mode := os.FileMode(0o644)
 	if fi, err := os.Stat(p); err == nil {
 		mode = fi.Mode().Perm()
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(p), "."+path.Base(p)+".tmp-*")
+	tmp, err := os.CreateTemp(filepath.Dir(p), tempPrefix+path.Base(p)+"-*")
 	if err != nil {
 		return err
 	}

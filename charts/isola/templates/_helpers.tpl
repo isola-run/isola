@@ -186,6 +186,10 @@ isola: gvisor.installer.handler
 {{- else if not (hasPrefix "/" $inst.installDir) -}}
 isola: gvisor.installer.installDir
     installDir must be an absolute host path (e.g. /opt/isola/bin).
+{{- else if and .Values.operator.sandboxRuntime.rootfssnapshot.enabled $inst.runtimeClass.create (not (has $inst.handler (list "runsc" "gvisor"))) -}}
+isola: gvisor.installer.handler
+    handler must be "runsc" or "gvisor" when rootfs snapshots are enabled:
+    the operator supports snapshots only for RuntimeClasses with those handlers.
 {{- end -}}
 {{- end -}}
 {{- end -}}
