@@ -49,7 +49,7 @@ const (
 type Config struct {
 	// NodeName is the node this pod runs on (downward API).
 	NodeName string
-	// Version is the gVisor release to install, e.g. "20260608.0".
+	// Version is the gVisor release to install, e.g. "20260622.0".
 	Version string
 	// DownloadURLBase is the release artifact base URL; artifacts are fetched
 	// from <base>/<version>/<arch>/<binary>.
@@ -102,7 +102,7 @@ func ConfigFromEnv() (Config, error) {
 	// the installed binaries would never match the recorded state and every
 	// reconcile would reinstall.
 	if cfg.Version == "latest" {
-		return cfg, errors.New(`GVISOR_VERSION must be a dated release (e.g. "20260608.0"), not "latest"`)
+		return cfg, errors.New(`GVISOR_VERSION must be a dated release (e.g. "20260622.0"), not "latest"`)
 	}
 	if !handlerRe.MatchString(cfg.Handler) {
 		return cfg, fmt.Errorf("GVISOR_HANDLER %q must be a lowercase DNS label (letters, digits, hyphens)", cfg.Handler)

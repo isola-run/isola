@@ -177,7 +177,7 @@ isola: operator.sandboxRuntime.rootfssnapshot.storage.s3
 {{- if $inst.enabled -}}
 {{- if or (not $inst.version) (eq $inst.version "latest") -}}
 isola: gvisor.installer.version
-    version must be a dated gVisor release (e.g. "20260608.0"), not empty or "latest":
+    version must be a dated gVisor release (e.g. "20260622.0"), not empty or "latest":
     the installer pins and verifies exact release artifacts.
 {{- else if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" ($inst.handler | default "")) -}}
 isola: gvisor.installer.handler
