@@ -34,8 +34,7 @@ class Filesystem:
     def read_text(self, path: str, *, container: str | None = None) -> str:
         """Read a file from the sandbox as UTF-8 text.
 
-        For binary or non-UTF-8 content, use ``read_bytes`` instead; this
-        method raises ``UnicodeDecodeError`` if the file is not valid UTF-8.
+        For binary or non-UTF-8 content, use read_bytes instead.
 
         Args:
             path: Absolute path inside the sandbox.
@@ -119,8 +118,7 @@ class AsyncFilesystem:
     async def read_text(self, path: str, *, container: str | None = None) -> str:
         """Read a file from the sandbox as UTF-8 text.
 
-        For binary or non-UTF-8 content, use ``read_bytes`` instead; this
-        method raises ``UnicodeDecodeError`` if the file is not valid UTF-8.
+        For binary or non-UTF-8 content, use read_bytes instead.
 
         Args:
             path: Absolute path inside the sandbox.

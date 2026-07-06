@@ -29,7 +29,7 @@ export interface FileOptions {
 /**
  * Binary body types accepted by {@link Filesystem.writeBytes}.
  *
- * A `ReadableStream` body is sent once; unlike the in-memory body types it is
+ * A `ReadableStream` body is sent once. Unlike the in-memory body types, it is
  * not retried on transport errors.
  */
 export type BinaryBody = Uint8Array | ArrayBuffer | Blob | ReadableStream<Uint8Array>;
@@ -51,7 +51,7 @@ export class Filesystem {
    * Read a file from the sandbox as UTF-8 text.
    *
    * For binary or non-UTF-8 content, use {@link Filesystem.readBytes}
-   * instead; this method throws if the file is not valid UTF-8.
+   * instead.
    *
    * @example
    * ```ts
@@ -69,8 +69,8 @@ export class Filesystem {
    */
   async readText(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<string> {
     // fatal: true so non-UTF-8 content throws instead of silently decoding to
-    // replacement characters; callers wanting raw bytes use readBytes. This
-    // matches the strict behavior of the Python SDK's bytes.decode().
+    // replacement characters, matching the strict behavior of the Python SDK's
+    // bytes.decode().
     return new TextDecoder("utf-8", { fatal: true }).decode(await this.readBytes(path, opts, req));
   }
 
@@ -138,8 +138,7 @@ export class Filesystem {
    *
    * @param path - Absolute path inside the sandbox.
    * @param data - Binary content as `Uint8Array`, `ArrayBuffer`, `Blob`, or a
-   * `ReadableStream<Uint8Array>` (streams are non-replayable; see
-   * {@link BinaryBody}).
+   * non-replayable `ReadableStream<Uint8Array>` (see {@link BinaryBody}).
    * @param opts - File options (e.g. `container` for multi-container
    * sandboxes).
    * @throws {APIError} If the API returns a non-2xx response.
