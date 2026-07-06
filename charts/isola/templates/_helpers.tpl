@@ -110,7 +110,7 @@ Invoked from the operator deployment template to catch misconfigurations at inst
 {{- $messages = append $messages (include "isola.validateValues.runtimeClassName" .) -}}
 {{- $messages = append $messages (include "isola.validateValues.rootfssnapshot" .) -}}
 {{- $messages = append $messages (include "isola.validateValues.rootfssnapshotCredentials" .) -}}
-{{- $messages = append $messages (include "isola.validateValues.gvisorAutoInstall" .) -}}
+{{- $messages = append $messages (include "isola.validateValues.gvisorInstaller" .) -}}
 {{- $messages = without $messages "" -}}
 {{- $message := join "\n" $messages -}}
 {{- if $message -}}
@@ -172,18 +172,19 @@ isola: operator.sandboxRuntime.rootfssnapshot.storage.s3
 {{- end -}}
 {{- end -}}
 
-{{- define "isola.validateValues.gvisorAutoInstall" -}}
-{{- $ai := .Values.gvisor.autoInstall -}}
-{{- if $ai.enabled -}}
-{{- if or (not $ai.version) (eq $ai.version "latest") -}}
-isola: gvisor.autoInstall.version
+{{- define "isola.validateValues.gvisorInstaller" -}}
+{{- $inst := .Values.gvisor.installer -}}
+{{- if $inst.enabled -}}
+{{- if or (not $inst.version) (eq $inst.version "latest") -}}
+isola: gvisor.installer.version
     version must be a dated gVisor release (e.g. "20260608.0"), not empty or "latest":
     the installer pins and verifies exact release artifacts.
-{{- else if not $ai.handler -}}
-isola: gvisor.autoInstall.handler
-    handler must not be empty (containerd runtime handler name, e.g. "runsc").
-{{- else if not (hasPrefix "/" $ai.installDir) -}}
-isola: gvisor.autoInstall.installDir
+{{- else if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" ($inst.handler | default "")) -}}
+isola: gvisor.installer.handler
+    handler must be a lowercase DNS label (letters, digits, hyphens), e.g. "runsc".
+    It becomes the RuntimeClass handler and the containerd runtime entry.
+{{- else if not (hasPrefix "/" $inst.installDir) -}}
+isola: gvisor.installer.installDir
     installDir must be an absolute host path (e.g. /opt/isola/bin).
 {{- end -}}
 {{- end -}}
@@ -284,14 +285,14 @@ RootfsSnapshot enabled flag
 
 {{/*
 gVisor runsc binary path (only used when rootfssnapshot enabled).
-Defaults to the auto-installer's location when gvisor.autoInstall is enabled,
+Defaults to the auto-installer's location when gvisor.installer is enabled,
 so the two features compose without extra configuration.
 */}}
 {{- define "isola.operator.gvisorRunscPath" -}}
 {{- if .Values.operator.sandboxRuntime.rootfssnapshot.runsc.binaryPath -}}
 {{- .Values.operator.sandboxRuntime.rootfssnapshot.runsc.binaryPath -}}
-{{- else if .Values.gvisor.autoInstall.enabled -}}
-{{- printf "%s/runsc" .Values.gvisor.autoInstall.installDir -}}
+{{- else if .Values.gvisor.installer.enabled -}}
+{{- printf "%s/runsc" .Values.gvisor.installer.installDir -}}
 {{- else -}}
 /usr/local/bin/runsc
 {{- end -}}
@@ -508,7 +509,7 @@ app.kubernetes.io/component: gvisor-installer
 gVisor installer image
 */}}
 {{- define "isola.gvisorInstaller.image" -}}
-{{- include "isola.image" (dict "imageConfig" .Values.gvisor.autoInstall.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
+{{- include "isola.image" (dict "imageConfig" .Values.gvisor.installer.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
 
 {{/* ==========================================================================

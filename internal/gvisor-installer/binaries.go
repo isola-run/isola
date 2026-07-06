@@ -37,24 +37,20 @@ const (
 	runscBinary = "runsc"
 	shimBinary  = "containerd-shim-runsc-v1"
 
-	// stateFileName records what was installed so reconciles can short-circuit
-	// without re-downloading. Lives in the install dir so it survives pod
-	// restarts and node reboots, and disappears together with the binaries.
+	// stateFileName lives in the install dir so it survives pod restarts and
+	// node reboots, and disappears together with the binaries.
 	stateFileName = ".isola-gvisor-state.json"
 )
 
-// installState ties the configured release version to the version string the
-// installed runsc binary actually reports. The indirection matters because
-// the two differ in shape (config "20260608.0" vs binary "release-20260608.0"),
-// and comparing the reported string against a recorded value also detects
-// out-of-band binary swaps.
+// installState records what was installed so reconciles can short-circuit
+// without re-downloading: the release version plus each binary's sha512 as
+// verified at download time. Re-hashing the on-disk binaries against it
+// detects corruption and out-of-band swaps.
 type installState struct {
-	DesiredVersion  string `json:"desiredVersion"`
-	ReportedVersion string `json:"reportedVersion"`
+	Version string            `json:"version"`
+	SHA512  map[string]string `json:"sha512"`
 }
 
-// gvisorArch maps the pod's GOARCH (which equals the node arch) to the gVisor
-// release bucket's directory naming.
 func gvisorArch() (string, error) {
 	switch runtime.GOARCH {
 	case "amd64":
@@ -68,9 +64,8 @@ func gvisorArch() (string, error) {
 
 var runscVersionRe = regexp.MustCompile(`runsc version (\S+)`)
 
-// runscReportedVersion executes the installed runsc binary (a static binary,
-// so it runs fine inside the installer container) and returns its version
-// token, e.g. "release-20260608.0".
+// runscReportedVersion sanity-checks a staged download before promotion;
+// runsc is a static binary, so it runs fine inside the installer container.
 func runscReportedVersion(ctx context.Context, binPath string) (string, error) {
 	out, err := exec.CommandContext(ctx, binPath, "--version").CombinedOutput() //nolint:gosec // path is the managed install dir
 	if err != nil {
@@ -93,7 +88,7 @@ func (i *Installer) ensureBinaries(ctx context.Context) (bool, error) {
 	}
 	removeStaleTemps(installDir)
 
-	if i.binariesUpToDate(ctx, installDir) {
+	if i.binariesUpToDate(installDir) {
 		return false, nil
 	}
 
@@ -107,6 +102,7 @@ func (i *Installer) ensureBinaries(ctx context.Context) (bool, error) {
 	// Stage both binaries before promoting either, so a failed download never
 	// leaves a half-upgraded pair in place.
 	staged := make(map[string]string, 2)
+	sums := make(map[string]string, 2)
 	defer func() {
 		for _, tmp := range staged {
 			_ = os.Remove(tmp)
@@ -114,17 +110,22 @@ func (i *Installer) ensureBinaries(ctx context.Context) (bool, error) {
 	}()
 	for _, name := range []string{runscBinary, shimBinary} {
 		tmp := filepath.Join(installDir, ".isola-tmp."+name)
-		if err := downloadVerified(ctx, urlBase+"/"+name, tmp); err != nil {
+		sum, err := downloadVerified(ctx, urlBase+"/"+name, tmp)
+		if err != nil {
 			return false, fmt.Errorf("downloading %s: %w", name, err)
 		}
 		staged[name] = tmp
+		sums[name] = sum
 	}
 
-	// Sanity-check the staged runsc actually runs and reports a version
-	// before it can ever be referenced by containerd.
 	reported, err := runscReportedVersion(ctx, staged[runscBinary])
 	if err != nil {
 		return false, fmt.Errorf("staged runsc failed verification: %w", err)
+	}
+	// Catch mirrors serving wrong-version artifacts with self-consistent
+	// checksums: the version label must not lie.
+	if got := strings.TrimPrefix(reported, "release-"); got != i.cfg.Version {
+		return false, fmt.Errorf("staged runsc reports version %q, expected %s", reported, i.cfg.Version)
 	}
 
 	// rename(2) is atomic and leaves running shims/sandboxes on the old inode;
@@ -137,93 +138,125 @@ func (i *Installer) ensureBinaries(ctx context.Context) (bool, error) {
 	}
 
 	if err := writeJSONFile(filepath.Join(installDir, stateFileName), installState{
-		DesiredVersion:  i.cfg.Version,
-		ReportedVersion: reported,
+		Version: i.cfg.Version,
+		SHA512:  sums,
 	}); err != nil {
 		return false, fmt.Errorf("recording install state: %w", err)
 	}
-	i.log.Info("gVisor binaries installed", "version", i.cfg.Version, "reportedVersion", reported)
+	i.log.Info("gVisor binaries installed", "version", i.cfg.Version)
 	return true, nil
 }
 
-// binariesUpToDate reports whether the installed binaries already match the
-// desired version: the state file must record the desired version AND the
-// on-disk runsc must still report the version recorded at install time.
-func (i *Installer) binariesUpToDate(ctx context.Context, installDir string) bool {
+// binariesUpToDate reports whether the install dir already holds the desired
+// release: the recorded version matches and the on-disk binaries still hash
+// to what was verified at download time.
+func (i *Installer) binariesUpToDate(installDir string) bool {
+	st, ok := i.readState(installDir)
+	return ok && st.Version == i.cfg.Version && binariesMatchState(installDir, st)
+}
+
+func (i *Installer) readState(installDir string) (installState, bool) {
 	var st installState
 	if err := readJSONFile(filepath.Join(installDir, stateFileName), &st); err != nil {
-		return false
+		return st, false
 	}
-	if st.DesiredVersion != i.cfg.Version {
-		return false
+	return st, true
+}
+
+func binariesMatchState(installDir string, st installState) bool {
+	for _, name := range []string{runscBinary, shimBinary} {
+		p := filepath.Join(installDir, name)
+		fi, err := os.Stat(p)
+		if err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm()&0o111 == 0 {
+			return false
+		}
+		sum, err := fileSHA512(p)
+		if err != nil || sum != st.SHA512[name] {
+			return false
+		}
 	}
-	reported, err := runscReportedVersion(ctx, filepath.Join(installDir, runscBinary))
-	if err != nil || reported != st.ReportedVersion {
-		return false
-	}
-	fi, err := os.Stat(filepath.Join(installDir, shimBinary))
-	return err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0o111 != 0
+	return true
 }
 
 // installedVersion returns the version label value for the current install:
-// the recorded desired version when state and binary agree, otherwise the
-// raw reported version of whatever runsc is on disk.
-func (i *Installer) installedVersion(ctx context.Context) string {
+// the recorded version as long as the on-disk binaries match the recorded
+// hashes (also mid-upgrade, when it differs from the desired version), empty
+// when there is no intact install.
+func (i *Installer) installedVersion() string {
 	installDir := i.cfg.hostPath(i.cfg.InstallDir)
-	if i.binariesUpToDate(ctx, installDir) {
-		return i.cfg.Version
-	}
-	if reported, err := runscReportedVersion(ctx, filepath.Join(installDir, runscBinary)); err == nil {
-		return strings.TrimPrefix(reported, "release-")
+	if st, ok := i.readState(installDir); ok && binariesMatchState(installDir, st) {
+		return st.Version
 	}
 	return ""
 }
 
-// downloadVerified fetches url into dest and verifies it against the .sha512
-// checksum published next to the artifact. The checksum only proves
-// integrity in transit (it comes from the same origin); authenticity rests
-// on the HTTPS origin, same as gVisor's documented install flow.
-func downloadVerified(ctx context.Context, url, dest string) error {
+func fileSHA512(p string) (string, error) {
+	f, err := os.Open(p) //nolint:gosec // fixed names under the managed install dir
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha512.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// downloadVerified fetches url into dest, verifies it against the .sha512
+// checksum published next to the artifact, and returns the hex digest. The
+// checksum only proves integrity in transit (it comes from the same origin);
+// authenticity rests on the HTTPS origin, same as gVisor's documented
+// install flow.
+func downloadVerified(ctx context.Context, url, dest string) (string, error) {
 	sumBody, err := httpGet(ctx, url+".sha512")
 	if err != nil {
-		return err
+		return "", err
 	}
 	expected, _, _ := strings.Cut(strings.TrimSpace(string(sumBody)), " ")
 	if len(expected) != sha512.Size*2 {
-		return fmt.Errorf("malformed sha512 file for %s: %q", url, truncateOutput(sumBody))
+		return "", fmt.Errorf("malformed sha512 file for %s: %q", url, truncateOutput(sumBody))
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	resp, err := downloadClient.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GET %s: unexpected status %s", url, resp.Status)
+		return "", fmt.Errorf("GET %s: unexpected status %s", url, resp.Status)
 	}
 
 	f, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755) //nolint:gosec // binaries must be world-executable
 	if err != nil {
-		return err
+		return "", err
 	}
+	// Bound the write so a misbehaving mirror cannot fill the host
+	// filesystem before the checksum rejects it (runsc is ~130MB).
+	const maxArtifactSize = 1 << 30
 	h := sha512.New()
-	_, copyErr := io.Copy(io.MultiWriter(f, h), resp.Body)
+	n, copyErr := io.Copy(io.MultiWriter(f, h), io.LimitReader(resp.Body, maxArtifactSize+1))
 	closeErr := f.Close()
+	if copyErr == nil && n > maxArtifactSize {
+		copyErr = fmt.Errorf("artifact exceeds %d bytes", int64(maxArtifactSize))
+	}
 	if copyErr != nil {
-		return fmt.Errorf("downloading %s: %w", url, copyErr)
+		_ = os.Remove(dest)
+		return "", fmt.Errorf("downloading %s: %w", url, copyErr)
 	}
 	if closeErr != nil {
-		return closeErr
+		return "", closeErr
 	}
-	if got := hex.EncodeToString(h.Sum(nil)); got != expected {
+	got := hex.EncodeToString(h.Sum(nil))
+	if got != expected {
 		_ = os.Remove(dest)
-		return fmt.Errorf("sha512 mismatch for %s: got %s, want %s", url, got, expected)
+		return "", fmt.Errorf("sha512 mismatch for %s: got %s, want %s", url, got, expected)
 	}
-	return nil
+	return got, nil
 }
 
 // downloadClient bounds each artifact download independently of the reconcile
@@ -274,9 +307,10 @@ func writeJSONFile(p string, v any) error {
 	return writeFileAtomic(p, data)
 }
 
-// writeFileAtomic writes via a temp file + rename(2) in the same directory so
-// readers (containerd, the shim) never observe a partial file. An existing
-// file's mode is preserved; new files are created 0644.
+// writeFileAtomic writes via a temp file + fsync + rename(2) in the same
+// directory, so readers (containerd, the shim) never observe a partial file
+// and a power loss right after the rename cannot surface a truncated one.
+// An existing file's mode is preserved; new files are created 0644.
 func writeFileAtomic(p string, data []byte) error {
 	mode := os.FileMode(0o644)
 	if fi, err := os.Stat(p); err == nil {
@@ -288,10 +322,14 @@ func writeFileAtomic(p string, data []byte) error {
 	}
 	tmpName := tmp.Name()
 	_, writeErr := tmp.Write(data)
+	var syncErr error
+	if writeErr == nil {
+		syncErr = tmp.Sync()
+	}
 	closeErr := tmp.Close()
-	if writeErr != nil || closeErr != nil {
+	if writeErr != nil || syncErr != nil || closeErr != nil {
 		_ = os.Remove(tmpName)
-		return errors.Join(writeErr, closeErr)
+		return errors.Join(writeErr, syncErr, closeErr)
 	}
 	if err := os.Chmod(tmpName, mode); err != nil {
 		_ = os.Remove(tmpName)

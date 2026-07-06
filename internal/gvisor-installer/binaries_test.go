@@ -119,7 +119,7 @@ func TestEnsureBinariesInstallUpgradeAndHeal(t *testing.T) {
 			t.Errorf("%s not executable: %v", name, fi.Mode())
 		}
 	}
-	if got := i.installedVersion(ctx); got != v1 {
+	if got := i.installedVersion(); got != v1 {
 		t.Errorf("installedVersion = %q, want %q", got, v1)
 	}
 
@@ -141,7 +141,7 @@ func TestEnsureBinariesInstallUpgradeAndHeal(t *testing.T) {
 	if !changed || downloads.Load() != 4 {
 		t.Fatalf("upgrade: changed=%v downloads=%d", changed, downloads.Load())
 	}
-	if got := i.installedVersion(ctx); got != v2 {
+	if got := i.installedVersion(); got != v2 {
 		t.Errorf("installedVersion after upgrade = %q, want %q", got, v2)
 	}
 
@@ -156,7 +156,7 @@ func TestEnsureBinariesInstallUpgradeAndHeal(t *testing.T) {
 	if !changed {
 		t.Fatal("drifted binary not reinstalled")
 	}
-	if got := i.installedVersion(ctx); got != v2 {
+	if got := i.installedVersion(); got != v2 {
 		t.Errorf("installedVersion after heal = %q, want %q", got, v2)
 	}
 }
@@ -201,6 +201,29 @@ func TestEnsureBinariesDownloadFailure(t *testing.T) {
 	i := testInstaller(t, srv.URL)
 	if _, err := i.ensureBinaries(t.Context()); err == nil {
 		t.Fatal("expected error when artifacts are missing")
+	}
+}
+
+func TestEnsureBinariesWrongReportedVersion(t *testing.T) {
+	const v = "20260101.0"
+	var downloads atomic.Int64
+	arch, err := gvisorArch()
+	if err != nil {
+		t.Skipf("unsupported test arch: %v", err)
+	}
+	// A mirror serving a (checksum-consistent) artifact of the WRONG version.
+	files := map[string][]byte{
+		v + "/" + arch + "/" + runscBinary: fakeRunscScript("19990101.0"),
+		v + "/" + arch + "/" + shimBinary:  []byte("#!/bin/sh\nexit 0\n"),
+	}
+	srv := gvisorReleaseServer(t, files, &downloads)
+
+	i := testInstaller(t, srv.URL)
+	if _, err := i.ensureBinaries(t.Context()); err == nil || !strings.Contains(err.Error(), "reports version") {
+		t.Fatalf("expected version mismatch error, got: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(i.cfg.hostPath(i.cfg.InstallDir), runscBinary)); !os.IsNotExist(err) {
+		t.Error("wrong-version runsc was promoted")
 	}
 }
 

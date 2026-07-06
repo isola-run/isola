@@ -24,7 +24,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
+
+// healthyUnitShow is the `systemctl show containerd` output of a standard
+// node; MainPID matches the fake /proc entry written by newTestEnv.
+const healthyUnitShow = "LoadState=loaded\nActiveState=active\nMainPID=1234\n"
 
 // fakeHost scripts host-command behavior. The dump result is recomputed from
 // the current on-disk config by default, mimicking `containerd config dump`.
@@ -32,6 +37,9 @@ type fakeHost struct {
 	mu sync.Mutex
 	// distroPaths marks paths that `test -e` reports as existing.
 	distroPaths map[string]bool
+	// unitShow is returned for `systemctl show containerd ...`.
+	unitShow string
+	showErr  error
 	// dumpFunc returns the dump output; defaults provided by newTestEnv.
 	dumpFunc func() ([]byte, error)
 	// restartErr fails `systemctl restart containerd` when set.
@@ -52,6 +60,9 @@ func (f *fakeHost) Run(_ context.Context, name string, args ...string) ([]byte, 
 	case "containerd":
 		return f.dumpFunc()
 	case "systemctl":
+		if len(args) > 0 && args[0] == "show" {
+			return []byte(f.unitShow), f.showErr
+		}
 		f.restarts++
 		if f.onRestart != nil {
 			f.onRestart()
@@ -114,6 +125,17 @@ func (f *fakeNode) label(k string) string {
 	return f.labels[k]
 }
 
+func (f *fakeNode) hasEvent(reason string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, e := range f.events {
+		if strings.Contains(e, reason) {
+			return true
+		}
+	}
+	return false
+}
+
 type testEnv struct {
 	i    *Installer
 	host *fakeHost
@@ -124,9 +146,11 @@ type testEnv struct {
 }
 
 // newTestEnv assembles an installer against a fake node: a temp host root
-// seeded with a kind-style containerd config, a fake release bucket, and fake
-// host/CRI/node collaborators. The default dump reflects the on-disk config:
-// it reports a runsc handler only once the managed block has been written.
+// seeded with a kind-style containerd config, a fake release bucket, a fake
+// /proc for the preflight, and fake host/CRI/node collaborators. The default
+// dump reflects the on-disk config: it reports a runsc handler only once the
+// managed block has been written, and the fake CRI serves whatever the
+// on-disk config declares after each restart.
 func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 	const version = "20260101.0"
@@ -147,7 +171,17 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	i.cfg.RunscConfigSrc = runscSrc
 
+	procRoot := filepath.Join(t.TempDir(), "proc")
+	if err := os.MkdirAll(filepath.Join(procRoot, "1234"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(procRoot, "1234", "cmdline"), []byte("/usr/local/bin/containerd\x00"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	i.procRoot = procRoot
+
 	env.host = &fakeHost{
+		unitShow: healthyUnitShow,
 		dumpFunc: func() ([]byte, error) {
 			// Approximate `containerd config dump`: the on-disk file (which
 			// is what our managed block lands in) parsed and re-served.
@@ -221,7 +255,7 @@ func TestReconcileFreshInstall(t *testing.T) {
 		t.Error("installer not ready after successful reconcile")
 	}
 
-	// Second reconcile: fully idempotent — no downloads, no restart, no churn.
+	// Second reconcile: fully idempotent — no downloads, no restart.
 	before := env.downloads.Load()
 	if err := env.i.Reconcile(t.Context()); err != nil {
 		t.Fatal(err)
@@ -231,6 +265,17 @@ func TestReconcileFreshInstall(t *testing.T) {
 	}
 	if env.downloads.Load() != before {
 		t.Error("idempotent reconcile re-downloaded binaries")
+	}
+
+	// Externally deleted labels are healed on the next reconcile.
+	if err := env.node.SetNodeLabels(t.Context(), map[string]string{LabelGVisorReady: ""}); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if got := env.node.label(LabelGVisorReady); got != "true" {
+		t.Errorf("externally deleted ready label not healed: %q", got)
 	}
 }
 
@@ -254,6 +299,62 @@ func TestReconcileHealsRemovedManagedBlock(t *testing.T) {
 	}
 	if env.host.restarts != 2 {
 		t.Errorf("restarts = %d, want 2", env.host.restarts)
+	}
+}
+
+// A crash between writing config.toml and restarting containerd leaves the
+// desired config on disk but a live daemon that never loaded it. The next
+// reconcile must converge by restarting containerd.
+func TestReconcileConvergesAfterCrashBeforeRestart(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate the post-crash state on a fresh process: config on disk is
+	// correct, but the daemon still serves only runc.
+	env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc"}}, nil)
+	fresh := newInstallerLike(env.i)
+
+	if err := fresh.Reconcile(t.Context()); err != nil {
+		t.Fatalf("reconcile did not converge: %v", err)
+	}
+	if env.host.restarts != 2 {
+		t.Errorf("restarts = %d, want 2 (initial install + convergence restart)", env.host.restarts)
+	}
+	if got := env.node.label(LabelGVisorReady); got != "true" {
+		t.Errorf("ready label = %q", got)
+	}
+}
+
+// If the convergence restart does not make containerd serve the handler,
+// the installer must not keep restarting containerd every reconcile.
+func TestReconcileWedgeRestartsOnlyOnce(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	// The daemon never picks up the handler, no matter how often we restart.
+	env.host.onRestart = func() {
+		env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc"}}, nil)
+	}
+	env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc"}}, nil)
+	fresh := newInstallerLike(env.i)
+
+	if err := fresh.Reconcile(t.Context()); err == nil {
+		t.Fatal("expected error when handler is not served after restart")
+	}
+	restartsAfterFirst := env.host.restarts
+	if restartsAfterFirst != 2 {
+		t.Fatalf("restarts = %d, want 2", restartsAfterFirst)
+	}
+	if err := fresh.Reconcile(t.Context()); err == nil {
+		t.Fatal("expected error on retry")
+	}
+	if env.host.restarts != restartsAfterFirst {
+		t.Errorf("retry restarted containerd again (restarts = %d)", env.host.restarts)
+	}
+	if got := env.node.label(LabelGVisorReady); got == "true" {
+		t.Error("node labeled ready while handler is not served")
 	}
 }
 
@@ -289,6 +390,38 @@ func TestReconcileForeignInstall(t *testing.T) {
 	}
 }
 
+// A foreign handler that is in the config file but not served by the live
+// daemon (config edited without a containerd restart) must be reported as a
+// failure, not silently accepted.
+func TestReconcileForeignHandlerNotServed(t *testing.T) {
+	env := newTestEnv(t)
+	foreign := kindStyleConfig + `[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+  runtime_type = "io.containerd.runsc.v1"
+`
+	if err := os.WriteFile(env.i.cfg.hostPath(containerdConfigPath), []byte(foreign), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Live daemon does not serve runsc.
+	env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc"}}, nil)
+
+	err := env.i.Reconcile(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "runsc") {
+		t.Fatalf("expected not-served error, got: %v", err)
+	}
+	if env.host.restarts != 0 {
+		t.Error("containerd restarted for a foreign install")
+	}
+	if got := env.node.label(LabelGVisorReady); got == "true" {
+		t.Error("node labeled ready while foreign handler is not served")
+	}
+	if !env.node.hasEvent("GVisorInstallFailed") {
+		t.Error("no GVisorInstallFailed event emitted")
+	}
+}
+
+// A same-named handler with a non-gVisor runtime_type must fail AND must not
+// label the node ready, even though the live daemon serves a handler by that
+// name (this is the security boundary: pods would run without gVisor).
 func TestReconcileForeignHandlerConflict(t *testing.T) {
 	env := newTestEnv(t)
 	conflict := kindStyleConfig + `[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
@@ -297,6 +430,10 @@ func TestReconcileForeignHandlerConflict(t *testing.T) {
 	if err := os.WriteFile(env.i.cfg.hostPath(containerdConfigPath), []byte(conflict), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Real containerd lists every configured handler by name, including the
+	// conflicting one.
+	env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc", "runsc"}}, nil)
+
 	err := env.i.Reconcile(t.Context())
 	if err == nil || !strings.Contains(err.Error(), "conflict") {
 		t.Fatalf("expected conflict error, got: %v", err)
@@ -307,10 +444,130 @@ func TestReconcileForeignHandlerConflict(t *testing.T) {
 	if env.i.Ready() {
 		t.Error("installer ready despite conflict")
 	}
+	if got := env.node.label(LabelGVisorReady); got == "true" {
+		t.Error("node labeled gVisor-ready while the handler is not gVisor")
+	}
 }
 
-func TestReconcileUnsupportedDistro(t *testing.T) {
+// Old containerd that does not report RuntimeHandlers cannot be verified;
+// the installer must fail with an actionable error rather than trusting the
+// on-disk config.
+func TestReconcileRequiresRuntimeHandlers(t *testing.T) {
 	env := newTestEnv(t)
+	env.host.onRestart = func() {
+		env.cri.set(criStatus{RuntimeReady: true, Handlers: nil}, nil)
+	}
+
+	err := env.i.Reconcile(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "1.7.15") {
+		t.Fatalf("expected containerd version error, got: %v", err)
+	}
+	if got := env.node.label(LabelGVisorReady); got == "true" {
+		t.Error("node labeled ready without live handler verification")
+	}
+}
+
+// Old containerd is refused in preflight, BEFORE anything on the node is
+// mutated or downloaded.
+func TestPreflightRequiresRuntimeHandlers(t *testing.T) {
+	env := newTestEnv(t)
+	env.cri.set(criStatus{RuntimeReady: true, Handlers: nil}, nil)
+
+	err := env.i.Reconcile(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "1.7.15") {
+		t.Fatalf("expected containerd version error, got: %v", err)
+	}
+	if env.configOnDisk(t) != kindStyleConfig {
+		t.Error("config modified on unverifiable containerd")
+	}
+	if env.downloads.Load() != 0 {
+		t.Error("binaries downloaded on unverifiable containerd")
+	}
+	if env.host.restarts != 0 {
+		t.Error("containerd restarted on unverifiable containerd")
+	}
+}
+
+// A drop-in import can override the managed handler entry with a different
+// runtime_type in the merged config; the node must flip to not-ready even
+// though the managed block is intact and CRI serves the handler name.
+func TestReconcileImportOverrideConflict(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if got := env.node.label(LabelGVisorReady); got != "true" {
+		t.Fatalf("precondition: ready label = %q", got)
+	}
+
+	// Merged view (file + imports) now backs the handler with runc.
+	env.host.dumpFunc = func() ([]byte, error) {
+		return []byte(kindStyleConfig + `[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+  runtime_type = "io.containerd.runc.v2"
+`), nil
+	}
+
+	err := env.i.Reconcile(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Fatalf("expected conflict error, got: %v", err)
+	}
+	if got := env.node.label(LabelGVisorReady); got != "false" {
+		t.Errorf("ready label = %q, want false after import override", got)
+	}
+}
+
+// A managed node whose binaries were wiped (and cannot be re-downloaded)
+// must not stay schedulable: handler registration alone does not make
+// sandboxes startable.
+func TestReconcileNotReadyWhenBinariesMissing(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	installDir := env.i.cfg.hostPath(env.i.cfg.InstallDir)
+	for _, name := range []string{runscBinary, shimBinary} {
+		if err := os.Remove(filepath.Join(installDir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The desired version is not downloadable, so the wipe cannot self-heal.
+	env.i.cfg.Version = "20270101.0"
+
+	if err := env.i.Reconcile(t.Context()); err == nil {
+		t.Fatal("expected download error")
+	}
+	if got := env.node.label(LabelGVisorReady); got != "false" {
+		t.Errorf("ready label = %q, want false with binaries missing", got)
+	}
+}
+
+// After a successful convergence restart the one-restart budget resets, so a
+// later regression (same config content) converges again.
+func TestReconcileConvergeGuardResetsAfterSuccess(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	fresh := newInstallerLike(env.i)
+
+	// First regression: daemon lost the handler.
+	env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc"}}, nil)
+	if err := fresh.Reconcile(t.Context()); err != nil {
+		t.Fatalf("first convergence failed: %v", err)
+	}
+	// Second regression must also converge (guard was reset on success).
+	env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc"}}, nil)
+	if err := fresh.Reconcile(t.Context()); err != nil {
+		t.Fatalf("second convergence failed: %v", err)
+	}
+	if env.host.restarts != 3 {
+		t.Errorf("restarts = %d, want 3 (install + two convergence restarts)", env.host.restarts)
+	}
+}
+
+func TestPreflightUnsupportedDistro(t *testing.T) {
+	env := newTestEnv(t)
+	env.host.unitShow = "LoadState=not-found\nActiveState=inactive\nMainPID=0\n"
 	env.host.distroPaths = map[string]bool{"/var/lib/rancher/k3s/agent/etc/containerd": true}
 
 	err := env.i.Reconcile(t.Context())
@@ -322,6 +579,67 @@ func TestReconcileUnsupportedDistro(t *testing.T) {
 	}
 	if env.downloads.Load() != 0 {
 		t.Error("binaries downloaded on unsupported distro")
+	}
+}
+
+func TestPreflightNoContainerdUnit(t *testing.T) {
+	env := newTestEnv(t)
+	env.host.unitShow = "LoadState=not-found\nActiveState=inactive\nMainPID=0\n"
+
+	err := env.i.Reconcile(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "systemd") {
+		t.Fatalf("expected missing-unit error, got: %v", err)
+	}
+}
+
+func TestPreflightNonStandardConfigPath(t *testing.T) {
+	env := newTestEnv(t)
+	if err := os.WriteFile(filepath.Join(env.i.procRoot, "1234", "cmdline"),
+		[]byte("/usr/bin/containerd\x00--config\x00/var/lib/other/config.toml\x00"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := env.i.Reconcile(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "/var/lib/other/config.toml") {
+		t.Fatalf("expected non-standard config path error, got: %v", err)
+	}
+	if env.configOnDisk(t) != kindStyleConfig {
+		t.Error("config modified despite non-standard config path")
+	}
+}
+
+func TestPreflightRunsOncePerProcess(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	// Break the preflight inputs: a cached preflight must not re-probe.
+	env.host.unitShow = "LoadState=not-found\n"
+	env.host.showErr = errors.New("should not be called again")
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatalf("cached preflight re-probed the host: %v", err)
+	}
+}
+
+func TestConfigFlagFromCmdline(t *testing.T) {
+	tests := []struct {
+		name    string
+		cmdline string
+		want    string
+	}{
+		{"no flag", "/usr/bin/containerd\x00", ""},
+		{"separate flag", "/usr/bin/containerd\x00--config\x00/x/c.toml\x00", "/x/c.toml"},
+		{"equals flag", "/usr/bin/containerd\x00--config=/x/c.toml\x00", "/x/c.toml"},
+		{"short flag", "/usr/bin/containerd\x00-c\x00/x/c.toml\x00", "/x/c.toml"},
+		{"trailing flag without value", "/usr/bin/containerd\x00--config\x00", ""},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := configFlagFromCmdline([]byte(tt.cmdline)); got != tt.want {
+				t.Errorf("configFlagFromCmdline(%q) = %q, want %q", tt.cmdline, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -433,4 +751,34 @@ func TestReconcileKeepsReadyLabelWhenUpgradeDownloadFails(t *testing.T) {
 	if got := env.node.label(LabelGVisorVersion); got != "20260101.0" {
 		t.Errorf("version label = %q, want the still-installed version", got)
 	}
+}
+
+func TestBackoffInterval(t *testing.T) {
+	const base, maxWait = time.Minute, 5 * time.Minute
+	tests := []struct {
+		failures int
+		want     time.Duration
+	}{
+		{1, base}, {2, 2 * time.Minute}, {3, 4 * time.Minute},
+		{4, maxWait}, {5, maxWait}, {100, maxWait},
+	}
+	for _, tt := range tests {
+		if got := backoffInterval(base, tt.failures, maxWait); got != tt.want {
+			t.Errorf("backoffInterval(failures=%d) = %v, want %v", tt.failures, got, tt.want)
+		}
+	}
+	// A cap below the base still wins (never exceed ReconcileInterval).
+	if got := backoffInterval(time.Minute, 1, 30*time.Second); got != 30*time.Second {
+		t.Errorf("cap below base: got %v, want 30s", got)
+	}
+}
+
+// newInstallerLike builds a fresh Installer sharing cfg and collaborators,
+// simulating a restarted pod process (no in-memory state carried over).
+func newInstallerLike(prev *Installer) *Installer {
+	fresh := New(prev.cfg, prev.log, prev.host, prev.cri, prev.node)
+	fresh.healthWait = prev.healthWait
+	fresh.healthPoll = prev.healthPoll
+	fresh.procRoot = prev.procRoot
+	return fresh
 }

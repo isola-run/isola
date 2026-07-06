@@ -24,16 +24,17 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"regexp"
 	"time"
 
 	"github.com/isola-run/isola/internal/env"
 )
 
 // Host-side paths the installer manages. They are fixed by design: the
-// containerd config location is the vanilla-containerd default (k3s/RKE2-style
-// distros that relocate it are detected and rejected, see distro.go), and the
-// shim config lives next to it under an isola-prefixed name so a pre-existing
-// user-managed /etc/containerd/runsc.toml is never touched.
+// containerd config location is the vanilla-containerd default (the
+// preflight rejects nodes whose containerd loads a different file), and the
+// shim config lives next to it under an isola-prefixed name so a
+// pre-existing user-managed /etc/containerd/runsc.toml is never touched.
 const (
 	containerdConfigPath = "/etc/containerd/config.toml"
 	// Write-once pristine copy of config.toml taken before the first isola
@@ -57,17 +58,21 @@ type Config struct {
 	Handler string
 	// InstallDir is the host directory for runsc + containerd-shim-runsc-v1.
 	InstallDir string
-	// HostRoot is the container path under which host paths are mounted.
-	HostRoot string
-	// RunscConfigSrc is the mounted ConfigMap file holding the base runsc
-	// shim configuration to install on the host.
+
+	// The fields below are fixed by the container image and DaemonSet spec;
+	// they exist as fields so tests can redirect them.
+	HostRoot       string
 	RunscConfigSrc string
-	// HealthAddr is the listen address for the healthz/readyz server.
-	HealthAddr string
+	HealthAddr     string
 
 	ReconcileInterval time.Duration
 	RetryInterval     time.Duration
 }
+
+// handlerRe matches RFC 1123 DNS labels — the RuntimeClass handler grammar.
+// Anything looser could also corrupt the TOML splice (the handler is
+// rendered into the managed block and its markers).
+var handlerRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 
 // ConfigFromEnv builds the Config from environment variables, applying
 // defaults that match the Helm chart's values.
@@ -78,12 +83,13 @@ func ConfigFromEnv() (Config, error) {
 		DownloadURLBase: env.GetOrDefault("GVISOR_DOWNLOAD_URL_BASE", "https://storage.googleapis.com/gvisor/releases/release"),
 		Handler:         env.GetOrDefault("GVISOR_HANDLER", "runsc"),
 		InstallDir:      env.GetOrDefault("GVISOR_INSTALL_DIR", "/opt/isola/bin"),
-		HostRoot:        env.GetOrDefault("HOST_ROOT", "/host"),
-		RunscConfigSrc:  env.GetOrDefault("RUNSC_CONFIG_SRC", "/etc/isola-gvisor/runsc.toml"),
-		HealthAddr:      env.GetOrDefault("HEALTH_ADDR", ":8093"),
 
-		ReconcileInterval: envDuration("RECONCILE_INTERVAL", 5*time.Minute),
-		RetryInterval:     envDuration("RETRY_INTERVAL", time.Minute),
+		HostRoot:       "/host",
+		RunscConfigSrc: "/etc/isola-gvisor/runsc.toml",
+		HealthAddr:     ":8093",
+
+		ReconcileInterval: env.GetOrDefaultDuration("RECONCILE_INTERVAL", 5*time.Minute),
+		RetryInterval:     env.GetOrDefaultDuration("RETRY_INTERVAL", time.Minute),
 	}
 
 	if cfg.NodeName == "" {
@@ -93,24 +99,18 @@ func ConfigFromEnv() (Config, error) {
 		return cfg, errors.New("GVISOR_VERSION is required")
 	}
 	// "latest" is a moving target the version check could never converge on:
-	// the installed binary would always report a dated release and trigger an
-	// endless reinstall loop.
+	// the installed binaries would never match the recorded state and every
+	// reconcile would reinstall.
 	if cfg.Version == "latest" {
 		return cfg, errors.New(`GVISOR_VERSION must be a dated release (e.g. "20260608.0"), not "latest"`)
+	}
+	if !handlerRe.MatchString(cfg.Handler) {
+		return cfg, fmt.Errorf("GVISOR_HANDLER %q must be a lowercase DNS label (letters, digits, hyphens)", cfg.Handler)
 	}
 	if !path.IsAbs(cfg.InstallDir) {
 		return cfg, fmt.Errorf("GVISOR_INSTALL_DIR must be an absolute path, got %q", cfg.InstallDir)
 	}
 	return cfg, nil
-}
-
-func envDuration(key string, def time.Duration) time.Duration {
-	if v := os.Getenv(key); v != "" {
-		if d, err := time.ParseDuration(v); err == nil && d > 0 {
-			return d
-		}
-	}
-	return def
 }
 
 // hostPath translates an absolute host path to its mount location inside the
@@ -122,8 +122,8 @@ func (c Config) hostPath(p string) string {
 // CRISocketPath is the containerd CRI socket as mounted inside the container.
 func (c Config) CRISocketPath() string { return c.hostPath(criSocketPath) }
 
-// runscHostPath is the runsc binary path as seen by the host (used in the
-// shim config's binary_name and for state inspection).
+// runscPath is the runsc binary path as seen by the host (used in the shim
+// config's binary_name).
 func (c Config) runscPath() string { return path.Join(c.InstallDir, "runsc") }
 
 // shimPath is the containerd-shim-runsc-v1 path as seen by the host (used as

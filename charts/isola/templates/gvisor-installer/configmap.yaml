@@ -1,10 +1,4 @@
-{{- if .Values.gvisor.autoInstall.enabled }}
-{{/*
-  Base runsc shim configuration installed (with installer-managed additions:
-  binary_name, auto-detected systemd-cgroup) to /etc/containerd/isola-runsc.toml
-  on each node. Changing it rolls the DaemonSet via the checksum annotation;
-  running sandboxes are unaffected (the shim reads it at sandbox start).
-*/}}
+{{- if .Values.gvisor.installer.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -14,7 +8,7 @@ metadata:
 data:
   runsc.toml: |
     [runsc_config]
-    {{- range $flag, $value := .Values.gvisor.autoInstall.runscConfig }}
+    {{- range $flag, $value := .Values.gvisor.installer.runscConfig }}
       {{ $flag }} = {{ $value | quote }}
     {{- end }}
 {{- end }}

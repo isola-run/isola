@@ -24,7 +24,7 @@ import (
 )
 
 const runscShimConfigHeader = "# Managed by the isola gvisor-installer; do not edit (changes are overwritten).\n" +
-	"# Source of truth: the gvisor.autoInstall values of the isola Helm release.\n"
+	"# Source of truth: the gvisor.installer values of the isola Helm release.\n"
 
 // renderRunscShimConfig produces the shim configuration file content
 // (referenced from the containerd runtime entry via ConfigPath) from the

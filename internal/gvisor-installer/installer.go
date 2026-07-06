@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -38,6 +39,18 @@ type Installer struct {
 	// are only emitted on transitions, not every reconcile.
 	lastReadyLabel string
 
+	// preflightOK caches a passed preflight; a node's containerd layout
+	// cannot change under a running pod.
+	preflightOK bool
+	// procRoot is the procfs used to inspect the host's containerd process
+	// (readable directly because the pod runs with hostPID). Tests override it.
+	procRoot string
+
+	// convergeRestartedFor remembers the managed-block content a convergence
+	// restart was already issued for, so a node that cannot converge is not
+	// subjected to a containerd restart on every retry.
+	convergeRestartedFor string
+
 	// Post-restart health check pacing (shortened in tests).
 	healthWait time.Duration
 	healthPoll time.Duration
@@ -47,6 +60,7 @@ type Installer struct {
 func New(cfg Config, log *slog.Logger, host HostExec, cri CRIClient, node NodeClient) *Installer {
 	return &Installer{
 		cfg: cfg, log: log, host: host, cri: cri, node: node,
+		procRoot:   "/proc",
 		healthWait: 90 * time.Second,
 		healthPoll: 2 * time.Second,
 	}
@@ -55,19 +69,27 @@ func New(cfg Config, log *slog.Logger, host HostExec, cri CRIClient, node NodeCl
 // Ready reports whether the last reconcile succeeded (readiness probe).
 func (i *Installer) Ready() bool { return i.ready.Load() }
 
-// Run reconciles in a loop until the context is cancelled. There is
-// deliberately no cleanup on shutdown: removing a runtime handler out from
-// under running sandboxes breaks them, and a DaemonSet pod cannot
+// Run reconciles in a loop until the context is cancelled, backing off
+// exponentially on persistent failures: each retry can re-download binaries
+// and, worst case, restart containerd, so a flat interval would hammer both.
+// There is deliberately no cleanup on shutdown: removing a runtime handler
+// out from under running sandboxes breaks them, and a DaemonSet pod cannot
 // distinguish "helm uninstall" from a rolling update or eviction.
 func (i *Installer) Run(ctx context.Context) {
+	failures := 0
 	for {
-		interval := i.cfg.ReconcileInterval
 		if err := i.Reconcile(ctx); err != nil {
 			if ctx.Err() != nil {
 				return
 			}
+			failures++
 			i.log.Error("reconcile failed", "error", err)
-			interval = i.cfg.RetryInterval
+		} else {
+			failures = 0
+		}
+		interval := i.cfg.ReconcileInterval
+		if failures > 0 {
+			interval = backoffInterval(i.cfg.RetryInterval, failures, i.cfg.ReconcileInterval)
 		}
 		select {
 		case <-ctx.Done():
@@ -77,29 +99,47 @@ func (i *Installer) Run(ctx context.Context) {
 	}
 }
 
+// backoffInterval doubles base per consecutive failure, capped at maxWait.
+func backoffInterval(base time.Duration, failures int, maxWait time.Duration) time.Duration {
+	d := base
+	for n := 1; n < failures; n++ {
+		d *= 2
+		if d >= maxWait {
+			return maxWait
+		}
+	}
+	if d > maxWait {
+		return maxWait
+	}
+	return d
+}
+
 // Reconcile drives the node to the desired state:
 //
-//  1. refuse unsupported distros (k3s/RKE2/... manage containerd config
-//     elsewhere) rather than edit a file nobody reads;
+//  1. preflight: refuse nodes that do not run containerd as the standard
+//     systemd unit loading /etc/containerd/config.toml (k3s/RKE2/... manage
+//     containerd elsewhere; editing a file nobody reads helps no one);
 //  2. if a non-isola runsc handler already exists, adopt nothing and touch
-//     nothing — verify it and report the node ready (foreign mode);
+//     nothing — verify the live runtime serves it and report the node ready
+//     (foreign mode);
 //  3. ensure binaries (download/verify/atomically replace; no containerd
 //     restart needed — running sandboxes keep their inode);
 //  4. ensure the runsc shim config (read by the shim per sandbox start; no
 //     restart needed);
 //  5. ensure the managed block in containerd's config.toml — the only step
-//     that restarts containerd, guarded by validate/health-check/rollback.
+//     that restarts containerd, guarded by validate/health-check/rollback —
+//     and verify the live runtime serves the handler.
 //
 // Whatever happens, node labels are updated at the end to reflect the
 // *observed* state, so a failed upgrade on a previously working node keeps
 // the node schedulable for sandboxes.
 func (i *Installer) Reconcile(ctx context.Context) (err error) {
-	foreign := false
+	foreignOK, conflict := false, false
 	defer func() {
-		i.publishStatus(ctx, foreign, err)
+		i.publishStatus(ctx, foreignOK, conflict, err)
 	}()
 
-	if err := i.checkSupportedDistro(ctx); err != nil {
+	if err := i.preflight(ctx); err != nil {
 		return err
 	}
 
@@ -110,7 +150,9 @@ func (i *Installer) Reconcile(ctx context.Context) (err error) {
 
 	// `containerd config dump` is both the merged-config view (file +
 	// imports + defaults, post-migration) and the only validation containerd
-	// offers: it exits non-zero if the current config does not load.
+	// offers: it exits non-zero if the current config does not load. It
+	// parses the on-disk config — it says nothing about the running daemon,
+	// which is why serving is verified separately over CRI.
 	dump, err := i.host.Run(ctx, "containerd", "config", "dump")
 	if err != nil {
 		return fmt.Errorf("containerd's current configuration failed to load; refusing to modify anything: %w", err)
@@ -120,19 +162,26 @@ func (i *Installer) Reconcile(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	if !managed {
-		if rt, found := runtimeFromDump(dump, i.cfg.Handler); found {
-			// A handler we did not write already exists. Respect it: verify
-			// it is actually a runsc runtime and leave the node alone.
-			foreign = true
-			if rtType, _ := rt["runtime_type"].(string); rtType != runscRuntimeType {
-				return fmt.Errorf("containerd already has a runtime handler %q with runtime_type %q (expected %s); "+
-					"resolve the conflict by removing it or by configuring a different gvisor.autoInstall.handler",
-					i.cfg.Handler, rt["runtime_type"], runscRuntimeType)
-			}
-			i.log.Info("pre-existing runsc handler detected; leaving node unmanaged", "handler", i.cfg.Handler)
-			return nil
+	// The type check runs on the MERGED view unconditionally: even on a
+	// managed node, a drop-in import can override our handler entry with a
+	// different runtime_type (imports overwrite scalar fields), and such a
+	// node must never be considered gVisor-ready.
+	rt, handlerInDump := runtimeFromDump(dump, i.cfg.Handler)
+	if handlerInDump {
+		if rtType, _ := rt["runtime_type"].(string); rtType != runscRuntimeType {
+			conflict = true
+			return fmt.Errorf("containerd has a runtime handler %q with runtime_type %q (expected %s); "+
+				"resolve the conflict by removing it or by configuring a different gvisor.installer.handler",
+				i.cfg.Handler, rt["runtime_type"], runscRuntimeType)
 		}
+	}
+	if !managed && handlerInDump {
+		// A handler we did not write already exists and is runsc-typed.
+		// Respect it: require the live daemon to serve it, but leave the
+		// node alone.
+		foreignOK = true
+		i.log.Info("pre-existing runsc handler detected; leaving node unmanaged", "handler", i.cfg.Handler)
+		return i.verifyServing(ctx)
 	}
 
 	if _, err := i.ensureBinaries(ctx); err != nil {
@@ -144,11 +193,12 @@ func (i *Installer) Reconcile(ctx context.Context) (err error) {
 	return i.ensureContainerdConfig(ctx, raw)
 }
 
-// ensureContainerdConfig reconciles the managed block in config.toml. When a
-// change is required it follows the full safety chain: pristine backup →
-// atomic write → validate → restart → CRI health check → rollback on any
-// failure. The installer pod itself survives containerd restarts (shims keep
-// containers running), which is what makes in-place rollback possible.
+// ensureContainerdConfig reconciles the managed block in config.toml and
+// verifies the live daemon serves the handler. When a change is required it
+// follows the full safety chain: pristine backup → atomic write → validate →
+// restart → CRI health check → rollback on any failure. The installer pod
+// itself survives containerd restarts (shims keep containers running), which
+// is what makes in-place rollback possible.
 func (i *Installer) ensureContainerdConfig(ctx context.Context, raw []byte) error {
 	pluginID, err := criPluginID(configSchemaVersion(raw))
 	if err != nil {
@@ -160,7 +210,33 @@ func (i *Installer) ensureContainerdConfig(ctx context.Context, raw []byte) erro
 		return err
 	}
 	if found && current == desired {
-		return i.verifyHandlerRegistered(ctx)
+		servingErr := i.verifyServing(ctx)
+		if servingErr == nil {
+			i.convergeRestartedFor = ""
+			return nil
+		}
+		// The on-disk config is correct but the live daemon does not serve
+		// the handler — a previous run was interrupted between writing the
+		// config and restarting containerd, or the daemon regressed. Restart
+		// once per regression to converge; never repeatedly, so a node that
+		// cannot converge does not get containerd restarted on every retry.
+		if i.convergeRestartedFor == desired {
+			return fmt.Errorf("runtime handler still not served after a convergence restart: %w", servingErr)
+		}
+		i.log.Warn("containerd config is up to date but the running daemon does not serve the handler; restarting containerd to converge", "error", servingErr)
+		if _, err := i.host.Run(ctx, "systemctl", "restart", "containerd"); err != nil {
+			// Nothing was restarted; the retry budget is not spent.
+			return err
+		}
+		i.convergeRestartedFor = desired
+		if err := i.awaitRuntimeReady(ctx); err != nil {
+			return err
+		}
+		if err := i.verifyServing(ctx); err != nil {
+			return err
+		}
+		i.convergeRestartedFor = ""
+		return nil
 	}
 
 	next, err := spliceManagedBlock(raw, desired)
@@ -198,9 +274,10 @@ func (i *Installer) ensureContainerdConfig(ctx context.Context, raw []byte) erro
 		return fmt.Errorf("containerd unhealthy after config change; previous config rolled back and containerd recovered: %w", err)
 	}
 
-	if err := i.verifyHandlerRegistered(ctx); err != nil {
+	if err := i.verifyServing(ctx); err != nil {
 		return err
 	}
+	i.convergeRestartedFor = ""
 	i.log.Info("gVisor runtime handler registered with containerd", "handler", i.cfg.Handler)
 	i.node.Event(corev1.EventTypeNormal, "GVisorRuntimeConfigured",
 		fmt.Sprintf("Registered containerd runtime handler %q (gVisor %s)", i.cfg.Handler, i.cfg.Version))
@@ -245,10 +322,12 @@ func (i *Installer) awaitRuntimeReady(ctx context.Context) error {
 	return fmt.Errorf("containerd not ready within %s: %w", i.healthWait, lastErr)
 }
 
-// verifyHandlerRegistered confirms the running containerd actually serves
-// the handler. Prefers the CRI RuntimeHandlers field; falls back to the
-// merged config dump for containerd versions that don't report handlers.
-func (i *Installer) verifyHandlerRegistered(ctx context.Context) error {
+// verifyServing confirms the running containerd serves the handler, over the
+// same CRI surface the kubelet uses. The on-disk config is deliberately not
+// consulted: it proves nothing about the running daemon (a config written
+// but never loaded must not count as installed). RuntimeHandlers requires
+// containerd >= 1.7.15; older versions cannot be verified and fail closed.
+func (i *Installer) verifyServing(ctx context.Context) error {
 	st, err := i.cri.Status(ctx)
 	if err != nil {
 		return err
@@ -256,51 +335,69 @@ func (i *Installer) verifyHandlerRegistered(ctx context.Context) error {
 	if !st.RuntimeReady {
 		return fmt.Errorf("containerd RuntimeReady condition is false")
 	}
-	if st.Handlers != nil {
-		for _, h := range st.Handlers {
-			if h == i.cfg.Handler {
-				return nil
-			}
-		}
-		return fmt.Errorf("runtime handler %q not reported by containerd (handlers: %v)", i.cfg.Handler, st.Handlers)
+	if st.Handlers == nil {
+		return fmt.Errorf("containerd does not report runtime handlers over CRI; containerd >= 1.7.15 is required")
 	}
-	dump, err := i.host.Run(ctx, "containerd", "config", "dump")
-	if err != nil {
-		return err
-	}
-	if _, found := runtimeFromDump(dump, i.cfg.Handler); !found {
-		return fmt.Errorf("runtime handler %q not present in containerd's merged config", i.cfg.Handler)
+	if !slices.Contains(st.Handlers, i.cfg.Handler) {
+		return fmt.Errorf("runtime handler %q not served by containerd (handlers: %v)", i.cfg.Handler, st.Handlers)
 	}
 	return nil
 }
 
-// publishStatus translates the reconcile outcome into node labels, events and
-// pod readiness. Labels reflect observed truth rather than reconcile success:
-// a node whose handler still works keeps its ready label even if e.g. an
-// upgrade download just failed (the failure is surfaced via events,
-// readiness and retries instead).
-func (i *Installer) publishStatus(ctx context.Context, foreign bool, reconcileErr error) {
+// publishStatus translates the reconcile outcome into node labels, events
+// and pod readiness. Labels reflect observed truth rather than reconcile
+// success: a node whose install still works keeps its ready label even if
+// e.g. an upgrade download just failed (the failure is surfaced via events,
+// readiness and retries instead). Ready requires identity — the on-disk
+// managed block matches the current desired render, or a type-checked
+// foreign handler, and no type conflict was detected — liveness (the running
+// daemon serves the handler), and, for managed nodes, intact binaries. A
+// same-named non-gVisor handler must never mark the node ready.
+func (i *Installer) publishStatus(ctx context.Context, foreignOK, conflict bool, reconcileErr error) {
 	// The reconcile context may already be cancelled (shutdown); still try to
 	// publish with a short independent deadline.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
 
-	readyLabel := "false"
-	versionLabel := ""
-	if err := i.verifyHandlerRegistered(ctx); err == nil {
-		readyLabel = "true"
-		if foreign {
-			versionLabel = VersionUnmanaged
-		} else {
-			versionLabel = i.installedVersion(ctx)
+	identity := false
+	if !conflict {
+		if foreignOK {
+			identity = true
+		} else if raw, err := os.ReadFile(i.cfg.hostPath(containerdConfigPath)); err == nil { //nolint:gosec // fixed managed path
+			// Mere marker presence is not enough: a stale block could
+			// register a different handler than the currently configured one.
+			if pluginID, err := criPluginID(configSchemaVersion(raw)); err == nil {
+				desired := renderManagedBlock(pluginID, i.cfg.Handler, i.cfg.shimPath(), runscShimConfigPath)
+				current, found, _ := managedBlock(raw)
+				identity = found && current == desired
+			}
 		}
 	}
 
-	if err := i.node.SetNodeLabels(ctx, map[string]string{
+	readyLabel := "false"
+	versionLabel := ""
+	if identity && i.verifyServing(ctx) == nil {
+		if foreignOK {
+			readyLabel = "true"
+			versionLabel = VersionUnmanaged
+		} else if v := i.installedVersion(); v != "" {
+			// Registration alone is not enough for managed nodes: containerd
+			// registers handlers without stat'ing the shim binary, so wiped
+			// binaries would otherwise keep the node schedulable while every
+			// sandbox start fails.
+			readyLabel = "true"
+			versionLabel = v
+		}
+	}
+
+	// Unconditionally, so externally deleted labels are healed; a no-op
+	// strategic-merge patch does not bump the node's resourceVersion.
+	patchErr := i.node.SetNodeLabels(ctx, map[string]string{
 		LabelGVisorReady:   readyLabel,
 		LabelGVisorVersion: versionLabel,
-	}); err != nil {
-		i.log.Error("updating node labels failed", "error", err)
+	})
+	if patchErr != nil {
+		i.log.Error("updating node labels failed", "error", patchErr)
 	}
 
 	if reconcileErr != nil {
@@ -317,5 +414,5 @@ func (i *Installer) publishStatus(ctx context.Context, foreign bool, reconcileEr
 		i.lastReadyLabel = readyLabel
 	}
 
-	i.ready.Store(reconcileErr == nil && readyLabel == "true")
+	i.ready.Store(reconcileErr == nil && readyLabel == "true" && patchErr == nil)
 }

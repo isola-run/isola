@@ -26,8 +26,8 @@ import (
 
 // criStatus is the subset of the CRI runtime status the installer cares
 // about. Handlers is nil when the runtime predates the RuntimeHandlers field
-// (CRI v1, containerd < 1.7.15) — callers must then fall back to config
-// inspection.
+// (CRI v1, containerd < 1.7.15) — verification then fails closed; the
+// on-disk config is never accepted as proof of serving.
 type criStatus struct {
 	RuntimeReady bool
 	Handlers     []string

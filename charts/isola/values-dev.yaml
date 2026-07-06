@@ -27,7 +27,7 @@ operator:
     rootfssnapshot:
       enabled: true
       runsc:
-        binaryPath: /usr/local/bin/runsc
+        # binaryPath defaults to the installer-managed location.
         rootDir: /run/containerd/runsc/k8s.io
       uploader:
         image:
@@ -60,13 +60,10 @@ operator:
             tag: "dev"
 
 gvisor:
-  # Exercises the installer's "foreign install" path in dev: hack/setup.sh
-  # already installed gVisor and created the RuntimeClass, so the installer
-  # verifies the existing handler and labels the nodes without touching them.
-  autoInstall:
+  # The installer manages gVisor on the dev cluster nodes (including the
+  # RuntimeClass), same as a production install.
+  installer:
     enabled: true
-    runtimeClass:
-      create: false  # RuntimeClass "gvisor" pre-exists (created by hack/setup.sh)
     image:
       registry: ""
       repository: gvisor-installer

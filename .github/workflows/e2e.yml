@@ -17,6 +17,7 @@ env:
   UPLOADER_IMAGE: isola-snapshot-uploader
   API_IMAGE: api-gateway
   SNAPSHOT_MOUNTER_IMAGE: snapshot-mounter
+  GVISOR_INSTALLER_IMAGE: gvisor-installer
 
 jobs:
   e2e:
@@ -82,63 +83,22 @@ jobs:
           cache-from: type=gha,scope=snapshot-mounter
           cache-to: type=gha,mode=max,scope=snapshot-mounter
 
+      - name: Build gvisor-installer image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: .
+          file: cmd/gvisor-installer/Dockerfile
+          load: true
+          tags: ${{ env.GVISOR_INSTALLER_IMAGE }}:ci
+          cache-from: type=gha,scope=gvisor-installer
+          cache-to: type=gha,mode=max,scope=gvisor-installer
+
       - name: Create Kind cluster
         uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1
         with:
           cluster_name: ${{ env.KIND_CLUSTER_NAME }}
           config: hack/kind-config.yaml
           wait: 120s
-
-      - name: Install gVisor in Kind node
-        run: |
-          set -e
-          NODE="${KIND_CLUSTER_NAME}-control-plane"
-          GVISOR_URL="https://storage.googleapis.com/gvisor/releases/release/20260302/x86_64"
-
-          echo "Installing gVisor binaries..."
-          docker exec "$NODE" sh -c "
-            set -e
-            curl -fsSL '${GVISOR_URL}/runsc' -o /tmp/runsc
-            curl -fsSL '${GVISOR_URL}/containerd-shim-runsc-v1' -o /tmp/containerd-shim-runsc-v1
-            chmod +x /tmp/runsc /tmp/containerd-shim-runsc-v1
-            mv /tmp/runsc /tmp/containerd-shim-runsc-v1 /usr/local/bin/
-          "
-
-          echo "Configuring containerd for gVisor..."
-          docker exec "$NODE" sh -c 'cat > /etc/containerd/runsc.toml << "TOML"
-          [runsc_config]
-            allow-rootfs-tar-annotation = "true"
-            # SystemdCgroup=true so runsc enforces pod cgroup limits.
-            # https://gvisor.dev/docs/user_guide/systemd/
-            # https://github.com/google/gvisor/issues/10371
-            systemd-cgroup = "true"
-          TOML'
-
-          GVISOR_CONFIG='
-          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
-            runtime_type = "io.containerd.runsc.v1"
-            pod_annotations = ["dev.gvisor.*"]
-          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
-            TypeUrl = "io.containerd.runsc.v1.options"
-            ConfigPath = "/etc/containerd/runsc.toml"
-          '
-          docker exec "$NODE" sh -c "echo '$GVISOR_CONFIG' >> /etc/containerd/config.toml"
-
-          echo "Restarting containerd..."
-          docker exec "$NODE" systemctl restart containerd
-
-          echo "Verifying gVisor installation..."
-          docker exec "$NODE" runsc --version
-
-      - name: Create gVisor RuntimeClass
-        run: |
-          kubectl apply -f - <<EOF
-          apiVersion: node.k8s.io/v1
-          kind: RuntimeClass
-          metadata:
-            name: gvisor
-          handler: runsc
-          EOF
 
       - name: Load images into Kind
         run: |
@@ -147,6 +107,7 @@ jobs:
           kind load docker-image ${{ env.UPLOADER_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.API_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.SNAPSHOT_MOUNTER_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.GVISOR_INSTALLER_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
 
       - name: Set up Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5
@@ -183,7 +144,10 @@ jobs:
             --set operator.sandboxRuntime.rootfssnapshot.snapshotMounter.mounter.image.repository=${{ env.SNAPSHOT_MOUNTER_IMAGE }} \
             --set operator.sandboxRuntime.rootfssnapshot.snapshotMounter.mounter.image.tag=ci \
             --set operator.sandboxRuntime.rootfssnapshot.snapshotMounter.mounter.image.pullPolicy=Never \
-            --wait --timeout 3m
+            --set gvisor.installer.image.repository=${{ env.GVISOR_INSTALLER_IMAGE }} \
+            --set gvisor.installer.image.tag=ci \
+            --set gvisor.installer.image.pullPolicy=Never \
+            --wait --timeout 5m
 
       - name: Wait for services to be ready
         run: |
@@ -195,6 +159,11 @@ jobs:
 
           echo "Waiting for isola-snapshot-mounter..."
           kubectl rollout status daemonset/isola-snapshot-mounter -n isola-system --timeout=120s
+
+          echo "Waiting for gVisor installer..."
+          kubectl rollout status daemonset/isola-gvisor-installer -n isola-system --timeout=180s
+          kubectl wait node --all --timeout=60s \
+            --for=jsonpath="{.metadata.labels['isola\.run/gvisor']}"=true
 
           echo "Checking pod status..."
           kubectl get pods -n isola-system

@@ -1,4 +1,4 @@
-{{- if and .Values.gvisor.autoInstall.enabled .Values.gvisor.autoInstall.runtimeClass.create }}
+{{- if and .Values.gvisor.installer.enabled .Values.gvisor.installer.runtimeClass.create }}
 {{/*
   RuntimeClass for sandbox pods. scheduling.nodeSelector is merged into pod
   nodeSelectors at admission, so sandboxes only schedule onto nodes where the
@@ -10,7 +10,8 @@ metadata:
   name: {{ include "isola.operator.runtimeClassName" . }}
   labels:
     {{- include "isola.gvisorInstaller.labels" . | nindent 4 }}
-handler: {{ .Values.gvisor.autoInstall.handler }}
+{{- /* quoted: DNS labels like "true" or "on" would otherwise render as YAML booleans */}}
+handler: {{ .Values.gvisor.installer.handler | quote }}
 scheduling:
   nodeSelector:
     isola.run/gvisor: "true"
