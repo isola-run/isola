@@ -34,6 +34,7 @@ import (
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 	apigateway "github.com/isola-run/isola/internal/api-gateway"
+	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
 
 func createSandboxCR() string {
@@ -413,6 +414,82 @@ var _ = Describe("Filesystem Proxy", func() {
 				strings.NewReader("data"),
 			)
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+	})
+})
+
+var _ = Describe("Filesystem Entry Proxy", func() {
+	Describe("GET /sandboxes/{sandboxId}/filesystem/entries", func() {
+		It("proxies the list request and decodes entries", func() {
+			var capturedPath, capturedQueryPath, capturedContainer string
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedPath = r.URL.Path
+				capturedQueryPath = r.URL.Query().Get("path")
+				capturedContainer = r.URL.Query().Get("container")
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"entries":[{"name":"a.txt","path":"/workspace/a.txt","type":"file","size":5,"permissions":"0644","uid":1000,"gid":1000,"modifiedTime":"2026-06-13T00:00:00Z"}]}`))
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem/entries?path=/workspace&container=main", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusOK))
+			Expect(capturedPath).To(Equal("/v1/filesystem/entries"))
+			Expect(capturedQueryPath).To(Equal("/workspace"))
+			Expect(capturedContainer).To(Equal("main"))
+
+			var body sidecarapi.ListFilesystemEntriesResponse
+			Expect(json.Unmarshal(resp.Body.Bytes(), &body)).To(Succeed())
+			Expect(body.Entries).To(HaveLen(1))
+			Expect(body.Entries[0].Name).To(Equal("a.txt"))
+			Expect(body.Entries[0].Type).To(Equal("file"))
+			Expect(body.Entries[0].Size).To(Equal(int64(5)))
+			Expect(body.Entries[0].UID).To(Equal(1000))
+		})
+
+		It("returns 502 for invalid sidecar JSON", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte("not json"))
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem/entries?path=/workspace", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+
+		It("forwards sidecar 404 errors", func() {
+			mockSidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]string{"detail": "directory not found"})
+			}))
+			defer mockSidecar.Close()
+
+			port := mockSidecar.Listener.Addr().(*net.TCPAddr).Port
+			api := newFilesystemTestAPI(&http.Client{}, port)
+			sbName := createRunningSandboxCR()
+
+			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem/entries?path=/no-such", sbName))
+
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+		})
+
+		It("returns 404 for nonexistent sandbox", func() {
+			api := newFilesystemTestAPI(&http.Client{}, 0)
+
+			resp := api.Get("/v1/sandboxes/no-such-sandbox/filesystem/entries?path=/workspace")
+
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
 		})
 	})
 })

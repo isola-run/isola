@@ -48,7 +48,7 @@ After modifying handler input/output types or route registrations, run `make ope
 
 **Env vars are write-only:** Request types accept env vars; response types intentionally omit them to avoid leaking secrets. Do not add `Env` to response types.
 
-**Compile-time type assertions** in gateway command/filesystem handlers (`_ = sidecarapi.CreateCommandRequest(CreateCommandRequest{})`) enforce structural compatibility with sidecar-api contract types. Do not remove these.
+**Gateway filesystem handlers use the shared `sidecar-api` contract types directly** as their Huma request/response bodies (e.g. `sidecarapi.FilesystemEntry`) -- no gateway-local duplicates, so there is nothing to keep in sync. Huma's `DefaultSchemaNamer` keys schemas on the bare type name, so the public OpenAPI is identical either way. The **command** handlers still keep gateway-local mirrors of the sidecar request/response types; the compile-time assertion `_ = sidecarapi.CreateCommandRequest(CreateCommandRequest{})` enforces that those stay structurally identical -- do not remove it (or migrate command to shared types the same way).
 
 **Long-poll timeout chain** -- values MUST satisfy: SDK (20s) < gateway max (25s) < sidecar max (30s) < gateway WriteTimeout (45s) < sidecar WriteTimeout (75s). Changing any value without adjusting the others causes cascading failures. Locations: Python SDK `_commands.py`, TypeScript SDK `commands.ts`, gateway `command.go`, sidecar `command.go`, gateway `main.go`, sidecar `main.go`.
 

@@ -221,6 +221,14 @@ print(data.decode())  # "Hello, World!"
 
 Parent directories are created automatically on uploads.
 
+### Managing files and directories
+
+```python
+# List a directory (symlinks are reported, not followed)
+for entry in sandbox.filesystem.list("/tmp"):
+    print(entry.name, entry.type, entry.size, entry.permissions)
+```
+
 ## Sandbox management
 
 ```python

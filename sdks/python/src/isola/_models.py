@@ -246,6 +246,47 @@ class ListSandboxesResponse(IsolaModel):
     sandboxes: list[SandboxSummary] | None = None
 
 
+class FilesystemEntryType(str, Enum):
+    """Type of a filesystem entry."""
+
+    FILE = "file"
+    DIRECTORY = "directory"
+    SYMLINK = "symlink"
+    OTHER = "other"
+
+
+class FilesystemEntry(IsolaModel):
+    """Metadata for a file, directory, or symlink in a sandbox.
+
+    Symlinks are reported, not followed.
+
+    Attributes:
+        name: Entry name (final path component).
+        path: Absolute path inside the container.
+        type: Entry type (file, directory, symlink, or other).
+        size: Size in bytes.
+        permissions: Octal permission bits, e.g. "0644".
+        uid: Owner user ID.
+        gid: Owner group ID.
+        modified_time: Last modification time.
+        symlink_target: Symlink target path. Only set for symlinks.
+    """
+
+    name: str
+    path: str
+    type: FilesystemEntryType
+    size: int
+    permissions: str
+    uid: int
+    gid: int
+    modified_time: datetime
+    symlink_target: str | None = None
+
+
+class ListFilesystemEntriesResponse(IsolaModel):
+    entries: list[FilesystemEntry] | None = None
+
+
 class SandboxData(IsolaModel):
     id: str
     pod_template: PodTemplateInfo

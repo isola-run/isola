@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import io
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import BinaryIO, cast
 
@@ -22,7 +23,7 @@ import httpx
 import pytest
 import respx
 
-from isola import AsyncIsola, InternalError, Isola, NotFoundError
+from isola import AsyncIsola, FilesystemEntryType, InternalError, Isola, NotFoundError
 
 
 @respx.mock
@@ -331,3 +332,72 @@ async def test_async_filesystem_write_raises_on_500(
         sandbox = await client.sandboxes.get("sandbox-123")
         with pytest.raises(InternalError):
             await sandbox.filesystem.write("/workspace/file.txt", b"data")
+
+
+_ENTRY_JSON = {
+    "name": "file.txt",
+    "path": "/workspace/file.txt",
+    "type": "file",
+    "size": 5,
+    "permissions": "0644",
+    "uid": 1000,
+    "gid": 1000,
+    "modifiedTime": "2026-06-13T00:00:00Z",
+}
+
+_SYMLINK_JSON = {
+    "name": "link",
+    "path": "/workspace/link",
+    "type": "symlink",
+    "size": 10,
+    "permissions": "0777",
+    "uid": 0,
+    "gid": 0,
+    "modifiedTime": "2026-06-13T00:00:00Z",
+    "symlinkTarget": "/workspace/file.txt",
+}
+
+
+@respx.mock
+def test_filesystem_list(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    list_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem/entries").mock(
+        return_value=httpx.Response(200, json={"entries": [_ENTRY_JSON, _SYMLINK_JSON]})
+    )
+
+    with Isola(url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        entries = sandbox.filesystem.list("/workspace", container="worker")
+
+    assert list_route.calls[0].request.url.params["path"] == "/workspace"
+    assert list_route.calls[0].request.url.params["container"] == "worker"
+
+    assert len(entries) == 2
+    assert entries[0].name == "file.txt"
+    assert entries[0].type == FilesystemEntryType.FILE
+    assert entries[0].size == 5
+    assert entries[0].permissions == "0644"
+    assert entries[0].uid == 1000
+    assert entries[0].gid == 1000
+    assert entries[0].modified_time == datetime(2026, 6, 13, tzinfo=timezone.utc)
+    assert entries[0].symlink_target is None
+    assert entries[1].type == FilesystemEntryType.SYMLINK
+    assert entries[1].symlink_target == "/workspace/file.txt"
+
+
+@respx.mock
+def test_filesystem_list_empty(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem/entries").mock(
+        return_value=httpx.Response(200, json={"entries": []})
+    )
+
+    with Isola(url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        entries = sandbox.filesystem.list("/empty")
+
+    assert entries == []

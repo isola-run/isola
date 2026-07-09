@@ -16,9 +16,10 @@
 
 import type { RequestOptions } from "./client";
 import type { HttpClient } from "./internal/http";
-import { filesystemPath } from "./internal/url";
+import { filesystemEntriesPath, filesystemPath } from "./internal/url";
+import { type FilesystemEntry, ListFilesystemEntriesResponse } from "./models";
 
-/** Options for {@link Filesystem.read} and {@link Filesystem.write}. */
+/** Options for most {@link Filesystem} operations. */
 export interface FileOptions {
   /**
    * Target container name. Only needed for multi-container sandboxes.
@@ -34,7 +35,7 @@ export interface FileOptions {
  */
 export type UploadBody = string | Uint8Array | ArrayBuffer | Blob | ReadableStream<Uint8Array>;
 
-/** Read and write files inside a sandbox. */
+/** Read, write, and manage files inside a sandbox. */
 export class Filesystem {
   /** @internal */
   readonly _api: HttpClient;
@@ -112,5 +113,39 @@ export class Filesystem {
       params,
       ...(req.signal ? { signal: req.signal } : {}),
     });
+  }
+
+  /**
+   * List directory entries in the sandbox.
+   *
+   * @example
+   * ```ts
+   * const entries = await sandbox.filesystem.list("/workspace");
+   * for (const entry of entries) console.log(entry.name, entry.type);
+   * ```
+   *
+   * @param path - Absolute path of a directory inside the sandbox.
+   * @param opts - File options (e.g. `container` for multi-container
+   * sandboxes).
+   * @returns Metadata for each entry, sorted by name. Symlinks are
+   * reported, not followed.
+   * @throws {NotFoundError} If the directory does not exist.
+   * @throws {APIError} If the API returns a non-2xx response.
+   * @throws {APIConnectionError} If the request cannot reach the API.
+   */
+  async list(path: string, opts: FileOptions = {}, req: RequestOptions = {}): Promise<FilesystemEntry[]> {
+    const params: Record<string, string> = { path };
+    if (opts.container) params.container = opts.container;
+
+    const response = await this._api.requestModel(
+      {
+        method: "GET",
+        path: filesystemEntriesPath(this._sandboxId),
+        params,
+        ...(req.signal ? { signal: req.signal } : {}),
+      },
+      ListFilesystemEntriesResponse.fromWire,
+    );
+    return response.entries;
   }
 }

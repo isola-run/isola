@@ -95,6 +95,10 @@ export function filesystemPath(sandboxId: string): string {
   return `${sandboxPath(sandboxId)}/filesystem`;
 }
 
+export function filesystemEntriesPath(sandboxId: string): string {
+  return `${filesystemPath(sandboxId)}/entries`;
+}
+
 // Builds a URL with optional query string. Drops undefined/null values.
 // Uses quoteQueryComponent so spaces become `+` and !'()* are percent-encoded,
 // matching Python httpx's QueryParams.__str__ wire output.
