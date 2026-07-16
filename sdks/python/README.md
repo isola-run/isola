@@ -430,4 +430,4 @@ except IsolaError:
     print("Something else went wrong")
 ```
 
-The SDK automatically retries on transient errors.
+The SDK automatically retries idempotent requests on transient errors. POST requests are not retried because resending them can duplicate commands, sandbox creation, or stdin data.

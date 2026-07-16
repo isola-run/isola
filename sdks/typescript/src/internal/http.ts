@@ -35,6 +35,7 @@ export const MAX_RETRIES = 5;
 export const RETRY_DELAY_MS = 1_000;
 
 const STREAM_CONNECT_TIMEOUT_MS = 5_000;
+const RETRYABLE_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE"]);
 
 /** @internal */
 export type FetchLike = typeof fetch;
@@ -91,9 +92,8 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-// A ReadableStream body is consumed once and cannot be replayed, so a request
-// carrying one is not retried. Every other body kind (string, bytes, Blob, etc.)
-// is held in memory and safe to resend. Mirrors the Python SDK's can_retry check.
+// A ReadableStream body is consumed once and cannot be replayed. Other body
+// kinds can be replayed, but only idempotent methods are safe to resend.
 function isStreamBody(body: BodyInit | undefined): boolean {
   return typeof ReadableStream !== "undefined" && body instanceof ReadableStream;
 }
@@ -131,7 +131,7 @@ export class HttpClient {
     const body: BodyInit | undefined =
       opts.jsonBody !== undefined ? JSON.stringify(opts.jsonBody) : (opts.body as BodyInit | undefined);
     const streaming = isStreamBody(body);
-    const canRetry = !streaming;
+    const canRetry = RETRYABLE_METHODS.has(opts.method.toUpperCase()) && !streaming;
 
     const headers = new Headers(opts.headers);
     if (opts.jsonBody !== undefined && !headers.has("content-type")) {

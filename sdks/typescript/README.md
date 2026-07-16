@@ -470,7 +470,7 @@ try {
 }
 ```
 
-The SDK automatically retries on transient errors (HTTP 502/503/504, transport failures): up to 6 total attempts, fixed 1 s delay between attempts. Per-attempt timeout is governed by `requestTimeoutMs`.
+The SDK automatically retries idempotent requests on transient errors (HTTP 502/503/504, transport failures): up to 6 total attempts, fixed 1 s delay between attempts. POST requests are not retried because resending them can duplicate commands, sandbox creation, or stdin data. Per-attempt timeout is governed by `requestTimeoutMs`.
 
 ## License
 
