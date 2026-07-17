@@ -212,7 +212,7 @@ export class RootfsSnapshot {
 
   /** When the snapshot was created. */
   get creationTimestamp(): Date {
-    return this._data.creationTimestamp;
+    return new Date(this._data.creationTimestamp.getTime());
   }
 
   /** Name of the snapshot. Use this to restore from it. */
