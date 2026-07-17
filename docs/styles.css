@@ -583,6 +583,9 @@ h2 {
   font-size: var(--t-sm);
   color: var(--ink-3);
   margin-bottom: var(--s-md);
+  /* glyph-hugging deep glow: keeps the muted line readable while it crosses
+     the bright water, without a visible shape behind the text */
+  text-shadow: 0 0 16px oklch(0.196 0.097 277 / 0.9), 0 0 5px oklch(0.196 0.097 277 / 0.5);
 }
 .define strong {
   color: var(--ink);
@@ -607,6 +610,7 @@ h2 {
 .statement-sub {
   color: var(--ink-2);
   font-size: var(--t-lead);
+  text-shadow: 0 0 20px oklch(0.196 0.097 277 / 0.9), 0 0 6px oklch(0.196 0.097 277 / 0.5);
   line-height: 1.62;
   max-width: 46ch;
   margin-top: var(--s-md);

@@ -11,17 +11,22 @@ const RM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 /* Shared page state: scroll depth (0 = luminous surface, 1 = deep water). */
 const state = {
   depth: 0,
-  full: 0,
 };
 
 function readScroll() {
   const vh = window.innerHeight || 1;
   const max = document.documentElement.scrollHeight - vh;
-  state.depth = Math.min(1, window.scrollY / (vh * 1.15));
-  state.full = max > 0 ? Math.min(1, window.scrollY / max) : 0;
+  // two-stage dive: settle to a twilight plateau over the first ~2 screens
+  // (0.62 keeps ink-2/ink-3 text above the WCAG floor over the bright field),
+  // hold through the middle, and let the cubic tail reach the blank deep
+  // only with the footer in view
+  const raw = max > 0 ? Math.min(1, window.scrollY / max) : 0;
+  const near = Math.min(1, window.scrollY / (vh * 2.2));
+  state.depth = Math.max(0.62 * near * near * (3 - 2 * near), raw * raw * raw);
 }
 readScroll();
 window.addEventListener("scroll", readScroll, { passive: true });
+window.addEventListener("resize", readScroll, { passive: true });
 
 /* -------------------------------------------------------------- landfall */
 /* The light drifts, the island holds. All color mixing happens in OKLab so
@@ -237,7 +242,7 @@ function startAuroraGL(canvas) {
 
   function frame(tMs) {
     gl.uniform1f(uTime, tMs / 1000);
-    gl.uniform1f(uDepth, Math.min(1, state.depth * 0.85 + state.full * 0.25));
+    gl.uniform1f(uDepth, state.depth);
     const age = (tMs - wave.born) / 1000;
     if (age * 1000 < WAVE_LIFE) {
       gl.uniform3f(uWave, wave.x, wave.y, age * WAVE_SPEED * scale);
@@ -323,7 +328,7 @@ function startAurora2D(canvas) {
   }
 
   function paint(t) {
-    const d = Math.min(1, state.depth * 0.85 + state.full * 0.25);
+    const d = state.depth;
     const dim = Math.max(w, h);
 
     const base = ctx.createLinearGradient(0, 0, w, h * 0.9);
