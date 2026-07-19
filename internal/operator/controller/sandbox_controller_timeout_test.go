@@ -564,6 +564,96 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(result.RequeueAfter).To(BeNumerically("<", 120*time.Second))
 		})
 
+		It("should fail and clean up when the pod can never be created", func() {
+			sandboxName := "sandbox-startup-pod-rejected"
+
+			// Two containers share a name, which the API server permanently rejects
+			// on every pod create (duplicate value). Anchoring the startup deadline
+			// at the sandbox's creation time is what stops the reconciler retrying
+			// this forever and leaking the sandbox in Pending.
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.StartupTimeoutSeconds = ptr.To(int64(10))
+				s.Spec.PodTemplate.Spec.Containers = []corev1.Container{
+					{Name: "dup", Image: "busybox:latest", Command: []string{"sleep", "infinity"}},
+					{Name: "dup", Image: "busybox:latest", Command: []string{"sleep", "infinity"}},
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+			defer deletePod(ctx, sandboxName+"-pod")
+
+			sandbox := getSandbox(ctx, sandboxName)
+
+			// First reconcile adds the finalizer and fails to create the pod.
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).To(HaveOccurred())
+
+			// No pod exists, so the pod-anchored deadline can never fire.
+			Expect(getPod(ctx, sandboxName+"-pod")).To(BeNil())
+
+			// Advance past the startup deadline anchored at sandbox creation.
+			fakeClock.Set(sandbox.CreationTimestamp.Add(11 * time.Second))
+
+			// Reconcile detects the startup timeout, marks Failed and issues Delete.
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionFalse, CondReasonStartupTimeoutExceeded)).To(BeTrue())
+
+			// Second reconcile runs the finalizer and the object is deleted.
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
+			Expect(err).To(Satisfy(errors.IsNotFound))
+		})
+
+		It("should recreate the pod, not fail, when a running pod is deleted out-of-band after the startup window", func() {
+			sandboxName := "sandbox-pod-vanished"
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.StartupTimeoutSeconds = ptr.To(int64(10))
+				s.Spec.TimeoutSeconds = ptr.To(int64(3600))
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile creates the pod.
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// Make the pod Ready: a healthy, long-lived, non-terminal sandbox whose
+			// lifetime timeout (anchored to pod StartTime) is far in the future.
+			makePodReady(ctx, pod, "containerd://abc123", reconciler.clock())
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// The durable "a pod existed" latch must now be persisted.
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(sandbox.Status.PodCreatedAt).NotTo(BeNil())
+
+			// The pod is fully removed out-of-band (node removal, pod GC, force-delete).
+			deletePod(ctx, podName)
+			Expect(getPod(ctx, podName)).To(BeNil())
+
+			// Advance past the CR-anchored startup deadline (CR + 10s). On the buggy
+			// branch this instantly marked the sandbox Failed and deleted it.
+			fakeClock.Set(sandbox.CreationTimestamp.Add(20 * time.Second))
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			// The sandbox must not be failed, and the pod must be recreated.
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)).To(BeNil())
+			Expect(getPod(ctx, podName)).NotTo(BeNil())
+		})
+
 		It("should not fire startup timeout at exact boundary", func() {
 			sandboxName := "sandbox-startup-exact-boundary"
 

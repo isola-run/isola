@@ -417,6 +417,14 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	log.Info("Pod created")
 	sandboxCreatedTotal.Inc()
 
+	// Stamp the durable "a pod has existed" latch at creation time, not on later
+	// observation: the reconcile immediately after this may still read a nil pod
+	// from the informer cache, and stamping now keeps that lag from being mistaken
+	// for a never-created pod. The status patch below persists it.
+	if sandbox.Status.PodCreatedAt == nil {
+		sandbox.Status.PodCreatedAt = &metav1.Time{Time: sandboxPod.CreationTimestamp.Time}
+	}
+
 	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "PodCreated", "Created", "Sandbox Pod created")
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -617,6 +625,11 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	if sandboxPod != nil {
 		sandbox.Status.PodIP = sandboxPod.Status.PodIP
 		sandbox.Status.SidecarVersion = sandboxPod.Annotations[SidecarVersionAnnotation]
+		// Backstop the creation-time stamp for pods adopted from a state where the
+		// latch was never persisted (e.g. a status patch that failed after Create).
+		if sandbox.Status.PodCreatedAt == nil {
+			sandbox.Status.PodCreatedAt = &metav1.Time{Time: sandboxPod.CreationTimestamp.Time}
+		}
 	}
 
 	networkCondition := r.determineNetworkCondition(sandbox)
@@ -905,15 +918,31 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return res, nil
 	}
 
-	// Startup timeout: if the pod exists but is not ready, check if it exceeded the startup deadline
+	// Startup timeout: the sandbox must reach Ready within StartupTimeoutSeconds.
+	// Once a pod exists we anchor at its creation time; before that we anchor at the
+	// sandbox's own creation time. The pre-pod anchor is what fails a sandbox whose
+	// pod can never be created (invalid pod spec, duplicate container names, a
+	// ResourceQuota/webhook denial): otherwise CreateSandboxPod is retried with
+	// backoff forever and the sandbox leaks in Pending, never marked Failed or cleaned up.
+	// A pod that once existed but is now gone (node removal, pod GC, force-delete)
+	// is NOT a never-created pod: the sandbox is still non-terminal, so we skip the
+	// startup deadline and fall through to recreation below instead of failing it.
+	// Status.PodCreatedAt is the durable latch that distinguishes the two.
+	podVanished := sandboxPod == nil && sandbox.Status.PodCreatedAt != nil
+
 	var startupDeadline time.Time
-	hasStartupDeadline := sandboxPod != nil && !podutil.IsPodReady(sandboxPod) && sandbox.Spec.StartupTimeoutSeconds != nil
+	hasStartupDeadline := !podutil.IsPodReady(sandboxPod) && sandbox.Spec.StartupTimeoutSeconds != nil && !podVanished
 	if hasStartupDeadline {
-		startupDeadline = sandboxPod.CreationTimestamp.Add(
+		startupAnchor := sandbox.CreationTimestamp
+		msg := fmt.Sprintf("pod not created within %ds of sandbox creation", *sandbox.Spec.StartupTimeoutSeconds)
+		if sandboxPod != nil {
+			startupAnchor = sandboxPod.CreationTimestamp
+			msg = fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds)
+		}
+		startupDeadline = startupAnchor.Add(
 			time.Duration(*sandbox.Spec.StartupTimeoutSeconds) * time.Second)
 		if r.clock().Now().After(startupDeadline) {
 			log.Info("Startup timeout exceeded", "deadline", startupDeadline)
-			msg := fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds)
 			if err := r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonStartupTimeoutExceeded, msg); err != nil {
 				log.Error(err, "Failed to patch startup timeout condition")
 			}

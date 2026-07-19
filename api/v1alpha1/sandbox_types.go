@@ -218,6 +218,15 @@ type SandboxStatus struct {
 	// +optional
 	TerminationDeadlineAt *metav1.Time `json:"terminationDeadlineAt,omitempty"`
 
+	// PodCreatedAt records when the sandbox pod was first created. It is a durable
+	// one-way latch: set the first time the pod is created (or observed) and never
+	// cleared, even if the pod is later removed out-of-band (node removal, pod GC,
+	// force-delete). The startup deadline uses it to tell "pod was never created"
+	// (nil) apart from "pod existed and has since vanished" (non-nil): the former
+	// fails the sandbox, the latter falls through to pod recreation.
+	// +optional
+	PodCreatedAt *metav1.Time `json:"podCreatedAt,omitempty"`
+
 	// PodIP is the IP address of the sandbox pod.
 	// +optional
 	PodIP string `json:"podIP,omitempty"`
