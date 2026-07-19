@@ -20,6 +20,7 @@ import (
 	"maps"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -108,6 +109,17 @@ const (
 	LabelAllowIPv4Internet = "isola.run/allow-ipv4-internet-egress"
 	LabelAllowIPv6Internet = "isola.run/allow-ipv6-internet-egress"
 	LabelAllowClusterDNS   = "isola.run/allow-cluster-dns"
+
+	// labelAllowPrefix namespaces the egress-authorization labels the operator owns.
+	// The Helm NetworkPolicies grant egress by selecting on these, so a pod template
+	// must not carry them or it would self-authorize access the Network spec never granted.
+	labelAllowPrefix = "isola.run/allow-"
+
+	// gvisorAnnotationPrefix namespaces the gVisor runtime annotations the operator owns
+	// (overlay2, qdisc rate limiting, and namespace-scoped rootfs.upper restore paths).
+	// A pod template must not carry these or it could weaken the sandbox or point a
+	// rootfs restore at another namespace's tar.
+	gvisorAnnotationPrefix = "dev.gvisor."
 
 	// SidecarVersionAnnotation records on the sandbox pod the isola-operator
 	// GitVersion at the moment the pod was created. Sandbox.Status.SidecarVersion
@@ -275,6 +287,9 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	// This prevents templates from overriding app.kubernetes.io/* etc.
 	labels := make(map[string]string)
 	maps.Copy(labels, sandbox.Spec.PodTemplate.Labels)
+	maps.DeleteFunc(labels, func(k, _ string) bool {
+		return strings.HasPrefix(k, labelAllowPrefix)
+	})
 
 	// Standard Kubernetes recommended labels (https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
 	labels["app.kubernetes.io/name"] = "isola-sandbox"
@@ -290,6 +305,9 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 
 	annotations := make(map[string]string, len(sandbox.Spec.PodTemplate.Annotations))
 	maps.Copy(annotations, sandbox.Spec.PodTemplate.Annotations)
+	maps.DeleteFunc(annotations, func(k, _ string) bool {
+		return strings.HasPrefix(k, gvisorAnnotationPrefix)
+	})
 
 	sandboxPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
