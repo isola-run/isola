@@ -277,6 +277,58 @@ describe("RootfsSnapshots.create polling", () => {
   });
 });
 
+describe("RootfsSnapshots.create completion via cleanup 404", () => {
+  it("treats a 404 as success when ttlSecondsAfterFinished triggers immediate cleanup", async () => {
+    // ttlSecondsAfterFinished:0 makes the controller delete the CR in the same
+    // reconcile that marks it Succeeded, so polling only ever sees a 404. That
+    // 404 is completion, not cache lag: the snapshot uploaded and is restorable.
+    // performance.now() is fast-forwarded to prove we short-circuit before the
+    // deadline rather than blocking to a false timeout.
+    spyMonotonicAdvancingBy(2000);
+
+    const stub = makeStubFetch(
+      jsonResponse(makeRootfsSnapshotResponse("Pending"), { status: 201 }),
+      jsonResponse({ detail: "not found" }, { status: 404 }),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+
+    const promise = client.rootfsSnapshots.create({
+      sandboxId: "sandbox-123",
+      snapshotName: "my-snapshot",
+      ttlSecondsAfterFinished: 0,
+      maxWaitMs: 5,
+    });
+    await vi.runAllTimersAsync();
+    const snapshot = await promise;
+
+    expect(snapshot.status).toBe("Succeeded");
+    expect(snapshot.snapshotName).toBe("my-snapshot");
+    // POST + a single GET that 404s and resolves to success.
+    expect(stub.calls).toHaveLength(2);
+  });
+
+  it("treats a 404 as success after the snapshot was seen mid-run", async () => {
+    // Even with a large TTL, a snapshot observed mid-run that then 404s was
+    // deleted by TTL cleanup after completing, so it is a success.
+    const stub = makeStubFetch(
+      jsonResponse(makeRootfsSnapshotResponse("Pending"), { status: 201 }),
+      jsonResponse(makeRootfsSnapshotResponse("Running")),
+      jsonResponse({ detail: "not found" }, { status: 404 }),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+
+    const promise = client.rootfsSnapshots.create({
+      sandboxId: "sandbox-123",
+      snapshotName: "my-snapshot",
+    });
+    await vi.runAllTimersAsync();
+    const snapshot = await promise;
+
+    expect(snapshot.status).toBe("Succeeded");
+    expect(stub.calls).toHaveLength(3);
+  });
+});
+
 describe("RootfsSnapshots.create timeout", () => {
   it("raises IsolaTimeoutError when maxWaitMs is exhausted", async () => {
     // Fast-forward performance.now() so each call adds 2000ms; with

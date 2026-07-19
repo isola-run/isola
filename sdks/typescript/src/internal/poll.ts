@@ -30,6 +30,16 @@ export interface PollOptions<T> {
   signal: AbortSignal | undefined;
   /** Throws the resource-specific timeout error (optionally chaining `cause`). */
   onTimeout: (cause?: unknown) => never;
+  /** Seeds `lastValue` so a first-poll 404 can still resolve to a value. */
+  initialValue?: T;
+  /**
+   * Decides what a `NotFoundError` means. Return a value to finish
+   * successfully (the resource was deleted after completing); return
+   * `undefined` to keep treating the 404 as cache lag and retry within the
+   * deadline. `lastValue` is the most recently observed value (the seed if no
+   * poll has succeeded yet); `seenDuringWait` is true once a poll succeeded.
+   */
+  onNotFound?: (info: { lastValue: T | undefined; seenDuringWait: boolean }) => T | undefined;
 }
 
 /**
@@ -42,12 +52,16 @@ export interface PollOptions<T> {
  */
 export async function pollUntilDone<T>(opts: PollOptions<T>): Promise<T> {
   const deadline = performance.now() + opts.maxWaitMs;
+  let lastValue: T | undefined = opts.initialValue;
+  let seenDuringWait = false;
   while (true) {
     let value: T;
     try {
       value = await opts.poll(opts.signal);
     } catch (err) {
       if (err instanceof NotFoundError) {
+        const resolved = opts.onNotFound?.({ lastValue, seenDuringWait });
+        if (resolved !== undefined) return resolved;
         if (performance.now() >= deadline) opts.onTimeout(err);
         await sleep(opts.intervalMs, opts.signal);
         continue;
@@ -55,6 +69,8 @@ export async function pollUntilDone<T>(opts: PollOptions<T>): Promise<T> {
       throw err;
     }
 
+    lastValue = value;
+    seenDuringWait = true;
     if (opts.isDone(value)) return value;
     opts.assertNotFailed(value);
     if (performance.now() >= deadline) opts.onTimeout();

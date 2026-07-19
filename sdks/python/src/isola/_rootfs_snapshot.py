@@ -35,25 +35,46 @@ def _check_failed(snapshot_id: str, status: RootfsSnapshotStatus) -> None:
         raise IsolaError(f"rootfs snapshot {snapshot_id} reached terminal state: {status.value}")
 
 
+def _completed_before_cleanup(seen_during_wait: bool, ttl_seconds_after_finished: int | None) -> bool:
+    # A 404 during the wait means the controller deleted the RootfsSnapshot CR,
+    # and the only thing that deletes it is the TTL cleanup that runs after the
+    # snapshot finishes. So the 404 is completion, not cache lag, when either:
+    #   - we already observed the snapshot mid-run before it vanished, or
+    #   - cleanup is (near-)immediate (ttlSecondsAfterFinished <= poll interval),
+    #     making the Succeeded window too short-lived to catch on a 1s poll.
+    # In both cases the snapshot uploaded and is restorable by name, so report
+    # success rather than blocking to the deadline and raising a false timeout.
+    if seen_during_wait:
+        return True
+    return ttl_seconds_after_finished is not None and ttl_seconds_after_finished <= _POLL_INTERVAL
+
+
 def _wait_until_complete(
-    snapshot_id: str,
+    initial: RootfsSnapshotData,
     api: _SyncAPI,
     max_wait_seconds: int,
+    ttl_seconds_after_finished: int | None,
 ) -> RootfsSnapshotData:
+    snapshot_id = initial.id
     deadline = time.monotonic() + max_wait_seconds
+    latest = initial
+    seen_during_wait = False
     while True:
         try:
-            data = api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
+            latest = api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
+            seen_during_wait = True
         except NotFoundError as err:
+            if _completed_before_cleanup(seen_during_wait, ttl_seconds_after_finished):
+                return latest.model_copy(update={"status": RootfsSnapshotStatus.SUCCEEDED})
             if time.monotonic() >= deadline:
                 raise IsolaTimeoutError(
                     f"rootfs snapshot {snapshot_id} did not reach complete state within {max_wait_seconds}s"
                 ) from err
             time.sleep(_POLL_INTERVAL)
             continue
-        if data.status == RootfsSnapshotStatus.SUCCEEDED:
-            return data
-        _check_failed(snapshot_id, data.status)
+        if latest.status == RootfsSnapshotStatus.SUCCEEDED:
+            return latest
+        _check_failed(snapshot_id, latest.status)
         if time.monotonic() >= deadline:
             raise IsolaTimeoutError(
                 f"rootfs snapshot {snapshot_id} did not reach complete state within {max_wait_seconds}s"
@@ -62,24 +83,31 @@ def _wait_until_complete(
 
 
 async def _async_wait_until_complete(
-    snapshot_id: str,
+    initial: RootfsSnapshotData,
     api: _AsyncAPI,
     max_wait_seconds: int,
+    ttl_seconds_after_finished: int | None,
 ) -> RootfsSnapshotData:
+    snapshot_id = initial.id
     deadline = time.monotonic() + max_wait_seconds
+    latest = initial
+    seen_during_wait = False
     while True:
         try:
-            data = await api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
+            latest = await api.request_model("GET", _rootfs_snapshot_path(snapshot_id), RootfsSnapshotData)
+            seen_during_wait = True
         except NotFoundError as err:
+            if _completed_before_cleanup(seen_during_wait, ttl_seconds_after_finished):
+                return latest.model_copy(update={"status": RootfsSnapshotStatus.SUCCEEDED})
             if time.monotonic() >= deadline:
                 raise IsolaTimeoutError(
                     f"rootfs snapshot {snapshot_id} did not reach complete state within {max_wait_seconds}s"
                 ) from err
             await asyncio.sleep(_POLL_INTERVAL)
             continue
-        if data.status == RootfsSnapshotStatus.SUCCEEDED:
-            return data
-        _check_failed(snapshot_id, data.status)
+        if latest.status == RootfsSnapshotStatus.SUCCEEDED:
+            return latest
+        _check_failed(snapshot_id, latest.status)
         if time.monotonic() >= deadline:
             raise IsolaTimeoutError(
                 f"rootfs snapshot {snapshot_id} did not reach complete state within {max_wait_seconds}s"
@@ -153,7 +181,7 @@ class RootfsSnapshots:
         )
         _check_failed(data.id, data.status)
         if data.status != RootfsSnapshotStatus.SUCCEEDED and max_wait_seconds != 0:
-            data = _wait_until_complete(data.id, self._api, max_wait_seconds)
+            data = _wait_until_complete(data, self._api, max_wait_seconds, ttl_seconds_after_finished)
         return RootfsSnapshot(data)
 
     def get(self, snapshot_id: str) -> RootfsSnapshot:
@@ -235,7 +263,7 @@ class AsyncRootfsSnapshots:
         )
         _check_failed(data.id, data.status)
         if data.status != RootfsSnapshotStatus.SUCCEEDED and max_wait_seconds != 0:
-            data = await _async_wait_until_complete(data.id, self._api, max_wait_seconds)
+            data = await _async_wait_until_complete(data, self._api, max_wait_seconds, ttl_seconds_after_finished)
         return AsyncRootfsSnapshot(data)
 
     async def get(self, snapshot_id: str) -> AsyncRootfsSnapshot:
