@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from typing import Any, BinaryIO, TypeVar
 
@@ -40,6 +41,31 @@ def _stream_pos(content: bytes | BinaryIO | None) -> int | None:
     if hasattr(content, "seekable") and content.seekable():  # type: ignore[union-attr]
         return content.tell()  # type: ignore[union-attr]
     return None
+
+
+# httpx's default read size; matches its own iterate-file chunking.
+_STREAM_CHUNK_SIZE = 65536
+
+
+async def _aiter_in_thread(fileobj: BinaryIO) -> AsyncIterator[bytes]:
+    """Read a sync file-like object in chunks off the event loop.
+
+    httpx wraps a sync BinaryIO as a SyncByteStream, which AsyncClient refuses
+    to send. Adapting it to an async byte stream keeps the documented file-upload
+    path working on the async client without buffering the whole file.
+    """
+    while True:
+        chunk = await asyncio.to_thread(fileobj.read, _STREAM_CHUNK_SIZE)
+        if not chunk:
+            break
+        yield chunk
+
+
+def _async_content(content: bytes | BinaryIO | None) -> bytes | AsyncIterator[bytes] | None:
+    """Pass bytes/None through unchanged; adapt a sync file-like object for the async client."""
+    if content is None or isinstance(content, bytes):
+        return content
+    return _aiter_in_thread(content)
 
 
 class _SyncAPI:
@@ -192,7 +218,7 @@ class _AsyncAPI:
                     url,
                     params=params,
                     json=json_body,
-                    content=content,
+                    content=_async_content(content),
                     headers=headers,
                     timeout=timeout,
                 )
