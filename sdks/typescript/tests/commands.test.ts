@@ -615,6 +615,45 @@ describe("Commands.run waitTimeoutMs", () => {
     expect(caught).toBe(reason);
   }, 10_000);
 
+  it("waitTimeoutMs bounds a hung stdin write, mapping to IsolaTimeoutError", async () => {
+    // The stdin write/close happen inside run()'s guarded block, so the
+    // run-phase deadline (waitTimeoutMs) covers them too. A stdin write that
+    // hangs must abort on the deadline and surface IsolaTimeoutError rather
+    // than blocking forever outside the error-handling path.
+    const sbId = "sandbox-123";
+    const cmdId = "cmd-stdin-timeout";
+
+    const routes = {
+      [`GET /v1/sandboxes/${sbId}`]: () => jsonResponse(sandboxResponseFixture()),
+      [`POST /v1/sandboxes/${sbId}/commands`]: () => jsonResponse({ id: cmdId }, { status: 202 }),
+      // stdin write hangs until aborted; the deadline must reach it.
+      [`POST /v1/sandboxes/${sbId}/commands/${cmdId}/stdin`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stdout`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stderr`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+    };
+    const routing = makeRoutingFetch(routes);
+    const client = new Isola({ url: URL_BASE, fetch: routing.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get(sbId);
+
+    let caught: unknown;
+    const t0 = performance.now();
+    try {
+      await sandbox.commands.run(["cat"], { input: "hello\n", waitTimeoutMs: 80 });
+    } catch (err) {
+      caught = err;
+    }
+    const elapsed = performance.now() - t0;
+
+    expect(caught).toBeInstanceOf(IsolaTimeoutError);
+    expect((caught as Error).message).toContain(`did not complete within 80ms`);
+    expect(elapsed).toBeLessThan(2_000);
+  }, 10_000);
+
   it("accepts input: null without crashing (JS-only foot-gun)", async () => {
     // TS types forbid `input: null`; JS callers can pass it. The run() guard
     // must skip the writeStdin path so we don't hit `fetch` with body: null.
