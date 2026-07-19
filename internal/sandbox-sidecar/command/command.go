@@ -95,7 +95,30 @@ func (b *ChrootCommandBuilder) Build(ctx context.Context, pid int, req sidecarap
 		Chroot:     fmt.Sprintf("/proc/%d/root", pid),
 		Credential: &syscall.Credential{Uid: 0, Gid: 0},
 	}
+	setupProcessGroup(cmd)
 	return cmd, nil
+}
+
+// setupProcessGroup makes cmd the leader of a new process group and overrides
+// context cancellation to SIGKILL the whole group. exec "$@" replaces the shell
+// with the user's main process, but that process can fork children that reparent
+// (shared PID namespace) when only the leader is killed. Go's default cancel
+// signals a single PID, so those children would keep running after the API
+// reports the command gone. Signalling the negative pgid reaps the whole tree.
+func setupProcessGroup(cmd *exec.Cmd) {
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Setpgid = true
+	cmd.Cancel = func() error {
+		// Negative PID targets the process group (pgid == leader PID).
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			// Group already gone; mirror os.Process.Kill on a finished process.
+			return os.ErrProcessDone
+		}
+		return err
+	}
 }
 
 // --- Input/Output types ---
