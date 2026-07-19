@@ -155,9 +155,14 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 			if _, err := io.Copy(dw, resp.Body); err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) {
 					h.logger.Warn("client disconnected during file stream", "error", err, "id", input.SandboxID)
-				} else {
-					h.logger.Error("sidecar error streaming file", "error", err, "id", input.SandboxID)
+					return
 				}
+				h.logger.Error("sidecar error streaming file", "error", err, "id", input.SandboxID)
+				// Abort the response so the client sees a broken stream rather than a
+				// clean EOF. File downloads carry no Content-Length, so returning
+				// normally would make a truncated read look like a complete file.
+				// Mirrors net/http/httputil.ReverseProxy.
+				panic(http.ErrAbortHandler)
 			}
 		},
 	}, nil

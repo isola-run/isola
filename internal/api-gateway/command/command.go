@@ -258,9 +258,14 @@ func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream, la
 			if _, err := io.Copy(fw, resp.Body); err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) {
 					h.logger.Warn("client disconnected during command stream", "error", err, "id", sandboxID)
-				} else {
-					h.logger.Error("sidecar error streaming command output", "error", err, "id", sandboxID)
+					return
 				}
+				h.logger.Error("sidecar error streaming command output", "error", err, "id", sandboxID)
+				// Abort the response so the client sees a broken stream rather than a
+				// clean EOF. Returning normally lets net/http emit the terminating
+				// chunk, making truncated stdout indistinguishable from a completed
+				// command. Mirrors net/http/httputil.ReverseProxy.
+				panic(http.ErrAbortHandler)
 			}
 		},
 	}, nil

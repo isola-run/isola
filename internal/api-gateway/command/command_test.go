@@ -114,6 +114,33 @@ func (d *brokenBodyDoer) Do(*http.Request) (*http.Response, error) {
 	}, nil
 }
 
+// partialThenErrReader yields data once, then fails, simulating a sidecar
+// stream that dies mid-transfer.
+type partialThenErrReader struct {
+	data []byte
+	done bool
+}
+
+func (r *partialThenErrReader) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, io.ErrUnexpectedEOF
+	}
+	r.done = true
+	return copy(p, r.data), nil
+}
+
+// truncatedStreamDoer returns a 200 response whose body yields some bytes and
+// then errors, mimicking an upstream sidecar stream that fails mid-copy.
+type truncatedStreamDoer struct{ data []byte }
+
+func (d *truncatedStreamDoer) Do(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(&partialThenErrReader{data: d.data}),
+	}, nil
+}
+
 func newCommandTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humatest.TestAPI {
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
 	v1 := huma.NewGroup(api, "/v1")
@@ -712,6 +739,18 @@ var _ = Describe("Command Proxy", func() {
 				strings.NewReader("data"),
 			)
 			Expect(resp.Code).To(Equal(http.StatusConflict))
+		})
+
+		It("aborts the response when the sidecar stream fails mid-copy", func() {
+			// A mid-stream upstream failure must not look like a clean stream end,
+			// otherwise the client accepts truncated stdout as complete output.
+			// http.ErrAbortHandler breaks the connection so truncation is detectable.
+			api := newCommandTestAPI(&truncatedStreamDoer{data: []byte("data: partial\n")}, 0)
+			sbName := createRunningSandboxCR()
+
+			Expect(func() {
+				api.Get(fmt.Sprintf("/v1/sandboxes/%s/commands/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/stdout", sbName))
+			}).To(PanicWith(http.ErrAbortHandler))
 		})
 
 		It("forwards sidecar 404 for stream endpoints", func() {
