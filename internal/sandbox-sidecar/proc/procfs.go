@@ -61,7 +61,11 @@ func (r *RealProcFS) FindMarkedPID(containerName string) (int, error) {
 	}
 
 	var foundPID int
-	var foundCount int
+	// Children forked from a container's entrypoint inherit ISOLA_CONTAINER_NAME
+	// in the shared PID namespace, so a single container can present many marked
+	// PIDs. Dedupe by name: the default lookup is ambiguous only when more than
+	// one distinct container name is present.
+	seenNames := make(map[string]struct{})
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -83,8 +87,10 @@ func (r *RealProcFS) FindMarkedPID(containerName string) (int, error) {
 				return pid, nil
 			}
 		} else {
-			foundPID = pid
-			foundCount++
+			if _, seen := seenNames[name]; !seen {
+				seenNames[name] = struct{}{}
+				foundPID = pid
+			}
 		}
 	}
 
@@ -92,10 +98,10 @@ func (r *RealProcFS) FindMarkedPID(containerName string) (int, error) {
 		return 0, ErrContainerNotFound
 	}
 
-	if foundCount == 0 {
+	if len(seenNames) == 0 {
 		return 0, ErrContainerNotFound
 	}
-	if foundCount > 1 {
+	if len(seenNames) > 1 {
 		return 0, ErrContainerNotFound
 	}
 

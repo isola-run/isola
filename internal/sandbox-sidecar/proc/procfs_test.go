@@ -16,11 +16,14 @@ package proc
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/isola-run/isola/internal/constants"
 )
 
 func TestProc(t *testing.T) {
@@ -108,6 +111,49 @@ var _ = Describe("RealProcFS", func() {
 	Describe("FindMarkedPID", func() {
 		It("returns ErrContainerNotFound when no process has the marker", func() {
 			_, err := procfs.FindMarkedPID("nonexistent-container")
+			Expect(err).To(MatchError(ErrContainerNotFound))
+		})
+
+		// A single container running a multi-process entrypoint (e.g. a server
+		// with worker processes) yields several marked PIDs that all share one
+		// ISOLA_CONTAINER_NAME because children inherit the env in the shared
+		// PID namespace. The default (empty containerName) lookup must resolve
+		// this to the one container rather than treating it as ambiguous.
+		It("resolves the default container when one name spans multiple processes", func() {
+			const name = "isola-test-multiproc"
+			marker := append(os.Environ(), constants.IsolaContainerNameEnv+"="+name)
+
+			start := func() *exec.Cmd {
+				cmd := exec.Command("sleep", "30")
+				cmd.Env = marker
+				Expect(cmd.Start()).To(Succeed())
+				return cmd
+			}
+
+			c1 := start()
+			defer func() { _ = c1.Process.Kill(); _ = c1.Wait() }()
+			c2 := start()
+			defer func() { _ = c2.Process.Kill(); _ = c2.Wait() }()
+
+			pid, err := procfs.FindMarkedPID("")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pid).To(BeElementOf(c1.Process.Pid, c2.Process.Pid))
+		})
+
+		It("stays ambiguous for the default lookup when distinct container names exist", func() {
+			start := func(name string) *exec.Cmd {
+				cmd := exec.Command("sleep", "30")
+				cmd.Env = append(os.Environ(), constants.IsolaContainerNameEnv+"="+name)
+				Expect(cmd.Start()).To(Succeed())
+				return cmd
+			}
+
+			c1 := start("isola-test-alpha")
+			defer func() { _ = c1.Process.Kill(); _ = c1.Wait() }()
+			c2 := start("isola-test-beta")
+			defer func() { _ = c2.Process.Kill(); _ = c2.Wait() }()
+
+			_, err := procfs.FindMarkedPID("")
 			Expect(err).To(MatchError(ErrContainerNotFound))
 		})
 	})
