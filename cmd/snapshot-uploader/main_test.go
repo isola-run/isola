@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/isola-run/isola/internal/snapshot"
+	"gocloud.dev/blob/memblob"
 )
 
 // fakeUploader records calls and can return a configurable error.
@@ -36,6 +37,11 @@ type fakeUploader struct {
 	err     error
 	called  bool
 	written int64
+
+	// overrideWritten, when non-nil, forces the reported byte count to a value
+	// that differs from what was actually read, simulating a truncated upload
+	// that gocloud committed without surfacing an error.
+	overrideWritten *int64
 }
 
 func (f *fakeUploader) upload(_ context.Context, key string, r io.Reader) (int64, error) {
@@ -51,6 +57,25 @@ func (f *fakeUploader) upload(_ context.Context, key string, r io.Reader) (int64
 	}
 	f.data = buf.Bytes()
 	f.written = n
+	if f.overrideWritten != nil {
+		return *f.overrideWritten, nil
+	}
+	return n, nil
+}
+
+// errReader returns data once, then fails, simulating a mid-copy read error.
+type errReader struct {
+	data []byte
+	pos  int
+	err  error
+}
+
+func (r *errReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, r.err
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
 	return n, nil
 }
 
@@ -287,6 +312,71 @@ func TestUploadSnapshotTerminationLogFailureDoesNotFail(t *testing.T) {
 	}
 	if !uploader.called {
 		t.Error("uploader should have been called")
+	}
+}
+
+// TestBlobUploaderAbortsOnCopyError verifies that a mid-copy read error does
+// not commit a truncated object over the canonical snapshot key. gocloud's
+// blob.Writer.Close finalizes the object, so upload must cancel the writer's
+// context before Close to abort the write rather than persist partial bytes.
+func TestBlobUploaderAbortsOnCopyError(t *testing.T) {
+	ctx := context.Background()
+	bucket := memblob.OpenBucket(nil)
+	defer func() { _ = bucket.Close() }()
+
+	const key = "rootfssnapshots/ns/snap.tar"
+
+	// Seed a known-good object at the canonical key so we can detect clobbering.
+	good := []byte("good-complete-tarball-contents")
+	if err := bucket.WriteAll(ctx, key, good, nil); err != nil {
+		t.Fatalf("seed write failed: %v", err)
+	}
+
+	uploader := &blobUploader{bucket: bucket}
+	copyErr := errors.New("disk read failure mid-copy")
+	r := &errReader{data: []byte("partial-truncated-data"), err: copyErr}
+
+	if _, err := uploader.upload(ctx, key, r); err == nil {
+		t.Fatal("expected upload error from mid-copy read failure")
+	}
+
+	got, err := bucket.ReadAll(ctx, key)
+	if err != nil {
+		t.Fatalf("reading key after failed upload: %v", err)
+	}
+	if !bytes.Equal(got, good) {
+		t.Errorf("canonical key clobbered with partial data %q; want unchanged %q", got, good)
+	}
+}
+
+// TestUploadSnapshotSizeMismatch verifies that a silently truncated upload
+// (fewer bytes committed than the source file holds) fails the job instead of
+// reporting success with a corrupt snapshot.
+func TestUploadSnapshotSizeMismatch(t *testing.T) {
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "snapshot.tar")
+	content := []byte("full-tarball-contents-here")
+	if err := os.WriteFile(srcPath, content, 0600); err != nil {
+		t.Fatalf("failed to write source file: %v", err)
+	}
+
+	short := int64(len(content) - 5)
+	uploader := &fakeUploader{overrideWritten: &short}
+
+	termLogPath := filepath.Join(dir, "term-log")
+	err := uploadSnapshot(context.Background(), discardLogger(), uploader, uploadConfig{
+		snapshotFile:      srcPath,
+		snapshotName:      "snap1",
+		snapshotNamespace: "ns",
+		terminationLog:    termLogPath,
+	})
+	if err == nil {
+		t.Fatal("expected error from truncated upload")
+	}
+
+	// A truncated upload must not be recorded as a usable snapshot.
+	if _, statErr := os.Stat(termLogPath); !os.IsNotExist(statErr) {
+		t.Error("termination log should not exist after truncated upload")
 	}
 }
 

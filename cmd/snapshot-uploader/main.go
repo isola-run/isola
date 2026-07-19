@@ -67,13 +67,22 @@ type blobUploader struct {
 }
 
 func (u *blobUploader) upload(ctx context.Context, key string, r io.Reader) (int64, error) {
-	w, err := u.bucket.NewWriter(ctx, key, nil)
+	// gocloud's blob.Writer.Close() finalizes (commits) the object; there is no
+	// abort method. On a mid-copy read error, Close would otherwise persist a
+	// truncated object over the canonical snapshot key. Cancelling the writer's
+	// context before Close aborts the write instead, mirroring gocloud's own
+	// MD5-mismatch abort path.
+	writeCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	w, err := u.bucket.NewWriter(writeCtx, key, nil)
 	if err != nil {
 		return 0, err
 	}
 
 	written, err := io.Copy(w, r)
 	if err != nil {
+		cancel()
 		_ = w.Close()
 		return 0, err
 	}
@@ -185,6 +194,18 @@ func uploadSnapshot(ctx context.Context, logger *slog.Logger, uploader objectUpl
 	if err != nil {
 		logger.Error("failed to upload", "error", err)
 		return err
+	}
+
+	// A short write means the reader hit EOF early (e.g. a concurrently truncated
+	// file) without erroring. The object is already committed, so fail the job to
+	// keep the controller from treating a truncated snapshot as usable.
+	if written != stat.Size() {
+		logger.Error("upload size mismatch, snapshot is truncated",
+			"bytes_written", written,
+			"file_size", stat.Size(),
+			"key", snapshotKey,
+		)
+		return fmt.Errorf("upload size mismatch: wrote %d bytes, expected %d", written, stat.Size())
 	}
 
 	logger.Info("upload complete",
