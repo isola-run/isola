@@ -17,10 +17,13 @@ package proc
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/isola-run/isola/internal/constants"
 )
 
 func TestProc(t *testing.T) {
@@ -32,6 +35,35 @@ var _ = Describe("GetContainerName", func() {
 	It("returns false when the env var is not present", func() {
 		pid := os.Getpid()
 		name, ok := GetContainerName(pid)
+		Expect(ok).To(BeFalse())
+		Expect(name).To(BeEmpty())
+	})
+})
+
+var _ = Describe("containerNameFromEnviron", func() {
+	marker := constants.IsolaContainerNameEnv + "=mybox"
+
+	It("finds the marker in a simple environ", func() {
+		environ := []byte("PATH=/usr/bin\x00" + marker + "\x00")
+		name, ok := containerNameFromEnviron(environ)
+		Expect(ok).To(BeTrue())
+		Expect(name).To(Equal("mybox"))
+	})
+
+	// The marker is appended after user env, and Linux allows env values up to
+	// 128 KiB. A value larger than bufio.Scanner's 64 KiB max token must not
+	// hide the trailing marker.
+	It("finds the marker after an env value larger than 64 KiB", func() {
+		huge := strings.Repeat("x", 128*1024)
+		environ := []byte("BIG=" + huge + "\x00" + marker + "\x00")
+		name, ok := containerNameFromEnviron(environ)
+		Expect(ok).To(BeTrue())
+		Expect(name).To(Equal("mybox"))
+	})
+
+	It("returns false when the marker is absent", func() {
+		environ := []byte("PATH=/usr/bin\x00HOME=/root\x00")
+		name, ok := containerNameFromEnviron(environ)
 		Expect(ok).To(BeFalse())
 		Expect(name).To(BeEmpty())
 	})
