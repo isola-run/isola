@@ -101,6 +101,9 @@ type SandboxReconciler struct {
 const (
 	sandboxSidecarContainerName = "sandbox-sidecar"
 
+	// Volume that RAM-backs the sidecar's per-command output dir. See buildSandboxSidecarContainer.
+	sandboxCommandOutputVolumeName = "command-output"
+
 	// Trust boundary label: identifies untrusted sandbox pods for NetworkPolicy selection
 	LabelSandbox = "isola.run/sandbox"
 
@@ -188,6 +191,14 @@ func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 				Add: []corev1.Capability{"SYS_PTRACE"},
 			},
 		},
+		// Per-command stdout/stderr are written under this path (see the sidecar's
+		// command handler). The matching pod volume (injectSandboxSidecar) is a
+		// memory-backed emptyDir, so the output lives in tmpfs rather than the
+		// sidecar container's writable overlay layer: it never touches disk and
+		// stays entirely out of `runsc tar rootfs-upper` snapshots.
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: sandboxCommandOutputVolumeName, MountPath: constants.SidecarCommandOutputDir},
+		},
 	}
 }
 
@@ -204,6 +215,18 @@ func markContainers(sandboxPod *corev1.Pod) {
 func (r *SandboxReconciler) injectSandboxSidecar(sandboxPod *corev1.Pod) {
 	sidecarContainer := r.buildSandboxSidecarContainer()
 	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, sidecarContainer)
+
+	// Memory-backed emptyDir for the sidecar's command output (see the mount in
+	// buildSandboxSidecarContainer). No sizeLimit: the operator sets no ephemeral
+	// storage limits on the sidecar (see the Resources comment there), and a limit
+	// here would only bound the tmpfs, not add capacity. Usage counts against the
+	// pod's memory budget.
+	sandboxPod.Spec.Volumes = append(sandboxPod.Spec.Volumes, corev1.Volume{
+		Name: sandboxCommandOutputVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory},
+		},
+	})
 }
 
 // markSandboxSucceeded sets Succeeded=True and Ready=False if the sandbox is not already terminal.

@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	"github.com/isola-run/isola/internal/constants"
 )
 
 var _ = Describe("Sandbox Controller", func() {
@@ -94,6 +95,49 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(sidecarResources.Requests.Memory().String()).To(Equal("1Mi"))
 			Expect(sidecarResources.Limits.Cpu().String()).To(Equal("1m"))
 			Expect(sidecarResources.Limits.Memory().String()).To(Equal("1Mi"))
+		})
+
+		It("should back the sidecar command output dir with a memory emptyDir", func() {
+			// Per-command stdout/stderr must land in RAM-backed tmpfs, not the sidecar
+			// container's writable overlay layer, so command output never touches disk
+			// and stays out of any rootfs snapshot.
+			sandboxName := "sandbox-sidecar-cmd-output"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Spec.InitContainers).To(HaveLen(1))
+
+			sidecar := pod.Spec.InitContainers[0]
+			var mount *corev1.VolumeMount
+			for i := range sidecar.VolumeMounts {
+				if sidecar.VolumeMounts[i].MountPath == constants.SidecarCommandOutputDir {
+					mount = &sidecar.VolumeMounts[i]
+					break
+				}
+			}
+			Expect(mount).NotTo(BeNil(),
+				"sidecar must mount a volume at the command output dir %q", constants.SidecarCommandOutputDir)
+
+			var vol *corev1.Volume
+			for i := range pod.Spec.Volumes {
+				if pod.Spec.Volumes[i].Name == mount.Name {
+					vol = &pod.Spec.Volumes[i]
+					break
+				}
+			}
+			Expect(vol).NotTo(BeNil(), "pod must declare the volume referenced by the sidecar mount")
+			Expect(vol.EmptyDir).NotTo(BeNil(), "command output volume must be an emptyDir")
+			Expect(vol.EmptyDir.Medium).To(Equal(corev1.StorageMediumMemory),
+				"command output emptyDir must be memory-backed (tmpfs)")
 		})
 
 		It("should set sidecar ImagePullPolicy from reconciler config", func() {
