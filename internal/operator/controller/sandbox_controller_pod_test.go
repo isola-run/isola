@@ -378,6 +378,50 @@ var _ = Describe("Sandbox Controller", func() {
 			sandbox := getSandbox(ctx, sandboxName)
 			Expect(meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition)).To(BeNil())
 		})
+
+		It("should not re-create pod for a terminal sandbox whose pod was deleted out-of-band", func() {
+			sandboxName := "sandbox-pod-terminal-gc"
+
+			createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			// First reconcile creates the pod
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			// Drive the sandbox to a terminal (Succeeded) state
+			pod.Status.Phase = corev1.PodSucceeded
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{Name: "sandbox", State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0, Reason: "Completed"}}},
+			}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			sandbox := getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionTrue, CondReasonPodSucceeded)).To(BeTrue())
+
+			// The completed pod is garbage-collected out-of-band
+			Expect(k8sClient.Delete(ctx, pod)).To(Succeed())
+			Expect(getPod(ctx, podName)).To(BeNil())
+
+			// Reconcile must not re-run the workload by re-creating the pod
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(getPod(ctx, podName)).To(BeNil(), "terminal sandbox pod must not be re-created after out-of-band deletion")
+
+			// Sandbox stays terminal
+			sandbox = getSandbox(ctx, sandboxName)
+			Expect(hasConditionWithReason(sandbox, sandboxv1alpha1.SandboxSucceededCondition, metav1.ConditionTrue, CondReasonPodSucceeded)).To(BeTrue())
+		})
 	})
 
 	// ============================================
