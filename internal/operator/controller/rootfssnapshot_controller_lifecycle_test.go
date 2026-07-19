@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
+	snapshotpkg "github.com/isola-run/isola/internal/snapshot"
 )
 
 var _ = Describe("RootfsSnapshot Controller", func() {
@@ -86,6 +87,7 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
+			defer deleteSnapshotJobPod(ctx, jobName)
 
 			// First reconcile - creates job
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -93,7 +95,11 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Mark job complete
+			// Complete the job with a valid upload result so the snapshot succeeds
+			createSnapshotJobPodWithTerminationMessage(ctx, jobName, &snapshotpkg.UploadResult{
+				SnapshotKey:  "rootfssnapshots/" + testNamespace + "/" + snapName + ".tar",
+				BytesWritten: 1024,
+			})
 			setSnapshotJobComplete(ctx, jobName)
 
 			// Second reconcile - marks complete
@@ -154,10 +160,15 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
+			defer deleteSnapshotJobPod(ctx, jobName)
 
 			// Reconcile to create and complete job
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			createSnapshotJobPodWithTerminationMessage(ctx, jobName, &snapshotpkg.UploadResult{
+				SnapshotKey:  "rootfssnapshots/" + testNamespace + "/" + snapName + ".tar",
+				BytesWritten: 1024,
 			})
 			setSnapshotJobComplete(ctx, jobName)
 			_, _ = reconciler.Reconcile(ctx, reconcile.Request{

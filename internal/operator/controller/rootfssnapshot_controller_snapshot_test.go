@@ -584,7 +584,11 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(failedCond.Message).To(ContainSubstring("parse termination message"))
 		})
 
-		It("should fail when no job pod exists", func() {
+		It("should requeue (not fail) when no job pod is observed yet", func() {
+			// A completed job whose pod has not yet propagated to the informer
+			// cache, or was GC'd after a node scale-down, must not be treated as
+			// a permanent failure: the tar is already uploaded. The controller
+			// should requeue and retry rather than marking the snapshot failed.
 			snapName := "snap-no-job-pod"
 			sandboxName := "sandbox-no-job-pod"
 			podName := sandboxName + "-pod"
@@ -614,20 +618,86 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			// Mark job complete WITHOUT creating a job pod
 			setSnapshotJobComplete(ctx, jobName)
 
-			// Second reconcile - should fail because no job pod
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			// Second reconcile - should requeue, not fail
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+			Expect(snap.Status.CompletionTime).To(BeNil())
+			Expect(meta.FindStatusCondition(snap.Status.Conditions, sandboxv1alpha1.RootfsSnapshotSucceededCondition)).To(BeNil())
+		})
+
+		It("should requeue (not fail) when the uploader container is not terminated yet", func() {
+			// The job's completion condition can be visible in the cache before
+			// the job pod's container status reflects termination. Reading the
+			// termination message here is a transient miss, not a failure.
+			snapName := "snap-not-terminated"
+			sandboxName := "sandbox-not-terminated"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-not-terminated"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://notterm123", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-job"
+			defer deleteSnapshotJob(ctx, jobName)
+
+			// First reconcile - creates job
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
+			// Create job pod whose uploader container is still running (not terminated)
+			jobPod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      jobName + "-pod",
+					Namespace: testNamespace,
+					Labels:    map[string]string{"job-name": jobName},
+				},
+				Spec: corev1.PodSpec{
+					Containers:    []corev1.Container{{Name: "snapshot-uploader", Image: "test"}},
+					RestartPolicy: corev1.RestartPolicyNever,
+				},
+			}
+			Expect(k8sClient.Create(ctx, jobPod)).To(Succeed())
+			defer deleteSnapshotJobPod(ctx, jobName)
+
+			jobPod.Status.Phase = corev1.PodRunning
+			jobPod.Status.ContainerStatuses = []corev1.ContainerStatus{
+				{
+					Name:  "snapshot-uploader",
+					State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, jobPod)).To(Succeed())
+
+			setSnapshotJobComplete(ctx, jobName)
+
+			// Second reconcile - should requeue, not fail
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+
 			snap := getRootfsSnapshotCR(ctx, snapName)
 			Expect(snap).NotTo(BeNil())
-
-			failedCond := meta.FindStatusCondition(snap.Status.Conditions, sandboxv1alpha1.RootfsSnapshotSucceededCondition)
-			Expect(failedCond).NotTo(BeNil())
-			Expect(failedCond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(failedCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotFailed))
-			Expect(failedCond.Message).To(ContainSubstring("no pods found"))
+			Expect(snap.Status.CompletionTime).To(BeNil())
+			Expect(meta.FindStatusCondition(snap.Status.Conditions, sandboxv1alpha1.RootfsSnapshotSucceededCondition)).To(BeNil())
 		})
 	})
 })
