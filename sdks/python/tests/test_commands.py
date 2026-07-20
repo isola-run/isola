@@ -359,15 +359,12 @@ async def test_async_run_cancels_readers_when_wait_fails(
     respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
         return_value=httpx.Response(202, json={"id": "cmd-cancel"})
     )
-    # Sandbox deleted mid-run: the status long-poll fails with a non-transient 409.
     respx.get(url__regex=r".*/commands/cmd-cancel/status.*").mock(
         return_value=httpx.Response(409, json={"detail": "sandbox deleted"})
     )
 
     cancelled: dict[str, bool] = {"stdout": False, "stderr": False}
 
-    # Stand in for an SSE read (read timeout None) that is still waiting for data
-    # when wait() fails: block until cancelled and record that it was cancelled.
     async def fake_read(self: AsyncStreamReader) -> str:
         stream = "stdout" if self._path.endswith("/stdout") else "stderr"
         try:
@@ -384,8 +381,6 @@ async def test_async_run_cancels_readers_when_wait_fails(
         with pytest.raises(ConflictError):
             await sandbox.commands.run("sleep", "100")
 
-    # Without cancellation the readers stay pending forever, leaking gateway
-    # connections. The fix must have cancelled both by the time run() returns.
     assert cancelled["stdout"]
     assert cancelled["stderr"]
 

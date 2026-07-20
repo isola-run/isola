@@ -436,11 +436,6 @@ class AsyncCommands:
         try:
             stdout, stderr, exit_code = await asyncio.gather(stdout_task, stderr_task, wait_task)
         finally:
-            # gather propagates the first failure but leaves the siblings running.
-            # If wait() fails (e.g. a 409 because the sandbox was deleted mid-run),
-            # the stdout/stderr SSE reads (read timeout None) would otherwise linger
-            # forever holding gateway connections. Cancel and drain them on every
-            # exit path. Mirrors the AbortController in the TypeScript SDK's run().
             for task in (stdout_task, stderr_task, wait_task):
                 task.cancel()
             await asyncio.gather(stdout_task, stderr_task, wait_task, return_exceptions=True)
