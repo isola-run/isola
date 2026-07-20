@@ -168,11 +168,6 @@ func (r *RootfsSnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.setFailed(ctx, baseSnap, snap, "RootfsSnapshot storage not configured: --rootfssnapshot-bucket-url is required")
 	}
 
-	// Once the snapshot Job exists, its outcome depends on the Job alone. The
-	// sandbox pod may have exited (Succeeded, so no longer "ready") or been
-	// deleted while the upload Job runs, and re-checking pod existence/readiness
-	// here would wrongly flip a finished upload to Failed. Only gate on the pod
-	// while we still need it to create the Job.
 	jobName := podutil.GetSnapshotJobName(snap.Name)
 	existingJob := &batchv1.Job{}
 	if err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: snap.Namespace}, existingJob); err == nil {
@@ -268,9 +263,6 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 	return r.evaluateSnapshotJob(ctx, baseSnap, snap, job)
 }
 
-// evaluateSnapshotJob determines the snapshot outcome from the Job status alone.
-// It must not depend on the sandbox pod: by the time the Job exists the pod may
-// have exited or been deleted without affecting an in-flight or finished upload.
 func (r *RootfsSnapshotReconciler) evaluateSnapshotJob(
 	ctx context.Context,
 	baseSnap, snap *sandboxv1alpha1.RootfsSnapshot,

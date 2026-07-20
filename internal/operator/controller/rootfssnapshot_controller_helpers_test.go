@@ -103,8 +103,6 @@ func createSnapshotPodNotReady(ctx context.Context, name, runtimeClassName strin
 	ExpectWithOffset(1, k8sClient.Status().Update(ctx, pod)).To(Succeed())
 }
 
-// markSnapshotPodExited transitions a running sandbox pod to Succeeded with its
-// Ready condition flipped to False, mirroring a workload that has exited.
 func markSnapshotPodExited(ctx context.Context, name string) {
 	pod := &corev1.Pod{}
 	ExpectWithOffset(1, k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pod)).To(Succeed())

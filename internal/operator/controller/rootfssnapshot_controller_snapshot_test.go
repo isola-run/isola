@@ -186,10 +186,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 		})
 
 		It("should mark complete when job succeeds even after the sandbox pod stops being ready", func() {
-			// Regression: an on-demand snapshot racing the workload exiting. Once
-			// the upload Job exists, the sandbox pod becoming not-ready (e.g. it
-			// exits and goes Succeeded while the upload finishes) must not flip a
-			// succeeded upload to Failed.
 			snapName := "snap-pod-exited"
 			sandboxName := "sandbox-pod-exited"
 			podName := sandboxName + "-pod"
@@ -211,14 +207,11 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			defer deleteSnapshotJob(ctx, jobName)
 			defer deleteSnapshotJobPod(ctx, jobName)
 
-			// First reconcile - creates job while the pod is still ready
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Job finishes successfully, then the workload exits: the pod goes
-			// Succeeded and its Ready condition flips to False.
 			createSnapshotJobPodWithTerminationMessage(ctx, jobName, &snapshotpkg.UploadResult{
 				SnapshotKey:  "rootfssnapshots/" + testNamespace + "/" + sandboxName + ".tar",
 				BytesWritten: 1024,
@@ -226,7 +219,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			setSnapshotJobComplete(ctx, jobName)
 			markSnapshotPodExited(ctx, podName)
 
-			// Second reconcile - must gate on job status, not pod readiness
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
 			})
