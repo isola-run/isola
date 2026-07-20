@@ -71,13 +71,6 @@ function checkFailed(snapshotId: string, status: RootfsSnapshotStatus): void {
   }
 }
 
-// A 404 during the wait means the controller deleted the RootfsSnapshot CR, and
-// the only thing that deletes it is the TTL cleanup that runs after the snapshot
-// finishes. So the 404 is completion, not cache lag, when either we already saw
-// the snapshot mid-run before it vanished, or cleanup is (near-)immediate
-// (ttlSecondsAfterFinished <= poll interval), making the Succeeded window too
-// short-lived to catch on a 1s poll. In both cases the snapshot uploaded and is
-// restorable by name.
 function completedBeforeCleanup(seenDuringWait: boolean, ttlSecondsAfterFinished: number | undefined): boolean {
   if (seenDuringWait) return true;
   return ttlSecondsAfterFinished !== undefined && ttlSecondsAfterFinished <= POLL_INTERVAL_MS / 1000;

@@ -274,9 +274,6 @@ def test_wait_raises_timeout_error_when_not_found_persists(monkeypatch: pytest.M
 
 @respx.mock
 def test_wait_treats_not_found_as_success_when_ttl_immediate(monkeypatch: pytest.MonkeyPatch) -> None:
-    # With ttlSecondsAfterFinished=0 the controller deletes the CR in the same
-    # reconcile that marks it Succeeded, so polling never sees Succeeded and only
-    # ever gets a 404. That 404 means "completed and cleaned up", not cache lag.
     monkeypatch.setattr("isola._rootfs_snapshot.time.sleep", lambda _: None)
 
     elapsed = 0.0
@@ -309,8 +306,6 @@ def test_wait_treats_not_found_as_success_when_ttl_immediate(monkeypatch: pytest
 
 @respx.mock
 def test_wait_treats_not_found_as_success_after_observed_running(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Even with a large TTL, a snapshot seen mid-run that then 404s was deleted
-    # by TTL cleanup after completing, so it is a success, not cache lag.
     monkeypatch.setattr("isola._rootfs_snapshot.time.sleep", lambda _: None)
 
     respx.post("http://localhost:8080/v1/rootfs-snapshots").mock(

@@ -36,14 +36,6 @@ def _check_failed(snapshot_id: str, status: RootfsSnapshotStatus) -> None:
 
 
 def _completed_before_cleanup(seen_during_wait: bool, ttl_seconds_after_finished: int | None) -> bool:
-    # A 404 during the wait means the controller deleted the RootfsSnapshot CR,
-    # and the only thing that deletes it is the TTL cleanup that runs after the
-    # snapshot finishes. So the 404 is completion, not cache lag, when either:
-    #   - we already observed the snapshot mid-run before it vanished, or
-    #   - cleanup is (near-)immediate (ttlSecondsAfterFinished <= poll interval),
-    #     making the Succeeded window too short-lived to catch on a 1s poll.
-    # In both cases the snapshot uploaded and is restorable by name, so report
-    # success rather than blocking to the deadline and raising a false timeout.
     if seen_during_wait:
         return True
     return ttl_seconds_after_finished is not None and ttl_seconds_after_finished <= _POLL_INTERVAL

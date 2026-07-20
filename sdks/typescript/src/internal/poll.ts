@@ -30,15 +30,7 @@ export interface PollOptions<T> {
   signal: AbortSignal | undefined;
   /** Throws the resource-specific timeout error (optionally chaining `cause`). */
   onTimeout: (cause?: unknown) => never;
-  /** Seeds `lastValue` so a first-poll 404 can still resolve to a value. */
   initialValue?: T;
-  /**
-   * Decides what a `NotFoundError` means. Return a value to finish
-   * successfully (the resource was deleted after completing); return
-   * `undefined` to keep treating the 404 as cache lag and retry within the
-   * deadline. `lastValue` is the most recently observed value (the seed if no
-   * poll has succeeded yet); `seenDuringWait` is true once a poll succeeded.
-   */
   onNotFound?: (info: { lastValue: T | undefined; seenDuringWait: boolean }) => T | undefined;
 }
 
