@@ -302,6 +302,35 @@ describe("retry behavior", () => {
     expect(stub.calls).toHaveLength(2);
   }, 15_000);
 
+  it("does NOT retry POST on a transient error", async () => {
+    const stub = makeStubFetch(
+      jsonResponse({ detail: "bad gateway" }, { status: 502 }),
+      jsonResponse({ id: "duplicate" }, { status: 201 }),
+    );
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+    await expect(
+      api.request({
+        method: "POST",
+        path: "/v1/sandboxes",
+        jsonBody: { podTemplate: { containers: [] } },
+      }),
+    ).rejects.toThrow(BadGatewayError);
+    expect(stub.calls).toHaveLength(1);
+  });
+
+  it("does NOT retry POST on a transport failure", async () => {
+    const stub = makeStubFetch(new TypeError("response lost"), jsonResponse({ id: "duplicate" }, { status: 201 }));
+    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+    await expect(
+      api.request({
+        method: "POST",
+        path: "/v1/sandboxes",
+        jsonBody: { podTemplate: { containers: [] } },
+      }),
+    ).rejects.toThrow(APIConnectionError);
+    expect(stub.calls).toHaveLength(1);
+  });
+
   it("does NOT retry on 400", async () => {
     const stub = makeStubFetch(jsonResponse({ detail: "bad request" }, { status: 400 }));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
@@ -371,8 +400,8 @@ describe("body replay on retry", () => {
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch });
     // Use the internal _api to directly send a Uint8Array body and check retry sees it.
     const { response } = await client._api.request({
-      method: "POST",
-      path: "/v1/sandboxes",
+      method: "PUT",
+      path: "/v1/files/example",
       body: payload,
       headers: { "content-type": "application/json" },
     });
@@ -391,8 +420,8 @@ describe("body replay on retry", () => {
     const stub = makeStubFetch(jsonResponse({ detail: "bad gateway" }, { status: 502 }), jsonResponse({ ok: true }));
     const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
     await api.request({
-      method: "POST",
-      path: "/v1/sandboxes",
+      method: "PUT",
+      path: "/v1/files/example",
       body: make(),
       headers: { "content-type": "application/octet-stream" },
     });

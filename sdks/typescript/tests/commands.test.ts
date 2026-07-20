@@ -714,14 +714,16 @@ describe("Commands error mapping", () => {
     expect((caught as InternalError).message).toContain("sidecar unreachable");
   });
 
-  it("spawn 502 -> BadGatewayError (after retries)", async () => {
-    // 502 retries; pre-load 1 + MAX_RETRIES failures.
-    const failures = Array.from({ length: 6 }, () => jsonResponse({ detail: "bad gateway" }, { status: 502 }));
-    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), ...failures);
+  it("spawn 502 -> BadGatewayError without retrying the POST", async () => {
+    const stub = makeStubFetch(
+      jsonResponse(sandboxResponseFixture()),
+      jsonResponse({ detail: "bad gateway" }, { status: 502 }),
+    );
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
     const sandbox = await client.sandboxes.get("sandbox-123");
     await expect(sandbox.commands.spawn(["ls"])).rejects.toThrow(BadGatewayError);
-  }, 15_000);
+    expect(stub.calls).toHaveLength(2);
+  });
 
   it("kill 404 -> NotFoundError", async () => {
     const stub = makeStubFetch(

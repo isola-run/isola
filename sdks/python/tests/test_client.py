@@ -245,6 +245,38 @@ def test_retries_connection_error_then_succeeds(monkeypatch: pytest.MonkeyPatch)
 
 
 @respx.mock
+def test_does_not_retry_post_on_transient_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    route = respx.post("http://localhost:8080/v1/sandboxes").mock(
+        side_effect=[
+            httpx.Response(502, json={"detail": "bad gateway"}),
+            httpx.Response(201, json={"id": "duplicate"}),
+        ]
+    )
+
+    with Isola(url="http://localhost:8080") as client, pytest.raises(BadGatewayError):
+        client._api.request("POST", "/v1/sandboxes", json_body={"podTemplate": {"containers": []}})
+
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_does_not_retry_post_on_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
+    route = respx.post("http://localhost:8080/v1/sandboxes").mock(
+        side_effect=[
+            httpx.ConnectError("response lost"),
+            httpx.Response(201, json={"id": "duplicate"}),
+        ]
+    )
+
+    with Isola(url="http://localhost:8080") as client, pytest.raises(APIConnectionError):
+        client._api.request("POST", "/v1/sandboxes", json_body={"podTemplate": {"containers": []}})
+
+    assert route.call_count == 1
+
+
+@respx.mock
 def test_no_retry_on_404(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("isola._client.time.sleep", lambda _: None)
     route = respx.get("http://localhost:8080/v1/sandboxes/bad").mock(
@@ -319,6 +351,48 @@ async def test_async_retries_connection_error_then_succeeds(monkeypatch: pytest.
     )
     async with AsyncIsola(url="http://localhost:8080") as client:
         assert await client.sandboxes.list() == []
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_does_not_retry_post_on_transient_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._client.asyncio.sleep", _no_sleep)
+    route = respx.post("http://localhost:8080/v1/sandboxes").mock(
+        side_effect=[
+            httpx.Response(502, json={"detail": "bad gateway"}),
+            httpx.Response(201, json={"id": "duplicate"}),
+        ]
+    )
+
+    async with AsyncIsola(url="http://localhost:8080") as client:
+        with pytest.raises(BadGatewayError):
+            await client._api.request("POST", "/v1/sandboxes", json_body={"podTemplate": {"containers": []}})
+
+    assert route.call_count == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_does_not_retry_post_on_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("isola._client.asyncio.sleep", _no_sleep)
+    route = respx.post("http://localhost:8080/v1/sandboxes").mock(
+        side_effect=[
+            httpx.ConnectError("response lost"),
+            httpx.Response(201, json={"id": "duplicate"}),
+        ]
+    )
+
+    async with AsyncIsola(url="http://localhost:8080") as client:
+        with pytest.raises(APIConnectionError):
+            await client._api.request("POST", "/v1/sandboxes", json_body={"podTemplate": {"containers": []}})
+
+    assert route.call_count == 1
 
 
 @pytest.mark.asyncio

@@ -31,6 +31,7 @@ DEFAULT_TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=30.0, pool=5.0)
 
 MAX_RETRIES = 5
 RETRY_DELAY = 1.0
+_RETRYABLE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -40,6 +41,11 @@ def _stream_pos(content: bytes | BinaryIO | None) -> int | None:
     if hasattr(content, "seekable") and content.seekable():  # type: ignore[union-attr]
         return content.tell()  # type: ignore[union-attr]
     return None
+
+
+def _can_retry(method: str, content: bytes | BinaryIO | None) -> bool:
+    replayable_body = _stream_pos(content) is not None or content is None or isinstance(content, bytes)
+    return method.upper() in _RETRYABLE_METHODS and replayable_body
 
 
 class _SyncAPI:
@@ -63,7 +69,7 @@ class _SyncAPI:
     ) -> httpx.Response:
         url = f"{self.url}{path}"
         pos = _stream_pos(content)
-        can_retry = pos is not None or content is None or isinstance(content, bytes)
+        can_retry = _can_retry(method, content)
 
         for attempt in range(1 + MAX_RETRIES):
             try:
@@ -183,7 +189,7 @@ class _AsyncAPI:
     ) -> httpx.Response:
         url = f"{self.url}{path}"
         pos = _stream_pos(content)
-        can_retry = pos is not None or content is None or isinstance(content, bytes)
+        can_retry = _can_retry(method, content)
 
         for attempt in range(1 + MAX_RETRIES):
             try:
