@@ -114,11 +114,6 @@ var _ = Describe("RealProcFS", func() {
 			Expect(err).To(MatchError(ErrContainerNotFound))
 		})
 
-		// A single container running a multi-process entrypoint (e.g. a server
-		// with worker processes) yields several marked PIDs that all share one
-		// ISOLA_CONTAINER_NAME because children inherit the env in the shared
-		// PID namespace. The default (empty containerName) lookup must resolve
-		// this to the one container rather than treating it as ambiguous.
 		It("resolves the default container when one name spans multiple processes", func() {
 			const name = "isola-test-multiproc"
 			marker := append(os.Environ(), constants.IsolaContainerNameEnv+"="+name)
