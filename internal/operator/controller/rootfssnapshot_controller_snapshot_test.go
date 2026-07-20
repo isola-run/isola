@@ -585,10 +585,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 		})
 
 		It("should requeue (not fail) when no job pod is observed yet", func() {
-			// A completed job whose pod has not yet propagated to the informer
-			// cache, or was GC'd after a node scale-down, must not be treated as
-			// a permanent failure: the tar is already uploaded. The controller
-			// should requeue and retry rather than marking the snapshot failed.
 			snapName := "snap-no-job-pod"
 			sandboxName := "sandbox-no-job-pod"
 			podName := sandboxName + "-pod"
@@ -618,7 +614,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			// Mark job complete WITHOUT creating a job pod
 			setSnapshotJobComplete(ctx, jobName)
 
-			// Second reconcile - should requeue, not fail
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
 			})
@@ -632,9 +627,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 		})
 
 		It("should requeue (not fail) when the uploader container is not terminated yet", func() {
-			// The job's completion condition can be visible in the cache before
-			// the job pod's container status reflects termination. Reading the
-			// termination message here is a transient miss, not a failure.
 			snapName := "snap-not-terminated"
 			sandboxName := "sandbox-not-terminated"
 			podName := sandboxName + "-pod"
@@ -655,13 +647,11 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			jobName := snapName + "-job"
 			defer deleteSnapshotJob(ctx, jobName)
 
-			// First reconcile - creates job
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Create job pod whose uploader container is still running (not terminated)
 			jobPod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      jobName + "-pod",
@@ -687,7 +677,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			setSnapshotJobComplete(ctx, jobName)
 
-			// Second reconcile - should requeue, not fail
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
 			})

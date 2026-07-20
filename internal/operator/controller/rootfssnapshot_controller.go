@@ -47,10 +47,6 @@ const (
 	defaultTTLSecondsAfterFinished int32 = 300
 )
 
-// uploadResultRequeueInterval bounds retries when a completed job's pod or its
-// terminated container status has not yet propagated to the informer cache
-// (or the pod was GC'd after a node scale-down). The tar is already uploaded,
-// so we retry instead of permanently failing a successful snapshot.
 const uploadResultRequeueInterval = 5 * time.Second
 
 // defaultRootfssnapshotSizeLimit is used when the container has no ephemeral storage limit.
@@ -293,12 +289,6 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 
 // getUploadResult reads the upload result from the job pod's termination message.
 // The snapshot-uploader writes a JSON UploadResult to /dev/termination-log when it completes.
-//
-// The returned bool reports whether a non-nil error is retryable. Missing pods
-// and a not-yet-terminated uploader container are transient (informer lag or a
-// pod GC'd after node scale-down) and must be retried rather than failing a
-// snapshot whose tar is already in the bucket. Only a terminated uploader with a
-// missing or malformed termination message is a terminal failure.
 func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *batchv1.Job) (result *snapshotpkg.UploadResult, retryable bool, err error) {
 	// Find the pod created by this job
 	podList := &corev1.PodList{}

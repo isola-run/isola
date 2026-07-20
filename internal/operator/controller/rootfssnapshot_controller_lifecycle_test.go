@@ -95,7 +95,6 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			// Complete the job with a valid upload result so the snapshot succeeds
 			createSnapshotJobPodWithTerminationMessage(ctx, jobName, &snapshotpkg.UploadResult{
 				SnapshotKey:  "rootfssnapshots/" + testNamespace + "/" + snapName + ".tar",
 				BytesWritten: 1024,
