@@ -41,10 +41,6 @@ import (
 	"github.com/isola-run/isola/internal/sseutil"
 )
 
-// DefaultCommandOutputDir is where per-command stdout/stderr are written in
-// production. It lives in the sidecar's own filesystem, deliberately outside any
-// target container's rootfs. See startCommand for the security rationale. The
-// operator mounts a memory-backed emptyDir at this path, so it is tmpfs-backed.
 const DefaultCommandOutputDir = constants.SidecarCommandOutputDir
 
 // time cmd.Wait() has to drain before giving up
@@ -227,13 +223,6 @@ func (h *Handlers) startCommand(pid int, input *CreateCommandInput) (*commandEnt
 
 	cmdID := uuid.New().String()
 
-	// Write command output to the sidecar's own filesystem, NOT the target container
-	// rootfs (/proc/<pid>/root/...). Security: `runsc tar rootfs-upper` snapshots the
-	// target container's overlay upper layer, so output written there gets baked into
-	// rootfs snapshots and leaks one sandbox's command output into every sandbox later
-	// restored from that snapshot. Keeping it in the sidecar filesystem keeps it out of
-	// the snapshot entirely. The output *os.File handles are inherited by the child, so
-	// they need not live inside the chroot.
 	outputDir := filepath.Join(h.outputBaseDir, cmdID)
 	if err := os.MkdirAll(outputDir, 0755); err != nil { //nolint:gosec
 		h.logger.Error("failed to create command output directory", "error", err, "path", outputDir)

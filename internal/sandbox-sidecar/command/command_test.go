@@ -77,7 +77,6 @@ var _ = Describe("Command Handlers", func() {
 			uid:     0,
 			gid:     0,
 		}
-		// Sidecar-local output dir, distinct from the mock container rootfs (testRootDir).
 		var err error
 		testOutputDir, err = os.MkdirTemp("", "sidecar-test-output-*")
 		Expect(err).NotTo(HaveOccurred())
@@ -119,16 +118,11 @@ var _ = Describe("Command Handlers", func() {
 				return extractSSEData(resp.Body.String())
 			}).Should(Equal("secret-output"))
 
-			// GetRoot(pid) (== testRootDir) is the target container rootfs that
-			// `runsc tar rootfs-upper` snapshots. Command output must not live under
-			// it, otherwise a snapshot bakes in prior command output and leaks it into
-			// any sandbox later restored from that snapshot.
 			capturedBySnapshot := filepath.Join(testRootDir, "var", "run", "isola", "commands")
 			_, statErr := os.Stat(capturedBySnapshot)
 			Expect(os.IsNotExist(statErr)).To(BeTrue(),
 				"command output must not exist under the snapshotted container rootfs")
 
-			// Output is still retrievable from the sidecar's own storage.
 			commandHandlers.cmdMu.RLock()
 			entry := commandHandlers.commands[result.ID]
 			commandHandlers.cmdMu.RUnlock()
@@ -753,8 +747,6 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("output directory creation failure", func() {
 		It("returns 500 when MkdirAll fails", func() {
-			// Point the output base dir at a regular file so MkdirAll(<file>/<cmdID>)
-			// fails with ENOTDIR.
 			blockerDir, err := os.MkdirTemp("", "sidecar-test-blocked-*")
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(func() { _ = os.RemoveAll(blockerDir) })

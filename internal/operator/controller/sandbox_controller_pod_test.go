@@ -98,9 +98,6 @@ var _ = Describe("Sandbox Controller", func() {
 		})
 
 		It("should back the sidecar command output dir with a memory emptyDir", func() {
-			// Per-command stdout/stderr must land in RAM-backed tmpfs, not the sidecar
-			// container's writable overlay layer, so command output never touches disk
-			// and stays out of any rootfs snapshot.
 			sandboxName := "sandbox-sidecar-cmd-output"
 
 			createSandbox(ctx, sandboxName)
