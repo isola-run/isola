@@ -181,8 +181,6 @@ var _ = Describe("Sandbox Controller", func() {
 		It("should strip operator-owned egress-authorization labels from the pod template", func() {
 			sandboxName := "sandbox-strip-labels"
 
-			// A template that pre-sets the allow-* labels the Helm NetworkPolicies
-			// select on would self-authorize egress the Network spec never granted.
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.PodTemplate.Labels = map[string]string{
 					LabelAllowIPv4Internet: "true",
@@ -202,15 +200,12 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod).NotTo(BeNil())
 			Expect(pod.Labels).NotTo(HaveKey(LabelAllowIPv4Internet))
 			Expect(pod.Labels).NotTo(HaveKey(LabelAllowClusterDNS))
-			// Benign template labels are preserved.
 			Expect(pod.Labels).To(HaveKeyWithValue("team", "blue"))
 		})
 
 		It("should strip operator-owned gVisor annotations from the pod template", func() {
 			sandboxName := "sandbox-strip-annotations"
 
-			// A template that pre-sets dev.gvisor.* could weaken the sandbox or point
-			// a rootfs restore at another namespace's tar, bypassing namespace scoping.
 			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
 				s.Spec.PodTemplate.Annotations = map[string]string{
 					"dev.gvisor.tar.rootfs.upper.sandbox": "/host/snapshots/victim/secret.tar",
@@ -230,9 +225,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod).NotTo(BeNil())
 			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.tar.rootfs.upper.sandbox"))
 			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.qdisc"))
-			// The operator's own gVisor annotation is still applied.
 			Expect(pod.Annotations).To(HaveKeyWithValue("dev.gvisor.flag.overlay2", "root:self"))
-			// Benign template annotations are preserved.
 			Expect(pod.Annotations).To(HaveKeyWithValue("team", "blue"))
 		})
 

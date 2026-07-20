@@ -110,15 +110,8 @@ const (
 	LabelAllowIPv6Internet = "isola.run/allow-ipv6-internet-egress"
 	LabelAllowClusterDNS   = "isola.run/allow-cluster-dns"
 
-	// labelAllowPrefix namespaces the egress-authorization labels the operator owns.
-	// The Helm NetworkPolicies grant egress by selecting on these, so a pod template
-	// must not carry them or it would self-authorize access the Network spec never granted.
 	labelAllowPrefix = "isola.run/allow-"
 
-	// gvisorAnnotationPrefix namespaces the gVisor runtime annotations the operator owns
-	// (overlay2, qdisc rate limiting, and namespace-scoped rootfs.upper restore paths).
-	// A pod template must not carry these or it could weaken the sandbox or point a
-	// rootfs restore at another namespace's tar.
 	gvisorAnnotationPrefix = "dev.gvisor."
 
 	// SidecarVersionAnnotation records on the sandbox pod the isola-operator
