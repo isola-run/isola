@@ -616,17 +616,12 @@ describe("Commands.run waitTimeoutMs", () => {
   }, 10_000);
 
   it("waitTimeoutMs bounds a hung stdin write, mapping to IsolaTimeoutError", async () => {
-    // The stdin write/close happen inside run()'s guarded block, so the
-    // run-phase deadline (waitTimeoutMs) covers them too. A stdin write that
-    // hangs must abort on the deadline and surface IsolaTimeoutError rather
-    // than blocking forever outside the error-handling path.
     const sbId = "sandbox-123";
     const cmdId = "cmd-stdin-timeout";
 
     const routes = {
       [`GET /v1/sandboxes/${sbId}`]: () => jsonResponse(sandboxResponseFixture()),
       [`POST /v1/sandboxes/${sbId}/commands`]: () => jsonResponse({ id: cmdId }, { status: 202 }),
-      // stdin write hangs until aborted; the deadline must reach it.
       [`POST /v1/sandboxes/${sbId}/commands/${cmdId}/stdin`]: (req: { signal: AbortSignal | undefined }) =>
         hangUntilAbort(req),
       [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stdout`]: (req: { signal: AbortSignal | undefined }) =>
