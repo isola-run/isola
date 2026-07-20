@@ -38,9 +38,6 @@ type fakeUploader struct {
 	called  bool
 	written int64
 
-	// overrideWritten, when non-nil, forces the reported byte count to a value
-	// that differs from what was actually read, simulating a truncated upload
-	// that gocloud committed without surfacing an error.
 	overrideWritten *int64
 }
 
@@ -63,7 +60,6 @@ func (f *fakeUploader) upload(_ context.Context, key string, r io.Reader) (int64
 	return n, nil
 }
 
-// errReader returns data once, then fails, simulating a mid-copy read error.
 type errReader struct {
 	data []byte
 	pos  int
@@ -315,10 +311,6 @@ func TestUploadSnapshotTerminationLogFailureDoesNotFail(t *testing.T) {
 	}
 }
 
-// TestBlobUploaderAbortsOnCopyError verifies that a mid-copy read error does
-// not commit a truncated object over the canonical snapshot key. gocloud's
-// blob.Writer.Close finalizes the object, so upload must cancel the writer's
-// context before Close to abort the write rather than persist partial bytes.
 func TestBlobUploaderAbortsOnCopyError(t *testing.T) {
 	ctx := context.Background()
 	bucket := memblob.OpenBucket(nil)
@@ -326,7 +318,6 @@ func TestBlobUploaderAbortsOnCopyError(t *testing.T) {
 
 	const key = "rootfssnapshots/ns/snap.tar"
 
-	// Seed a known-good object at the canonical key so we can detect clobbering.
 	good := []byte("good-complete-tarball-contents")
 	if err := bucket.WriteAll(ctx, key, good, nil); err != nil {
 		t.Fatalf("seed write failed: %v", err)
@@ -349,9 +340,6 @@ func TestBlobUploaderAbortsOnCopyError(t *testing.T) {
 	}
 }
 
-// TestUploadSnapshotSizeMismatch verifies that a silently truncated upload
-// (fewer bytes committed than the source file holds) fails the job instead of
-// reporting success with a corrupt snapshot.
 func TestUploadSnapshotSizeMismatch(t *testing.T) {
 	dir := t.TempDir()
 	srcPath := filepath.Join(dir, "snapshot.tar")
@@ -374,7 +362,6 @@ func TestUploadSnapshotSizeMismatch(t *testing.T) {
 		t.Fatal("expected error from truncated upload")
 	}
 
-	// A truncated upload must not be recorded as a usable snapshot.
 	if _, statErr := os.Stat(termLogPath); !os.IsNotExist(statErr) {
 		t.Error("termination log should not exist after truncated upload")
 	}
