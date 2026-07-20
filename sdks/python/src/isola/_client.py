@@ -43,17 +43,10 @@ def _stream_pos(content: bytes | BinaryIO | None) -> int | None:
     return None
 
 
-# httpx's default read size; matches its own iterate-file chunking.
 _STREAM_CHUNK_SIZE = 65536
 
 
 async def _aiter_in_thread(fileobj: BinaryIO) -> AsyncIterator[bytes]:
-    """Read a sync file-like object in chunks off the event loop.
-
-    httpx wraps a sync BinaryIO as a SyncByteStream, which AsyncClient refuses
-    to send. Adapting it to an async byte stream keeps the documented file-upload
-    path working on the async client without buffering the whole file.
-    """
     while True:
         chunk = await asyncio.to_thread(fileobj.read, _STREAM_CHUNK_SIZE)
         if not chunk:
@@ -62,7 +55,6 @@ async def _aiter_in_thread(fileobj: BinaryIO) -> AsyncIterator[bytes]:
 
 
 def _async_content(content: bytes | BinaryIO | None) -> bytes | AsyncIterator[bytes] | None:
-    """Pass bytes/None through unchanged; adapt a sync file-like object for the async client."""
     if content is None or isinstance(content, bytes):
         return content
     return _aiter_in_thread(content)
