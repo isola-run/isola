@@ -114,8 +114,6 @@ func (d *brokenBodyDoer) Do(*http.Request) (*http.Response, error) {
 	}, nil
 }
 
-// partialThenErrReader yields data once, then fails, simulating a sidecar
-// stream that dies mid-transfer.
 type partialThenErrReader struct {
 	data []byte
 	done bool
@@ -129,8 +127,6 @@ func (r *partialThenErrReader) Read(p []byte) (int, error) {
 	return copy(p, r.data), nil
 }
 
-// truncatedStreamDoer returns a 200 response whose body yields some bytes and
-// then errors, mimicking an upstream sidecar read that fails mid-copy.
 type truncatedStreamDoer struct{ data []byte }
 
 func (d *truncatedStreamDoer) Do(*http.Request) (*http.Response, error) {
@@ -287,9 +283,6 @@ var _ = Describe("Filesystem Proxy", func() {
 		})
 
 		It("aborts the response when the sidecar stream fails mid-copy", func() {
-			// File downloads have no Content-Length, so a truncated read otherwise
-			// looks complete. http.ErrAbortHandler breaks the connection so the
-			// client detects the truncation instead of accepting a partial file.
 			api := newFilesystemTestAPI(&truncatedStreamDoer{data: []byte("partial file")}, 0)
 			sbName := createRunningSandboxCR()
 

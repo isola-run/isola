@@ -158,10 +158,6 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 					return
 				}
 				h.logger.Error("sidecar error streaming file", "error", err, "id", input.SandboxID)
-				// Abort the response so the client sees a broken stream rather than a
-				// clean EOF. File downloads carry no Content-Length, so returning
-				// normally would make a truncated read look like a complete file.
-				// Mirrors net/http/httputil.ReverseProxy.
 				panic(http.ErrAbortHandler)
 			}
 		},

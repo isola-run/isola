@@ -261,10 +261,6 @@ func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream, la
 					return
 				}
 				h.logger.Error("sidecar error streaming command output", "error", err, "id", sandboxID)
-				// Abort the response so the client sees a broken stream rather than a
-				// clean EOF. Returning normally lets net/http emit the terminating
-				// chunk, making truncated stdout indistinguishable from a completed
-				// command. Mirrors net/http/httputil.ReverseProxy.
 				panic(http.ErrAbortHandler)
 			}
 		},
