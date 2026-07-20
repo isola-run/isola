@@ -111,11 +111,6 @@ func GetContainerName(pid int) (string, bool) {
 	return containerNameFromEnviron(data)
 }
 
-// containerNameFromEnviron scans null-separated environ bytes for the
-// ISOLA_CONTAINER_NAME marker. The marker is appended after user-supplied env,
-// so parsing must not be bounded by any per-entry size limit: a single env
-// value larger than bufio.Scanner's 64 KiB max token would otherwise hide the
-// trailing marker and break every operation on the sandbox.
 func containerNameFromEnviron(data []byte) (string, bool) {
 	prefix := []byte(constants.IsolaContainerNameEnv + "=")
 	for entry := range bytes.SplitSeq(data, []byte{0}) {

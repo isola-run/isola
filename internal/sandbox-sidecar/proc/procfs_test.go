@@ -50,9 +50,6 @@ var _ = Describe("containerNameFromEnviron", func() {
 		Expect(name).To(Equal("mybox"))
 	})
 
-	// The marker is appended after user env, and Linux allows env values up to
-	// 128 KiB. A value larger than bufio.Scanner's 64 KiB max token must not
-	// hide the trailing marker.
 	It("finds the marker after an env value larger than 64 KiB", func() {
 		huge := strings.Repeat("x", 128*1024)
 		environ := []byte("BIG=" + huge + "\x00" + marker + "\x00")
