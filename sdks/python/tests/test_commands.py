@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -24,10 +25,12 @@ from isola import (
     AsyncIsola,
     BadGatewayError,
     CommandResult,
+    ConflictError,
     InternalError,
     Isola,
     NotFoundError,
 )
+from isola._streaming import AsyncStreamReader
 
 
 @respx.mock
@@ -343,6 +346,43 @@ async def test_async_run_returns_command_result(sandbox_response_copy: dict[str,
     assert result.exit_code == 0
     assert result.stdout == "async result\n"
     assert result.stderr == ""
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_async_run_cancels_readers_when_wait_fails(
+    sandbox_response_copy: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/commands").mock(
+        return_value=httpx.Response(202, json={"id": "cmd-cancel"})
+    )
+    respx.get(url__regex=r".*/commands/cmd-cancel/status.*").mock(
+        return_value=httpx.Response(409, json={"detail": "sandbox deleted"})
+    )
+
+    cancelled: dict[str, bool] = {"stdout": False, "stderr": False}
+
+    async def fake_read(self: AsyncStreamReader) -> str:
+        stream = "stdout" if self._path.endswith("/stdout") else "stderr"
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled[stream] = True
+            raise
+        return ""
+
+    monkeypatch.setattr(AsyncStreamReader, "read", fake_read)
+
+    async with AsyncIsola(url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        with pytest.raises(ConflictError):
+            await sandbox.commands.run("sleep", "100")
+
+    assert cancelled["stdout"]
+    assert cancelled["stderr"]
 
 
 @respx.mock
