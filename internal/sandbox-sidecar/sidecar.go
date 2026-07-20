@@ -54,12 +54,6 @@ func NewPIDResolver(procFS proc.ProcFS) *PIDResolver {
 }
 
 func (r *PIDResolver) FindCachedContainerPID(containerName string) (int, error) {
-	// The empty-name lookup is only valid when exactly one container is marked,
-	// an invariant FindMarkedPID re-checks on every scan. A cache entry cannot
-	// prove that invariant still holds, so serving one would keep resolving to
-	// the first container after a second appears (or silently follow a recycled
-	// PID onto another container). Always re-scan for the empty name; only
-	// cache and serve explicit container names.
 	if containerName != "" {
 		r.pidMu.RLock()
 		pid, ok := r.cachedPIDs[containerName]

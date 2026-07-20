@@ -32,16 +32,11 @@ func TestSidecar(t *testing.T) {
 	RunSpecs(t, "Sidecar Suite")
 }
 
-// markedResult is one scripted return value for scriptedProcFS.FindMarkedPID.
 type markedResult struct {
 	pid int
 	err error
 }
 
-// scriptedProcFS implements proc.ProcFS. FindMarkedPID replays a scripted
-// sequence of results (falling back to the last one), letting a test drive the
-// resolver through a changing /proc without touching the real filesystem. The
-// remaining methods are unused stubs.
 type scriptedProcFS struct {
 	markedCalls   int
 	markedResults []markedResult
@@ -61,10 +56,6 @@ func (m *scriptedProcFS) GetRoot(int) string               { return "" }
 func (m *scriptedProcFS) GetUIDGID(int) (int, int, error)  { return 0, 0, nil }
 func (m *scriptedProcFS) GetEnviron(int) ([]string, error) { return nil, nil }
 
-// markedProcess starts a real, long-lived child process tagged with
-// ISOLA_CONTAINER_NAME so that proc.GetContainerName resolves its PID to name.
-// The resolver's cache-hit validation reads the real /proc, so exercising it
-// requires a genuine marked process rather than a fabricated PID.
 func markedProcess(name string) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, "sleep", "300")
@@ -80,8 +71,6 @@ func markedProcess(name string) int {
 var _ = Describe("PIDResolver", func() {
 	Describe("FindCachedContainerPID", func() {
 		It("re-resolves the empty name so a second container makes it ambiguous", func() {
-			// One marked container is up; a later scan would see two and must
-			// fail rather than keep serving the first from a stale cache entry.
 			pid := markedProcess("c1")
 			procFS := &scriptedProcFS{markedResults: []markedResult{
 				{pid: pid, err: nil},
