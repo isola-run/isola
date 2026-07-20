@@ -943,8 +943,6 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	// Don't (re-)create the pod for a terminal sandbox: a Succeeded/Failed sandbox
-	// whose pod was garbage-collected out-of-band must not re-run its workload.
 	isTerminal := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition) != nil
 
 	if sandboxPod == nil && !isTerminal {
