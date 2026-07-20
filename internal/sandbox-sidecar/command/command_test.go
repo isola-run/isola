@@ -61,9 +61,6 @@ func extractSSEData(body string) string {
 	return result.String()
 }
 
-// processAlive reports whether a process with the given PID currently exists.
-// signal 0 performs error checking without delivering a signal: nil means the
-// process exists, ESRCH means it does not.
 func processAlive(pid int) bool {
 	return syscall.Kill(pid, 0) == nil
 }
@@ -923,14 +920,6 @@ var _ = Describe("Command Handlers", func() {
 	})
 
 	Describe("process group termination", func() {
-		// The user's main process forks a child (sleep) that outlives it. With the
-		// shell wrapper exec "$@", the main process is a process-group leader; the
-		// child inherits that group. Cancelling (kill or timeout) must SIGKILL the
-		// whole group. Without process-group signalling, only the leader dies and
-		// the child reparents (shared PID namespace) and keeps running.
-		//
-		// startWithChild launches such a command and returns its command ID plus the
-		// PID of the forked child once it has recorded itself.
 		startWithChild := func(extra map[string]any) (string, int) {
 			f, err := os.CreateTemp("", "sidecar-child-pid-*")
 			Expect(err).NotTo(HaveOccurred())
@@ -939,8 +928,6 @@ var _ = Describe("Command Handlers", func() {
 			DeferCleanup(func() { _ = os.Remove(pidFile) })
 
 			req := map[string]any{
-				// Fork a long-lived child, record its PID, then block so the leader
-				// stays alive until it is killed.
 				"args": []string{"/bin/sh", "-c", `sleep 300 & echo $! > "$CHILD_PID_FILE"; wait`},
 				"env":  map[string]string{"CHILD_PID_FILE": pidFile},
 			}
@@ -969,7 +956,6 @@ var _ = Describe("Command Handlers", func() {
 				return true
 			}, "3s", "20ms").Should(BeTrue())
 
-			// Best-effort cleanup in case the fix regresses and the child survives.
 			DeferCleanup(func() { _ = syscall.Kill(childPID, syscall.SIGKILL) })
 			return result.ID, childPID
 		}
