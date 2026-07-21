@@ -430,9 +430,13 @@ class AsyncCommands:
         if input is not None:
             await cmd.write_stdin(input)
             await cmd.close_stdin()
-        stdout, stderr, exit_code = await asyncio.gather(
-            cmd.stdout.read(),
-            cmd.stderr.read(),
-            cmd.wait(),
-        )
+        stdout_task = asyncio.ensure_future(cmd.stdout.read())
+        stderr_task = asyncio.ensure_future(cmd.stderr.read())
+        wait_task = asyncio.ensure_future(cmd.wait())
+        try:
+            stdout, stderr, exit_code = await asyncio.gather(stdout_task, stderr_task, wait_task)
+        finally:
+            for task in (stdout_task, stderr_task, wait_task):
+                task.cancel()
+            await asyncio.gather(stdout_task, stderr_task, wait_task, return_exceptions=True)
         return CommandResult(id=cmd.id, stdout=stdout, stderr=stderr, exit_code=exit_code)

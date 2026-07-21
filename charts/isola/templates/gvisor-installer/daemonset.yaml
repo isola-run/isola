@@ -81,8 +81,10 @@ spec:
             - name: LOG_DEV_MODE
               value: {{ $inst.logging.devMode | quote }}
           securityContext:
-            # nsenter (setns into the host mount namespace) requires full
-            # privileges; also what allows writing the hostPath mounts.
+            # nsenter (setns into the host mount namespace) needs SYS_ADMIN,
+            # SYS_CHROOT, SYS_PTRACE, DAC_OVERRIDE. Capabilities alone are not
+            # enough: an enforcing AppArmor/SELinux profile denies opening
+            # /proc/1/ns/mnt regardless, and privileged is what lifts that.
             privileged: true
           resources:
             {{- toYaml $inst.resources | nindent 12 }}
