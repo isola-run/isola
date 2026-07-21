@@ -612,16 +612,11 @@ describe("Commands.run waitTimeoutMs", () => {
     const sandbox = await client.sandboxes.get(sbId);
 
     const settled = settle(sandbox.commands.run(["sleep", "10"], { waitTimeoutMs: 50 }, { signal: ctrl.signal }));
-    // Drain spawn's microtasks so run() registers its AbortSignal.timeout(50)
-    // deadline at t=0, then schedule the user abort for the same t=50 tick.
     await vi.advanceTimersByTimeAsync(0);
     setTimeout(() => ctrl.abort(reason), 50);
-    // Synchronous advance fires BOTH same-timestamp timers back-to-back before
-    // any microtask runs, so the deadline and the user signal are both aborted
-    // when run()'s catch evaluates precedence. (The async variant flushes
-    // microtasks between same-tick timers, letting the catch see only the
-    // first-fired signal and passing vacuously.) This genuinely exercises the
-    // user-signal-wins branch in commands.ts.
+    // Sync advance: fires both t=50 timers before any microtask, so both signals
+    // are aborted when run() checks precedence (async advance fires them one at a
+    // time and passes vacuously on the first).
     vi.advanceTimersByTime(50);
     const result = await settled;
 
