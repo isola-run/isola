@@ -1,103 +1,198 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Isola</title>
-    <meta
-      name="description"
-      content="Open-source platform for running untrusted and AI-generated code securely on your own Kubernetes cluster, with gVisor isolation, rootfs snapshots, and developer SDKs."
-    />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="icon" href="./isola-logo.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <div class="ambient ambient-one" aria-hidden="true"></div>
-    <div class="ambient ambient-two" aria-hidden="true"></div>
-    <div class="ambient-grid" aria-hidden="true"></div>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Isola · Secure sandboxing for Kubernetes</title>
+  <meta name="description" content="Isola is an open-source platform for running untrusted and AI-generated code securely on your own Kubernetes cluster. gVisor isolation, rootfs snapshots, network policies, and SDKs for Python and TypeScript." />
+  <link rel="canonical" href="https://isola.run/" />
+  <meta name="theme-color" content="#0E093F" />
 
-    <div class="page">
-      <header class="site-header">
-        <a class="brand" href="./" aria-label="Isola home">Isola</a>
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Isola" />
+  <meta property="og:title" content="Isola · Secure sandboxing for Kubernetes" />
+  <meta property="og:description" content="Host your own sandboxes. Isola runs untrusted and AI-generated code in gVisor-isolated sandboxes on your own Kubernetes cluster. Apache 2.0, no hosted version." />
+  <meta property="og:url" content="https://isola.run/" />
+  <meta property="og:image" content="https://isola.run/assets/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
 
-        <a class="repo-link" href="https://github.com/isola-run/isola">GitHub</a>
-      </header>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
 
-      <main>
-        <section class="hero">
-          <div class="hero-copy">
-            <h1>Secure Sandboxing for Kubernetes</h1>
-            <p class="hero-meta">gVisor · Rootfs snapshots · Self&#8209;hosted · Apache 2.0</p>
-            <p class="hero-text">Run untrusted and AI-generated code on your own Kubernetes cluster. Every sandbox is gVisor-isolated, snapshotable, and restorable on any node.</p>
+  <link rel="preload" href="fonts/hanken-grotesk-var-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/fragment-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <canvas id="aurora" aria-hidden="true"></canvas>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="site-head">
+    <a class="brand" href="#top">
+      <svg class="mark-sm" viewBox="254 200.68 92.24 64.18" aria-hidden="true"><path d="M297.799 201.19C298.485 200.504 299.597 200.504 300.283 201.19L318.273 219.18C318.959 219.866 318.959 220.978 318.273 221.664L309.247 230.69C308.903 231.034 308.903 231.591 309.247 231.935L317.574 240.263C318.26 240.949 318.26 242.061 317.574 242.747L299.585 260.737C298.899 261.423 297.786 261.423 297.1 260.737L288.468 252.105C288.124 251.761 287.567 251.761 287.223 252.105L274.989 264.339C274.303 265.026 273.19 265.026 272.504 264.339L254.515 246.35C253.829 245.664 253.828 244.551 254.515 243.865L272.504 225.876C273.19 225.19 274.303 225.19 274.989 225.876L283.62 234.508C283.964 234.851 284.522 234.851 284.866 234.508L288.136 231.237C288.48 230.893 288.48 230.336 288.136 229.992L279.809 221.664C279.123 220.978 279.123 219.866 279.809 219.18L297.799 201.19Z"/><rect x="319.273" y="230.918" width="19.0654" height="19.0654" rx="1.7569" transform="rotate(-45 319.273 230.918)"/></svg>
+      <span class="brand-name">isola</span>
+    </a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="#capabilities">Capabilities</a>
+      <a href="#code">Code</a>
+      <a class="nav-gh" href="https://github.com/isola-run/isola">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </nav>
+  </header>
+
+  <main id="main">
+
+    <section class="hero" id="top">
+      <div class="hero-inner">
+        <svg class="lockup" viewBox="161.58 200.68 277.96 197.97" role="img" aria-label="Isola">
+        <g class="mk-d mk-d1"><path d="M297.799 201.19C298.485 200.504 299.597 200.504 300.283 201.19L318.273 219.18C318.959 219.866 318.959 220.978 318.273 221.664L309.247 230.69C308.903 231.034 308.903 231.591 309.247 231.935L317.574 240.263C318.26 240.949 318.26 242.061 317.574 242.747L299.585 260.737C298.899 261.423 297.786 261.423 297.1 260.737L288.468 252.105C288.124 251.761 287.567 251.761 287.223 252.105L274.989 264.339C274.303 265.026 273.19 265.026 272.504 264.339L254.515 246.35C253.829 245.664 253.828 244.551 254.515 243.865L272.504 225.876C273.19 225.19 274.303 225.19 274.989 225.876L283.62 234.508C283.964 234.851 284.522 234.851 284.866 234.508L288.136 231.237C288.48 230.893 288.48 230.336 288.136 229.992L279.809 221.664C279.123 220.978 279.123 219.866 279.809 219.18L297.799 201.19Z"/></g>
+        <g class="mk-d mk-d2"><rect x="319.273" y="230.918" width="19.0654" height="19.0654" rx="1.7569" transform="rotate(-45 319.273 230.918)"/></g>
+        <path class="lt lt-i" d="M171.448 311.417C173.033 311.417 174.421 312.012 175.609 313.201C176.864 314.324 177.492 315.744 177.492 317.461V374.726C177.492 376.443 176.864 377.897 175.609 379.085C174.354 380.208 172.901 380.77 171.25 380.77C169.401 380.77 167.915 380.208 166.792 379.085C165.669 377.897 165.107 376.443 165.107 374.726V317.461C165.107 315.744 165.702 314.324 166.891 313.201C168.079 312.012 169.599 311.418 171.448 311.417Z M171.281 285.443C171.383 285.342 171.547 285.342 171.648 285.443L181.271 295.065C181.372 295.166 181.372 295.331 181.271 295.432L171.648 305.054C171.547 305.156 171.383 305.155 171.281 305.054L161.659 295.432C161.558 295.331 161.558 295.166 161.659 295.065L171.281 285.443Z"/>
+        <path class="lt lt-s" d="M214.782 310.427C219.075 310.427 223.039 311.088 226.672 312.409C230.371 313.664 233.376 315.282 235.688 317.263C237.603 318.782 238.561 320.533 238.561 322.514C238.561 323.967 237.999 325.288 236.876 326.477C235.753 327.666 234.432 328.26 232.913 328.26C231.922 328.26 231.031 327.963 230.238 327.369C229.182 326.444 227.762 325.585 225.979 324.792C224.195 323.934 222.312 323.241 220.331 322.712C218.35 322.118 216.5 321.821 214.782 321.821C211.942 321.821 209.531 322.184 207.55 322.911C205.635 323.637 204.181 324.627 203.19 325.882C202.2 327.137 201.705 328.591 201.705 330.242C201.705 332.223 202.266 333.875 203.389 335.196C204.578 336.451 206.262 337.475 208.441 338.267C210.621 338.994 213.23 339.654 216.269 340.249C220.232 340.975 223.7 341.834 226.672 342.825C229.71 343.815 232.22 345.103 234.201 346.688C236.183 348.207 237.668 350.156 238.659 352.534C239.65 354.845 240.146 357.686 240.146 361.054C240.145 365.347 238.957 369.046 236.579 372.15C234.201 375.254 231.064 377.632 227.167 379.284C223.336 380.935 219.175 381.76 214.684 381.76C210.06 381.76 205.899 381.199 202.2 380.077C198.502 378.888 194.968 376.84 191.6 373.934C190.741 373.208 190.081 372.381 189.618 371.457C189.156 370.532 188.924 369.608 188.924 368.683C188.924 367.164 189.453 365.843 190.51 364.72C191.633 363.531 193.02 362.936 194.671 362.936C195.926 362.936 197.048 363.333 198.039 364.125C200.549 366.173 203.026 367.725 205.47 368.782C207.98 369.839 211.051 370.367 214.684 370.367C217.127 370.367 219.373 370.003 221.421 369.277C223.468 368.484 225.119 367.46 226.374 366.206C227.629 364.885 228.257 363.399 228.257 361.748C228.257 359.766 227.662 358.082 226.474 356.695C225.285 355.308 223.468 354.152 221.024 353.227C218.581 352.236 215.476 351.477 211.711 350.949C208.144 350.42 205.007 349.628 202.299 348.571C199.591 347.448 197.312 346.061 195.463 344.41C193.68 342.692 192.326 340.711 191.401 338.465C190.477 336.154 190.014 333.577 190.014 330.737C190.014 326.444 191.104 322.778 193.283 319.74C195.529 316.702 198.534 314.39 202.299 312.805C206.064 311.22 210.225 310.427 214.782 310.427Z"/>
+        <path class="lt lt-o" d="M281.626 310.427C286.514 310.427 291.006 311.351 295.101 313.201C299.262 315.05 302.829 317.627 305.801 320.929C308.839 324.166 311.184 327.93 312.835 332.223C314.486 336.516 315.312 341.141 315.312 346.094C315.311 351.048 314.486 355.671 312.835 359.964C311.184 364.258 308.839 368.055 305.801 371.358C302.829 374.594 299.262 377.137 295.101 378.987C291.006 380.836 286.514 381.76 281.626 381.76C276.739 381.76 272.247 380.836 268.152 378.987C264.057 377.137 260.49 374.594 257.452 371.358C254.48 368.055 252.168 364.258 250.517 359.964C248.865 355.671 248.04 351.048 248.04 346.094C248.04 341.141 248.865 336.516 250.517 332.223C252.168 327.93 254.48 324.166 257.452 320.929C260.49 317.627 264.057 315.05 268.152 313.201C272.247 311.351 276.739 310.427 281.626 310.427Z M281.626 322.316C277.531 322.316 273.931 323.372 270.827 325.486C267.723 327.599 265.279 330.44 263.496 334.006C261.779 337.573 260.92 341.603 260.92 346.094C260.92 350.519 261.779 354.549 263.496 358.181C265.279 361.748 267.723 364.588 270.827 366.702C273.931 368.815 277.531 369.872 281.626 369.872C285.721 369.872 289.321 368.815 292.426 366.702C295.53 364.588 297.974 361.748 299.757 358.181C301.54 354.549 302.432 350.519 302.432 346.094C302.432 341.669 301.54 337.673 299.757 334.106C297.974 330.473 295.53 327.599 292.426 325.486C289.321 323.372 285.721 322.316 281.626 322.316Z"/>
+        <path class="lt lt-l" d="M333.025 311.417C334.61 311.418 335.998 312.012 337.187 313.201C338.441 314.324 339.068 315.744 339.068 317.461V369.178H364.927C366.644 369.178 368.065 369.74 369.188 370.863C370.376 371.92 370.971 373.307 370.971 375.024C370.971 376.675 370.376 378.062 369.188 379.185C368.065 380.242 366.644 380.77 364.927 380.77H332.728C331.01 380.77 329.557 380.208 328.368 379.085C327.245 377.897 326.685 376.443 326.685 374.726V317.461C326.685 315.744 327.279 314.324 328.468 313.201C329.657 312.012 331.176 311.417 333.025 311.417Z M359.702 389.043C362.138 389.043 364.113 391.018 364.113 393.454V394.232C364.113 396.668 362.138 398.643 359.702 398.643H337.908C335.472 398.643 333.497 396.668 333.497 394.232V393.454C333.497 391.018 335.472 389.043 337.908 389.043H359.702Z"/>
+        <path class="lt lt-a" d="M405.557 311.914C406.679 311.187 407.869 310.889 409.124 311.021C410.313 311.021 411.402 311.385 412.393 312.111C413.449 312.771 414.21 313.73 414.672 314.985L439.044 373.042C439.374 373.901 439.539 374.693 439.539 375.419C439.539 377.203 438.945 378.623 437.756 379.68C436.633 380.737 435.378 381.265 433.991 381.265C432.802 381.265 431.712 380.902 430.722 380.175C429.797 379.449 429.07 378.458 428.542 377.204L423.397 365.215H393.854L388.714 377.302C388.252 378.557 387.525 379.548 386.534 380.275C385.61 380.935 384.586 381.265 383.463 381.265C381.68 381.265 380.359 380.769 379.5 379.779C378.642 378.788 378.212 377.567 378.212 376.114C378.212 375.519 378.312 374.891 378.51 374.231L403.179 314.985C403.707 313.664 404.5 312.64 405.557 311.914Z M398.698 353.822H418.508L408.557 330.633L398.698 353.822Z"/>
+      </svg>
+        <h1 class="hero-title">Secure sandboxing for Kubernetes.</h1>
+        <p class="hero-lead">Run untrusted and AI&#8209;generated code in gVisor&#8209;isolated sandboxes, on the cluster you already have.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://github.com/isola-run/isola#quick-start">Get started</a>
+          <a class="btn btn-ghost" href="https://github.com/isola-run/isola">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+            <span>GitHub</span>
+          </a>
+          <div class="chip hero-chip">
+            <code>helm install isola oci://ghcr.io/isola-run/charts/isola</code>
+            <button class="copy" type="button" data-copy="helm install isola oci://ghcr.io/isola-run/charts/isola" aria-label="Copy helm install command">
+              <svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 10 11.56 5.06Q10 3.5 8.44 5.06L5.06 8.44Q3.5 10 5.06 11.56L10 16.5"/><rect x="9.4" y="9.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 14 14)"/></svg><svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path pathLength="1" d="M20 6 9 17l-5-5"/></svg>
+            </button>
           </div>
+        </div>
+      </div>
+      <div class="hero-cue" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="7.4" y="7.4" width="9.2" height="9.2" rx="1.4" transform="rotate(45 12 12)"/></svg>
+      </div>
+    </section>
 
-          <div class="hero-visual">
-            <img class="hero-logo" src="./isola-logo.svg" alt="Isola logo" />
-          </div>
-        </section>
+    <section class="caps" id="capabilities">
+      <h2>A powerful platform to build on.</h2>
+      <div class="archipelago-wrap">
+        <svg class="routes" aria-hidden="true"></svg>
+        <ul class="archipelago">
+          <li style="--tint: var(--lav)">
+            <span class="isle" aria-hidden="true"></span>
+            <h3>gVisor isolation</h3>
+            <p>A user-space kernel. Runs on any VM, no KVM or bare metal required.</p>
+          </li>
+          <li style="--tint: var(--sky)">
+            <span class="isle" aria-hidden="true"></span>
+            <h3>Any OCI image</h3>
+            <p>Use your existing images and Dockerfiles.</p>
+          </li>
+          <li style="--tint: var(--pink)">
+            <span class="isle" aria-hidden="true"></span>
+            <h3>Rootfs snapshots</h3>
+            <p>Set an environment up once, restore it in new sandboxes on any node.</p>
+          </li>
+          <li style="--tint: var(--blue)">
+            <span class="isle" aria-hidden="true"></span>
+            <h3>Isolated networking</h3>
+            <p>Deny-all by default, with flexible egress rules and rate limiting.</p>
+          </li>
+          <li style="--tint: var(--pale)">
+            <span class="isle" aria-hidden="true"></span>
+            <h3>Kubernetes-native</h3>
+            <p>Runs inside your perimeter, under the RBAC and tooling you already have.</p>
+          </li>
+          <li style="--tint: var(--violet)">
+            <span class="isle" aria-hidden="true"></span>
+            <h3>Multi-container sandboxes</h3>
+            <p>Sandbox your app together with its sidecars and MCP servers.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
 
-        <section class="features">
-          <div class="card">
-            <h2 class="card-title">gVisor Isolation</h2>
-            <p class="card-desc">Every sandbox runs behind gVisor's application kernel. Strong isolation in user space, no VMs required.</p>
-          </div>
-          <div class="card">
-            <h2 class="card-title">Rootfs Snapshots</h2>
-            <p class="card-desc">Capture a sandbox's filesystem and restore it in new sandboxes on any node.</p>
-          </div>
-          <div class="card">
-            <h2 class="card-title">Self&#8209;Hosted</h2>
-            <p class="card-desc">One Helm install on your own cluster. You control the infrastructure and the data.</p>
-          </div>
-          <div class="card">
-            <h2 class="card-title">Open Source</h2>
-            <p class="card-desc">Apache 2.0 licensed. REST API and Python SDK, built on Kubernetes primitives you already know.</p>
-          </div>
-        </section>
+    <section class="code" id="code">
+      <div class="code-head">
+        <h2>Start in seconds.</h2>
+        <p class="section-sub">Commands, files, and output streams over a REST API, with SDKs for Python and TypeScript.</p>
+      </div>
 
-        <section class="code-example">
-          <span class="code-label">Python</span>
-          <pre class="code-block"><code><span class="kw">from</span> isola <span class="kw">import</span> Isola
-
-<span class="kw">with</span> Isola() <span class="kw">as</span> client:
-    sandbox = client.sandboxes.create(image=<span class="str">"python:3.12-slim"</span>)
-
-    result = sandbox.commands.run(<span class="str">"python3"</span>, <span class="str">"-c"</span>, <span class="str">"print('hello from a sandbox')"</span>)
-    <span class="kw">print</span>(result.stdout)  <span class="comment"># "hello from a sandbox\n"</span>
-
-    <span class="comment"># Snapshot the rootfs to restore it in new sandboxes on any node</span>
-    client.rootfs_snapshots.create(sandbox_id=sandbox.id, snapshot_name=<span class="str">"demo"</span>)</code></pre>
-        </section>
-
-        <section class="steps">
-          <div class="step">
-            <span class="step-num" style="color: var(--purple)">01</span>
-            <h3 class="step-title">Create</h3>
-            <p class="step-desc">Spin up a gVisor-isolated sandbox from any OCI image</p>
+      <div class="demo">
+        <div class="demo-bar">
+          <div class="tabs" role="tablist" aria-label="SDK language">
+            <button class="tab" id="tab-py" type="button" role="tab" aria-selected="true" aria-controls="panel-py">Python</button>
+            <button class="tab" id="tab-ts" type="button" role="tab" aria-selected="false" aria-controls="panel-ts" tabindex="-1">TypeScript</button>
           </div>
-          <div class="step">
-            <span class="step-num" style="color: var(--indigo)">02</span>
-            <h3 class="step-title">Execute</h3>
-            <p class="step-desc">Run commands, stream output, read and write files over REST or the Python SDK</p>
-          </div>
-          <div class="step">
-            <span class="step-num" style="color: var(--cyan)">03</span>
-            <h3 class="step-title">Snapshot &amp; Restore</h3>
-            <p class="step-desc">Capture rootfs changes and restore them on any node</p>
-          </div>
-        </section>
-      </main>
+        </div>
 
-      <footer class="site-footer">
-        <span class="footer-brand">Isola</span>
-        <a class="footer-link" href="https://github.com/isola-run/isola">GitHub</a>
-      </footer>
+        <div class="demo-panel" id="panel-py" role="tabpanel" aria-labelledby="tab-py" tabindex="0">
+<pre><code><span class="c-kw">from</span> isola <span class="c-kw">import</span> Isola
+
+<span class="c-kw">with</span> <span class="c-fn">Isola</span>() <span class="c-kw">as</span> client:
+    sandbox = client.sandboxes.<span class="c-fn">create</span>(image=<span class="c-str">"python:3.12-slim"</span>)
+    result = sandbox.commands.<span class="c-fn">run</span>(<span class="c-str">"python3"</span>, <span class="c-str">"-c"</span>, <span class="c-str">"print('ciao')"</span>)
+    <span class="c-fn">print</span>(result.stdout)
+
+    sandbox.<span class="c-fn">delete</span>()</code></pre>
+        </div>
+
+        <div class="demo-panel" id="panel-ts" role="tabpanel" aria-labelledby="tab-ts" tabindex="0" hidden>
+<pre><code><span class="c-kw">import</span> { Isola } <span class="c-kw">from</span> <span class="c-str">"@isola-run/sdk"</span>;
+
+<span class="c-kw">const</span> client = <span class="c-kw">new</span> <span class="c-fn">Isola</span>();
+<span class="c-kw">const</span> sandbox = <span class="c-kw">await</span> client.sandboxes.<span class="c-fn">create</span>({ image: <span class="c-str">"python:3.12-slim"</span> });
+<span class="c-kw">const</span> result = <span class="c-kw">await</span> sandbox.commands.<span class="c-fn">run</span>([<span class="c-str">"python3"</span>, <span class="c-str">"-c"</span>, <span class="c-str">"print('ciao')"</span>]);
+console.<span class="c-fn">log</span>(result.stdout);
+
+<span class="c-kw">await</span> sandbox.<span class="c-fn">delete</span>();</code></pre>
+        </div>
+
+        <div class="demo-out">
+          <span class="out-sigil" aria-hidden="true">❯</span>
+          <span class="out-text" id="stdout">ciao</span>
+        </div>
+      </div>
+
+      <div class="install-row">
+        <div class="chip">
+          <code>pip install isola-run</code>
+          <button class="copy" type="button" data-copy="pip install isola-run" aria-label="Copy pip install command">
+            <svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 10 11.56 5.06Q10 3.5 8.44 5.06L5.06 8.44Q3.5 10 5.06 11.56L10 16.5"/><rect x="9.4" y="9.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 14 14)"/></svg><svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path pathLength="1" d="M20 6 9 17l-5-5"/></svg>
+          </button>
+        </div>
+        <div class="chip">
+          <code>npm install @isola-run/sdk</code>
+          <button class="copy" type="button" data-copy="npm install @isola-run/sdk" aria-label="Copy npm install command">
+            <svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 10 11.56 5.06Q10 3.5 8.44 5.06L5.06 8.44Q3.5 10 5.06 11.56L10 16.5"/><rect x="9.4" y="9.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 14 14)"/></svg><svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path pathLength="1" d="M20 6 9 17l-5-5"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="closing">
+      <svg class="closing-mark" viewBox="254 200.68 92.24 64.18" aria-hidden="true"><path d="M297.799 201.19C298.485 200.504 299.597 200.504 300.283 201.19L318.273 219.18C318.959 219.866 318.959 220.978 318.273 221.664L309.247 230.69C308.903 231.034 308.903 231.591 309.247 231.935L317.574 240.263C318.26 240.949 318.26 242.061 317.574 242.747L299.585 260.737C298.899 261.423 297.786 261.423 297.1 260.737L288.468 252.105C288.124 251.761 287.567 251.761 287.223 252.105L274.989 264.339C274.303 265.026 273.19 265.026 272.504 264.339L254.515 246.35C253.829 245.664 253.828 244.551 254.515 243.865L272.504 225.876C273.19 225.19 274.303 225.19 274.989 225.876L283.62 234.508C283.964 234.851 284.522 234.851 284.866 234.508L288.136 231.237C288.48 230.893 288.48 230.336 288.136 229.992L279.809 221.664C279.123 220.978 279.123 219.866 279.809 219.18L297.799 201.19Z"/><rect x="319.273" y="230.918" width="19.0654" height="19.0654" rx="1.7569" transform="rotate(-45 319.273 230.918)"/></svg>
+      <h2>No new infrastructure. <br />Just a Helm install.</h2>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/isola-run/isola#quick-start">Get started</a>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-foot">
+    <div class="foot-brand">
+      <svg class="mark-sm" viewBox="254 200.68 92.24 64.18" aria-hidden="true"><path d="M297.799 201.19C298.485 200.504 299.597 200.504 300.283 201.19L318.273 219.18C318.959 219.866 318.959 220.978 318.273 221.664L309.247 230.69C308.903 231.034 308.903 231.591 309.247 231.935L317.574 240.263C318.26 240.949 318.26 242.061 317.574 242.747L299.585 260.737C298.899 261.423 297.786 261.423 297.1 260.737L288.468 252.105C288.124 251.761 287.567 251.761 287.223 252.105L274.989 264.339C274.303 265.026 273.19 265.026 272.504 264.339L254.515 246.35C253.829 245.664 253.828 244.551 254.515 243.865L272.504 225.876C273.19 225.19 274.303 225.19 274.989 225.876L283.62 234.508C283.964 234.851 284.522 234.851 284.866 234.508L288.136 231.237C288.48 230.893 288.48 230.336 288.136 229.992L279.809 221.664C279.123 220.978 279.123 219.866 279.809 219.18L297.799 201.19Z"/><rect x="319.273" y="230.918" width="19.0654" height="19.0654" rx="1.7569" transform="rotate(-45 319.273 230.918)"/></svg>
+      <p>Secure sandboxing for Kubernetes.<br />Open source, <a href="https://github.com/isola-run/isola/blob/main/LICENSE">Apache 2.0</a>.</p>
     </div>
-  </body>
+  </footer>
+
+  <script src="main.js" defer></script>
+</body>
 </html>
