@@ -60,14 +60,14 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.4",
     "@types/node": "^26.0.1",
     "@vitest/coverage-v8": "4.1.10",
     "publint": "0.3.21",
-    "tsdown": "0.22.7",
+    "tsdown": "0.22.12",
     "tsx": "^4.19.2",
     "typescript": "7.0.2",
-    "vite": "8.1.4",
+    "vite": "8.1.5",
     "vitest": "4.1.10"
   },
   "publishConfig": {
