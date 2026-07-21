@@ -16,12 +16,16 @@ const state = {
 function readScroll() {
   const vh = window.innerHeight || 1;
   const max = document.documentElement.scrollHeight - vh;
-  // two-stage dive: settle to a twilight plateau over the first ~2 screens
+  // two-stage dive: settle to a twilight plateau over roughly the first screen
   // (0.62 keeps ink-2/ink-3 text above the WCAG floor over the bright field),
   // hold through the middle, and let the cubic tail reach the blank deep
-  // only with the footer in view
+  // only with the footer in view.
+  // The 1.15 is load-bearing: capabilities is the first section after the hero,
+  // and its right-hand column falls on the brightest part of the field. Raising
+  // this drops that column below 4.5:1 -- re-sample with png-sample.mjs if the
+  // section order changes again.
   const raw = max > 0 ? Math.min(1, window.scrollY / max) : 0;
-  const near = Math.min(1, window.scrollY / (vh * 2.2));
+  const near = Math.min(1, window.scrollY / (vh * 1.15));
   state.depth = Math.max(0.62 * near * near * (3 - 2 * near), raw * raw * raw);
 }
 readScroll();
@@ -430,6 +434,29 @@ function startAurora2D(canvas) {
   const tabs = Array.from(document.querySelectorAll(".tab"));
   if (!tabs.length) return;
 
+  /* the selected pill glides between languages instead of teleporting */
+  const wrap = document.querySelector(".tabs");
+  const ind = document.createElement("span");
+  ind.className = "tab-ind";
+  ind.setAttribute("aria-hidden", "true");
+  wrap.prepend(ind);
+  wrap.classList.add("has-ind");
+  function place() {
+    const sel = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+    ind.style.width = sel.offsetWidth + "px";
+    ind.style.translate = sel.offsetLeft + "px 0";
+  }
+  place();
+  window.addEventListener("resize", place, { passive: true });
+  // the pill is sized from the tab's text, so it must settle on the real font
+  // before the glide is armed -- otherwise the webfont swap animates a jump
+  const arm = () => {
+    place();
+    requestAnimationFrame(() => ind.classList.add("ready"));
+  };
+  if (document.fonts?.ready) document.fonts.ready.then(arm);
+  else arm();
+
   function select(tab) {
     for (const t of tabs) {
       const on = t === tab;
@@ -437,6 +464,7 @@ function startAurora2D(canvas) {
       t.tabIndex = on ? 0 : -1;
       document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
     }
+    place();
   }
 
   tabs.forEach((tab, i) => {
@@ -459,6 +487,10 @@ function startAurora2D(canvas) {
 /* ------------------------------------------------------------------ copy */
 (() => {
   for (const btn of document.querySelectorAll(".copy")) {
+    // read once: a second click inside the reset window would otherwise capture
+    // "Copied" as the label to restore, and the button would keep that name
+    const label = btn.getAttribute("aria-label");
+    let reset = 0;
     btn.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(btn.dataset.copy);
@@ -473,14 +505,44 @@ function startAurora2D(canvas) {
         ta.remove();
       }
       btn.classList.add("done");
-      const prev = btn.getAttribute("aria-label");
       btn.setAttribute("aria-label", "Copied");
-      setTimeout(() => {
+      clearTimeout(reset);
+      reset = setTimeout(() => {
         btn.classList.remove("done");
-        btn.setAttribute("aria-label", prev);
+        btn.setAttribute("aria-label", label);
       }, 1800);
     });
   }
+})();
+
+/* --------------------------------------------------- horizontal scroll hint */
+/* The hero command and the SDK examples are kept on one line each, so on a
+   narrow viewport they scroll inside their own box. Without a signal the clip
+   reads as a rendering bug, so the edge that still holds content fades out. */
+(() => {
+  const els = document.querySelectorAll(".hero-chip > code, .demo-panel pre");
+  if (!els.length || !("ResizeObserver" in window)) return;
+
+  const sync = (el) => {
+    const slack = el.scrollWidth - el.clientWidth;
+    const overflows = slack > 1;
+    el.classList.toggle("scroll-hint", overflows);
+    if (!overflows) return;
+    el.style.setProperty("--fade-l", el.scrollLeft > 1 ? "1" : "0");
+    el.style.setProperty("--fade-r", el.scrollLeft < slack - 1 ? "1" : "0");
+  };
+
+  const ro = new ResizeObserver((entries) => {
+    for (const e of entries) sync(e.target);
+  });
+  for (const el of els) {
+    sync(el);
+    ro.observe(el);
+    el.addEventListener("scroll", () => sync(el), { passive: true });
+  }
+  // mono metrics shift when the webfont lands; a hidden panel measures 0 and
+  // is re-synced by the observer the moment its tab is selected
+  if (document.fonts?.ready) document.fonts.ready.then(() => els.forEach(sync));
 })();
 
 /* ---------------------------------------------------------- stdout typing */
@@ -514,10 +576,11 @@ function startAurora2D(canvas) {
 (() => {
   const items = Array.from(document.querySelectorAll(".archipelago li"));
   if (!items.length) return;
-  document.documentElement.classList.add("js");
+  const wrap = document.querySelector(".archipelago-wrap");
 
   if (RM || !("IntersectionObserver" in window)) {
     items.forEach((li) => li.classList.add("inview"));
+    wrap?.classList.add("inview");
     return;
   }
   items.forEach((li, i) => li.style.setProperty("--i", String(i % 3)));
@@ -526,6 +589,8 @@ function startAurora2D(canvas) {
       for (const e of entries) {
         if (e.isIntersecting) {
           e.target.classList.add("inview");
+          // routes fade in only after the first islands have arrived
+          wrap?.classList.add("inview");
           io.unobserve(e.target);
         }
       }
@@ -534,7 +599,10 @@ function startAurora2D(canvas) {
   );
   items.forEach((li) => io.observe(li));
   // safety net: content must never stay hidden if observation misfires
-  setTimeout(() => items.forEach((li) => li.classList.add("inview")), 2500);
+  setTimeout(() => {
+    items.forEach((li) => li.classList.add("inview"));
+    wrap?.classList.add("inview");
+  }, 2500);
 })();
 
 /* ------------------------------------------------------------------ routes */
@@ -543,17 +611,29 @@ function startAurora2D(canvas) {
   const wrap = document.querySelector(".archipelago-wrap");
   if (!svg || !wrap) return;
 
+  /* Layout position inside the wrap, walking offsetParents. Deliberately not
+     getBoundingClientRect: the isles are drifting on isle-float and start the
+     page 18px low under the reveal transition, so measured rects would nail
+     the routes to whatever pose the isles happened to be in at draw time. */
+  function originIn(el, root) {
+    let x = 0, y = 0;
+    for (let n = el; n && n !== root; n = n.offsetParent) {
+      x += n.offsetLeft;
+      y += n.offsetTop;
+    }
+    return [x, y];
+  }
+
   function draw() {
     if (window.innerWidth <= 900) {
       svg.replaceChildren();
       return;
     }
-    const wr = wrap.getBoundingClientRect();
     const pts = Array.from(wrap.querySelectorAll(".isle")).map((el) => {
-      const r = el.getBoundingClientRect();
-      return [r.left - wr.left + r.width / 2, r.top - wr.top + r.height / 2];
+      const [x, y] = originIn(el, wrap);
+      return [x + el.offsetWidth / 2, y + el.offsetHeight / 2];
     });
-    svg.setAttribute("viewBox", `0 0 ${Math.round(wr.width)} ${Math.round(wr.height)}`);
+    svg.setAttribute("viewBox", `0 0 ${wrap.offsetWidth} ${wrap.offsetHeight}`);
     let d = "";
     for (let i = 0; i < pts.length - 1; i++) {
       const [x1, y1] = pts[i];

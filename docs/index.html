@@ -11,7 +11,7 @@
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Isola" />
   <meta property="og:title" content="Isola · Secure sandboxing for Kubernetes" />
-  <meta property="og:description" content="Run untrusted and AI-generated code on your own Kubernetes cluster. Every sandbox is an island, isolated by gVisor." />
+  <meta property="og:description" content="Host your own sandboxes. Isola runs untrusted and AI-generated code in gVisor-isolated sandboxes on your own Kubernetes cluster. Apache 2.0, no hosted version." />
   <meta property="og:url" content="https://isola.run/" />
   <meta property="og:image" content="https://isola.run/assets/og.png" />
   <meta name="twitter:card" content="summary_large_image" />
@@ -36,9 +36,8 @@
       <span class="brand-name">isola</span>
     </a>
     <nav class="site-nav" aria-label="Site">
-      <a href="#code">Code</a>
       <a href="#capabilities">Capabilities</a>
-      <a href="#deploy">Deploy</a>
+      <a href="#code">Code</a>
       <a class="nav-gh" href="https://github.com/isola-run/isola">
         <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
         <span>GitHub</span>
@@ -59,8 +58,8 @@
         <path class="lt lt-l" d="M333.025 311.417C334.61 311.418 335.998 312.012 337.187 313.201C338.441 314.324 339.068 315.744 339.068 317.461V369.178H364.927C366.644 369.178 368.065 369.74 369.188 370.863C370.376 371.92 370.971 373.307 370.971 375.024C370.971 376.675 370.376 378.062 369.188 379.185C368.065 380.242 366.644 380.77 364.927 380.77H332.728C331.01 380.77 329.557 380.208 328.368 379.085C327.245 377.897 326.685 376.443 326.685 374.726V317.461C326.685 315.744 327.279 314.324 328.468 313.201C329.657 312.012 331.176 311.417 333.025 311.417Z M359.702 389.043C362.138 389.043 364.113 391.018 364.113 393.454V394.232C364.113 396.668 362.138 398.643 359.702 398.643H337.908C335.472 398.643 333.497 396.668 333.497 394.232V393.454C333.497 391.018 335.472 389.043 337.908 389.043H359.702Z"/>
         <path class="lt lt-a" d="M405.557 311.914C406.679 311.187 407.869 310.889 409.124 311.021C410.313 311.021 411.402 311.385 412.393 312.111C413.449 312.771 414.21 313.73 414.672 314.985L439.044 373.042C439.374 373.901 439.539 374.693 439.539 375.419C439.539 377.203 438.945 378.623 437.756 379.68C436.633 380.737 435.378 381.265 433.991 381.265C432.802 381.265 431.712 380.902 430.722 380.175C429.797 379.449 429.07 378.458 428.542 377.204L423.397 365.215H393.854L388.714 377.302C388.252 378.557 387.525 379.548 386.534 380.275C385.61 380.935 384.586 381.265 383.463 381.265C381.68 381.265 380.359 380.769 379.5 379.779C378.642 378.788 378.212 377.567 378.212 376.114C378.212 375.519 378.312 374.891 378.51 374.231L403.179 314.985C403.707 313.664 404.5 312.64 405.557 311.914Z M398.698 353.822H418.508L408.557 330.633L398.698 353.822Z"/>
       </svg>
-        <h1 class="hero-title">Run code you don't trust <br />on the cluster you do.</h1>
-        <p class="hero-lead">Isola gives every workload its own island: a gVisor&#8209;isolated sandbox on the Kubernetes you already run. Open source, Apache 2.0.</p>
+        <h1 class="hero-title">Secure sandboxing for Kubernetes.</h1>
+        <p class="hero-lead">Run untrusted and AI&#8209;generated code in gVisor&#8209;isolated sandboxes, on the cluster you already have.</p>
         <div class="cta-row">
           <a class="btn btn-primary" href="https://github.com/isola-run/isola#quick-start">Get started</a>
           <a class="btn btn-ghost" href="https://github.com/isola-run/isola">
@@ -68,28 +67,61 @@
             <span>GitHub</span>
           </a>
           <div class="chip hero-chip">
-            <code>pip install isola-run</code>
-            <button class="copy" type="button" data-copy="pip install isola-run" aria-label="Copy pip install command">
-              <svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="10.4" y="4.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 15 9)"/><rect x="4.4" y="10.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 9 15)"/></svg><svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <code>helm install isola oci://ghcr.io/isola-run/charts/isola</code>
+            <button class="copy" type="button" data-copy="helm install isola oci://ghcr.io/isola-run/charts/isola" aria-label="Copy helm install command">
+              <svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 10 11.56 5.06Q10 3.5 8.44 5.06L5.06 8.44Q3.5 10 5.06 11.56L10 16.5"/><rect x="9.4" y="9.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 14 14)"/></svg><svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path pathLength="1" d="M20 6 9 17l-5-5"/></svg>
             </button>
           </div>
         </div>
       </div>
       <div class="hero-cue" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 9 7 7 7-7"/></svg>
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="7.4" y="7.4" width="9.2" height="9.2" rx="1.4" transform="rotate(45 12 12)"/></svg>
       </div>
     </section>
 
-    <section class="statement">
-      <p class="define"><strong>isola</strong> <span class="define-ipa">/ˈi.zo.la/</span> <span class="define-pos">Italian, noun</span> <span class="define-gloss">island</span></p>
-      <h2>Every sandbox is <br />an island.</h2>
-      <p class="statement-sub">The water is <a href="https://gvisor.dev">gVisor</a>, an application kernel that intercepts every system call in user space. Untrusted code stays far from your nodes, no hardware virtualization required.</p>
+    <section class="caps" id="capabilities">
+      <h2>A powerful platform to build on.</h2>
+      <div class="archipelago-wrap">
+        <svg class="routes" aria-hidden="true"></svg>
+        <ul class="archipelago">
+          <li style="--tint: var(--lav)">
+            <span class="isle" aria-hidden="true"></span>
+            <h3>gVisor isolation</h3>
+            <p>A user-space kernel. Runs on any VM, no KVM or bare metal required.</p>
+          </li>
+          <li style="--tint: var(--sky)">
+            <span class="isle" aria-hidden="true"></span>
+            <h3>Any OCI image</h3>
+            <p>Use your existing images and Dockerfiles.</p>
+          </li>
+          <li style="--tint: var(--pink)">
+            <span class="isle" aria-hidden="true"></span>
+            <h3>Rootfs snapshots</h3>
+            <p>Set an environment up once, restore it in new sandboxes on any node.</p>
+          </li>
+          <li style="--tint: var(--blue)">
+            <span class="isle" aria-hidden="true"></span>
+            <h3>Isolated networking</h3>
+            <p>Deny-all by default, with flexible egress rules and rate limiting.</p>
+          </li>
+          <li style="--tint: var(--pale)">
+            <span class="isle" aria-hidden="true"></span>
+            <h3>Kubernetes-native</h3>
+            <p>Runs inside your perimeter, under the RBAC and tooling you already have.</p>
+          </li>
+          <li style="--tint: var(--violet)">
+            <span class="isle" aria-hidden="true"></span>
+            <h3>Multi-container sandboxes</h3>
+            <p>Sandbox your app together with its sidecars and MCP servers.</p>
+          </li>
+        </ul>
+      </div>
     </section>
 
     <section class="code" id="code">
       <div class="code-head">
-        <h2>A sandbox in five lines.</h2>
-        <p class="section-sub">Any OCI image. Real commands, files, and streams behind a clean REST API, with SDKs for Python and TypeScript.</p>
+        <h2>Start in seconds.</h2>
+        <p class="section-sub">Commands, files, and output streams over a REST API, with SDKs for Python and TypeScript.</p>
       </div>
 
       <div class="demo">
@@ -105,10 +137,7 @@
 
 <span class="c-kw">with</span> <span class="c-fn">Isola</span>() <span class="c-kw">as</span> client:
     sandbox = client.sandboxes.<span class="c-fn">create</span>(image=<span class="c-str">"python:3.12-slim"</span>)
-
-    result = sandbox.commands.<span class="c-fn">run</span>(
-        <span class="c-str">"python3"</span>, <span class="c-str">"-c"</span>, <span class="c-str">"print('ciao from the sandbox')"</span>
-    )
+    result = sandbox.commands.<span class="c-fn">run</span>(<span class="c-str">"python3"</span>, <span class="c-str">"-c"</span>, <span class="c-str">"print('ciao')"</span>)
     <span class="c-fn">print</span>(result.stdout)
 
     sandbox.<span class="c-fn">delete</span>()</code></pre>
@@ -118,13 +147,8 @@
 <pre><code><span class="c-kw">import</span> { Isola } <span class="c-kw">from</span> <span class="c-str">"@isola-run/sdk"</span>;
 
 <span class="c-kw">const</span> client = <span class="c-kw">new</span> <span class="c-fn">Isola</span>();
-<span class="c-kw">const</span> sandbox = <span class="c-kw">await</span> client.sandboxes.<span class="c-fn">create</span>({
-  image: <span class="c-str">"python:3.12-slim"</span>,
-});
-
-<span class="c-kw">const</span> result = <span class="c-kw">await</span> sandbox.commands.<span class="c-fn">run</span>(
-  [<span class="c-str">"python3"</span>, <span class="c-str">"-c"</span>, <span class="c-str">"print('ciao from the sandbox')"</span>]
-);
+<span class="c-kw">const</span> sandbox = <span class="c-kw">await</span> client.sandboxes.<span class="c-fn">create</span>({ image: <span class="c-str">"python:3.12-slim"</span> });
+<span class="c-kw">const</span> result = <span class="c-kw">await</span> sandbox.commands.<span class="c-fn">run</span>([<span class="c-str">"python3"</span>, <span class="c-str">"-c"</span>, <span class="c-str">"print('ciao')"</span>]);
 console.<span class="c-fn">log</span>(result.stdout);
 
 <span class="c-kw">await</span> sandbox.<span class="c-fn">delete</span>();</code></pre>
@@ -132,7 +156,7 @@ console.<span class="c-fn">log</span>(result.stdout);
 
         <div class="demo-out">
           <span class="out-sigil" aria-hidden="true">❯</span>
-          <span class="out-text" id="stdout">ciao from the sandbox</span>
+          <span class="out-text" id="stdout">ciao</span>
         </div>
       </div>
 
@@ -140,77 +164,23 @@ console.<span class="c-fn">log</span>(result.stdout);
         <div class="chip">
           <code>pip install isola-run</code>
           <button class="copy" type="button" data-copy="pip install isola-run" aria-label="Copy pip install command">
-            <svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="10.4" y="4.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 15 9)"/><rect x="4.4" y="10.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 9 15)"/></svg><svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 10 11.56 5.06Q10 3.5 8.44 5.06L5.06 8.44Q3.5 10 5.06 11.56L10 16.5"/><rect x="9.4" y="9.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 14 14)"/></svg><svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path pathLength="1" d="M20 6 9 17l-5-5"/></svg>
           </button>
         </div>
         <div class="chip">
           <code>npm install @isola-run/sdk</code>
           <button class="copy" type="button" data-copy="npm install @isola-run/sdk" aria-label="Copy npm install command">
-            <svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="10.4" y="4.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 15 9)"/><rect x="4.4" y="10.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 9 15)"/></svg><svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            <svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 10 11.56 5.06Q10 3.5 8.44 5.06L5.06 8.44Q3.5 10 5.06 11.56L10 16.5"/><rect x="9.4" y="9.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 14 14)"/></svg><svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path pathLength="1" d="M20 6 9 17l-5-5"/></svg>
           </button>
         </div>
       </div>
     </section>
 
-    <section class="caps" id="capabilities">
-      <h2>Everything an island needs.</h2>
-      <div class="archipelago-wrap">
-        <svg class="routes" aria-hidden="true"></svg>
-        <ul class="archipelago">
-          <li style="--tint:#8E7EF4">
-            <span class="isle" aria-hidden="true"></span>
-            <h3>gVisor isolation</h3>
-            <p>Every sandbox runs behind its own application kernel, in user space.</p>
-          </li>
-          <li style="--tint:#7AB6E3">
-            <span class="isle" aria-hidden="true"></span>
-            <h3>Any OCI image</h3>
-            <p>From <code>python:3.12-slim</code> to your own builds. No custom templates.</p>
-          </li>
-          <li style="--tint:#FFD3D3">
-            <span class="isle" aria-hidden="true"></span>
-            <h3>Rootfs snapshots</h3>
-            <p>Set an environment up once, restore it in new sandboxes on any node.</p>
-          </li>
-          <li style="--tint:#3E70CD">
-            <span class="isle" aria-hidden="true"></span>
-            <h3>Isolated networking</h3>
-            <p>Deny-all by default. Egress opened per sandbox, down to the CIDR.</p>
-          </li>
-          <li style="--tint:#B5D3DE">
-            <span class="isle" aria-hidden="true"></span>
-            <h3>Kubernetes-native</h3>
-            <p>Sandboxes are custom resources. Your RBAC, your observability, your cluster.</p>
-          </li>
-          <li style="--tint:#6750FF">
-            <span class="isle" aria-hidden="true"></span>
-            <h3>Multi-container</h3>
-            <p>Run an app beside its database or tool servers, on one shared island.</p>
-          </li>
-        </ul>
-      </div>
-    </section>
-
-    <section class="deploy" id="deploy">
-      <h2>Self-hosted in one install.</h2>
-      <p class="section-sub">No database, no message queue, no SaaS. A Kubernetes cluster with gVisor, Helm, and optionally a bucket for snapshots.</p>
-      <div class="chip chip-wide">
-        <code>helm install isola oci://ghcr.io/isola-run/charts/isola --namespace isola-system --create-namespace</code>
-        <button class="copy" type="button" data-copy="helm install isola oci://ghcr.io/isola-run/charts/isola --namespace isola-system --create-namespace" aria-label="Copy helm install command">
-          <svg class="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="10.4" y="4.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 15 9)"/><rect x="4.4" y="10.4" width="9.2" height="9.2" rx="2.4" transform="rotate(45 9 15)"/></svg><svg class="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-        </button>
-      </div>
-      <p class="deploy-more"><a class="text-link" href="https://github.com/isola-run/isola#deployment">Read the deployment guide<span aria-hidden="true"> →</span></a></p>
-    </section>
-
     <section class="closing">
-      <h2>Give your agents <br />an island.</h2>
+      <svg class="closing-mark" viewBox="254 200.68 92.24 64.18" aria-hidden="true"><path d="M297.799 201.19C298.485 200.504 299.597 200.504 300.283 201.19L318.273 219.18C318.959 219.866 318.959 220.978 318.273 221.664L309.247 230.69C308.903 231.034 308.903 231.591 309.247 231.935L317.574 240.263C318.26 240.949 318.26 242.061 317.574 242.747L299.585 260.737C298.899 261.423 297.786 261.423 297.1 260.737L288.468 252.105C288.124 251.761 287.567 251.761 287.223 252.105L274.989 264.339C274.303 265.026 273.19 265.026 272.504 264.339L254.515 246.35C253.829 245.664 253.828 244.551 254.515 243.865L272.504 225.876C273.19 225.19 274.303 225.19 274.989 225.876L283.62 234.508C283.964 234.851 284.522 234.851 284.866 234.508L288.136 231.237C288.48 230.893 288.48 230.336 288.136 229.992L279.809 221.664C279.123 220.978 279.123 219.866 279.809 219.18L297.799 201.19Z"/><rect x="319.273" y="230.918" width="19.0654" height="19.0654" rx="1.7569" transform="rotate(-45 319.273 230.918)"/></svg>
+      <h2>No new infrastructure. <br />Just a Helm install.</h2>
       <div class="cta-row">
         <a class="btn btn-primary" href="https://github.com/isola-run/isola#quick-start">Get started</a>
-        <a class="btn btn-ghost" href="https://github.com/isola-run/isola">
-          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
-          <span>Star on GitHub</span>
-        </a>
       </div>
     </section>
 
@@ -219,16 +189,8 @@ console.<span class="c-fn">log</span>(result.stdout);
   <footer class="site-foot">
     <div class="foot-brand">
       <svg class="mark-sm" viewBox="254 200.68 92.24 64.18" aria-hidden="true"><path d="M297.799 201.19C298.485 200.504 299.597 200.504 300.283 201.19L318.273 219.18C318.959 219.866 318.959 220.978 318.273 221.664L309.247 230.69C308.903 231.034 308.903 231.591 309.247 231.935L317.574 240.263C318.26 240.949 318.26 242.061 317.574 242.747L299.585 260.737C298.899 261.423 297.786 261.423 297.1 260.737L288.468 252.105C288.124 251.761 287.567 251.761 287.223 252.105L274.989 264.339C274.303 265.026 273.19 265.026 272.504 264.339L254.515 246.35C253.829 245.664 253.828 244.551 254.515 243.865L272.504 225.876C273.19 225.19 274.303 225.19 274.989 225.876L283.62 234.508C283.964 234.851 284.522 234.851 284.866 234.508L288.136 231.237C288.48 230.893 288.48 230.336 288.136 229.992L279.809 221.664C279.123 220.978 279.123 219.866 279.809 219.18L297.799 201.19Z"/><rect x="319.273" y="230.918" width="19.0654" height="19.0654" rx="1.7569" transform="rotate(-45 319.273 230.918)"/></svg>
-      <p>Secure sandboxing for Kubernetes.<br />Open source, Apache 2.0.</p>
+      <p>Secure sandboxing for Kubernetes.<br />Open source, <a href="https://github.com/isola-run/isola/blob/main/LICENSE">Apache 2.0</a>.</p>
     </div>
-    <nav class="foot-nav" aria-label="Project links">
-      <a href="https://github.com/isola-run/isola">GitHub</a>
-      <a href="https://github.com/isola-run/isola/tree/main/sdks/python">Python SDK</a>
-      <a href="https://github.com/isola-run/isola/tree/main/sdks/typescript">TypeScript SDK</a>
-      <a href="https://github.com/isola-run/isola/blob/main/api/openapi/api-gateway.yaml">REST API</a>
-      <a href="https://github.com/isola-run/isola/blob/main/charts/isola/values.yaml">Helm chart</a>
-      <a href="https://github.com/isola-run/isola/discussions">Discussions</a>
-    </nav>
   </footer>
 
   <script src="main.js" defer></script>

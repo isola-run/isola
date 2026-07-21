@@ -2,7 +2,7 @@
    Isola · isola.run
    Landfall: a luminous drifting light-field, and one still island of deep
    violet where the words stand. The page dives to deep water on scroll.
-   One motif: the pixel diamond. One metaphor: the island.
+   One motif throughout: the pixel diamond of the mark.
 --------------------------------------------------------------------------- */
 
 /* ---- fonts ---------------------------------------------------------------
@@ -32,9 +32,12 @@
 
 /* ---- tokens -------------------------------------------------------------- */
 :root {
+  color-scheme: dark;
+
   /* surface (deep water) */
-  --deep-0: oklch(0.16 0.075 277);            /* #0a0830 page floor        */
-  --deep-1: oklch(0.196 0.097 277);           /* #0E093F brand deep indigo */
+  --deep-0: oklch(0.16 0.075 277);            /* #08062c page floor        */
+  --deep-1: oklch(0.196 0.097 277);           /* #0E093F brand deep indigo,
+                                                 mirrored by <meta theme-color> */
   --panel: oklch(0.185 0.08 277 / 0.72);      /* code panel                */
   --panel-edge: oklch(1 0 0 / 0.11);
   --panel-edge-soft: oklch(1 0 0 / 0.07);
@@ -44,13 +47,11 @@
   --ink-2: oklch(0.872 0.049 275);            /* periwinkle secondary      */
   --ink-3: oklch(0.78 0.06 275);              /* muted tertiary            */
 
-  /* brand light */
+  /* brand light. The capability tints in the markup draw from these. */
   --violet: oklch(0.565 0.246 281);           /* #6750FF */
   --purple: oklch(0.521 0.208 299);           /* #7D3ECD */
   --lav: oklch(0.662 0.17 287);               /* #8E7EF4 */
-  --navy: oklch(0.432 0.136 267);             /* #2E499A */
   --blue: oklch(0.559 0.154 262);             /* #3E70CD */
-  --teal: oklch(0.524 0.101 230);             /* #0E7499 */
   --sky: oklch(0.752 0.09 242);               /* #7AB6E3 */
   --pale: oklch(0.848 0.035 222);             /* #B5D3DE */
   --pink: oklch(0.904 0.05 18);               /* #FFD3D3 */
@@ -61,32 +62,31 @@
   --code-fn: oklch(0.9 0.045 20);
   --code-plain: oklch(0.93 0.02 275);
 
-  /* type scale, fluid, ~1.33 ratio at the top end */
-  --t-display: clamp(2.6rem, 1.05rem + 5.4vw, 4.9rem);
-  --t-h1: clamp(1.9rem, 1rem + 3.1vw, 2.9rem);
+  /* type scale, fluid. Display is the closing sign-off only: it lands at
+     roughly the hero wordmark's cap height so the page opens and closes at
+     the same volume, with everything between it a clear step down. */
+  --t-display: clamp(2.6rem, 1.1rem + 5.4vw, 5rem);
   --t-h2: clamp(1.7rem, 1.02rem + 2.4vw, 2.7rem);
-  --t-h3: 1.1875rem;
+  --t-h3: 1.25rem;
   --t-lead: clamp(1.0625rem, 0.99rem + 0.35vw, 1.25rem);
   --t-body: 1.0625rem;
   --t-sm: 0.9375rem;
-  --t-xs: 0.8125rem;
 
   /* space, 4pt-derived with fluid section gaps */
-  --s-2xs: 0.5rem;
-  --s-xs: 0.75rem;
   --s-sm: 1rem;
   --s-md: 1.5rem;
   --s-lg: 2.5rem;
-  --s-xl: 4rem;
   --s-section: clamp(6.5rem, 4rem + 11vh, 11rem);
 
-  --r-sm: 10px;
-  --r-md: 16px;
   --r-lg: 22px;
   --r-pill: 999px;
 
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* composable shadows: any element can carry an ambient --glow, and
+     :focus-visible layers --ring on top without either erasing the other */
+  --ring: 0 0 #0000;
+  --glow: 0 0 #0000;
 
   /* z scale: backdrop < grain < content < header < toast */
   --z-backdrop: -1;
@@ -96,6 +96,7 @@
 
   --container: 68rem;
   --gutter: clamp(1.25rem, 4vw, 2.5rem);
+  --head-h: 5.5rem; /* the fixed header overlaps the hero; centring accounts for it */
 }
 
 /* ---- reset --------------------------------------------------------------- */
@@ -128,12 +129,12 @@ body {
   line-height: 1.7;
   letter-spacing: 0.011em; /* light-on-dark compensation */
   color: var(--ink);
-  background-color: #0e093f;
+  background-color: var(--deep-1);
   /* safe deep surface: what no-JS and no-canvas visitors live on */
   background-image:
     radial-gradient(90rem 70rem at 12% 0%, #322375 30%, oklch(0.41 0.16 285 / 0.9) 48%, oklch(0.48 0.18 288 / 0) 66%),
     radial-gradient(56rem 42rem at 88% -6%, oklch(0.5 0.21 300 / 0.55), transparent 70%),
-    linear-gradient(180deg, #221860 0%, #131052 40%, #0e093f 70%, #0a0830 100%);
+    linear-gradient(180deg, #221860 0%, #131052 40%, var(--deep-1) 70%, var(--deep-0) 100%);
   background-attachment: fixed;
   min-height: 100vh;
   min-height: 100svh;
@@ -158,7 +159,7 @@ html.lit body {
 }
 
 ::selection {
-  background: oklch(0.521 0.208 299 / 0.85);
+  background: color-mix(in oklab, var(--purple) 85%, transparent);
   color: #fff;
 }
 
@@ -204,10 +205,14 @@ html.lit body {
   transform: none;
 }
 
+/* The page runs from a luminous pastel field down to deep water, so a
+   single-colour ring is invisible somewhere on it. This one carries its own
+   dark inner band and reads on both. It rides --ring rather than `outline`
+   so elements with their own shadow can layer the two. */
 :focus-visible {
-  outline: 2px solid var(--pale);
-  outline-offset: 3px;
-  border-radius: 4px;
+  outline: none;
+  --ring: 0 0 0 2px var(--deep-1), 0 0 0 4px var(--ink);
+  box-shadow: var(--ring);
 }
 
 /* ---- header ----------------------------------------------------------------- */
@@ -265,7 +270,7 @@ html.lit body {
   text-decoration: none;
   font-size: var(--t-sm);
   font-weight: 500;
-  padding: 0.45em 1em;
+  padding: 0.58em 1em; /* holds a ~42px touch target inside the pill */
   border-radius: var(--r-pill);
   opacity: 0.92;
   transition: opacity 0.18s ease, background 0.18s ease;
@@ -338,24 +343,34 @@ section {
   align-items: flex-start;
   justify-content: center;
   text-align: left;
-  padding: clamp(5rem, 9vh, 7rem) var(--gutter) clamp(3rem, 7vh, 5rem);
+  /* Symmetric, plus the header's own height on top: the block then sits dead
+     centre in the field the reader can actually see. Without the header term
+     the composition rides ~70px high and dumps that slack below the fold,
+     where it reads as an oversized gap before the next section. */
+  padding: calc(var(--head-h) + clamp(2.5rem, 5vh, 3.75rem)) var(--gutter)
+    clamp(2.5rem, 5vh, 3.75rem);
 }
 
 .lockup {
   width: clamp(10rem, 15vw, 13.5rem);
   height: auto;
   fill: #fff;
-  margin-bottom: clamp(1.75rem, 4vh, 2.75rem);
+  /* tighter than the gap below the hook line, so the wordmark and its tagline
+     group as one lockup and the lead reads as the next thing down */
+  margin-bottom: clamp(0.85rem, 2vh, 1.4rem);
   filter: drop-shadow(0 4px 30px oklch(0.57 0.25 281 / 0.35));
 }
 
+/* The wordmark is the display element here, so the hook line sits a clear step
+   below it rather than competing: lockup ~88px cap height, hook ~42px, lead
+   ~20px, a steady ~2.1x ladder. */
 .hero-title {
-  font-size: clamp(2.5rem, 1.2rem + 4.5vw, 4.25rem);
-  font-weight: 460;
-  line-height: 1.12;
-  letter-spacing: -0.015em;
+  font-size: clamp(1.55rem, 1.05rem + 1.75vw, 2.6rem);
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: -0.012em;
   text-wrap: balance;
-  max-width: 15em;
+  max-width: 20em;
 }
 
 .hero-lead {
@@ -363,7 +378,7 @@ section {
   line-height: 1.62;
   color: var(--ink-2);
   max-width: 48ch;
-  margin-top: var(--s-md);
+  margin-top: 1.1rem;
   text-wrap: pretty;
 }
 
@@ -379,9 +394,17 @@ section {
   justify-content: flex-start;
   margin-top: var(--s-lg);
   gap: var(--s-sm) var(--s-md);
+  /* flex item of the column hero-inner: min-width:auto would pin it to the
+     hero command's min-content, and cross-axis sizing lets it exceed the
+     parent unless capped, so it overflows narrow viewports without both */
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* ---- buttons ---------------------------------------------------------------------- */
+/* Lift and press are separate properties, not two `transform` declarations:
+   as transforms they collided and whichever rule came last silently won, so
+   the press never registered on a hovered button. */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -392,11 +415,13 @@ section {
   font-weight: 600;
   letter-spacing: 0.005em;
   text-decoration: none;
-  transition: transform 0.18s var(--ease-out-quint), box-shadow 0.25s ease,
-    background 0.18s ease, border-color 0.18s ease;
+  translate: 0 var(--lift, 0);
+  box-shadow: var(--ring), var(--glow);
+  transition: translate 0.18s var(--ease-out-quint), scale 0.12s var(--ease-out-quint),
+    box-shadow 0.25s ease, background 0.18s ease, border-color 0.18s ease;
 }
 .btn:active {
-  transform: scale(0.97);
+  scale: 0.97;
 }
 .btn svg {
   width: 18px;
@@ -404,14 +429,16 @@ section {
   fill: currentColor;
 }
 
+/* the brand electric, spent only here: the one thing to press */
 .btn-primary {
-  background: var(--ink);
-  color: #16114a;
-  box-shadow: 0 4px 24px oklch(0.66 0.17 287 / 0.25);
+  background: var(--violet);
+  color: #fff;
+  --glow: 0 4px 24px oklch(0.565 0.246 281 / 0.4);
 }
 .btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 36px oklch(0.66 0.17 287 / 0.45);
+  --lift: -2px;
+  --glow: 0 10px 40px oklch(0.565 0.246 281 / 0.65);
+  background: oklch(0.6 0.246 281);
 }
 
 .btn-ghost {
@@ -419,9 +446,9 @@ section {
   border: 1px solid oklch(1 0 0 / 0.3);
 }
 .btn-ghost:hover {
+  --lift: -2px;
   background: oklch(1 0 0 / 0.09);
   border-color: oklch(1 0 0 / 0.5);
-  transform: translateY(-2px);
 }
 
 /* ---- command chips ---------------------------------------------------------------- */
@@ -444,8 +471,45 @@ section {
 .chip > code::before {
   content: "$ ";
   color: var(--ink-3);
+  user-select: none; /* the prompt is decoration; it must not ride along on copy */
+}
+/* The hero command is too long for a narrow viewport. Without min-width it
+   would push the flex row past the screen edge and take the copy button with
+   it, so the code scrolls inside the chip instead. */
+.hero-chip {
+  min-width: 0;
+  max-width: 100%;
+}
+.hero-chip > code {
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.hero-chip > code::-webkit-scrollbar {
+  display: none;
 }
 
+/* Scroll affordance for the two horizontally-scrolling code surfaces. JS sets
+   --fade-l / --fade-r to 1 on the side that still has content, so a clipped
+   command reads as "there is more" instead of as a rendering bug. At 0 both
+   gradient stops sit at the same offset, which is a no-op mask. */
+.scroll-hint {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #0000 0,
+    #000 calc(1.75rem * var(--fade-l, 0)),
+    #000 calc(100% - 1.75rem * var(--fade-r, 0)),
+    #0000 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    #0000 0,
+    #000 calc(1.75rem * var(--fade-l, 0)),
+    #000 calc(100% - 1.75rem * var(--fade-r, 0)),
+    #0000 100%
+  );
+  transition: -webkit-mask-image 0.2s ease, mask-image 0.2s ease;
+}
 
 .copy {
   display: inline-grid;
@@ -460,13 +524,27 @@ section {
   transition: background 0.15s ease, color 0.15s ease;
   position: relative;
 }
+/* the visible disc stays chip-sized; the touch target does not */
+.copy::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  translate: -50% -50%;
+}
 .copy:hover {
   background: oklch(1 0 0 / 0.1);
   color: var(--ink);
 }
+/* an outset ring here would break the chip's silhouette, so it sits inside */
+.copy:focus-visible {
+  --ring: inset 0 0 0 2px var(--ink);
+}
 .copy svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
 }
 .copy .ic-check {
   display: none;
@@ -479,6 +557,17 @@ section {
 }
 .copy.done .ic-check {
   display: block;
+}
+/* the check draws itself; paths carry pathLength="1" so the dash math is unitless */
+.copy.done .ic-check path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: check-draw 0.3s var(--ease-out-quint) 0.04s forwards;
+}
+@keyframes check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 /* ---- scroll cue ------------------------------------------------------------------ */
@@ -496,11 +585,13 @@ section {
 .hero-cue svg {
   width: 22px;
   height: 22px;
+  /* it floats over the brightest part of the field; white alone dissolves */
+  filter: drop-shadow(0 1px 7px oklch(0.2 0.09 277 / 0.7));
   animation: cue-bob 2.6s var(--ease-out-quint) infinite;
 }
 @keyframes cue-in {
   to {
-    opacity: 0.55;
+    opacity: 0.75;
   }
 }
 @keyframes cue-bob {
@@ -517,16 +608,36 @@ section {
   animation: none;
 }
 
-/* ---- shared section shells -------------------------------------------------------- */
-.statement,
+/* ---- shared section shells --------------------------------------------------------
+   One band of space sits between neighbouring sections, normally paid for by
+   the section below. Two sections break that rule for reasons of their own,
+   and both corrections are needed or the rhythm reads as 365 / 145 / 189. */
 .code,
 .caps,
-.deploy,
 .closing {
   max-width: calc(var(--container) + 2 * var(--gutter));
   margin-inline: auto;
   padding: var(--s-section) var(--gutter) 0;
 }
+
+/* The hero is a full viewport fold and its content is centred inside it, so it
+   already hands over ~200px of open field. A full band on top of that reads as
+   a hole rather than as rhythm. */
+.caps {
+  padding-top: calc(var(--s-section) * 0.2);
+}
+/* The archipelago's staggered items hang below the grid box, eating into the
+   band that follows. Caps pays for its own trailing space so the gap survives. */
+.caps {
+  padding-bottom: calc(var(--s-section) * 0.45);
+}
+
+/* The closing centres itself inside an 82svh fold, so its padding-top is inert
+   until the fold is shorter than the content. The band above it is paid here. */
+.code {
+  padding-bottom: calc(var(--s-section) * 0.15);
+}
+
 .closing {
   padding-bottom: var(--s-section);
 }
@@ -548,91 +659,13 @@ h2 {
   text-wrap: pretty;
 }
 
-/* ---- statement -------------------------------------------------------------------- */
-.statement {
-  text-align: center;
-  padding-top: calc(var(--s-section) * 0.75);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-}
-/* a slow pulse of light behind the big line, deep-water bioluminescence */
-.statement::before {
-  content: "";
-  position: absolute;
-  width: min(46rem, 92vw);
-  height: min(24rem, 50vh);
-  left: 50%;
-  top: 54%;
-  translate: -50% -50%;
-  background: radial-gradient(closest-side, oklch(0.6 0.16 288 / 0.14), transparent 74%);
-  filter: blur(28px);
-  pointer-events: none;
-  animation: halo-breathe 11s ease-in-out infinite alternate;
-}
-.statement > * {
-  position: relative;
-}
-.statement h2 {
-  font-size: var(--t-display);
-  letter-spacing: -0.03em;
-  line-height: 1.06;
-}
-.define {
-  font-size: var(--t-sm);
-  color: var(--ink-3);
-  margin-bottom: var(--s-md);
-  /* glyph-hugging deep glow: keeps the muted line readable while it crosses
-     the bright water, without a visible shape behind the text */
-  text-shadow: 0 0 16px oklch(0.196 0.097 277 / 0.9), 0 0 5px oklch(0.196 0.097 277 / 0.5);
-}
-.define strong {
-  color: var(--ink);
-  font-weight: 600;
-}
-.define-ipa {
-  font-family: "Fragment Mono", monospace;
-  font-size: 0.85em;
-  margin-inline: 0.35em;
-}
-.define-pos {
-  margin-inline-end: 0.35em;
-}
-.define-pos::after {
-  content: " ·";
-  color: var(--ink-3);
-}
-.define-gloss {
-  color: var(--pale);
-  font-weight: 500;
-}
-.statement-sub {
-  color: var(--ink-2);
-  font-size: var(--t-lead);
-  text-shadow: 0 0 20px oklch(0.196 0.097 277 / 0.9), 0 0 6px oklch(0.196 0.097 277 / 0.5);
-  line-height: 1.62;
-  max-width: 46ch;
-  margin-top: var(--s-md);
-  text-wrap: pretty;
-}
-.statement-sub a {
-  color: var(--ink);
-  text-decoration: underline;
-  text-decoration-color: oklch(1 0 0 / 0.35);
-  text-underline-offset: 3px;
-  transition: text-decoration-color 0.15s ease;
-}
-.statement-sub a:hover {
-  text-decoration-color: var(--ink);
-}
-
 /* ---- code demo --------------------------------------------------------------------- */
 .code {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  /* the panel takes the wider share so each SDK statement stays on one line */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr);
   grid-template-rows: auto 1fr;
-  column-gap: clamp(2.5rem, 6vw, 5rem);
+  column-gap: clamp(2rem, 4vw, 4rem);
   align-items: start;
 }
 .code-head {
@@ -657,6 +690,7 @@ h2 {
   border-bottom: 1px solid var(--panel-edge-soft);
 }
 .tabs {
+  position: relative;
   display: inline-flex;
   gap: 0.25rem;
   padding: 0.25rem;
@@ -664,12 +698,13 @@ h2 {
   background: oklch(0.13 0.05 277 / 0.6);
 }
 .tab {
+  position: relative; /* paints above the gliding indicator */
   border: 0;
   background: transparent;
   color: var(--ink-3);
   font-size: var(--t-sm);
   font-weight: 500;
-  padding: 0.42em 1.1em;
+  padding: 0.55em 1.1em; /* holds a ~42px touch target */
   border-radius: var(--r-pill);
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
@@ -681,19 +716,58 @@ h2 {
   background: oklch(1 0 0 / 0.13);
   color: var(--ink);
 }
+/* JS replaces the static selected-pill with one that glides between tabs */
+.tab-ind {
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  left: 0;
+  width: 0;
+  border-radius: var(--r-pill);
+  background: oklch(1 0 0 / 0.13);
+  pointer-events: none;
+}
+.tab-ind.ready {
+  transition: translate 0.28s var(--ease-out-quint), width 0.28s var(--ease-out-quint);
+}
+.tabs.has-ind .tab[aria-selected="true"] {
+  background: transparent;
+}
 
 .demo-panel {
-  padding: 1.4rem 1.6rem;
+  padding: 1.4rem 1.25rem;
   overflow-x: auto;
-  min-height: 23.5rem;
+  /* holds the taller of the two examples so switching tabs does not jump */
+  min-height: 15rem;
+}
+/* .demo clips its children, so an outset ring on the panel would be shaved off */
+.demo-panel:focus-visible {
+  --ring: inset 0 0 0 2px var(--ink);
+}
+/* the incoming language settles into the frame; the frame itself holds still */
+.demo-panel:not([hidden]) {
+  animation: panel-in 0.26s var(--ease-out-quint);
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
 }
 .demo-panel pre {
   font-family: "Fragment Mono", ui-monospace, "SF Mono", monospace;
-  font-size: 0.92rem;
+  font-size: 0.84rem;
   font-weight: 400;
   line-height: 1.75;
   color: var(--code-plain);
   font-variant-ligatures: none;
+  /* statements are kept on one line each, so narrow viewports scroll the code
+     rather than let .demo's overflow:clip amputate the ends */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.demo-panel pre::-webkit-scrollbar {
+  display: none;
 }
 .c-kw {
   color: var(--code-kw);
@@ -802,6 +876,14 @@ h2 {
   stroke-linecap: round;
   stroke-dasharray: 0.5 8;
 }
+/* islands arrive first, then the routes connect them */
+.js .routes {
+  opacity: 0;
+  transition: opacity 1.4s ease 0.5s;
+}
+.js .archipelago-wrap.inview .routes {
+  opacity: 1;
+}
 
 .archipelago {
   list-style: none;
@@ -826,11 +908,11 @@ h2 {
 .archipelago li:nth-child(6) { grid-column: 10 / 13; margin-top: 0; }
 
 .isle {
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
   rotate: 45deg;
-  margin: 8px 0 14px 8px;
+  margin: 10px 0 18px 10px;
   background: var(--tint);
   background: linear-gradient(135deg, var(--tint), oklch(from var(--tint) calc(l - 0.12) c h));
   box-shadow: 0 0 24px -8px var(--tint);
@@ -907,51 +989,38 @@ h2 {
   }
 }
 
-/* ---- deploy ---------------------------------------------------------------------------- */
-.deploy {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.chip-wide {
-  margin-top: var(--s-lg);
-  max-width: 100%;
-}
-.chip-wide > code {
-  white-space: nowrap;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  padding-block: 0.3rem;
-}
-.deploy-more {
-  margin-top: var(--s-md);
-}
-.text-link {
-  color: var(--ink-2);
-  font-size: var(--t-sm);
-  font-weight: 500;
-  text-decoration: none;
-  border-bottom: 1px solid oklch(1 0 0 / 0.25);
-  padding-bottom: 2px;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-.text-link:hover {
-  color: var(--ink);
-  border-color: var(--ink);
-}
-
-/* ---- closing ------------------------------------------------------------------------------ */
+/* ---- closing ------------------------------------------------------------------------------
+   The last light before the deep: the mark signs the page off alone. */
 .closing {
   text-align: center;
+  min-height: 82vh;
+  min-height: 82svh;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+}
+.closing-mark {
+  width: clamp(3.25rem, 2.5rem + 2.2vw, 4.5rem);
+  height: auto;
+  fill: #fff;
+  margin-bottom: var(--s-md);
+  filter: drop-shadow(0 6px 36px oklch(0.57 0.25 281 / 0.5));
+  /* it is an island: same drift vocabulary as the isles */
+  animation: mark-bob 8s ease-in-out infinite alternate;
+}
+@keyframes mark-bob {
+  from {
+    translate: 0 3px;
+  }
+  to {
+    translate: 0 -5px;
+  }
 }
 .closing h2 {
   font-size: var(--t-display);
-  letter-spacing: -0.03em;
-  line-height: 1.06;
+  letter-spacing: -0.035em;
+  line-height: 1.03;
 }
 
 /* ---- footer -------------------------------------------------------------------------------- */
@@ -984,23 +1053,16 @@ h2 {
   font-size: var(--t-sm);
   line-height: 1.6;
 }
-.foot-nav {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: var(--s-md);
-  row-gap: 0.6rem;
-  max-width: 34rem;
-}
-.foot-nav a {
+.foot-brand a {
   color: var(--ink-2);
-  font-size: var(--t-sm);
-  text-decoration: none;
-  transition: color 0.15s ease;
+  text-decoration-color: oklch(0.872 0.049 275 / 0.4);
+  text-underline-offset: 0.22em;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
 }
-.foot-nav a:hover {
+.foot-brand a:hover {
   color: var(--ink);
+  text-decoration-color: currentColor;
 }
-
 /* ---- entrance choreography -------------------------------------------------------------------
    Pure CSS, runs on load. Elements are visible by default when animations are
    off. fill-mode: both supplies the hidden initial state only while pending. */
@@ -1074,10 +1136,8 @@ h2 {
   }
 }
 
-/* very narrow screens: let headlines wrap naturally instead of forcing lines */
+/* very narrow screens: let the headline wrap naturally instead of forcing lines */
 @media (max-width: 430px) {
-  .hero-title br,
-  .statement h2 br,
   .closing h2 br {
     display: none;
   }
@@ -1094,7 +1154,6 @@ h2 {
   .hero-lead,
   .hero .cta-row,
   .hero-chip,
-  .statement::before,
   .hero-cue svg,
   .isle,
   .routes path {
@@ -1102,7 +1161,7 @@ h2 {
   }
   .hero-cue {
     animation: none;
-    opacity: 0.55;
+    opacity: 0.75;
   }
   .js .archipelago li {
     opacity: 1;
@@ -1118,5 +1177,25 @@ h2 {
   .btn,
   .isle {
     transition: none;
+  }
+  .scroll-hint {
+    transition: none;
+  }
+  .tab-ind.ready {
+    transition: none;
+  }
+  .demo-panel:not([hidden]) {
+    animation: none;
+  }
+  .copy.done .ic-check path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .js .routes {
+    opacity: 1;
+    transition: none;
+  }
+  .closing-mark {
+    animation: none;
   }
 }
