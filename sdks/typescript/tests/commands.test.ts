@@ -243,16 +243,19 @@ describe("Command.stdout / Command.stderr", () => {
 describe("Command.stdout / Command.stderr lazy caching", () => {
   // Pins the lazy-init memoization in commands.ts so callers can hold a
   // reference to the StreamReader before iterating, without double-fetching.
-  it.each([
-    { key: "stdout" as const },
-    { key: "stderr" as const },
-  ])("$key returns the same StreamReader instance on repeated access", async ({ key }) => {
-    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), jsonResponse({ id: "cmd-s" }, { status: 202 }));
-    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
-    const sandbox = await client.sandboxes.get("sandbox-123");
-    const cmd = await sandbox.commands.spawn(["echo"]);
-    expect(cmd[key]).toBe(cmd[key]);
-  });
+  it.each([{ key: "stdout" as const }, { key: "stderr" as const }])(
+    "$key returns the same StreamReader instance on repeated access",
+    async ({ key }) => {
+      const stub = makeStubFetch(
+        jsonResponse(sandboxResponseFixture()),
+        jsonResponse({ id: "cmd-s" }, { status: 202 }),
+      );
+      const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+      const sandbox = await client.sandboxes.get("sandbox-123");
+      const cmd = await sandbox.commands.spawn(["echo"]);
+      expect(cmd[key]).toBe(cmd[key]);
+    },
+  );
 });
 
 describe("Command.exitCode", () => {
