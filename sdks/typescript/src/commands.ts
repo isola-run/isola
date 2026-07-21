@@ -182,17 +182,6 @@ export class Commands {
   async run(args: string[], opts: RunOptions = {}, req: RequestOptions = {}): Promise<CommandResult> {
     const cmd = await this.spawn(args, opts, req);
 
-    // `!= null` (not `!== undefined`) so a JS caller passing `input: null`
-    // doesn't crash inside writeStdin. Mirrors Python's `is not None`.
-    if (opts.input != null) {
-      await cmd.writeStdin(opts.input, req);
-      await cmd.closeStdin(req);
-    }
-
-    // waitTimeoutMs bounds the entire wait+read phase. Build one AbortSignal
-    // composed from the user signal, an internalController (to cancel
-    // siblings when any of stdout/stderr/wait rejects), and the optional
-    // run-phase deadline; pass it to all three concurrent waits.
     const internalController = new AbortController();
     const runTimeoutSignal = opts.waitTimeoutMs !== undefined ? AbortSignal.timeout(opts.waitTimeoutMs) : undefined;
     // internalController is always present, so the composite is never undefined
@@ -201,6 +190,11 @@ export class Commands {
       combineSignals(internalController.signal, req.signal, runTimeoutSignal) ?? internalController.signal;
 
     try {
+      if (opts.input != null) {
+        await cmd.writeStdin(opts.input, { signal: composedSignal });
+        await cmd.closeStdin({ signal: composedSignal });
+      }
+
       const [stdout, stderr, exitCode] = await Promise.all([
         cmd.stdout.read({ signal: composedSignal }),
         cmd.stderr.read({ signal: composedSignal }),
