@@ -225,6 +225,34 @@ export function hangUntilAbort(req: { signal: AbortSignal | undefined }, onAbort
   });
 }
 
+// AbortSignal.timeout() is backed by Node's internal timer machinery, not the
+// global setTimeout that vi.useFakeTimers() patches, so fake timers cannot fire
+// its deadline. This stand-in returns a real AbortSignal (from a real
+// AbortController, so it stays structurally indistinguishable to combineSignals,
+// `.aborted`, and event listeners) whose abort is scheduled via the fakeable
+// global setTimeout. Install it with fake timers active, then drive the deadline
+// with vi.advanceTimersByTimeAsync(); restore with vi.unstubAllGlobals(). The
+// Proxy forwards every other static (notably AbortSignal.any, used by
+// combineSignals) to the real constructor. Consuming code only reads the
+// timeout signal's `.aborted` flag, never its reason, so the TimeoutError-shaped
+// reason is faithful but not load-bearing.
+export function stubFakeableAbortSignalTimeout(): void {
+  const real = AbortSignal;
+  const fake = new Proxy(real, {
+    get(target, prop, receiver) {
+      if (prop === "timeout") {
+        return (ms: number): AbortSignal => {
+          const controller = new AbortController();
+          setTimeout(() => controller.abort(new DOMException(`timeout ${ms}ms`, "TimeoutError")), ms);
+          return controller.signal;
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+  vi.stubGlobal("AbortSignal", fake);
+}
+
 // Captures a promise's eventual outcome without leaving an unhandled rejection.
 // Returns a thunk that resolves to the rejection reason (or throws if the
 // promise resolved unexpectedly). Used with fake timers where awaiting the
