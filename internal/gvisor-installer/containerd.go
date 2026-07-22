@@ -16,9 +16,7 @@ package gvisorinstaller
 
 import (
 	"fmt"
-	"maps"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -78,7 +76,7 @@ func criPluginID(schemaVersion int) (string, error) {
 		return criPluginIDV3, nil
 	default:
 		return "", fmt.Errorf("containerd config declares unsupported schema version %d: "+
-			"only version 2 (containerd 1.x+) and version 3+ (containerd 2.x) are supported; "+
+			"only version 2 (containerd 1.x+) and version 3+ (containerd 2.x) are supported. "+
 			"a missing version field means a legacy v1 config", schemaVersion)
 	}
 }
@@ -109,7 +107,7 @@ func managedBlock(data []byte) (block string, found bool, err error) {
 	rest := s[bi+len(beginMarker):]
 	ei := strings.Index(rest, endMarker)
 	if ei < 0 {
-		return "", false, fmt.Errorf("%s: begin marker present but end marker missing; refusing to touch the file", containerdConfigPath)
+		return "", false, fmt.Errorf("%s: begin marker present but end marker missing, refusing to touch the file", containerdConfigPath)
 	}
 	return strings.Trim(rest[:ei], "\n"), true, nil
 }
@@ -129,7 +127,7 @@ func spliceManagedBlock(data []byte, block string) ([]byte, error) {
 	rest := s[bi:]
 	ei := strings.Index(rest, endMarker)
 	if ei < 0 {
-		return nil, fmt.Errorf("%s: begin marker present but end marker missing; refusing to touch the file", containerdConfigPath)
+		return nil, fmt.Errorf("%s: begin marker present but end marker missing, refusing to touch the file", containerdConfigPath)
 	}
 	return []byte(s[:bi] + section + s[bi+ei+len(endMarker):]), nil
 }
@@ -194,40 +192,23 @@ func defaultRuntimeFromDump(doc map[string]any, pluginID string) string {
 }
 
 // systemdCgroupFromDump reports whether the node uses the systemd cgroup
-// driver, which gVisor must match. The driver is node-wide, so any runtime
-// entry is a valid witness: default-runtime wrappers (nvidia's) often omit
-// the key while runc carries the real value. Defaults to false.
+// driver, which gVisor must match. Only the default runtime and runc are
+// authoritative: a wrapper set as default (nvidia's) often omits the key while
+// runc carries the node's real value. Other handlers are not evidence about
+// the node. Defaults to false, runc's own default.
 func systemdCgroupFromDump(dump []byte) bool {
 	var doc map[string]any
 	if err := toml.Unmarshal(dump, &doc); err != nil {
 		return false
 	}
 	for _, pluginID := range []string{criPluginIDV2, criPluginIDV3} {
-		if b, ok := systemdCgroupForPlugin(doc, pluginID); ok {
-			return b
+		for _, handler := range []string{defaultRuntimeFromDump(doc, pluginID), defaultRuntimeName} {
+			if b, ok := systemdCgroupForRuntime(doc, pluginID, handler); ok {
+				return b
+			}
 		}
 	}
 	return false
-}
-
-func systemdCgroupForPlugin(doc map[string]any, pluginID string) (value, found bool) {
-	for _, handler := range []string{defaultRuntimeFromDump(doc, pluginID), defaultRuntimeName} {
-		if b, ok := systemdCgroupForRuntime(doc, pluginID, handler); ok {
-			return b, true
-		}
-	}
-	// Sorted so the answer does not depend on map iteration order.
-	runtimes, _ := tomlLookup(doc, "plugins", pluginID, "containerd", "runtimes")
-	m, ok := runtimes.(map[string]any)
-	if !ok {
-		return false, false
-	}
-	for _, handler := range slices.Sorted(maps.Keys(m)) {
-		if b, ok := systemdCgroupForRuntime(doc, pluginID, handler); ok {
-			return b, true
-		}
-	}
-	return false, false
 }
 
 func systemdCgroupForRuntime(doc map[string]any, pluginID, handler string) (value, found bool) {

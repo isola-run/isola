@@ -23,7 +23,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-const runscShimConfigHeader = "# Managed by the isola gvisor-installer; do not edit (changes are overwritten).\n" +
+const runscShimConfigHeader = "# Managed by the isola gvisor-installer, do not edit (changes are overwritten).\n" +
 	"# Source of truth: the gvisor.installer values of the isola Helm release.\n"
 
 // renderRunscShimConfig pins binary_name because the shim otherwise looks for

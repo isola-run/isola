@@ -187,7 +187,7 @@ func (i *Installer) reconcile(ctx context.Context) (out reconcileOutcome, err er
 	// nothing about the running daemon, hence the separate CRI check.
 	dump, err := i.host.Run(ctx, "containerd", "config", "dump")
 	if err != nil {
-		return out, fmt.Errorf("containerd's current configuration failed to load; refusing to modify anything: %w", err)
+		return out, fmt.Errorf("containerd's current configuration failed to load, refusing to modify anything: %w", err)
 	}
 
 	current, managed, err := managedBlock(raw)
@@ -214,7 +214,7 @@ func (i *Installer) reconcile(ctx context.Context) (out reconcileOutcome, err er
 	if !managed && handlerInDump {
 		// Someone else's runsc handler: require it to be served, change nothing.
 		out.foreignOK = true
-		i.log.Info("pre-existing runsc handler detected; leaving node unmanaged", "handler", i.cfg.Handler)
+		i.log.Info("pre-existing runsc handler detected, leaving node unmanaged", "handler", i.cfg.Handler)
 		return out, i.verifyServing(ctx)
 	}
 
@@ -249,7 +249,7 @@ func (i *Installer) reconcile(ctx context.Context) (out reconcileOutcome, err er
 // wrote but never for foreign entries, which own their paths.
 func (i *Installer) mergedEntryConflict(rt map[string]any, pinPaths bool) error {
 	if rtType, _ := rt["runtime_type"].(string); rtType != runscRuntimeType {
-		return fmt.Errorf("containerd has a runtime handler %q with runtime_type %q (expected %s); "+
+		return fmt.Errorf("containerd has a runtime handler %q with runtime_type %q (expected %s). "+
 			"resolve the conflict by removing it or by configuring a different gvisor.installer.handler",
 			i.cfg.Handler, rt["runtime_type"], runscRuntimeType)
 	}
@@ -257,7 +257,7 @@ func (i *Installer) mergedEntryConflict(rt map[string]any, pinPaths bool) error 
 		return nil
 	}
 	if field, got := mergedEntryOverride(rt, i.cfg.shimPath()); field != "" {
-		return fmt.Errorf("a containerd import overrides the managed runtime handler %q (%s is %q); "+
+		return fmt.Errorf("a containerd import overrides the managed runtime handler %q (%s is %q). "+
 			"sandboxes would not run the isola-managed gVisor: remove the conflicting drop-in",
 			i.cfg.Handler, field, got)
 	}
@@ -331,7 +331,7 @@ func (i *Installer) applyConfigChange(ctx context.Context, raw []byte, desired s
 		return fmt.Errorf("re-reading containerd config before writing it: %w", err)
 	}
 	if !bytes.Equal(fresh, raw) {
-		return fmt.Errorf("%s changed while this reconcile was running; nothing was written and containerd was not restarted, retrying from the current file", containerdConfigPath)
+		return fmt.Errorf("%s changed while this reconcile was running. Nothing was written and containerd was not restarted, retrying from the current file", containerdConfigPath)
 	}
 
 	next, err := spliceManagedBlock(raw, desired)
@@ -352,7 +352,7 @@ func (i *Installer) applyConfigChange(ctx context.Context, raw []byte, desired s
 		if restoreErr := writeFileAtomic(cfgPath, raw); restoreErr != nil {
 			return fmt.Errorf("new containerd config failed validation (%w) AND restoring the previous config failed: %w", err, restoreErr)
 		}
-		return fmt.Errorf("new containerd config failed validation; previous config restored, containerd not restarted: %w", err)
+		return fmt.Errorf("new containerd config failed validation, previous config restored, containerd not restarted: %w", err)
 	}
 
 	i.log.Warn("restarting containerd to register the gVisor runtime handler (running containers are unaffected)")
@@ -361,7 +361,7 @@ func (i *Installer) applyConfigChange(ctx context.Context, raw []byte, desired s
 		if rbErr := i.rollback(ctx, cfgPath, raw); rbErr != nil {
 			return fmt.Errorf("containerd unhealthy after config change (%w) AND rollback failed: %w", err, rbErr)
 		}
-		return fmt.Errorf("containerd unhealthy after config change; previous config rolled back and containerd recovered: %w", err)
+		return fmt.Errorf("containerd unhealthy after config change, previous config rolled back and containerd recovered: %w", err)
 	}
 
 	if err := i.verifyServing(ctx); err != nil {
@@ -381,12 +381,11 @@ func writePristineBackup(backupPath, srcPath string, raw []byte) error {
 	if fi, err := os.Stat(srcPath); err == nil {
 		mode = fi.Mode().Perm()
 	}
-	// A zero-length backup is a crash remnant, not the pristine config.
+	// Write-once. A zero-length backup is a crash remnant, not the pristine
+	// config. An existing one is never re-permissioned: it can hold credentials
+	// the current config no longer does, so tracking config.toml's mode could
+	// only expose it.
 	if fi, err := os.Stat(backupPath); err == nil && fi.Size() > 0 {
-		// Older installers wrote this 0644 regardless of the source's mode.
-		if fi.Mode().Perm() != mode {
-			return os.Chmod(backupPath, mode)
-		}
 		return nil
 	}
 	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {

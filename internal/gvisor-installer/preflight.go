@@ -50,7 +50,7 @@ func (i *Installer) preflight(ctx context.Context) error {
 	}
 	props := parseProperties(out)
 	if props["LoadState"] != "loaded" {
-		return fmt.Errorf("no containerd systemd unit on this node (LoadState=%s); gVisor auto-install requires a standard systemd-managed containerd%s",
+		return fmt.Errorf("no containerd systemd unit on this node (LoadState=%s), gVisor auto-install requires a standard systemd-managed containerd%s",
 			props["LoadState"], i.distroHint(ctx))
 	}
 	if props["ActiveState"] != "active" {
@@ -66,7 +66,7 @@ func (i *Installer) preflight(ctx context.Context) error {
 		return fmt.Errorf("reading the containerd process cmdline: %w", err)
 	}
 	if cfg := configFlagFromCmdline(cmdline); cfg != "" && cfg != containerdConfigPath {
-		return fmt.Errorf("containerd runs with a non-standard config (--config %s); gVisor auto-install only manages %s%s",
+		return fmt.Errorf("containerd runs with a non-standard config (--config %s), gVisor auto-install only manages %s%s",
 			cfg, containerdConfigPath, i.distroHint(ctx))
 	}
 	// Refuse before mutating anything we could never verify afterwards.

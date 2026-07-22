@@ -688,7 +688,7 @@ func (c *containerd1xCRI) Status(ctx context.Context, withHandlers bool) (criSta
 }
 
 // containerd 1.x never populates StatusResponse.RuntimeHandlers, so the
-// installer must fall back to the verbose plugin config — and a full install
+// installer must fall back to the verbose plugin config, and a full install
 // must succeed and label the node ready on such a node.
 func TestReconcileOnContainerd1x(t *testing.T) {
 	env := newTestEnv(t)
@@ -1104,7 +1104,7 @@ func TestReconcileKeepsReadyLabelWhenUpgradeDownloadFails(t *testing.T) {
 	}
 
 	// Bump to a version the bucket does not have: download fails, but the
-	// node still has a fully working runtime — it must stay schedulable.
+	// node still has a fully working runtime, it must stay schedulable.
 	env.i.cfg.Version = "20270101.0"
 	err := env.i.Reconcile(t.Context())
 	if err == nil {
@@ -1385,4 +1385,30 @@ func newInstallerLike(prev *Installer) *Installer {
 	fresh.healthPoll = prev.healthPoll
 	fresh.procRoot = prev.procRoot
 	return fresh
+}
+
+// The backup can hold credentials the current config no longer does, so
+// relaxing config.toml must never widen the backup that was taken while it
+// was still restrictive.
+func TestWritePristineBackupNeverWidens(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "config.toml")
+	backup := filepath.Join(dir, "config.toml.isola-orig")
+	if err := os.WriteFile(backup, []byte("pristine, with secrets"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// config.toml has since been relaxed.
+	if err := os.WriteFile(src, []byte("current"), 0o644); err != nil { //nolint:gosec // the relaxed source mode is the scenario under test
+		t.Fatal(err)
+	}
+	if err := writePristineBackup(backup, src, []byte("current")); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0o600 {
+		t.Errorf("backup mode = %v, want it left at 0600", got)
+	}
 }

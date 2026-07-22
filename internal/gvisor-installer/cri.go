@@ -34,7 +34,7 @@ type criStatus struct {
 
 var errNoRuntimeHandlers = errors.New(
 	"containerd reports no runtime handlers over CRI (neither the RuntimeHandlers status field of " +
-		"containerd 2.x nor the verbose CRI plugin config of containerd 1.x); " +
+		"containerd 2.x nor the verbose CRI plugin config of containerd 1.x). " +
 		"gVisor auto-install requires containerd 1.6 or newer")
 
 // CRIClient judges containerd over the same surface the kubelet does.

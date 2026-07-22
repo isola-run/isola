@@ -26,7 +26,7 @@ func healthHandler(installer *Installer) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		if stalled, silent := installer.Stalled(); stalled {
-			http.Error(w, fmt.Sprintf("no reconcile iteration completed in %s; the reconcile loop is wedged",
+			http.Error(w, fmt.Sprintf("no reconcile iteration completed in %s, the reconcile loop is wedged",
 				silent.Round(time.Second)), http.StatusServiceUnavailable)
 			return
 		}
@@ -37,7 +37,7 @@ func healthHandler(installer *Installer) http.Handler {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		http.Error(w, "last reconcile did not converge; see pod logs and node events", http.StatusServiceUnavailable)
+		http.Error(w, "last reconcile did not converge, see pod logs and node events", http.StatusServiceUnavailable)
 	})
 	return mux
 }
