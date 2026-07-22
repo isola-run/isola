@@ -16,39 +16,43 @@ package gvisorinstaller
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 )
 
-// Marker comments delimiting the isola-managed section of config.toml.
-// Everything between them is owned by the installer and replaced wholesale on
-// reconcile; everything outside them is never modified. This avoids
-// round-tripping the user's config through a TOML library (which would
-// reorder tables and drop comments).
+// Only the text between these markers is ours. Splicing text rather than
+// round-tripping through a TOML library keeps the user's table order and
+// comments intact.
 const (
 	beginMarker = "# BEGIN isola-managed gVisor runtime (managed by isola gvisor-installer; do not edit)"
 	endMarker   = "# END isola-managed gVisor runtime"
 )
 
 const (
-	// CRI plugin IDs per containerd config schema version. Config version 2
-	// (containerd 1.x, still accepted by 2.x via auto-migration) vs version
+	// Config version 2 (containerd 1.x, still auto-migrated by 2.x) vs version
 	// 3+ (containerd 2.x, where the CRI plugin was split).
 	criPluginIDV2 = "io.containerd.grpc.v1.cri"
 	criPluginIDV3 = "io.containerd.cri.v1.runtime"
 
 	runscRuntimeType = "io.containerd.runsc.v1"
+	// The gVisor shim rejects any other options type at task creation, long
+	// after CRI has already listed the handler as available.
+	runscOptionsTypeURL = runscRuntimeType + ".options"
+
+	// containerd's own default when default_runtime_name is unset.
+	defaultRuntimeName = "runc"
 )
 
 var versionLineRe = regexp.MustCompile(`^\s*version\s*=\s*([0-9]+)`)
 
-// configSchemaVersion returns the root-level `version = N` of a containerd
-// config file. Only lines before the first table header count: a `version`
-// key inside a table belongs to that table, not the root. Returns 0 if absent
-// (containerd then treats the file as a legacy version 1 config).
+// configSchemaVersion reads the root-level `version = N`. Only lines before
+// the first table header count, since a `version` inside a table is that
+// table's. 0 means absent, which containerd treats as a legacy v1 config.
 func configSchemaVersion(data []byte) int {
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -66,8 +70,6 @@ func configSchemaVersion(data []byte) int {
 	return 0
 }
 
-// criPluginID maps a config schema version to the CRI runtime plugin ID used
-// in the runtimes table path.
 func criPluginID(schemaVersion int) (string, error) {
 	switch {
 	case schemaVersion == 2:
@@ -81,10 +83,8 @@ func criPluginID(schemaVersion int) (string, error) {
 	}
 }
 
-// renderManagedBlock renders the runtime handler registration that goes
-// between the markers. runtime_path pins the shim binary location so it does
-// not need to be on containerd's $PATH, and ConfigPath points the shim at the
-// isola-managed runsc configuration.
+// renderManagedBlock pins runtime_path so the shim need not be on
+// containerd's $PATH.
 func renderManagedBlock(pluginID, handler, shimPath, shimConfigPath string) string {
 	return fmt.Sprintf(`[plugins.%q.containerd.runtimes.%q]
   runtime_type = %q
@@ -92,15 +92,14 @@ func renderManagedBlock(pluginID, handler, shimPath, shimConfigPath string) stri
   # Allow gVisor annotations (e.g. dev.gvisor.flag.*, mount hints) to reach runsc.
   pod_annotations = ["dev.gvisor.*"]
 [plugins.%q.containerd.runtimes.%q.options]
-  TypeUrl = "io.containerd.runsc.v1.options"
+  TypeUrl = %q
   ConfigPath = %q`,
 		pluginID, handler, runscRuntimeType, shimPath,
-		pluginID, handler, shimConfigPath)
+		pluginID, handler, runscOptionsTypeURL, shimConfigPath)
 }
 
-// managedBlock extracts the current content between the markers. Returns
-// found=false when no markers are present. A begin marker without an end
-// marker is reported as an error rather than guessed at.
+// managedBlock treats a begin marker without an end marker as an error
+// rather than guessing where the section ends.
 func managedBlock(data []byte) (block string, found bool, err error) {
 	s := string(data)
 	bi := strings.Index(s, beginMarker)
@@ -115,8 +114,7 @@ func managedBlock(data []byte) (block string, found bool, err error) {
 	return strings.Trim(rest[:ei], "\n"), true, nil
 }
 
-// spliceManagedBlock returns data with the managed block inserted (appended)
-// or replaced in place. The rest of the file is preserved byte-for-byte.
+// spliceManagedBlock preserves everything outside the markers byte-for-byte.
 func spliceManagedBlock(data []byte, block string) ([]byte, error) {
 	s := string(data)
 	section := beginMarker + "\n" + block + "\n" + endMarker
@@ -136,7 +134,6 @@ func spliceManagedBlock(data []byte, block string) ([]byte, error) {
 	return []byte(s[:bi] + section + s[bi+ei+len(endMarker):]), nil
 }
 
-// tomlLookup walks a decoded TOML document along the given keys.
 func tomlLookup(doc map[string]any, keys ...string) (any, bool) {
 	var cur any = doc
 	for _, k := range keys {
@@ -170,37 +167,74 @@ func runtimeFromDump(dump []byte, handler string) (map[string]any, bool) {
 	return nil, false
 }
 
-// mergedEntryOverride reports the first field of a merged runtime entry that
-// diverges from the values the managed block pins. Imports merge over the
-// main config, so a drop-in can repoint the handler at another shim or shim
-// config while keeping its runtime_type intact; such a node must not count
-// as gVisor-ready. Returns the field name and merged value, or "" when the
-// entry is intact.
+// mergedEntryOverride catches a drop-in import repointing our handler at
+// another shim while keeping runtime_type intact. Such a node must never
+// count as gVisor-ready.
 func mergedEntryOverride(rt map[string]any, shimPath string) (field, got string) {
 	if p, _ := rt["runtime_path"].(string); p != shimPath {
 		return "runtime_path", p
 	}
 	opts, _ := rt["options"].(map[string]any)
+	if tu, _ := opts["TypeUrl"].(string); tu != runscOptionsTypeURL {
+		return "options.TypeUrl", tu
+	}
 	if cp, _ := opts["ConfigPath"].(string); cp != runscShimConfigPath {
 		return "options.ConfigPath", cp
 	}
 	return "", ""
 }
 
-// systemdCgroupFromDump reports whether the node's default runc runtime uses
-// the systemd cgroup driver, which gVisor must match (runsc's systemd-cgroup
-// flag). Defaults to false (runc's own default) when undetectable.
+func defaultRuntimeFromDump(doc map[string]any, pluginID string) string {
+	if v, ok := tomlLookup(doc, "plugins", pluginID, "containerd", "default_runtime_name"); ok {
+		if s, ok := v.(string); ok && s != "" {
+			return s
+		}
+	}
+	return defaultRuntimeName
+}
+
+// systemdCgroupFromDump reports whether the node uses the systemd cgroup
+// driver, which gVisor must match. The driver is node-wide, so any runtime
+// entry is a valid witness: default-runtime wrappers (nvidia's) often omit
+// the key while runc carries the real value. Defaults to false.
 func systemdCgroupFromDump(dump []byte) bool {
 	var doc map[string]any
 	if err := toml.Unmarshal(dump, &doc); err != nil {
 		return false
 	}
 	for _, pluginID := range []string{criPluginIDV2, criPluginIDV3} {
-		if v, ok := tomlLookup(doc, "plugins", pluginID, "containerd", "runtimes", "runc", "options", "SystemdCgroup"); ok {
-			if b, ok := v.(bool); ok {
-				return b
-			}
+		if b, ok := systemdCgroupForPlugin(doc, pluginID); ok {
+			return b
 		}
 	}
 	return false
+}
+
+func systemdCgroupForPlugin(doc map[string]any, pluginID string) (value, found bool) {
+	for _, handler := range []string{defaultRuntimeFromDump(doc, pluginID), defaultRuntimeName} {
+		if b, ok := systemdCgroupForRuntime(doc, pluginID, handler); ok {
+			return b, true
+		}
+	}
+	// Sorted so the answer does not depend on map iteration order.
+	runtimes, _ := tomlLookup(doc, "plugins", pluginID, "containerd", "runtimes")
+	m, ok := runtimes.(map[string]any)
+	if !ok {
+		return false, false
+	}
+	for _, handler := range slices.Sorted(maps.Keys(m)) {
+		if b, ok := systemdCgroupForRuntime(doc, pluginID, handler); ok {
+			return b, true
+		}
+	}
+	return false, false
+}
+
+func systemdCgroupForRuntime(doc map[string]any, pluginID, handler string) (value, found bool) {
+	v, ok := tomlLookup(doc, "plugins", pluginID, "containerd", "runtimes", handler, "options", "SystemdCgroup")
+	if !ok {
+		return false, false
+	}
+	b, ok := v.(bool)
+	return b, ok
 }

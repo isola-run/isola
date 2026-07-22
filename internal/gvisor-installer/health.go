@@ -16,17 +16,20 @@ package gvisorinstaller
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 )
 
-// ServeHealth runs the probe endpoints until ctx is cancelled: /healthz is
-// liveness (process up), /readyz reflects the last reconcile outcome so
-// `kubectl get pods` surfaces per-node install failures.
-func ServeHealth(ctx context.Context, addr string, installer *Installer, log *slog.Logger) {
+func healthHandler(installer *Installer) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		if stalled, silent := installer.Stalled(); stalled {
+			http.Error(w, fmt.Sprintf("no reconcile iteration completed in %s; the reconcile loop is wedged",
+				silent.Round(time.Second)), http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
@@ -36,10 +39,13 @@ func ServeHealth(ctx context.Context, addr string, installer *Installer, log *sl
 		}
 		http.Error(w, "last reconcile did not converge; see pod logs and node events", http.StatusServiceUnavailable)
 	})
+	return mux
+}
 
+func ServeHealth(ctx context.Context, addr string, installer *Installer, log *slog.Logger) {
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           healthHandler(installer),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {

@@ -28,30 +28,23 @@ import (
 	"k8s.io/client-go/tools/record"
 )
 
-// Node labels stamped by the installer. LabelGVisorReady gates scheduling:
-// the chart-created RuntimeClass selects it via scheduling.nodeSelector, so
+// LabelGVisorReady gates scheduling: the RuntimeClass selects on it, so
 // sandbox pods only land on nodes with a verified-healthy runtime.
 const (
 	LabelGVisorReady   = "isola.run/gvisor"
 	LabelGVisorVersion = "isola.run/gvisor-version"
 
-	// LabelGVisorInstall is the per-node opt-out: nodes labeled
-	// isola.run/gvisor-install=disabled are excluded by the DaemonSet's
-	// node affinity (enforced in the Helm template, not here).
+	// Per-node opt-out, enforced by the DaemonSet's node affinity in the Helm
+	// template, not here.
 	LabelGVisorInstall = "isola.run/gvisor-install"
 
-	// VersionUnmanaged is the version label value for nodes where a
-	// pre-existing (non-isola) runsc handler was detected and adopted as-is.
+	// Version label for a pre-existing non-isola handler, adopted as-is.
 	VersionUnmanaged = "unmanaged"
 )
 
-// NodeClient reports per-node installation state to the cluster: labels for
-// scheduling/observability, events for humans.
 type NodeClient interface {
-	// SetNodeLabels patches the installer-owned labels on the node.
 	// An empty value removes the label.
 	SetNodeLabels(ctx context.Context, labels map[string]string) error
-	// Event records a Kubernetes event on the Node object.
 	Event(eventType, reason, message string)
 }
 
@@ -61,7 +54,6 @@ type nodeClient struct {
 	recorder  record.EventRecorder
 }
 
-// NewNodeClient builds the production NodeClient using in-cluster credentials.
 func NewNodeClient(clientset *kubernetes.Clientset, nodeName string) NodeClient {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: clientset.CoreV1().Events("")})

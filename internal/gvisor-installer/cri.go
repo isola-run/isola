@@ -16,7 +16,10 @@ package gvisorinstaller
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"google.golang.org/grpc"
@@ -24,33 +27,31 @@ import (
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 )
 
-// criStatus is the subset of the CRI runtime status the installer cares
-// about. Handlers is nil when the runtime predates the RuntimeHandlers field
-// (CRI v1, containerd < 1.7.15) — verification then fails closed; the
-// on-disk config is never accepted as proof of serving.
 type criStatus struct {
 	RuntimeReady bool
 	Handlers     []string
 }
 
-// CRIClient checks containerd health through its CRI socket — the same
-// surface the kubelet judges the runtime by.
+var errNoRuntimeHandlers = errors.New(
+	"containerd reports no runtime handlers over CRI (neither the RuntimeHandlers status field of " +
+		"containerd 2.x nor the verbose CRI plugin config of containerd 1.x); " +
+		"gVisor auto-install requires containerd 1.6 or newer")
+
+// CRIClient judges containerd over the same surface the kubelet does.
 type CRIClient interface {
-	Status(ctx context.Context) (criStatus, error)
+	// withHandlers costs a second round trip on containerd 1.x.
+	Status(ctx context.Context, withHandlers bool) (criStatus, error)
 }
 
 type criClient struct {
-	// target is a gRPC unix target, e.g. "unix:///host/run/containerd/containerd.sock".
 	target string
 }
 
-// NewCRIClient returns a CRI client for the containerd socket as mounted
-// inside the installer container.
 func NewCRIClient(socketPath string) CRIClient {
 	return &criClient{target: "unix://" + socketPath}
 }
 
-func (c *criClient) Status(ctx context.Context) (criStatus, error) {
+func (c *criClient) Status(ctx context.Context, withHandlers bool) (criStatus, error) {
 	// A fresh connection per probe keeps each check independent of stale
 	// connection state across containerd restarts.
 	conn, err := grpc.NewClient(c.target, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -61,7 +62,22 @@ func (c *criClient) Status(ctx context.Context) (criStatus, error) {
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	resp, err := runtimeapi.NewRuntimeServiceClient(conn).Status(ctx, &runtimeapi.StatusRequest{})
+	rt := runtimeapi.NewRuntimeServiceClient(conn)
+	return statusFromRPC(ctx, func(ctx context.Context, verbose bool) (*runtimeapi.StatusResponse, error) {
+		return rt.Status(ctx, &runtimeapi.StatusRequest{Verbose: verbose})
+	}, withHandlers)
+}
+
+// statusRPC is the seam that makes statusFromRPC testable without containerd.
+type statusRPC func(ctx context.Context, verbose bool) (*runtimeapi.StatusResponse, error)
+
+// statusFromRPC reads handlers from StatusResponse.RuntimeHandlers, which
+// only containerd 2.0+ populates, and falls back to the verbose Info config
+// for 1.x. Equal evidence: both are the running daemon's loaded config, and
+// 1.x resolves RunPodSandbox against that very map. Verbose is requested only
+// when the field came back empty, so 2.x never pays for it.
+func statusFromRPC(ctx context.Context, call statusRPC, withHandlers bool) (criStatus, error) {
+	resp, err := call(ctx, false)
 	if err != nil {
 		return criStatus{}, fmt.Errorf("CRI runtime status: %w", err)
 	}
@@ -75,5 +91,49 @@ func (c *criClient) Status(ctx context.Context) (criStatus, error) {
 	for _, h := range resp.GetRuntimeHandlers() {
 		st.Handlers = append(st.Handlers, h.GetName())
 	}
+	if !withHandlers || len(st.Handlers) > 0 {
+		return st, nil
+	}
+
+	verbose, err := call(ctx, true)
+	if err != nil {
+		return st, fmt.Errorf("CRI runtime status (verbose): %w", err)
+	}
+	st.Handlers, err = handlersFromPluginConfig(verbose.GetInfo()["config"])
+	if err != nil {
+		return st, err
+	}
 	return st, nil
+}
+
+// criPluginConfigInfo mirrors containerd 1.x's verbose Info["config"], where
+// runtimes sit at containerd.runtimes.<handler>, NOT under the
+// plugins."io.containerd..." nesting containerd.go parses from `config dump`.
+type criPluginConfigInfo struct {
+	Containerd struct {
+		Runtimes map[string]json.RawMessage `json:"runtimes"`
+	} `json:"containerd"`
+}
+
+// handlersFromPluginConfig distinguishes absent (no handlers, caller fails
+// closed) from unparsable (an error), so a regression is not hidden behind a
+// version complaint.
+func handlersFromPluginConfig(raw string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	var cfg criPluginConfigInfo
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return nil, fmt.Errorf("parsing the CRI plugin config reported by containerd: %w", err)
+	}
+	if len(cfg.Containerd.Runtimes) == 0 {
+		return nil, nil
+	}
+	handlers := make([]string, 0, len(cfg.Containerd.Runtimes))
+	for name := range cfg.Containerd.Runtimes {
+		handlers = append(handlers, name)
+	}
+	// Sorted so error messages are stable.
+	slices.Sort(handlers)
+	return handlers, nil
 }

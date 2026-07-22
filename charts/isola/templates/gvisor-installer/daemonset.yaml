@@ -13,10 +13,8 @@ spec:
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
-      # Rolls template updates one node at a time, gated on pod readiness
-      # (readiness reflects a verified install). This does not stagger the
-      # initial DaemonSet creation: on first enable, all eligible nodes
-      # install (and restart containerd once) concurrently.
+      # Staggers template updates only. On first enable every eligible node
+      # installs, and restarts containerd, concurrently.
       maxUnavailable: 1
   template:
     metadata:
@@ -32,9 +30,8 @@ spec:
       {{- with $inst.priorityClassName }}
       priorityClassName: {{ . }}
       {{- end }}
-      # Host PID namespace: lets the installer nsenter into PID 1's mount
-      # namespace (running the host's systemctl/containerd binaries) and read
-      # the containerd process cmdline during preflight.
+      # Lets the installer nsenter into PID 1's mount namespace and read the
+      # containerd process cmdline during preflight.
       hostPID: true
       terminationGracePeriodSeconds: 10
       {{- include "isola.imagePullSecrets" . | nindent 6 }}
@@ -55,7 +52,6 @@ spec:
                   - key: kubernetes.io/arch
                     operator: In
                     values: ["amd64", "arm64"]
-                  # Per-node opt-out.
                   - key: isola.run/gvisor-install
                     operator: NotIn
                     values: ["disabled"]
@@ -113,14 +109,11 @@ spec:
             - name: runsc-config
               mountPath: /etc/isola-gvisor
               readOnly: true
-      # Narrow hostPath mounts by design (never the host root); everything
-      # else host-side goes through nsenter.
+      # Never the host root. Everything else host-side goes through nsenter.
       volumes:
-        # containerd config management: config.toml, its pristine backup, and
-        # the isola-runsc.toml shim config. DirectoryOrCreate (here and below):
-        # on distros without containerd at the standard paths (e.g. k3s) the
-        # pod must still start so the preflight can report a clear error
-        # instead of dying at volume mount.
+        # DirectoryOrCreate here and below: on distros without containerd at
+        # these paths the pod must still start, so preflight can report a clear
+        # error instead of the kubelet failing the mount.
         - name: containerd-etc
           hostPath:
             path: /etc/containerd
@@ -130,7 +123,6 @@ spec:
           hostPath:
             path: /run/containerd
             type: DirectoryOrCreate
-        # Target directory for the runsc + shim binaries.
         - name: install-dir
           hostPath:
             path: {{ $inst.installDir }}

@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// The gvisor-installer runs as a privileged DaemonSet pod and installs the
-// gVisor runtime (runsc + containerd shim) on the node it is scheduled to,
-// registering it with containerd and labeling the node when healthy.
+// Command gvisor-installer installs gVisor on its node from a privileged
+// DaemonSet pod.
 package main
 
 import (

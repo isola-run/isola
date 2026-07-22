@@ -26,14 +26,8 @@ import (
 const runscShimConfigHeader = "# Managed by the isola gvisor-installer; do not edit (changes are overwritten).\n" +
 	"# Source of truth: the gvisor.installer values of the isola Helm release.\n"
 
-// renderRunscShimConfig produces the shim configuration file content
-// (referenced from the containerd runtime entry via ConfigPath) from the
-// chart-provided base config:
-//   - binary_name is always pinned to the managed runsc path: the shim
-//     otherwise looks for "runsc" on containerd's $PATH, which the install
-//     dir is deliberately not on.
-//   - runsc_config.systemd-cgroup is injected from the node's detected runc
-//     cgroup driver unless the chart explicitly set it.
+// renderRunscShimConfig pins binary_name because the shim otherwise looks for
+// "runsc" on containerd's $PATH, which the install dir is deliberately not on.
 func renderRunscShimConfig(baseConfig []byte, runscPath string, systemdCgroup bool) ([]byte, error) {
 	var doc map[string]any
 	if err := toml.Unmarshal(baseConfig, &doc); err != nil {
@@ -62,9 +56,8 @@ func renderRunscShimConfig(baseConfig []byte, runscPath string, systemdCgroup bo
 	return buf.Bytes(), nil
 }
 
-// ensureRunscShimConfig writes the shim config to the host if it differs.
-// No containerd restart is needed: the shim reads ConfigPath at sandbox
-// start, so changes apply to new sandboxes only.
+// ensureRunscShimConfig needs no containerd restart: the shim reads
+// ConfigPath at sandbox start, so changes apply to new sandboxes only.
 func (i *Installer) ensureRunscShimConfig(dump []byte) error {
 	base, err := os.ReadFile(i.cfg.RunscConfigSrc)
 	if err != nil {

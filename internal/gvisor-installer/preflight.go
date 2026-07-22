@@ -23,11 +23,8 @@ import (
 	"strings"
 )
 
-// knownDistroMarkers identifies Kubernetes distributions that manage
-// containerd outside the standard systemd unit + config.toml layout. Probed
-// only to name the distribution in preflight errors; the actual gate is the
-// live-process check in preflight, which also covers distributions not
-// listed here.
+// knownDistroMarkers only names the distro in error messages. The real gate
+// is preflight's live-process check, which also catches unlisted ones.
 var knownDistroMarkers = []struct {
 	distro string
 	path   string
@@ -38,15 +35,11 @@ var knownDistroMarkers = []struct {
 	{"k0s", "/etc/k0s/containerd.toml"},
 }
 
-// preflight verifies the node runs containerd the one way the installer
-// supports: as the active systemd unit "containerd" whose process loads the
-// standard /etc/containerd/config.toml. On any other layout, editing that
-// file would be silently ignored (or `systemctl restart containerd` would
-// restart the wrong thing), so the installer refuses with an actionable
-// error instead of guessing. The check observes the live process rather than
-// enumerating known distros, so unknown non-standard setups are caught too.
-// A pass is cached: a node's containerd layout cannot change under a
-// running pod.
+// preflight refuses any layout other than a systemd-managed containerd
+// loading /etc/containerd/config.toml, where editing that file would be
+// silently ignored and the restart would hit the wrong unit. It observes the
+// live process rather than enumerating distros, so unknown setups are caught
+// too. A pass is cached: the layout cannot change under a running pod.
 func (i *Installer) preflight(ctx context.Context) error {
 	if i.preflightOK {
 		return nil
@@ -76,14 +69,13 @@ func (i *Installer) preflight(ctx context.Context) error {
 		return fmt.Errorf("containerd runs with a non-standard config (--config %s); gVisor auto-install only manages %s%s",
 			cfg, containerdConfigPath, i.distroHint(ctx))
 	}
-	// Refuse before mutating anything we could never verify: RuntimeHandlers
-	// is the only live proof of serving and requires containerd >= 1.7.15.
-	st, err := i.cri.Status(ctx)
+	// Refuse before mutating anything we could never verify afterwards.
+	st, err := i.cri.Status(ctx, true)
 	if err != nil {
 		return fmt.Errorf("querying containerd CRI status: %w", err)
 	}
-	if st.Handlers == nil {
-		return fmt.Errorf("containerd does not report runtime handlers over CRI; containerd >= 1.7.15 is required")
+	if len(st.Handlers) == 0 {
+		return errNoRuntimeHandlers
 	}
 	i.preflightOK = true
 	i.log.Info("preflight passed: standard systemd-managed containerd", "mainPID", pid)
@@ -119,11 +111,9 @@ func configFlagFromCmdline(cmdline []byte) string {
 	return ""
 }
 
-// distroHint appends the distribution name and the way out to preflight
-// errors when a known non-standard layout is detected.
 func (i *Installer) distroHint(ctx context.Context) string {
 	for _, m := range knownDistroMarkers {
-		// `test -e` exits non-zero when absent; any failure means "not present".
+		// Any failure means "not present".
 		if _, err := i.host.Run(ctx, "test", "-e", m.path); err == nil {
 			return fmt.Sprintf(" (node appears to run %s, which manages containerd itself: install gVisor through the distribution's own mechanism and set gvisor.installer.enabled=false, or exclude this node with the %s=disabled label)",
 				m.distro, LabelGVisorInstall)

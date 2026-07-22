@@ -38,17 +38,27 @@ func TestConfigFromEnv(t *testing.T) {
 		if cfg.ReconcileInterval != 5*time.Minute || cfg.RetryInterval != time.Minute {
 			t.Errorf("unexpected default intervals: %+v", cfg)
 		}
+		if cfg.ReconcileTimeout != defaultReconcileTimeout {
+			t.Errorf("ReconcileTimeout = %v, want %v", cfg.ReconcileTimeout, defaultReconcileTimeout)
+		}
+		if !strings.HasPrefix(cfg.DownloadURLBase, "https://") {
+			t.Errorf("default download origin must be https: %+v", cfg)
+		}
 	})
 
 	t.Run("interval override", func(t *testing.T) {
 		valid(t)
 		t.Setenv("RECONCILE_INTERVAL", "30s")
+		t.Setenv("RECONCILE_TIMEOUT", "45m")
 		cfg, err := ConfigFromEnv()
 		if err != nil {
 			t.Fatal(err)
 		}
 		if cfg.ReconcileInterval != 30*time.Second {
 			t.Errorf("ReconcileInterval = %v", cfg.ReconcileInterval)
+		}
+		if cfg.ReconcileTimeout != 45*time.Minute {
+			t.Errorf("ReconcileTimeout = %v", cfg.ReconcileTimeout)
 		}
 	})
 
@@ -64,6 +74,21 @@ func TestConfigFromEnv(t *testing.T) {
 		{"handler with marker injection", func(t *testing.T) { t.Setenv("GVISOR_HANDLER", "x# END isola") }, "GVISOR_HANDLER"},
 		{"handler with leading hyphen", func(t *testing.T) { t.Setenv("GVISOR_HANDLER", "-runsc") }, "GVISOR_HANDLER"},
 		{"relative install dir", func(t *testing.T) { t.Setenv("GVISOR_INSTALL_DIR", "opt/bin") }, "absolute"},
+		{"plain http origin", func(t *testing.T) {
+			t.Setenv("GVISOR_DOWNLOAD_URL_BASE", "http://mirror.internal/gvisor")
+		}, "absolute https URL"},
+		{"non-http scheme", func(t *testing.T) {
+			t.Setenv("GVISOR_DOWNLOAD_URL_BASE", "file:///var/mirror/gvisor")
+		}, "absolute https URL"},
+		{"scheme-relative origin", func(t *testing.T) {
+			t.Setenv("GVISOR_DOWNLOAD_URL_BASE", "//mirror.internal/gvisor")
+		}, "absolute https URL"},
+		{"host-less origin", func(t *testing.T) {
+			t.Setenv("GVISOR_DOWNLOAD_URL_BASE", "https:///gvisor")
+		}, "absolute https URL"},
+		{"unparsable origin", func(t *testing.T) {
+			t.Setenv("GVISOR_DOWNLOAD_URL_BASE", "https://mirror.internal/%zz")
+		}, "not a valid URL"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			valid(t)
@@ -71,6 +96,26 @@ func TestConfigFromEnv(t *testing.T) {
 			_, err := ConfigFromEnv()
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("expected error containing %q, got: %v", tt.wantErr, err)
+			}
+		})
+	}
+
+	for _, tt := range []struct {
+		name    string
+		urlBase string
+	}{
+		{"https origin", "https://mirror.internal/gvisor"},
+		{"uppercase https scheme", "HTTPS://mirror.internal/gvisor"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			valid(t)
+			t.Setenv("GVISOR_DOWNLOAD_URL_BASE", tt.urlBase)
+			cfg, err := ConfigFromEnv()
+			if err != nil {
+				t.Fatalf("expected %q to be accepted, got: %v", tt.urlBase, err)
+			}
+			if cfg.DownloadURLBase != tt.urlBase {
+				t.Errorf("DownloadURLBase = %q, want %q", cfg.DownloadURLBase, tt.urlBase)
 			}
 		})
 	}

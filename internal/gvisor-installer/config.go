@@ -12,70 +12,58 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package gvisorinstaller implements the per-node gVisor auto-installer that
-// runs as a DaemonSet pod: it downloads runsc and its containerd shim,
-// registers the containerd runtime handler, and labels the node once the
-// runtime is verified healthy. It reconciles periodically so node drift
-// (deleted binaries, reverted config) is self-healed.
+// Package gvisorinstaller installs gVisor on each node from a DaemonSet pod
+// and labels the node once the runtime is verified healthy. It reconciles
+// periodically, so node drift (deleted binaries, reverted config) self-heals.
 package gvisorinstaller
 
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/isola-run/isola/internal/env"
 )
 
-// Host-side paths the installer manages. They are fixed by design: the
-// containerd config location is the vanilla-containerd default (the
-// preflight rejects nodes whose containerd loads a different file), and the
-// shim config lives next to it under an isola-prefixed name so a
-// pre-existing user-managed /etc/containerd/runsc.toml is never touched.
+// The shim config is isola-prefixed so a user-managed
+// /etc/containerd/runsc.toml is never clobbered.
 const (
-	containerdConfigPath = "/etc/containerd/config.toml"
-	// Write-once pristine copy of config.toml taken before the first isola
-	// edit. Never deleted; documented escape hatch for manual recovery.
+	containerdConfigPath       = "/etc/containerd/config.toml"
 	containerdConfigBackupPath = "/etc/containerd/config.toml.isola-orig"
 	runscShimConfigPath        = "/etc/containerd/isola-runsc.toml"
 	criSocketPath              = "/run/containerd/containerd.sock"
 )
 
-// Config holds the desired state for one node, sourced from the DaemonSet
-// pod environment (rendered by the Helm chart).
+// Config is the desired state for one node, sourced from the pod environment.
 type Config struct {
-	// NodeName is the node this pod runs on (downward API).
 	NodeName string
-	// Version is the gVisor release to install, e.g. "20260622.0".
-	Version string
+	Version  string
 	// DownloadURLBase is the release artifact base URL; artifacts are fetched
-	// from <base>/<version>/<arch>/<binary>.
+	// from <base>/<version>/<arch>/<binary>. https only, no opt-out.
 	DownloadURLBase string
-	// Handler is the containerd runtime handler name (RuntimeClass.handler).
-	Handler string
-	// InstallDir is the host directory for runsc + containerd-shim-runsc-v1.
-	InstallDir string
+	Handler         string
+	InstallDir      string
 
-	// The fields below are fixed by the container image and DaemonSet spec;
-	// they exist as fields so tests can redirect them.
+	// Fixed by the image and DaemonSet spec, fields only so tests can redirect.
 	HostRoot       string
 	RunscConfigSrc string
 	HealthAddr     string
 
 	ReconcileInterval time.Duration
 	RetryInterval     time.Duration
+	ReconcileTimeout  time.Duration
 }
 
-// handlerRe matches RFC 1123 DNS labels — the RuntimeClass handler grammar.
-// Anything looser could also corrupt the TOML splice (the handler is
-// rendered into the managed block and its markers).
+// RFC 1123 DNS labels: the RuntimeClass grammar, and anything looser could
+// corrupt the TOML splice the handler is rendered into.
 var handlerRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 
-// ConfigFromEnv builds the Config from environment variables, applying
-// defaults that match the Helm chart's values.
+// ConfigFromEnv defaults must stay in sync with the Helm chart's values.
 func ConfigFromEnv() (Config, error) {
 	cfg := Config{
 		NodeName:        os.Getenv("NODE_NAME"),
@@ -90,6 +78,7 @@ func ConfigFromEnv() (Config, error) {
 
 		ReconcileInterval: env.GetOrDefaultDuration("RECONCILE_INTERVAL", 5*time.Minute),
 		RetryInterval:     env.GetOrDefaultDuration("RETRY_INTERVAL", time.Minute),
+		ReconcileTimeout:  env.GetOrDefaultDuration("RECONCILE_TIMEOUT", defaultReconcileTimeout),
 	}
 
 	if cfg.NodeName == "" {
@@ -104,6 +93,9 @@ func ConfigFromEnv() (Config, error) {
 	if cfg.Version == "latest" {
 		return cfg, errors.New(`GVISOR_VERSION must be a dated release (e.g. "20260622.0"), not "latest"`)
 	}
+	if err := validateDownloadURLBase(cfg.DownloadURLBase); err != nil {
+		return cfg, err
+	}
 	if !handlerRe.MatchString(cfg.Handler) {
 		return cfg, fmt.Errorf("GVISOR_HANDLER %q must be a lowercase DNS label (letters, digits, hyphens)", cfg.Handler)
 	}
@@ -113,19 +105,25 @@ func ConfigFromEnv() (Config, error) {
 	return cfg, nil
 }
 
-// hostPath translates an absolute host path to its mount location inside the
-// container (e.g. /etc/containerd/config.toml -> /host/etc/containerd/config.toml).
+// validateDownloadURLBase requires TLS: the .sha512 is same-origin, so it
+// catches corruption but never substitution.
+func validateDownloadURLBase(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("GVISOR_DOWNLOAD_URL_BASE %q is not a valid URL: %w", raw, err)
+	}
+	if strings.ToLower(u.Scheme) != "https" || u.Host == "" {
+		return fmt.Errorf("GVISOR_DOWNLOAD_URL_BASE %q must be an absolute https URL: the installer runs this binary as root on every node", raw)
+	}
+	return nil
+}
+
 func (c Config) hostPath(p string) string {
 	return path.Join(c.HostRoot, p)
 }
 
-// CRISocketPath is the containerd CRI socket as mounted inside the container.
 func (c Config) CRISocketPath() string { return c.hostPath(criSocketPath) }
 
-// runscPath is the runsc binary path as seen by the host (used in the shim
-// config's binary_name).
 func (c Config) runscPath() string { return path.Join(c.InstallDir, "runsc") }
 
-// shimPath is the containerd-shim-runsc-v1 path as seen by the host (used as
-// runtime_path in the containerd runtime entry).
 func (c Config) shimPath() string { return path.Join(c.InstallDir, "containerd-shim-runsc-v1") }

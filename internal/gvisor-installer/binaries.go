@@ -37,19 +37,15 @@ const (
 	runscBinary = "runsc"
 	shimBinary  = "containerd-shim-runsc-v1"
 
-	// stateFileName lives in the install dir so it survives pod restarts and
-	// node reboots, and disappears together with the binaries.
+	// In the install dir so it survives reboots and dies with the binaries.
 	stateFileName = ".isola-gvisor-state.json"
 
-	// tempPrefix names every temp file (download staging, atomic writes) so
-	// removeStaleTemps can reclaim whatever a crash strands, with one sweep.
+	// Shared by download staging and atomic writes so one sweep reclaims both.
 	tempPrefix = ".isola-tmp."
 )
 
-// installState records what was installed so reconciles can short-circuit
-// without re-downloading: the release version plus each binary's sha512 as
-// verified at download time. Re-hashing the on-disk binaries against it
-// detects corruption and out-of-band swaps.
+// installState lets reconciles skip re-downloading, and re-hashing against it
+// detects corruption or out-of-band swaps.
 type installState struct {
 	Version string            `json:"version"`
 	SHA512  map[string]string `json:"sha512"`
@@ -68,8 +64,7 @@ func gvisorArch() (string, error) {
 
 var runscVersionRe = regexp.MustCompile(`runsc version (\S+)`)
 
-// runscReportedVersion sanity-checks a staged download before promotion;
-// runsc is a static binary, so it runs fine inside the installer container.
+// runscReportedVersion works because runsc is static and runs in-container.
 func runscReportedVersion(ctx context.Context, binPath string) (string, error) {
 	out, err := exec.CommandContext(ctx, binPath, "--version").CombinedOutput() //nolint:gosec // path is the managed install dir
 	if err != nil {
@@ -82,9 +77,6 @@ func runscReportedVersion(ctx context.Context, binPath string) (string, error) {
 	return string(m[1]), nil
 }
 
-// ensureBinaries makes sure the desired gVisor release is installed in the
-// install dir, downloading and atomically replacing binaries when needed.
-// Returns whether anything was (re)installed.
 func (i *Installer) ensureBinaries(ctx context.Context) (bool, error) {
 	installDir := i.cfg.hostPath(i.cfg.InstallDir)
 	if err := os.MkdirAll(installDir, 0o755); err != nil { //nolint:gosec // binaries must be world-readable for containerd/shims
@@ -126,14 +118,13 @@ func (i *Installer) ensureBinaries(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("staged runsc failed verification: %w", err)
 	}
-	// Catch mirrors serving wrong-version artifacts with self-consistent
-	// checksums: the version label must not lie.
+	// Catches a mirror serving the wrong release with a self-consistent digest.
 	if got := strings.TrimPrefix(reported, "release-"); got != i.cfg.Version {
 		return false, fmt.Errorf("staged runsc reports version %q, expected %s", reported, i.cfg.Version)
 	}
 
-	// rename(2) is atomic and leaves running shims/sandboxes on the old inode;
-	// only newly started sandboxes pick up the new binaries.
+	// rename(2) leaves running sandboxes on the old inode, so only new ones
+	// pick this up.
 	for _, name := range []string{runscBinary, shimBinary} {
 		if err := os.Rename(staged[name], filepath.Join(installDir, name)); err != nil {
 			return false, fmt.Errorf("installing %s: %w", name, err)
@@ -151,9 +142,6 @@ func (i *Installer) ensureBinaries(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// binariesUpToDate reports whether the install dir already holds the desired
-// release: the recorded version matches and the on-disk binaries still hash
-// to what was verified at download time.
 func (i *Installer) binariesUpToDate(installDir string) bool {
 	st, ok := i.readState(installDir)
 	return ok && st.Version == i.cfg.Version && binariesMatchState(installDir, st)
@@ -182,10 +170,8 @@ func binariesMatchState(installDir string, st installState) bool {
 	return true
 }
 
-// installedVersion returns the version label value for the current install:
-// the recorded version as long as the on-disk binaries match the recorded
-// hashes (also mid-upgrade, when it differs from the desired version), empty
-// when there is no intact install.
+// installedVersion is the recorded version while the binaries still match it,
+// which may differ from the desired version mid-upgrade. Empty if not intact.
 func (i *Installer) installedVersion() string {
 	installDir := i.cfg.hostPath(i.cfg.InstallDir)
 	if st, ok := i.readState(installDir); ok && binariesMatchState(installDir, st) {
@@ -207,11 +193,10 @@ func fileSHA512(p string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// downloadVerified fetches url into dest, verifies it against the .sha512
-// checksum published next to the artifact, and returns the hex digest. The
-// checksum only proves integrity in transit (it comes from the same origin);
-// authenticity rests on the HTTPS origin, same as gVisor's documented
-// install flow.
+// downloadVerified fetches url into dest, verifies it against the same-origin
+// .sha512, and returns the hex digest. That checksum proves the transfer was
+// not corrupted, never that it was authentic: anything that can serve the
+// artifact can serve a matching digest. Authenticity rests on the https origin.
 func downloadVerified(ctx context.Context, url, dest string) (string, error) {
 	sumBody, err := httpGet(ctx, url+".sha512")
 	if err != nil {
@@ -239,8 +224,8 @@ func downloadVerified(ctx context.Context, url, dest string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Bound the write so a misbehaving mirror cannot fill the host
-	// filesystem before the checksum rejects it (runsc is ~130MB).
+	// A misbehaving mirror must not fill the host disk before the checksum
+	// rejects it.
 	const maxArtifactSize = 1 << 30
 	h := sha512.New()
 	n, copyErr := io.Copy(io.MultiWriter(f, h), io.LimitReader(resp.Body, maxArtifactSize+1))
@@ -263,9 +248,22 @@ func downloadVerified(ctx context.Context, url, dest string) (string, error) {
 	return got, nil
 }
 
-// downloadClient bounds each artifact download independently of the reconcile
-// context. runsc is ~130MB, so allow slow links a generous window.
-var downloadClient = &http.Client{Timeout: 10 * time.Minute}
+// downloadClient bounds each artifact independently of the reconcile context.
+var downloadClient = &http.Client{
+	Timeout: 10 * time.Minute,
+	// Startup validation only sees the configured base, so an https origin
+	// could still redirect the artifact and its checksum to cleartext.
+	// Supplying CheckRedirect also drops Go's default cap, hence the count.
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("refusing redirect to non-https URL %s", req.URL.Redacted())
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	},
+}
 
 func httpGet(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -283,9 +281,6 @@ func httpGet(ctx context.Context, url string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 }
 
-// removeStaleTemps cleans up temp files left in dir by a previously
-// interrupted download or atomic write; both name their temps with the
-// .isola-tmp. prefix so this one sweep covers them.
 func removeStaleTemps(dir string) {
 	matches, err := filepath.Glob(filepath.Join(dir, tempPrefix+"*"))
 	if err != nil {
@@ -312,12 +307,8 @@ func writeJSONFile(p string, v any) error {
 	return writeFileAtomic(p, data)
 }
 
-// writeFileAtomic writes via a temp file + fsync + rename(2) in the same
-// directory, so readers (containerd, the shim) never observe a partial file
-// and a power loss right after the rename cannot surface a truncated one.
-// An existing file's mode is preserved; new files are created 0644. The temp
-// name carries the .isola-tmp. prefix so removeStaleTemps reclaims it if
-// this process dies before the rename.
+// writeFileAtomic keeps readers from ever seeing a partial file. It preserves
+// an existing file's mode and creates new ones 0644.
 func writeFileAtomic(p string, data []byte) error {
 	mode := os.FileMode(0o644)
 	if fi, err := os.Stat(p); err == nil {

@@ -21,20 +21,16 @@ import (
 	"os/exec"
 )
 
-// HostExec runs a command in the host's mount namespace, so host binaries
-// (containerd, systemctl) and host paths resolve as the node sees them.
+// HostExec runs a command in the host's mount namespace, so host binaries and
+// paths resolve as the node sees them.
 type HostExec interface {
-	// Run executes the command and returns its stdout. Stderr is included in
-	// the returned error on failure.
 	Run(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
-// nsenterExec enters PID 1's mount namespace via nsenter. PID 1 is the host's
-// init because the DaemonSet pod runs with hostPID: true (and privileged, so
-// setns is permitted). This is the same mechanism kata-deploy uses.
+// nsenterExec depends on the DaemonSet's hostPID (so PID 1 is the host's init,
+// not the container's) and privileged (so setns is permitted).
 type nsenterExec struct{}
 
-// NewNsenterExec returns the production HostExec implementation.
 func NewNsenterExec() HostExec { return nsenterExec{} }
 
 func (nsenterExec) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -49,8 +45,8 @@ func (nsenterExec) Run(ctx context.Context, name string, args ...string) ([]byte
 	return stdout.Bytes(), nil
 }
 
-// truncateOutput bounds command output embedded in errors (which end up in
-// node events and logs).
+// truncateOutput bounds output embedded in errors, which end up in node
+// events (size-capped by the API server).
 func truncateOutput(b []byte) string {
 	const maxLen = 1024
 	s := string(bytes.TrimSpace(b))

@@ -29,14 +29,11 @@ import (
 	"time"
 )
 
-// fakeRunscScript builds a stand-in "binary" that answers --version like a
-// real runsc build of the given release.
 func fakeRunscScript(version string) []byte {
 	return []byte(fmt.Sprintf("#!/bin/sh\necho 'runsc version release-%s'\necho 'spec: 1.2.0'\n", version))
 }
 
-// gvisorReleaseServer serves a fake gVisor release bucket: artifacts plus
-// their .sha512 files under /<version>/<arch>/. It counts artifact downloads.
+// gvisorReleaseServer serves a fake release bucket and counts artifact downloads.
 func gvisorReleaseServer(t *testing.T, files map[string][]byte, downloads *atomic.Int64) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -75,8 +72,7 @@ func testInstaller(t *testing.T, urlBase string) *Installer {
 	return i
 }
 
-// releaseFiles returns the artifact set for one release version, keyed by
-// "<version>/<arch>/<binary>" as the bucket lays them out.
+// releaseFiles keys artifacts as "<version>/<arch>/<binary>", as the bucket lays them out.
 func releaseFiles(t *testing.T, version string) map[string][]byte {
 	t.Helper()
 	arch, err := gvisorArch()
@@ -101,7 +97,6 @@ func TestEnsureBinariesInstallUpgradeAndHeal(t *testing.T) {
 	i := testInstaller(t, srv.URL)
 	ctx := t.Context()
 
-	// Fresh install.
 	changed, err := i.ensureBinaries(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +118,6 @@ func TestEnsureBinariesInstallUpgradeAndHeal(t *testing.T) {
 		t.Errorf("installedVersion = %q, want %q", got, v1)
 	}
 
-	// Reconcile again: no re-download.
 	changed, err = i.ensureBinaries(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +126,6 @@ func TestEnsureBinariesInstallUpgradeAndHeal(t *testing.T) {
 		t.Fatalf("idempotent reconcile: changed=%v downloads=%d", changed, downloads.Load())
 	}
 
-	// Version bump triggers an upgrade.
 	i.cfg.Version = v2
 	changed, err = i.ensureBinaries(ctx)
 	if err != nil {
@@ -145,7 +138,6 @@ func TestEnsureBinariesInstallUpgradeAndHeal(t *testing.T) {
 		t.Errorf("installedVersion after upgrade = %q, want %q", got, v2)
 	}
 
-	// Out-of-band binary swap is detected and healed.
 	if err := os.WriteFile(filepath.Join(installDir, runscBinary), fakeRunscScript("99990101.0"), 0o755); err != nil { //nolint:gosec // test binary must be executable
 		t.Fatal(err)
 	}
@@ -182,7 +174,6 @@ func TestEnsureBinariesChecksumMismatch(t *testing.T) {
 	if _, err := i.ensureBinaries(t.Context()); err == nil || !strings.Contains(err.Error(), "sha512 mismatch") {
 		t.Fatalf("expected sha512 mismatch error, got: %v", err)
 	}
-	// Nothing may be promoted into place.
 	installDir := i.cfg.hostPath(i.cfg.InstallDir)
 	entries, err := os.ReadDir(installDir)
 	if err != nil {
@@ -279,4 +270,36 @@ func TestRunscReportedVersionParse(t *testing.T) {
 	if got != "release-20260101.0" {
 		t.Errorf("reported = %q", got)
 	}
+}
+
+func TestDownloadClientRejectsSchemeDowngrade(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		target  string
+		wantErr bool
+	}{
+		{"https hop allowed", "https://mirror.internal/runsc", false},
+		{"http hop refused", "http://mirror.internal/runsc", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = downloadClient.CheckRedirect(req, nil)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("CheckRedirect(%s) error = %v, wantErr %v", tt.target, err, tt.wantErr)
+			}
+		})
+	}
+
+	t.Run("redirect chain is bounded", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://mirror.internal/runsc", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := downloadClient.CheckRedirect(req, make([]*http.Request, 10)); err == nil {
+			t.Fatal("expected the redirect chain to be capped")
+		}
+	})
 }

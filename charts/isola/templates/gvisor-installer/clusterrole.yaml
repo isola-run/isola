@@ -6,8 +6,7 @@ metadata:
   labels:
     {{- include "isola.gvisorInstaller.labels" . | nindent 4 }}
 rules:
-  # Stamp isola.run/gvisor* readiness/version labels on nodes. Patch only:
-  # the installer never reads Node objects, it only writes its own labels.
+  # Patch only: the installer writes its own labels and never reads Nodes.
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["patch"]

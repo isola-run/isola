@@ -263,6 +263,13 @@ gvisor:
 
     # Artifacts are fetched from <downloadURLBase>/<version>/<arch>/.
     # Override for mirrors or air-gapped environments.
+    #
+    # TRUST MODEL: must be https. Each binary is checked against the .sha512
+    # published next to it, but that checksum comes from the same origin, so it
+    # only proves the transfer was not corrupted -- it cannot prove the origin
+    # served the real gVisor. Whoever controls this origin controls a root
+    # binary on every node, so point it only at somewhere you trust as much as
+    # your own registry.
     downloadURLBase: "https://storage.googleapis.com/gvisor/releases/release"
 
     # containerd runtime handler name to register (also the RuntimeClass

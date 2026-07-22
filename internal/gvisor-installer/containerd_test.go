@@ -99,6 +99,9 @@ func TestRenderManagedBlockIsValidTOML(t *testing.T) {
 	if opts.(map[string]any)["ConfigPath"] != "/etc/containerd/isola-runsc.toml" {
 		t.Errorf("ConfigPath = %v", opts.(map[string]any)["ConfigPath"])
 	}
+	if opts.(map[string]any)["TypeUrl"] != runscOptionsTypeURL {
+		t.Errorf("TypeUrl = %v", opts.(map[string]any)["TypeUrl"])
+	}
 }
 
 func TestSpliceManagedBlock(t *testing.T) {
@@ -213,13 +216,121 @@ func TestRuntimeFromDump(t *testing.T) {
 }
 
 func TestSystemdCgroupFromDump(t *testing.T) {
-	if !systemdCgroupFromDump([]byte(v3Dump)) {
-		t.Error("expected systemd cgroup detection from v3 dump")
+	// A node whose default runtime is not named "runc": the cgroup driver has
+	// to be read from whatever default_runtime_name points at, or gVisor ends
+	// up on a different driver than the rest of the node.
+	const customDefaultDump = `version = 2
+[plugins."io.containerd.grpc.v1.cri".containerd]
+  default_runtime_name = "custom-runc"
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.custom-runc]
+  runtime_type = "io.containerd.runc.v2"
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.custom-runc.options]
+  SystemdCgroup = true
+`
+	// The nvidia shape: default_runtime_name points at a runc wrapper that
+	// omits SystemdCgroup while runc carries the node's real driver.
+	const wrapperDefaultDump = `version = 3
+[plugins."io.containerd.cri.v1.runtime".containerd]
+  default_runtime_name = "custom-runc"
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.custom-runc]
+  runtime_type = "io.containerd.runc.v2"
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc.options]
+  SystemdCgroup = true
+`
+	tests := []struct {
+		name string
+		dump string
+		want bool
+	}{
+		{"v3 dump, default_runtime_name absent", v3Dump, true},
+		{"v2 config, default_runtime_name absent", kindStyleConfig, true},
+		{"non-runc default runtime with SystemdCgroup", customDefaultDump, true},
+		{"wrapper default runtime falls back to runc", wrapperDefaultDump, true},
+		{"runtimes absent", "version = 2\n", false},
+		{"invalid TOML", "not toml [", false},
 	}
-	if !systemdCgroupFromDump([]byte(kindStyleConfig)) {
-		t.Error("expected systemd cgroup detection from v2 config")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := systemdCgroupFromDump([]byte(tt.dump)); got != tt.want {
+				t.Errorf("systemdCgroupFromDump() = %v, want %v", got, tt.want)
+			}
+		})
 	}
-	if systemdCgroupFromDump([]byte("version = 2\n")) {
-		t.Error("expected false when runc options absent")
+}
+
+func TestMergedEntryOverride(t *testing.T) {
+	const shimPath = "/opt/isola/bin/containerd-shim-runsc-v1"
+
+	// The merged view a drop-in produces, keyed by the field it clobbers.
+	// Each entry keeps every other pinned field intact, which is exactly what
+	// makes the handler still show up in CRI's handler list.
+	tests := []struct {
+		name      string
+		entry     string
+		wantField string
+		wantGot   string
+	}{
+		{
+			name: "intact",
+			entry: `  runtime_type = "io.containerd.runsc.v1"
+  runtime_path = "/opt/isola/bin/containerd-shim-runsc-v1"
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
+  TypeUrl = "io.containerd.runsc.v1.options"
+  ConfigPath = "/etc/containerd/isola-runsc.toml"
+`,
+		},
+		{
+			name: "runtime_path overridden",
+			entry: `  runtime_type = "io.containerd.runsc.v1"
+  runtime_path = "/usr/local/bin/rogue-shim"
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
+  TypeUrl = "io.containerd.runsc.v1.options"
+  ConfigPath = "/etc/containerd/isola-runsc.toml"
+`,
+			wantField: "runtime_path",
+			wantGot:   "/usr/local/bin/rogue-shim",
+		},
+		{
+			name: "TypeUrl overridden",
+			entry: `  runtime_type = "io.containerd.runsc.v1"
+  runtime_path = "/opt/isola/bin/containerd-shim-runsc-v1"
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
+  TypeUrl = "io.containerd.runc.v1.options"
+  ConfigPath = "/etc/containerd/isola-runsc.toml"
+`,
+			wantField: "options.TypeUrl",
+			wantGot:   "io.containerd.runc.v1.options",
+		},
+		{
+			name: "options table dropped entirely",
+			entry: `  runtime_type = "io.containerd.runsc.v1"
+  runtime_path = "/opt/isola/bin/containerd-shim-runsc-v1"
+`,
+			wantField: "options.TypeUrl",
+		},
+		{
+			name: "ConfigPath overridden",
+			entry: `  runtime_type = "io.containerd.runsc.v1"
+  runtime_path = "/opt/isola/bin/containerd-shim-runsc-v1"
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
+  TypeUrl = "io.containerd.runsc.v1.options"
+  ConfigPath = "/etc/containerd/rogue-runsc.toml"
+`,
+			wantField: "options.ConfigPath",
+			wantGot:   "/etc/containerd/rogue-runsc.toml",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dump := `[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]` + "\n" + tt.entry
+			rt, found := runtimeFromDump([]byte(dump), "runsc")
+			if !found {
+				t.Fatalf("runsc entry not found in dump:\n%s", dump)
+			}
+			field, got := mergedEntryOverride(rt, shimPath)
+			if field != tt.wantField || got != tt.wantGot {
+				t.Errorf("mergedEntryOverride() = (%q, %q), want (%q, %q)", field, got, tt.wantField, tt.wantGot)
+			}
+		})
 	}
 }

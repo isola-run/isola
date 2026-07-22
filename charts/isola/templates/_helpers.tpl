@@ -186,6 +186,19 @@ isola: gvisor.installer.handler
 {{- else if not (hasPrefix "/" $inst.installDir) -}}
 isola: gvisor.installer.installDir
     installDir must be an absolute host path (e.g. /opt/isola/bin).
+{{- else if not (regexMatch "(?i)^https?://[^/]" ($inst.downloadURLBase | default "")) -}}
+isola: gvisor.installer.downloadURLBase
+    downloadURLBase must be an absolute https URL,
+    e.g. "https://storage.googleapis.com/gvisor/releases/release".
+{{- else if not (regexMatch "(?i)^https://" $inst.downloadURLBase) -}}
+isola: gvisor.installer.downloadURLBase
+    downloadURLBase must use https. Current value: "{{ $inst.downloadURLBase }}"
+    Each artifact's .sha512 is served by the same origin as the artifact, so it proves
+    transit integrity only. Over plain http an on-path attacker can serve a malicious
+    runsc together with a matching checksum, and the installer runs it as root and
+    registers it as the container runtime on every eligible node.
+    Serve an internal mirror over https, or install gVisor by another mechanism
+    and set gvisor.installer.enabled=false.
 {{- else if and .Values.operator.sandboxRuntime.rootfssnapshot.enabled $inst.runtimeClass.create (not (has $inst.handler (list "runsc" "gvisor"))) -}}
 isola: gvisor.installer.handler
     handler must be "runsc" or "gvisor" when rootfs snapshots are enabled:
