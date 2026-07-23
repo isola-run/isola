@@ -15,7 +15,7 @@
 // Mirrors sdks/python/tests/test_commands.py functionally, same scenarios,
 // same assertions where the abstractions line up.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Isola } from "../src/client";
 import { BadGatewayError, InternalError, IsolaTimeoutError, NotFoundError } from "../src/errors";
 import {
@@ -26,9 +26,16 @@ import {
   makeRoutingFetch,
   makeStubFetch,
   sandboxResponseFixture,
+  settle,
+  stubFakeableAbortSignalTimeout,
 } from "./_helpers";
 
 const URL_BASE = "http://localhost:8080";
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("Commands.spawn", () => {
   it("posts the full payload and includes ?container query param", async () => {
@@ -528,25 +535,22 @@ describe("Commands.run waitTimeoutMs", () => {
       [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) =>
         hangUntilAbort(req),
     };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    stubFakeableAbortSignalTimeout();
+
     const routing = makeRoutingFetch(routes);
     const client = new Isola({ url: URL_BASE, fetch: routing.fetch, requestTimeoutMs: null });
     const sandbox = await client.sandboxes.get(sbId);
 
-    let caught: unknown;
-    const t0 = performance.now();
-    try {
-      await sandbox.commands.run(["sleep", "10"], { waitTimeoutMs: 80 });
-    } catch (err) {
-      caught = err;
-    }
-    const elapsed = performance.now() - t0;
+    const settled = settle(sandbox.commands.run(["sleep", "10"], { waitTimeoutMs: 80 }));
+    await vi.advanceTimersByTimeAsync(80);
+    const result = await settled;
 
+    expect(result.ok).toBe(false);
+    const caught = (result as { ok: false; e: unknown }).e;
     expect(caught).toBeInstanceOf(IsolaTimeoutError);
     expect((caught as Error).message).toContain(`did not complete within 80ms`);
-    // Sanity: the timeout fired close to its budget, not after every sibling
-    // independently timed out the request layer.
-    expect(elapsed).toBeLessThan(2_000);
-  }, 10_000);
+  });
 
   it("propagates user signal.reason when aborted ahead of waitTimeoutMs", async () => {
     const sbId = "sandbox-123";
@@ -564,21 +568,24 @@ describe("Commands.run waitTimeoutMs", () => {
       [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) =>
         hangUntilAbort(req),
     };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    stubFakeableAbortSignalTimeout();
+
     const routing = makeRoutingFetch(routes);
     const client = new Isola({ url: URL_BASE, fetch: routing.fetch, requestTimeoutMs: null });
     const sandbox = await client.sandboxes.get(sbId);
 
     setTimeout(() => ctrl.abort(reason), 30);
 
-    let caught: unknown;
-    try {
-      await sandbox.commands.run(["sleep", "10"], { waitTimeoutMs: 5_000 }, { signal: ctrl.signal });
-    } catch (err) {
-      caught = err;
-    }
+    const settled = settle(sandbox.commands.run(["sleep", "10"], { waitTimeoutMs: 5_000 }, { signal: ctrl.signal }));
+    // Fire the user abort well ahead of the 5_000ms deadline.
+    await vi.advanceTimersByTimeAsync(30);
+    const result = await settled;
+
     // User abort wins over the run-phase deadline.
-    expect(caught).toBe(reason);
-  }, 10_000);
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; e: unknown }).e).toBe(reason);
+  });
 
   it("prefers user signal.reason over waitTimeoutMs when both fire mid-Promise.all", async () => {
     // Race we cover: spawn succeeds, then stdout/stderr/wait
@@ -600,23 +607,58 @@ describe("Commands.run waitTimeoutMs", () => {
       [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) =>
         hangUntilAbort(req),
     };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    stubFakeableAbortSignalTimeout();
+
     const routing = makeRoutingFetch(routes);
     const client = new Isola({ url: URL_BASE, fetch: routing.fetch, requestTimeoutMs: null });
     const sandbox = await client.sandboxes.get(sbId);
 
-    // Schedule the user abort and the waitTimeoutMs deadline both at ~50ms so
-    // they race inside Promise.all's catch (where the user-signal-wins
-    // precedence rule lives).
+    const settled = settle(sandbox.commands.run(["sleep", "10"], { waitTimeoutMs: 50 }, { signal: ctrl.signal }));
+    await vi.advanceTimersByTimeAsync(0);
     setTimeout(() => ctrl.abort(reason), 50);
+    // Sync advance: fires both t=50 timers before any microtask, so both signals
+    // are aborted when run() checks precedence (async advance fires them one at a
+    // time and passes vacuously on the first).
+    vi.advanceTimersByTime(50);
+    const result = await settled;
 
-    let caught: unknown;
-    try {
-      await sandbox.commands.run(["sleep", "10"], { waitTimeoutMs: 50 }, { signal: ctrl.signal });
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBe(reason);
-  }, 10_000);
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; e: unknown }).e).toBe(reason);
+  });
+
+  it("waitTimeoutMs bounds a hung stdin write, mapping to IsolaTimeoutError", async () => {
+    const sbId = "sandbox-123";
+    const cmdId = "cmd-stdin-timeout";
+
+    const routes = {
+      [`GET /v1/sandboxes/${sbId}`]: () => jsonResponse(sandboxResponseFixture()),
+      [`POST /v1/sandboxes/${sbId}/commands`]: () => jsonResponse({ id: cmdId }, { status: 202 }),
+      [`POST /v1/sandboxes/${sbId}/commands/${cmdId}/stdin`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stdout`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/stderr`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+      [`GET /v1/sandboxes/${sbId}/commands/${cmdId}/status`]: (req: { signal: AbortSignal | undefined }) =>
+        hangUntilAbort(req),
+    };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    stubFakeableAbortSignalTimeout();
+
+    const routing = makeRoutingFetch(routes);
+    const client = new Isola({ url: URL_BASE, fetch: routing.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get(sbId);
+
+    const settled = settle(sandbox.commands.run(["cat"], { input: "hello\n", waitTimeoutMs: 80 }));
+    await vi.advanceTimersByTimeAsync(80);
+    const result = await settled;
+
+    expect(result.ok).toBe(false);
+    const caught = (result as { ok: false; e: unknown }).e;
+    expect(caught).toBeInstanceOf(IsolaTimeoutError);
+    expect((caught as Error).message).toContain(`did not complete within 80ms`);
+  });
 
   it("accepts input: null without crashing (JS-only foot-gun)", async () => {
     // TS types forbid `input: null`; JS callers can pass it. The run() guard

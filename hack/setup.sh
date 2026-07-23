@@ -87,7 +87,7 @@ if docker inspect "$REGISTRY_NAME" &> /dev/null; then
     fi
 else
     echo "  Creating local registry on localhost:${REGISTRY_PORT}..."
-    docker run -d --restart=always -p "${REGISTRY_PORT}:5000" --network bridge --name "$REGISTRY_NAME" registry:2
+    docker run -d --restart=always -p "127.0.0.1:${REGISTRY_PORT}:5000" --network bridge --name "$REGISTRY_NAME" registry:2
 fi
 
 echo ""
