@@ -1,0 +1,14 @@
+{{- if .Values.gvisor.installer.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "isola.gvisorInstaller.fullname" . }}
+  labels:
+    {{- include "isola.gvisorInstaller.labels" . | nindent 4 }}
+data:
+  runsc.toml: |
+    [runsc_config]
+    {{- range $flag, $value := .Values.gvisor.installer.runscConfig }}
+      {{ $flag }} = {{ $value | quote }}
+    {{- end }}
+{{- end }}

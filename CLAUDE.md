@@ -79,7 +79,7 @@ Tool versions are pinned and must be kept in sync across locations:
 | setup-envtest | `hack/setup.sh` | `.github/workflows/test.yml` |
 | envtest K8s | `Makefile` | k8s.io/api in go.mod |
 | controller-gen | `hack/setup.sh` | `.github/workflows/codegen.yml` |
-| gVisor | `hack/setup.sh` | `.github/workflows/e2e.yml` |
+| gVisor | `charts/isola/values.yaml` (`gvisor.installer.version`) | - (dev and e2e install via the chart's gvisor-installer) |
 | Python | `sdks/python/pyproject.toml` | CI workflows |
 | Node | `sdks/typescript/.nvmrc` | `sdks/typescript/package.json` (`engines`), `typescript-sdk.yml` (test matrix) |
 | pnpm | `sdks/typescript/package.json` (`packageManager`) | `typescript-sdk.yml`, `release.yml` (`pnpm/action-setup`) |

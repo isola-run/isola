@@ -110,6 +110,7 @@ Invoked from the operator deployment template to catch misconfigurations at inst
 {{- $messages = append $messages (include "isola.validateValues.runtimeClassName" .) -}}
 {{- $messages = append $messages (include "isola.validateValues.rootfssnapshot" .) -}}
 {{- $messages = append $messages (include "isola.validateValues.rootfssnapshotCredentials" .) -}}
+{{- $messages = append $messages (include "isola.validateValues.gvisorInstaller" .) -}}
 {{- $messages = without $messages "" -}}
 {{- $message := join "\n" $messages -}}
 {{- if $message -}}
@@ -167,6 +168,41 @@ isola: operator.sandboxRuntime.rootfssnapshot.storage.s3
     or use uploader.existingSecret/snapshotMounter.existingSecret,
     or leave both empty to use pod/workload identity (e.g. IRSA).
 {{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "isola.validateValues.gvisorInstaller" -}}
+{{- $inst := .Values.gvisor.installer -}}
+{{- if $inst.enabled -}}
+{{- if or (not $inst.version) (eq $inst.version "latest") -}}
+isola: gvisor.installer.version
+    version must be a dated gVisor release (e.g. "20260622.0"), not empty or "latest":
+    the installer pins and verifies exact release artifacts.
+{{- else if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" ($inst.handler | default "")) -}}
+isola: gvisor.installer.handler
+    handler must be a lowercase DNS label (letters, digits, hyphens), e.g. "runsc".
+    It becomes the RuntimeClass handler and the containerd runtime entry.
+{{- else if not (hasPrefix "/" $inst.installDir) -}}
+isola: gvisor.installer.installDir
+    installDir must be an absolute host path (e.g. /opt/isola/bin).
+{{- else if not (regexMatch "(?i)^https?://[^/]" ($inst.downloadURLBase | default "")) -}}
+isola: gvisor.installer.downloadURLBase
+    downloadURLBase must be an absolute https URL,
+    e.g. "https://storage.googleapis.com/gvisor/releases/release".
+{{- else if not (regexMatch "(?i)^https://" $inst.downloadURLBase) -}}
+isola: gvisor.installer.downloadURLBase
+    downloadURLBase must use https. Current value: "{{ $inst.downloadURLBase }}"
+    Each artifact's .sha512 is served by the same origin as the artifact, so it proves
+    transit integrity only. Over plain http an on-path attacker can serve a malicious
+    runsc together with a matching checksum, and the installer runs it as root and
+    registers it as the container runtime on every eligible node.
+    Serve an internal mirror over https, or install gVisor by another mechanism
+    and set gvisor.installer.enabled=false.
+{{- else if and .Values.operator.sandboxRuntime.rootfssnapshot.enabled $inst.runtimeClass.create (not (has $inst.handler (list "runsc" "gvisor"))) -}}
+isola: gvisor.installer.handler
+    handler must be "runsc" or "gvisor" when rootfs snapshots are enabled:
+    the operator supports snapshots only for RuntimeClasses with those handlers.
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -265,10 +301,18 @@ RootfsSnapshot enabled flag
 {{- end }}
 
 {{/*
-gVisor runsc binary path (only used when rootfssnapshot enabled)
+gVisor runsc binary path (only used when rootfssnapshot enabled).
+Defaults to the auto-installer's location when gvisor.installer is enabled,
+so the two features compose without extra configuration.
 */}}
 {{- define "isola.operator.gvisorRunscPath" -}}
+{{- if .Values.operator.sandboxRuntime.rootfssnapshot.runsc.binaryPath -}}
 {{- .Values.operator.sandboxRuntime.rootfssnapshot.runsc.binaryPath -}}
+{{- else if .Values.gvisor.installer.enabled -}}
+{{- printf "%s/runsc" .Values.gvisor.installer.installDir -}}
+{{- else -}}
+/usr/local/bin/runsc
+{{- end -}}
 {{- end }}
 
 {{/*
@@ -446,6 +490,43 @@ Snapshot mounter selector labels
 app.kubernetes.io/name: {{ include "isola.name" . }}-snapshot-mounter
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: snapshot-mounter
+{{- end }}
+
+{{/* ==========================================================================
+   gVisor Installer Helpers
+   ========================================================================== */}}
+
+{{/*
+gVisor installer fullname
+*/}}
+{{- define "isola.gvisorInstaller.fullname" -}}
+{{- printf "%s-gvisor-installer" (include "isola.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+gVisor installer labels
+*/}}
+{{- define "isola.gvisorInstaller.labels" -}}
+{{ include "isola.labels" . }}
+app.kubernetes.io/name: {{ include "isola.name" . }}-gvisor-installer
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: gvisor-installer
+{{- end }}
+
+{{/*
+gVisor installer selector labels
+*/}}
+{{- define "isola.gvisorInstaller.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "isola.name" . }}-gvisor-installer
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: gvisor-installer
+{{- end }}
+
+{{/*
+gVisor installer image
+*/}}
+{{- define "isola.gvisorInstaller.image" -}}
+{{- include "isola.image" (dict "imageConfig" .Values.gvisor.installer.image "global" .Values.global "appVersion" .Chart.AppVersion) -}}
 {{- end }}
 
 {{/* ==========================================================================

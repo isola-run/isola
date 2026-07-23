@@ -1,0 +1,133 @@
+{{- if .Values.gvisor.installer.enabled }}
+{{- $inst := .Values.gvisor.installer }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "isola.gvisorInstaller.fullname" . }}
+  labels:
+    {{- include "isola.gvisorInstaller.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "isola.gvisorInstaller.selectorLabels" . | nindent 6 }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Staggers template updates only. On first enable every eligible node
+      # installs, and restarts containerd, concurrently.
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        {{- include "isola.gvisorInstaller.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/runsc-config: {{ include (print $.Template.BasePath "/gvisor-installer/configmap.yaml") . | sha256sum }}
+        {{- with $inst.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "isola.gvisorInstaller.fullname" . }}
+      {{- with $inst.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      # Lets the installer nsenter into PID 1's mount namespace and read the
+      # containerd process cmdline during preflight.
+      hostPID: true
+      terminationGracePeriodSeconds: 10
+      {{- include "isola.imagePullSecrets" . | nindent 6 }}
+      {{- with $inst.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $inst.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  # gVisor releases ship x86_64 and aarch64 binaries only.
+                  - key: kubernetes.io/arch
+                    operator: In
+                    values: ["amd64", "arm64"]
+                  - key: isola.run/gvisor-install
+                    operator: NotIn
+                    values: ["disabled"]
+      containers:
+        - name: installer
+          image: {{ include "isola.gvisorInstaller.image" . }}
+          imagePullPolicy: {{ $inst.image.pullPolicy }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: GVISOR_VERSION
+              value: {{ $inst.version | quote }}
+            - name: GVISOR_DOWNLOAD_URL_BASE
+              value: {{ $inst.downloadURLBase | quote }}
+            - name: GVISOR_HANDLER
+              value: {{ $inst.handler | quote }}
+            - name: GVISOR_INSTALL_DIR
+              value: {{ $inst.installDir | quote }}
+            - name: LOG_LEVEL
+              value: {{ $inst.logging.level | quote }}
+            - name: LOG_DEV_MODE
+              value: {{ $inst.logging.devMode | quote }}
+          securityContext:
+            # nsenter (setns into the host mount namespace) needs SYS_ADMIN,
+            # SYS_CHROOT, SYS_PTRACE, DAC_OVERRIDE. Capabilities alone are not
+            # enough: an enforcing AppArmor/SELinux profile denies opening
+            # /proc/1/ns/mnt regardless, and privileged is what lifts that.
+            privileged: true
+          resources:
+            {{- toYaml $inst.resources | nindent 12 }}
+          ports:
+            - name: health
+              containerPort: 8093
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          volumeMounts:
+            - name: containerd-etc
+              mountPath: /host/etc/containerd
+            - name: containerd-run
+              mountPath: /host/run/containerd
+            - name: install-dir
+              mountPath: /host{{ $inst.installDir }}
+            - name: runsc-config
+              mountPath: /etc/isola-gvisor
+              readOnly: true
+      # Never the host root. Everything else host-side goes through nsenter.
+      volumes:
+        # DirectoryOrCreate here and below: on distros without containerd at
+        # these paths the pod must still start, so preflight can report a clear
+        # error instead of the kubelet failing the mount.
+        - name: containerd-etc
+          hostPath:
+            path: /etc/containerd
+            type: DirectoryOrCreate
+        # CRI socket for health checks and runtime-handler verification.
+        - name: containerd-run
+          hostPath:
+            path: /run/containerd
+            type: DirectoryOrCreate
+        - name: install-dir
+          hostPath:
+            path: {{ $inst.installDir }}
+            type: DirectoryOrCreate
+        - name: runsc-config
+          configMap:
+            name: {{ include "isola.gvisorInstaller.fullname" . }}
+{{- end }}
