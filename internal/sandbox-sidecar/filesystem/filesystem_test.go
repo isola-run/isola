@@ -17,6 +17,7 @@ package filesystem
 import (
 	"bytes"
 	"crypto/rand"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -339,6 +340,29 @@ func (d *deadlineCapture) getReadDeadlines() []time.Time {
 	return append([]time.Time{}, d.readDeadlines...)
 }
 
+// newIsolatedAPI registers the filesystem handlers over a fresh temp root and
+// returns the raw handler, for tests that need to supply their own ResponseWriter.
+func newIsolatedAPI(prefix string) (http.Handler, string) {
+	rootDir, err := os.MkdirTemp("", prefix)
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(func() { _ = os.RemoveAll(rootDir) })
+
+	Expect(os.MkdirAll(filepath.Join(rootDir, "/workspace"), 0750)).To(Succeed())
+
+	mockProcFS := &MockProcFS{
+		rootDir: rootDir,
+		cwd:     "/workspace",
+		uid:     os.Getuid(),
+		gid:     os.Getgid(),
+	}
+
+	handler, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
+	v1 := huma.NewGroup(api, "/v1")
+	logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
+	Register(v1, New(logger, mockProcFS, sandboxsidecar.NewPIDResolver(mockProcFS)))
+	return handler, rootDir
+}
+
 var _ = Describe("Filesystem deadline wiring", func() {
 	var (
 		fsHandler http.Handler
@@ -346,26 +370,7 @@ var _ = Describe("Filesystem deadline wiring", func() {
 	)
 
 	BeforeEach(func() {
-		var err error
-		rootDir, err = os.MkdirTemp("", "deadline-test-*")
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() { _ = os.RemoveAll(rootDir) })
-
-		Expect(os.MkdirAll(filepath.Join(rootDir, "/workspace"), 0750)).To(Succeed())
-
-		mockProcFS := &MockProcFS{
-			rootDir: rootDir,
-			cwd:     "/workspace",
-			uid:     os.Getuid(),
-			gid:     os.Getgid(),
-		}
-
-		logger := slog.New(slog.NewTextHandler(GinkgoWriter, nil))
-		var api humatest.TestAPI
-		fsHandler, api = humatest.New(GinkgoT(), huma.DefaultConfig("Deadline Test API", "0.1.0"))
-		v1 := huma.NewGroup(api, "/v1")
-		h := New(logger, mockProcFS, sandboxsidecar.NewPIDResolver(mockProcFS))
-		Register(v1, h)
+		fsHandler, rootDir = newIsolatedAPI("deadline-test-*")
 	})
 
 	It("sets read and write deadlines during file upload", func() {
@@ -406,6 +411,62 @@ var _ = Describe("Filesystem deadline wiring", func() {
 		Expect(mock.Code).To(Equal(http.StatusOK))
 		Expect(mock.getWriteDeadlines()).NotTo(BeEmpty())
 		Expect(mock.Body.Bytes()).To(Equal(content))
+	})
+})
+
+// failAfterFirstWrite serves the first write and fails every one after it,
+// simulating a stream that dies partway through.
+type failAfterFirstWrite struct {
+	httptest.ResponseRecorder
+	err   error
+	wrote bool
+}
+
+func (w *failAfterFirstWrite) Write(p []byte) (int, error) {
+	if w.wrote {
+		return 0, w.err
+	}
+	w.wrote = true
+	return w.ResponseRecorder.Write(p)
+}
+
+var _ = Describe("Filesystem stream abort", func() {
+	var (
+		fsHandler http.Handler
+		rootDir   string
+	)
+
+	BeforeEach(func() {
+		fsHandler, rootDir = newIsolatedAPI("abort-test-*")
+	})
+
+	// larger than io.Copy's 32KB buffer so the copy takes more than one write
+	writeTestFile := func(name string) {
+		content := make([]byte, 64*1024)
+		_, err := rand.Read(content)
+		Expect(err).NotTo(HaveOccurred())
+		hostPath := filepath.Join(rootDir, "/tmp", name)
+		Expect(os.MkdirAll(filepath.Dir(hostPath), 0750)).To(Succeed())
+		Expect(os.WriteFile(hostPath, content, 0600)).To(Succeed())
+	}
+
+	It("aborts the response when a mid-stream write fails", func() {
+		writeTestFile("abort.txt")
+
+		mock := &failAfterFirstWrite{ResponseRecorder: *httptest.NewRecorder(), err: errors.New("stream broke")}
+		req := httptest.NewRequest("GET", "/v1/filesystem?path=/tmp/abort.txt", nil)
+
+		Expect(func() { fsHandler.ServeHTTP(mock, req) }).To(PanicWith(http.ErrAbortHandler))
+		Expect(mock.Body.Len()).To(BeNumerically(">", 0), "expected a partial write before the failure")
+	})
+
+	It("ends quietly when the client disconnects mid-stream", func() {
+		writeTestFile("disconnect.txt")
+
+		mock := &failAfterFirstWrite{ResponseRecorder: *httptest.NewRecorder(), err: syscall.EPIPE}
+		req := httptest.NewRequest("GET", "/v1/filesystem?path=/tmp/disconnect.txt", nil)
+
+		Expect(func() { fsHandler.ServeHTTP(mock, req) }).NotTo(Panic())
 	})
 })
 

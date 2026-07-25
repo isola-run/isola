@@ -16,7 +16,6 @@ package filesystem
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -226,11 +225,13 @@ func (h *Handlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) 
 			dw := httputil.NewDeadlineWriter(ctx.BodyWriter(), rc, httputil.StreamTimeout)
 
 			if _, err := io.Copy(dw, f); err != nil {
-				if errors.Is(err, context.Canceled) {
+				if httputil.IsClientDisconnect(err) {
 					h.logger.Warn("client disconnected during file stream", "error", err, "path", targetPath)
-				} else {
-					h.logger.Error("failed to stream file", "error", err, "path", targetPath)
+					return
 				}
+				h.logger.Error("failed to stream file", "error", err, "path", targetPath)
+				// abort the stream with an error, using panic
+				panic(http.ErrAbortHandler)
 			}
 		},
 	}, nil
