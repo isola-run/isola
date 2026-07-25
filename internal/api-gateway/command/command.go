@@ -256,7 +256,8 @@ func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream, la
 			defer fw.Stop()
 
 			if _, err := io.Copy(fw, resp.Body); err != nil {
-				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
+				// io.Copy hides which side failed, so only errors a read cannot produce count as a client disconnect
+				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) {
 					h.logger.Warn("client disconnected during command stream", "error", err, "id", sandboxID)
 					return
 				}
