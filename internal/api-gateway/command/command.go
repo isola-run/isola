@@ -18,11 +18,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"syscall"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -254,7 +256,7 @@ func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream, la
 			defer fw.Stop()
 
 			if _, err := io.Copy(fw, resp.Body); err != nil {
-				if httputil.IsClientDisconnect(err) {
+				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
 					h.logger.Warn("client disconnected during command stream", "error", err, "id", sandboxID)
 					return
 				}

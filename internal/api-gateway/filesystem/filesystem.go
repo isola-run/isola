@@ -16,11 +16,13 @@ package filesystem
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"syscall"
 
 	"github.com/danielgtaylor/huma/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -151,7 +153,7 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 			dw := httputil.NewDeadlineWriter(ctx.BodyWriter(), rc, httputil.StreamTimeout)
 
 			if _, err := io.Copy(dw, resp.Body); err != nil {
-				if httputil.IsClientDisconnect(err) {
+				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
 					h.logger.Warn("client disconnected during file stream", "error", err, "id", input.SandboxID)
 					return
 				}

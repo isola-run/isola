@@ -435,8 +435,13 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 			// Commit the 200 status immediately so the httplog middleware
 			// records the correct status even for empty streams.
 			if werr := sse.WriteKeepalive(); werr != nil {
-				h.abortUnlessDisconnected(werr, "failed to write initial SSE keepalive", cmdID)
-				return
+				if isClientDisconnect(werr) {
+					h.logger.Warn("client disconnected during command stream", "error", werr, "cmdID", cmdID)
+					return
+				}
+				h.logger.Error("failed to write initial SSE keepalive", "error", werr, "cmdID", cmdID)
+				// abort the stream with an error, using panic
+				panic(http.ErrAbortHandler)
 			}
 			buf := make([]byte, 32*1024)
 			keepaliveTicker := time.NewTicker(sseKeepaliveInterval)
@@ -447,8 +452,13 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 				n, readErr := f.Read(buf)
 				if n > 0 {
 					if werr := sse.WriteData(buf[:n]); werr != nil {
-						h.abortUnlessDisconnected(werr, "failed to write SSE data", cmdID)
-						return
+						if isClientDisconnect(werr) {
+							h.logger.Warn("client disconnected during command stream", "error", werr, "cmdID", cmdID)
+							return
+						}
+						h.logger.Error("failed to write SSE data", "error", werr, "cmdID", cmdID)
+						// abort the stream with an error, using panic
+						panic(http.ErrAbortHandler)
 					}
 					keepaliveTicker.Reset(sseKeepaliveInterval)
 					continue // tight loop while data is flowing
@@ -463,7 +473,13 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 				// EOF - no more data to read at this timee
 				if processDone {
 					if err := sse.Finish(); err != nil {
-						h.abortUnlessDisconnected(err, "failed to finish SSE writer", cmdID)
+						if isClientDisconnect(err) {
+							h.logger.Warn("client disconnected during command stream", "error", err, "cmdID", cmdID)
+							return
+						}
+						h.logger.Error("failed to finish SSE writer", "error", err, "cmdID", cmdID)
+						// abort the stream with an error, using panic
+						panic(http.ErrAbortHandler)
 					}
 					return
 				}
@@ -476,8 +492,13 @@ func (h *Handlers) streamOutput(cmdID string, offset int64, streamName string) (
 					return
 				case <-keepaliveTicker.C:
 					if werr := sse.WriteKeepalive(); werr != nil {
-						h.abortUnlessDisconnected(werr, "failed to write SSE keepalive", cmdID)
-						return
+						if isClientDisconnect(werr) {
+							h.logger.Warn("client disconnected during command stream", "error", werr, "cmdID", cmdID)
+							return
+						}
+						h.logger.Error("failed to write SSE keepalive", "error", werr, "cmdID", cmdID)
+						// abort the stream with an error, using panic
+						panic(http.ErrAbortHandler)
 					}
 				default:
 					time.Sleep(20 * time.Millisecond)
@@ -568,14 +589,10 @@ func (h *Handlers) DeleteCommand(_ context.Context, input *DeleteCommandInput) (
 	return nil, nil
 }
 
-func (h *Handlers) abortUnlessDisconnected(err error, msg, cmdID string) {
-	if httputil.IsClientDisconnect(err) {
-		h.logger.Warn("client disconnected during command stream", "error", err, "cmdID", cmdID)
-		return
-	}
-	h.logger.Error(msg, "error", err, "cmdID", cmdID)
-	// abort the stream with an error, using panic
-	panic(http.ErrAbortHandler)
+func isClientDisconnect(err error) bool {
+	return errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, context.Canceled)
 }
 
 func buildCmdEnv(containerEnv []string, overrides map[string]string) []string {
