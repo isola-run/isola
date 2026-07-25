@@ -387,17 +387,21 @@ describe("body replay on retry", () => {
   it.each([
     { label: "Int32Array", make: (): BodyInit => new Int32Array([1, 2, 3]) as unknown as BodyInit },
     { label: "DataView", make: (): BodyInit => new DataView(new ArrayBuffer(8)) as unknown as BodyInit },
-  ])("typed-array body ($label) is replayable and retried on 502", async ({ make }) => {
-    const stub = makeStubFetch(jsonResponse({ detail: "bad gateway" }, { status: 502 }), jsonResponse({ ok: true }));
-    const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
-    await api.request({
-      method: "POST",
-      path: "/v1/sandboxes",
-      body: make(),
-      headers: { "content-type": "application/octet-stream" },
-    });
-    expect(stub.calls).toHaveLength(2);
-  }, 15_000);
+  ])(
+    "typed-array body ($label) is replayable and retried on 502",
+    async ({ make }) => {
+      const stub = makeStubFetch(jsonResponse({ detail: "bad gateway" }, { status: 502 }), jsonResponse({ ok: true }));
+      const api = new HttpClient({ url: URL_BASE, requestTimeoutMs: null, fetch: stub.fetch });
+      await api.request({
+        method: "POST",
+        path: "/v1/sandboxes",
+        body: make(),
+        headers: { "content-type": "application/octet-stream" },
+      });
+      expect(stub.calls).toHaveLength(2);
+    },
+    15_000,
+  );
 
   it("ReadableStream (non-replayable) is NOT retried after transport error", async () => {
     const stream = new ReadableStream<Uint8Array>({

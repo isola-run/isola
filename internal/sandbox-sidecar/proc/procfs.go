@@ -15,14 +15,12 @@
 package proc
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"golang.org/x/sys/unix"
 
@@ -106,41 +104,21 @@ func (r *RealProcFS) FindMarkedPID(containerName string) (int, error) {
 // GetContainerName returns the ISOLA_CONTAINER_NAME value if present in the process environment.
 func GetContainerName(pid int) (string, bool) {
 	environPath := fmt.Sprintf("/proc/%d/environ", pid)
-	f, err := os.Open(environPath) //nolint:gosec // path is constructed from trusted PID
+	data, err := os.ReadFile(environPath) //nolint:gosec // path is constructed from trusted PID
 	if err != nil {
 		return "", false
 	}
-	defer func() { _ = f.Close() }()
-
-	// environ is null-byte separated
-	scanner := bufio.NewScanner(f)
-	scanner.Split(splitOnNullBytes)
-
-	prefix := constants.IsolaContainerNameEnv + "="
-	for scanner.Scan() {
-		text := scanner.Text()
-		if strings.HasPrefix(text, prefix) {
-			return text[len(prefix):], true
-		}
-	}
-
-	return "", false
+	return containerNameFromEnviron(data)
 }
 
-func splitOnNullBytes(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
+func containerNameFromEnviron(data []byte) (string, bool) {
+	prefix := []byte(constants.IsolaContainerNameEnv + "=")
+	for entry := range bytes.SplitSeq(data, []byte{0}) {
+		if bytes.HasPrefix(entry, prefix) {
+			return string(entry[len(prefix):]), true
+		}
 	}
-
-	if i := strings.IndexByte(string(data), 0); i >= 0 {
-		return i + 1, data[0:i], nil
-	}
-
-	if atEOF {
-		return len(data), data, nil
-	}
-
-	return 0, nil, nil
+	return "", false
 }
 
 // GetCwd reads the cwd symlink for the given PID.

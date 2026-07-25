@@ -46,6 +46,8 @@ import (
 // but it's a safety precaution for infinitely blocking after process kill
 const waitDelayGracePeriod = 5 * time.Second
 
+const statusClientClosedRequest = 499
+
 // sseKeepaliveInterval controls how often keepalive comments are sent on SSE streams
 // to prevent proxies from dropping idle connections. 15s gives margin below typical
 // proxy idle timeouts (30-60s) while avoiding excessive overhead.
@@ -348,7 +350,7 @@ func (h *Handlers) GetCommandStatus(ctx context.Context, input *GetCommandStatus
 		case <-timer.C:
 			return &GetCommandStatusOutput{Body: sidecarapi.CommandStatusResponse{ExitCode: nil}}, nil
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, huma.NewError(statusClientClosedRequest, "client closed request")
 		}
 	} else {
 		select {

@@ -104,6 +104,18 @@ describe("RootfsSnapshots.create + get", () => {
     expect(call.method).toBe("GET");
     expect(call.url).toBe(`${URL_BASE}/v1/rootfs-snapshots/snapshot-123`);
   });
+
+  it("does not let callers mutate creationTimestamp", async () => {
+    const stub = makeStubFetch(jsonResponse(rootfsSnapshotResponseFixture()));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const snapshot = await client.rootfsSnapshots.get("snapshot-123");
+
+    const timestamp = snapshot.creationTimestamp;
+    timestamp.setUTCFullYear(2000);
+
+    expect(snapshot.creationTimestamp).toEqual(new Date("2026-02-18T00:00:00Z"));
+    expect(snapshot.creationTimestamp).not.toBe(timestamp);
+  });
 });
 
 describe("RootfsSnapshots.create polling", () => {

@@ -223,7 +223,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(elapsed).To(BeNumerically(">=", 900*time.Millisecond))
 		})
 
-		It("stops blocking when client disconnects", func() {
+		It("returns client closed when a long poll disconnects", func() {
 			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
 			DeferCleanup(func() {
@@ -231,7 +231,7 @@ var _ = Describe("Command Handlers", func() {
 			})
 
 			ctx, cancel := context.WithCancel(context.Background())
-			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/status?waitSeconds=60", result.ID), nil).WithContext(ctx)
+			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/status?waitSeconds=30", result.ID), nil).WithContext(ctx)
 			w := httptest.NewRecorder()
 
 			done := make(chan struct{})
@@ -245,6 +245,7 @@ var _ = Describe("Command Handlers", func() {
 			cancel()
 
 			Eventually(done, "1s").Should(BeClosed())
+			Expect(w.Code).To(Equal(statusClientClosedRequest))
 		})
 	})
 
