@@ -256,11 +256,14 @@ func (h *Handlers) proxyStream(ctx context.Context, sandboxID, cmdID, stream, la
 			defer fw.Stop()
 
 			if _, err := io.Copy(fw, resp.Body); err != nil {
+				// io.Copy hides which side failed, so only errors a read cannot produce count as a client disconnect
 				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) {
 					h.logger.Warn("client disconnected during command stream", "error", err, "id", sandboxID)
-				} else {
-					h.logger.Error("sidecar error streaming command output", "error", err, "id", sandboxID)
+					return
 				}
+				h.logger.Error("sidecar error streaming command output", "error", err, "id", sandboxID)
+				// abort the stream with an error, using panic
+				panic(http.ErrAbortHandler)
 			}
 		},
 	}, nil

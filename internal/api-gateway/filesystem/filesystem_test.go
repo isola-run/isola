@@ -114,6 +114,29 @@ func (d *brokenBodyDoer) Do(*http.Request) (*http.Response, error) {
 	}, nil
 }
 
+type partialThenErrReader struct {
+	data []byte
+	done bool
+}
+
+func (r *partialThenErrReader) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, io.ErrUnexpectedEOF
+	}
+	r.done = true
+	return copy(p, r.data), nil
+}
+
+type truncatedStreamDoer struct{ data []byte }
+
+func (d *truncatedStreamDoer) Do(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/octet-stream"}},
+		Body:       io.NopCloser(&partialThenErrReader{data: d.data}),
+	}, nil
+}
+
 func newFilesystemTestAPI(httpClient apigateway.HTTPDoer, sidecarPort int) humatest.TestAPI {
 	_, api := humatest.New(GinkgoT(), huma.DefaultConfig("Test API", "0.1.0"))
 	v1 := huma.NewGroup(api, "/v1")
@@ -257,6 +280,15 @@ var _ = Describe("Filesystem Proxy", func() {
 			resp := api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
 
 			Expect(resp.Code).To(Equal(http.StatusBadGateway))
+		})
+
+		It("aborts the response when the sidecar stream fails mid-copy", func() {
+			api := newFilesystemTestAPI(&truncatedStreamDoer{data: []byte("partial file")}, 0)
+			sbName := createRunningSandboxCR()
+
+			Expect(func() {
+				api.Get(fmt.Sprintf("/v1/sandboxes/%s/filesystem?path=/tmp/test.txt", sbName))
+			}).To(PanicWith(http.ErrAbortHandler))
 		})
 	})
 
