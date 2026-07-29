@@ -132,6 +132,20 @@ func spliceManagedBlock(data []byte, block string) ([]byte, error) {
 	return []byte(s[:bi] + section + s[bi+ei+len(endMarker):]), nil
 }
 
+func removeManagedBlock(data []byte) ([]byte, error) {
+	s := string(data)
+	bi := strings.Index(s, beginMarker)
+	if bi < 0 {
+		return data, nil
+	}
+	rest := s[bi:]
+	ei := strings.Index(rest, endMarker)
+	if ei < 0 {
+		return nil, fmt.Errorf("%s: begin marker present but end marker missing, refusing to touch the file", containerdConfigPath)
+	}
+	return []byte(strings.TrimSuffix(s[:bi], "\n") + s[bi+ei+len(endMarker):]), nil
+}
+
 func tomlLookup(doc map[string]any, keys ...string) (any, bool) {
 	var cur any = doc
 	for _, k := range keys {
@@ -165,18 +179,24 @@ func runtimeFromDump(dump []byte, handler string) (map[string]any, bool) {
 	return nil, false
 }
 
+// What a managed block registers.
+type runtimeTarget struct {
+	ShimPath   string
+	ConfigPath string
+}
+
 // mergedEntryOverride catches a drop-in import repointing our handler at
 // another shim while keeping runtime_type intact. Such a node must never
 // count as gVisor-ready.
-func mergedEntryOverride(rt map[string]any, shimPath string) (field, got string) {
-	if p, _ := rt["runtime_path"].(string); p != shimPath {
+func mergedEntryOverride(rt map[string]any, want runtimeTarget) (field, got string) {
+	if p, _ := rt["runtime_path"].(string); p != want.ShimPath {
 		return "runtime_path", p
 	}
 	opts, _ := rt["options"].(map[string]any)
 	if tu, _ := opts["TypeUrl"].(string); tu != runscOptionsTypeURL {
 		return "options.TypeUrl", tu
 	}
-	if cp, _ := opts["ConfigPath"].(string); cp != runscShimConfigPath {
+	if cp, _ := opts["ConfigPath"].(string); cp != want.ConfigPath {
 		return "options.ConfigPath", cp
 	}
 	return "", ""

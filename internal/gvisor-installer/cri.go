@@ -30,6 +30,14 @@ import (
 type criStatus struct {
 	RuntimeReady bool
 	Handlers     []string
+	// From the daemon's loaded config, keyed by handler.
+	Runtimes map[string]criRuntime
+}
+
+type criRuntime struct {
+	Type       string
+	Path       string
+	ConfigPath string
 }
 
 var errNoRuntimeHandlers = errors.New(
@@ -71,11 +79,8 @@ func (c *criClient) Status(ctx context.Context, withHandlers bool) (criStatus, e
 // statusRPC is the seam that makes statusFromRPC testable without containerd.
 type statusRPC func(ctx context.Context, verbose bool) (*runtimeapi.StatusResponse, error)
 
-// statusFromRPC reads handlers from StatusResponse.RuntimeHandlers, which
-// only containerd 2.0+ populates, and falls back to the verbose Info config
-// for 1.x. Equal evidence: both are the running daemon's loaded config, and
-// 1.x resolves RunPodSandbox against that very map. Verbose is requested only
-// when the field came back empty, so 2.x never pays for it.
+// Only the verbose Info config reports which shim and ConfigPath a handler
+// resolves to. RuntimeHandlers (2.0+) carries names alone.
 func statusFromRPC(ctx context.Context, call statusRPC, withHandlers bool) (criStatus, error) {
 	resp, err := call(ctx, false)
 	if err != nil {
@@ -91,7 +96,7 @@ func statusFromRPC(ctx context.Context, call statusRPC, withHandlers bool) (criS
 	for _, h := range resp.GetRuntimeHandlers() {
 		st.Handlers = append(st.Handlers, h.GetName())
 	}
-	if !withHandlers || len(st.Handlers) > 0 {
+	if !withHandlers {
 		return st, nil
 	}
 
@@ -99,26 +104,37 @@ func statusFromRPC(ctx context.Context, call statusRPC, withHandlers bool) (criS
 	if err != nil {
 		return st, fmt.Errorf("CRI runtime status (verbose): %w", err)
 	}
-	st.Handlers, err = handlersFromPluginConfig(verbose.GetInfo()["config"])
+	st.Runtimes, err = runtimesFromPluginConfig(verbose.GetInfo()["config"])
 	if err != nil {
 		return st, err
+	}
+	if len(st.Handlers) == 0 {
+		for name := range st.Runtimes {
+			st.Handlers = append(st.Handlers, name)
+		}
+		slices.Sort(st.Handlers)
 	}
 	return st, nil
 }
 
-// criPluginConfigInfo mirrors containerd 1.x's verbose Info["config"], where
-// runtimes sit at containerd.runtimes.<handler>, NOT under the
-// plugins."io.containerd..." nesting containerd.go parses from `config dump`.
+// Mirrors the verbose Info["config"], where runtimes sit at
+// containerd.runtimes.<handler>, NOT under the plugins."io.containerd..."
+// nesting containerd.go parses from `config dump`.
 type criPluginConfigInfo struct {
 	Containerd struct {
-		Runtimes map[string]json.RawMessage `json:"runtimes"`
+		Runtimes map[string]struct {
+			RuntimeType string `json:"runtimeType"`
+			RuntimePath string `json:"runtimePath"`
+			Options     struct {
+				ConfigPath string `json:"ConfigPath"`
+			} `json:"options"`
+		} `json:"runtimes"`
 	} `json:"containerd"`
 }
 
-// handlersFromPluginConfig distinguishes absent (no handlers, caller fails
-// closed) from unparsable (an error), so a regression is not hidden behind a
-// version complaint.
-func handlersFromPluginConfig(raw string) ([]string, error) {
+// Distinguishes absent (no handlers, caller fails closed) from unparsable (an
+// error), so a regression is not hidden behind a version complaint.
+func runtimesFromPluginConfig(raw string) (map[string]criRuntime, error) {
 	if raw == "" {
 		return nil, nil
 	}
@@ -129,11 +145,9 @@ func handlersFromPluginConfig(raw string) ([]string, error) {
 	if len(cfg.Containerd.Runtimes) == 0 {
 		return nil, nil
 	}
-	handlers := make([]string, 0, len(cfg.Containerd.Runtimes))
-	for name := range cfg.Containerd.Runtimes {
-		handlers = append(handlers, name)
+	out := make(map[string]criRuntime, len(cfg.Containerd.Runtimes))
+	for name, rt := range cfg.Containerd.Runtimes {
+		out[name] = criRuntime{Type: rt.RuntimeType, Path: rt.RuntimePath, ConfigPath: rt.Options.ConfigPath}
 	}
-	// Sorted so error messages are stable.
-	slices.Sort(handlers)
-	return handlers, nil
+	return out, nil
 }

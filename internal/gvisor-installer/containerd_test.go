@@ -259,7 +259,10 @@ func TestSystemdCgroupFromDump(t *testing.T) {
 }
 
 func TestMergedEntryOverride(t *testing.T) {
-	const shimPath = "/opt/isola/bin/containerd-shim-runsc-v1"
+	want := runtimeTarget{
+		ShimPath:   "/opt/isola/bin/releases/20260101.0-abc/containerd-shim-runsc-v1",
+		ConfigPath: "/opt/isola/bin/runsc-configs/deadbeef.toml",
+	}
 
 	// The merged view a drop-in produces, keyed by the field it clobbers.
 	// Each entry keeps every other pinned field intact, which is exactly what
@@ -273,10 +276,10 @@ func TestMergedEntryOverride(t *testing.T) {
 		{
 			name: "intact",
 			entry: `  runtime_type = "io.containerd.runsc.v1"
-  runtime_path = "/opt/isola/bin/containerd-shim-runsc-v1"
+  runtime_path = "/opt/isola/bin/releases/20260101.0-abc/containerd-shim-runsc-v1"
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
   TypeUrl = "io.containerd.runsc.v1.options"
-  ConfigPath = "/etc/containerd/isola-runsc.toml"
+  ConfigPath = "/opt/isola/bin/runsc-configs/deadbeef.toml"
 `,
 		},
 		{
@@ -285,7 +288,7 @@ func TestMergedEntryOverride(t *testing.T) {
   runtime_path = "/usr/local/bin/rogue-shim"
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
   TypeUrl = "io.containerd.runsc.v1.options"
-  ConfigPath = "/etc/containerd/isola-runsc.toml"
+  ConfigPath = "/opt/isola/bin/runsc-configs/deadbeef.toml"
 `,
 			wantField: "runtime_path",
 			wantGot:   "/usr/local/bin/rogue-shim",
@@ -293,10 +296,10 @@ func TestMergedEntryOverride(t *testing.T) {
 		{
 			name: "TypeUrl overridden",
 			entry: `  runtime_type = "io.containerd.runsc.v1"
-  runtime_path = "/opt/isola/bin/containerd-shim-runsc-v1"
+  runtime_path = "/opt/isola/bin/releases/20260101.0-abc/containerd-shim-runsc-v1"
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
   TypeUrl = "io.containerd.runc.v1.options"
-  ConfigPath = "/etc/containerd/isola-runsc.toml"
+  ConfigPath = "/opt/isola/bin/runsc-configs/deadbeef.toml"
 `,
 			wantField: "options.TypeUrl",
 			wantGot:   "io.containerd.runc.v1.options",
@@ -304,14 +307,14 @@ func TestMergedEntryOverride(t *testing.T) {
 		{
 			name: "options table dropped entirely",
 			entry: `  runtime_type = "io.containerd.runsc.v1"
-  runtime_path = "/opt/isola/bin/containerd-shim-runsc-v1"
+  runtime_path = "/opt/isola/bin/releases/20260101.0-abc/containerd-shim-runsc-v1"
 `,
 			wantField: "options.TypeUrl",
 		},
 		{
 			name: "ConfigPath overridden",
 			entry: `  runtime_type = "io.containerd.runsc.v1"
-  runtime_path = "/opt/isola/bin/containerd-shim-runsc-v1"
+  runtime_path = "/opt/isola/bin/releases/20260101.0-abc/containerd-shim-runsc-v1"
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
   TypeUrl = "io.containerd.runsc.v1.options"
   ConfigPath = "/etc/containerd/rogue-runsc.toml"
@@ -327,10 +330,35 @@ func TestMergedEntryOverride(t *testing.T) {
 			if !found {
 				t.Fatalf("runsc entry not found in dump:\n%s", dump)
 			}
-			field, got := mergedEntryOverride(rt, shimPath)
+			field, got := mergedEntryOverride(rt, want)
 			if field != tt.wantField || got != tt.wantGot {
 				t.Errorf("mergedEntryOverride() = (%q, %q), want (%q, %q)", field, got, tt.wantField, tt.wantGot)
 			}
 		})
+	}
+}
+
+func TestRemoveManagedBlock(t *testing.T) {
+	block := renderManagedBlock(criPluginIDV2, "runsc", "/x/shim", "/x/runsc.toml")
+	spliced, err := spliceManagedBlock([]byte(kindStyleConfig), block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed, err := removeManagedBlock(spliced)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(removed), beginMarker) || strings.Contains(string(removed), endMarker) {
+		t.Errorf("markers survived removal:\n%s", removed)
+	}
+	if !strings.HasPrefix(string(removed), kindStyleConfig) {
+		t.Errorf("content outside the managed section changed:\n%s", removed)
+	}
+	unchanged, err := removeManagedBlock([]byte(kindStyleConfig))
+	if err != nil || string(unchanged) != kindStyleConfig {
+		t.Errorf("removal without markers must be a no-op (err %v)", err)
+	}
+	if _, err := removeManagedBlock([]byte(kindStyleConfig + beginMarker + "\nstuff\n")); err == nil {
+		t.Error("expected error for begin marker without end marker")
 	}
 }

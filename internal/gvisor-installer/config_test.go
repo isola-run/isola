@@ -23,7 +23,7 @@ import (
 func TestConfigFromEnv(t *testing.T) {
 	valid := func(t *testing.T) {
 		t.Setenv("NODE_NAME", "n1")
-		t.Setenv("GVISOR_VERSION", "20260101.0")
+		t.Setenv("GVISOR_VERSION", minVersion)
 	}
 
 	t.Run("defaults", func(t *testing.T) {
@@ -70,6 +70,9 @@ func TestConfigFromEnv(t *testing.T) {
 		{"missing node name", func(t *testing.T) { t.Setenv("NODE_NAME", "") }, "NODE_NAME"},
 		{"missing version", func(t *testing.T) { t.Setenv("GVISOR_VERSION", "") }, "GVISOR_VERSION"},
 		{"latest rejected", func(t *testing.T) { t.Setenv("GVISOR_VERSION", "latest") }, "dated release"},
+		{"missing patch component", func(t *testing.T) { t.Setenv("GVISOR_VERSION", "20260721") }, "YYYYMMDD.PATCH"},
+		{"nightly-style date", func(t *testing.T) { t.Setenv("GVISOR_VERSION", "2026-07-21.0") }, "YYYYMMDD.PATCH"},
+		{"pre-tarball release", func(t *testing.T) { t.Setenv("GVISOR_VERSION", "20260622.0") }, "predates"},
 		{"handler with uppercase", func(t *testing.T) { t.Setenv("GVISOR_HANDLER", "Runsc") }, "GVISOR_HANDLER"},
 		{"handler with marker injection", func(t *testing.T) { t.Setenv("GVISOR_HANDLER", "x# END isola") }, "GVISOR_HANDLER"},
 		{"handler with leading hyphen", func(t *testing.T) { t.Setenv("GVISOR_HANDLER", "-runsc") }, "GVISOR_HANDLER"},

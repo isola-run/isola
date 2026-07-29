@@ -67,6 +67,8 @@ func main() {
 	var rootfssnapshotEnabled bool
 	var gvisorRunscPath string
 	var gvisorRunscRoot string
+	var gvisorInstallDir string
+	var containerdStateDir string
 	var rootfssnapshotHostMountPath string
 	var sandboxSidecarImagePullPolicy string
 	var rootfssnapshotUploaderImagePullPolicy string
@@ -88,6 +90,8 @@ func main() {
 	flag.BoolVar(&rootfssnapshotEnabled, "rootfssnapshot-enabled", false, "Enable rootfs snapshot capability (requires gVisor runtime and privileged operations)")
 	flag.StringVar(&gvisorRunscPath, "gvisor-runsc-path", "", "Path to the runsc binary on cluster nodes (for gVisor snapshot support)")
 	flag.StringVar(&gvisorRunscRoot, "gvisor-runsc-root", "", "Root directory where runsc stores runtime state (for gVisor snapshot support)")
+	flag.StringVar(&gvisorInstallDir, "gvisor-install-dir", "", "gvisor-installer install root on nodes, holding one directory per installed release")
+	flag.StringVar(&containerdStateDir, "containerd-state-dir", "/run/containerd", "containerd state directory, holding the per-sandbox bundles")
 	flag.StringVar(&rootfssnapshotHostMountPath, "rootfssnapshot-host-mount-path", "", "Host path where snapshot-mounter NFS-mounts snapshot tars (readable by runsc on the node)")
 	flag.StringVar(&sandboxSidecarImagePullPolicy, "sidecar-image-pull-policy", "", "ImagePullPolicy for the sandbox-sidecar container (Always, IfNotPresent, Never)")
 	flag.StringVar(&rootfssnapshotUploaderImagePullPolicy, "rootfssnapshot-uploader-image-pull-policy", "", "ImagePullPolicy for the rootfs snapshot uploader container (Always, IfNotPresent, Never)")
@@ -199,6 +203,8 @@ func main() {
 		Enabled:                 rootfssnapshotEnabled,
 		GvisorRunscPath:         gvisorRunscPath,
 		GvisorRunscRoot:         gvisorRunscRoot,
+		GvisorInstallDir:        gvisorInstallDir,
+		ContainerdStateDir:      containerdStateDir,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RootfsSnapshot")
 		os.Exit(1)

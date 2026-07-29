@@ -50,6 +50,8 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			SnapshotServiceAccount: "test-snapshot-sa",
 			Enabled:                true,
 			GvisorRunscPath:        "/usr/local/bin/runsc",
+			GvisorInstallDir:       "/opt/isola/bin",
+			ContainerdStateDir:     "/run/containerd",
 			GvisorRunscRoot:        "/run/containerd/runsc/k8s.io",
 		}
 	})

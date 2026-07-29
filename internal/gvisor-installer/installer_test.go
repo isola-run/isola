@@ -105,6 +105,27 @@ func (f *fakeCRI) set(st criStatus, err error) {
 	f.st, f.err = st, err
 }
 
+// criStatusFromConfig mirrors containerd: the handler is served with exactly
+// the shim and ConfigPath the loaded config named.
+func criStatusFromConfig(raw []byte, handler string) criStatus {
+	st := criStatus{
+		RuntimeReady: true,
+		Handlers:     []string{"runc"},
+		Runtimes:     map[string]criRuntime{"runc": {Type: "io.containerd.runc.v2"}},
+	}
+	rt, found := runtimeFromDump(raw, handler)
+	if !found {
+		return st
+	}
+	opts, _ := rt["options"].(map[string]any)
+	shimPath, _ := rt["runtime_path"].(string)
+	configPath, _ := opts["ConfigPath"].(string)
+	rtType, _ := rt["runtime_type"].(string)
+	st.Handlers = append(st.Handlers, handler)
+	st.Runtimes[handler] = criRuntime{Type: rtType, Path: shimPath, ConfigPath: configPath}
+	return st
+}
+
 type fakeNode struct {
 	mu     sync.Mutex
 	labels map[string]string
@@ -201,13 +222,10 @@ func newTestEnv(t *testing.T) *testEnv {
 	env.cri = &fakeCRI{}
 	env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc"}}, nil)
 	env.host.onRestart = func() {
-		// After a restart the runtime serves whatever the config declares.
+		// After a restart the runtime serves whatever the config declares,
+		// including the shim and ConfigPath it resolved.
 		raw, _ := os.ReadFile(cfgPath) //nolint:gosec // test fixture path
-		handlers := []string{"runc"}
-		if _, found := runtimeFromDump(raw, i.cfg.Handler); found {
-			handlers = append(handlers, i.cfg.Handler)
-		}
-		env.cri.set(criStatus{RuntimeReady: true, Handlers: handlers}, nil)
+		env.cri.set(criStatusFromConfig(raw, i.cfg.Handler), nil)
 	}
 	env.node = &fakeNode{}
 
@@ -225,6 +243,24 @@ func (e *testEnv) configOnDisk(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+func (e *testEnv) state(t *testing.T) installerState {
+	t.Helper()
+	var st installerState
+	if err := readJSONFile(e.i.statePath(), &st); err != nil {
+		t.Fatal(err)
+	}
+	return st
+}
+
+func (e *testEnv) activeGen(t *testing.T) generationRecord {
+	t.Helper()
+	st := e.state(t)
+	if st.Active == nil {
+		t.Fatal("no active generation recorded")
+	}
+	return *st.Active
 }
 
 func TestReconcileFreshInstall(t *testing.T) {
@@ -250,11 +286,22 @@ func TestReconcileFreshInstall(t *testing.T) {
 		// newTestEnv writes config.toml 0600; the copy must not widen it.
 		t.Errorf("pristine backup mode = %v, want 0600", backup.Mode().Perm())
 	}
-	shim, err := os.ReadFile(env.i.cfg.hostPath(runscShimConfigPath))
+	active := env.activeGen(t)
+	if want := fixtureGenDirName(t, "20260101.0"); filepath.Base(active.GenerationPath) != want {
+		t.Errorf("active generation = %s, want %s", active.GenerationPath, want)
+	}
+	if env.state(t).Pending != nil {
+		t.Error("pending record left after successful install")
+	}
+	gen := Generation{Path: active.GenerationPath}
+	if filepath.Dir(active.ConfigPath) != env.i.cfg.configsDir() {
+		t.Errorf("shim config %s is not under the content-addressed configs dir", active.ConfigPath)
+	}
+	shim, err := os.ReadFile(env.i.cfg.hostPath(active.ConfigPath))
 	if err != nil {
 		t.Fatalf("shim config missing: %v", err)
 	}
-	for _, want := range []string{"binary_name", "allow-rootfs-tar-annotation", `systemd-cgroup = "true"`} {
+	for _, want := range []string{`binary_name = "` + gen.runscPath() + `"`, "allow-rootfs-tar-annotation", `systemd-cgroup = "true"`} {
 		if !strings.Contains(string(shim), want) {
 			t.Errorf("shim config missing %q:\n%s", want, shim)
 		}
@@ -498,11 +545,15 @@ func TestPreflightRequiresRuntimeHandlers(t *testing.T) {
 
 // containerd1xPluginConfig is written out literally rather than marshalled,
 // so the test pins containerd 1.x's actual wire shape.
-func containerd1xPluginConfig(handlers ...string) string {
+func containerd1xPluginConfig(paths map[string][2]string, handlers ...string) string {
 	entries := make([]string, 0, len(handlers))
 	for _, h := range handlers {
+		shim, configPath := "/opt/isola/bin/containerd-shim-runsc-v1", ""
+		if p, ok := paths[h]; ok {
+			shim, configPath = p[0], p[1]
+		}
 		entries = append(entries, fmt.Sprintf(
-			`%q:{"runtimeType":"io.containerd.runsc.v1","runtimePath":"/opt/isola/bin/containerd-shim-runsc-v1"}`, h))
+			`%q:{"runtimeType":"io.containerd.runsc.v1","runtimePath":%q,"options":{"TypeUrl":"io.containerd.runsc.v1.options","ConfigPath":%q}}`, h, shim, configPath))
 	}
 	return `{"containerd":{"snapshotter":"overlayfs","defaultRuntimeName":"runc","runtimes":{` +
 		strings.Join(entries, ",") + `}},"rootDir":"/var/lib/containerd/io.containerd.grpc.v1.cri"}`
@@ -535,15 +586,20 @@ func TestStatusFromRPCHandlerSources(t *testing.T) {
 			plain: &runtimeapi.StatusResponse{Status: readyConditions(), RuntimeHandlers: []*runtimeapi.RuntimeHandler{
 				{Name: "runc"}, {Name: "runsc"},
 			}},
-			want:        []string{"runc", "runsc"},
-			wantVerbose: 0,
+			verbose: &runtimeapi.StatusResponse{Status: readyConditions(), Info: map[string]string{
+				"config": containerd1xPluginConfig(nil, "runc", "runsc"),
+			}},
+			want: []string{"runc", "runsc"},
+			// RuntimeHandlers carries names only, so the loaded shim and
+			// ConfigPath still have to come from the verbose config.
+			wantVerbose: 1,
 		},
 		{
 			name:         "containerd 1.x reports the handler in its verbose plugin config",
 			withHandlers: true,
 			plain:        &runtimeapi.StatusResponse{Status: readyConditions()},
 			verbose: &runtimeapi.StatusResponse{Status: readyConditions(), Info: map[string]string{
-				"config": containerd1xPluginConfig("runc", "runsc"),
+				"config": containerd1xPluginConfig(nil, "runc", "runsc"),
 				"golang": `"go1.21.13"`,
 			}},
 			want:        []string{"runc", "runsc"},
@@ -554,7 +610,7 @@ func TestStatusFromRPCHandlerSources(t *testing.T) {
 			withHandlers: true,
 			plain:        &runtimeapi.StatusResponse{Status: readyConditions()},
 			verbose: &runtimeapi.StatusResponse{Status: readyConditions(), Info: map[string]string{
-				"config": containerd1xPluginConfig("runc"),
+				"config": containerd1xPluginConfig(nil, "runc"),
 			}},
 			want:        []string{"runc"},
 			wantVerbose: 1,
@@ -582,7 +638,7 @@ func TestStatusFromRPCHandlerSources(t *testing.T) {
 			withHandlers: true,
 			plain:        &runtimeapi.StatusResponse{Status: readyConditions()},
 			verbose: &runtimeapi.StatusResponse{Status: readyConditions(), Info: map[string]string{
-				"config": containerd1xPluginConfig(),
+				"config": containerd1xPluginConfig(nil),
 			}},
 			want:        nil,
 			wantVerbose: 1,
@@ -659,13 +715,15 @@ func TestStatusFromRPCHandlerSources(t *testing.T) {
 type containerd1xCRI struct {
 	mu       sync.Mutex
 	handlers []string
-	verbose  int
+	// Per handler, the shim and ConfigPath the daemon loaded.
+	paths   map[string][2]string
+	verbose int
 }
 
-func (c *containerd1xCRI) set(handlers ...string) {
+func (c *containerd1xCRI) setLoaded(handlers []string, paths map[string][2]string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.handlers = handlers
+	c.handlers, c.paths = handlers, paths
 }
 
 func (c *containerd1xCRI) verboseCalls() int {
@@ -681,7 +739,7 @@ func (c *containerd1xCRI) Status(ctx context.Context, withHandlers bool) (criSta
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			c.verbose++
-			resp.Info = map[string]string{"config": containerd1xPluginConfig(c.handlers...)}
+			resp.Info = map[string]string{"config": containerd1xPluginConfig(c.paths, c.handlers...)}
 		}
 		return resp, nil
 	}, withHandlers)
@@ -697,11 +755,12 @@ func TestReconcileOnContainerd1x(t *testing.T) {
 	cfgPath := env.i.cfg.hostPath(containerdConfigPath)
 	env.host.onRestart = func() {
 		raw, _ := os.ReadFile(cfgPath) //nolint:gosec // test fixture path
-		handlers := []string{"runc"}
-		if _, found := runtimeFromDump(raw, env.i.cfg.Handler); found {
-			handlers = append(handlers, env.i.cfg.Handler)
+		st := criStatusFromConfig(raw, env.i.cfg.Handler)
+		paths := map[string][2]string{}
+		for name, rt := range st.Runtimes {
+			paths[name] = [2]string{rt.Path, rt.ConfigPath}
 		}
-		cri.set(handlers...)
+		cri.setLoaded(st.Handlers, paths)
 	}
 
 	if err := env.i.Reconcile(t.Context()); err != nil {
@@ -791,19 +850,23 @@ func TestReconcileImportOverrideConflict(t *testing.T) {
 // different shim binary or shim config; the node must flip to not-ready even
 // though the type check passes and CRI serves the handler name.
 func TestReconcileImportOverridesManagedEntry(t *testing.T) {
-	overridden := map[string]string{
-		"runtime_path": `  runtime_type = "io.containerd.runsc.v1"
+	overridden := map[string]func(rec generationRecord) string{
+		"runtime_path": func(rec generationRecord) string {
+			return `  runtime_type = "io.containerd.runsc.v1"
   runtime_path = "/usr/local/bin/rogue-shim"
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
   TypeUrl = "io.containerd.runsc.v1.options"
-  ConfigPath = "/etc/containerd/isola-runsc.toml"
-`,
-		"options.ConfigPath": `  runtime_type = "io.containerd.runsc.v1"
-  runtime_path = "/opt/isola/bin/containerd-shim-runsc-v1"
+  ConfigPath = "` + rec.ConfigPath + `"
+`
+		},
+		"options.ConfigPath": func(rec generationRecord) string {
+			return `  runtime_type = "io.containerd.runsc.v1"
+  runtime_path = "` + (Generation{Path: rec.GenerationPath}).shimPath() + `"
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
   TypeUrl = "io.containerd.runsc.v1.options"
   ConfigPath = "/etc/containerd/rogue-runsc.toml"
-`,
+`
+		},
 	}
 	for field, entry := range overridden {
 		t.Run(field, func(t *testing.T) {
@@ -815,12 +878,13 @@ func TestReconcileImportOverridesManagedEntry(t *testing.T) {
 				t.Fatalf("precondition: ready label = %q", got)
 			}
 			restartsBefore := env.host.restarts
+			rec := env.activeGen(t)
 
 			// Merged view (file + imports) backs the handler with our
 			// runtime_type but a foreign shim path or shim config.
 			env.host.dumpFunc = func() ([]byte, error) {
 				return []byte(kindStyleConfig +
-					`[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]` + "\n" + entry), nil
+					`[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]` + "\n" + entry(rec)), nil
 			}
 
 			err := env.i.Reconcile(t.Context())
@@ -884,19 +948,18 @@ func TestReconcileImportOverrideDuringTransition(t *testing.T) {
 	}
 }
 
-// A managed node whose binaries were wiped (and cannot be re-downloaded)
-// must not stay schedulable: handler registration alone does not make
-// sandboxes startable.
-func TestReconcileNotReadyWhenBinariesMissing(t *testing.T) {
+// A managed node whose active generation was corrupted (and cannot be
+// repaired from the bucket) must not stay schedulable: handler registration
+// alone does not make sandboxes startable.
+func TestReconcileNotReadyWhenGenerationCorrupted(t *testing.T) {
 	env := newTestEnv(t)
 	if err := env.i.Reconcile(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	installDir := env.i.cfg.hostPath(env.i.cfg.InstallDir)
-	for _, name := range []string{runscBinary, shimBinary} {
-		if err := os.Remove(filepath.Join(installDir, name)); err != nil {
-			t.Fatal(err)
-		}
+	active := env.activeGen(t)
+	genDir := env.i.cfg.hostPath(active.GenerationPath)
+	if err := os.Remove(filepath.Join(genDir, runscBinary)); err != nil {
+		t.Fatal(err)
 	}
 	// The desired version is not downloadable, so the wipe cannot self-heal.
 	env.i.cfg.Version = "20270101.0"
@@ -905,7 +968,82 @@ func TestReconcileNotReadyWhenBinariesMissing(t *testing.T) {
 		t.Fatal("expected download error")
 	}
 	if got := env.node.label(LabelGVisorReady); got != "false" {
-		t.Errorf("ready label = %q, want false with binaries missing", got)
+		t.Errorf("ready label = %q, want false with the active generation corrupted", got)
+	}
+}
+
+// A same-version repair happens within one reconcile, and that same
+// reconcile must already publish ready again: the early unready flip must not
+// leave a stale verdict behind (the verify cache is per-pass, but the early
+// check and the final publish are in the same pass).
+func TestReconcileHealsCorruptedActiveGenerationAndRecoversReadiness(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	active := env.activeGen(t)
+	if err := os.Remove(filepath.Join(env.i.cfg.hostPath(active.GenerationPath), filepath.FromSlash(checkpointGofer))); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatalf("heal reconcile failed: %v", err)
+	}
+	if got := env.node.label(LabelGVisorReady); got != "true" {
+		t.Errorf("ready label = %q, want true immediately after the healing reconcile", got)
+	}
+	if _, err := os.Stat(filepath.Join(env.i.cfg.hostPath(active.GenerationPath), filepath.FromSlash(checkpointGofer))); err != nil {
+		t.Errorf("sidecar not restored: %v", err)
+	}
+}
+
+// The activated config is immutable and still on disk, so a broken source
+// only blocks producing the NEXT one. Sandboxes keep starting, so the node
+// stays ready and the failure surfaces as a reconcile error.
+func TestReconcileStaysReadyWhenRunscConfigSourceBreaks(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(env.i.cfg.RunscConfigSrc); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.i.Reconcile(t.Context()); err == nil {
+		t.Fatal("expected render error")
+	}
+	if got := env.node.label(LabelGVisorReady); got != "true" {
+		t.Errorf("ready label = %q, want true: the activated config is untouched", got)
+	}
+}
+
+// A lost config artifact is content-addressed, so re-rendering reproduces it
+// byte for byte at the same path: the node heals without a restart, and
+// sandboxes pinned to that ConfigPath keep resolving it.
+func TestReconcileRestoresRemovedConfigArtifact(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	active := env.activeGen(t)
+	restartsBefore := env.host.restarts
+	if err := os.Remove(env.i.cfg.hostPath(active.ConfigPath)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatalf("healing reconcile failed: %v", err)
+	}
+	if _, err := os.Stat(env.i.cfg.hostPath(active.ConfigPath)); err != nil {
+		t.Errorf("config artifact not restored: %v", err)
+	}
+	if env.activeGen(t).ConfigPath != active.ConfigPath {
+		t.Error("healing changed the activated ConfigPath")
+	}
+	if env.host.restarts != restartsBefore {
+		t.Errorf("restarts = %d, want %d: restoring an identical config needs none", env.host.restarts, restartsBefore)
+	}
+	if got := env.node.label(LabelGVisorReady); got != "true" {
+		t.Errorf("ready label = %q after healing", got)
 	}
 }
 
@@ -976,16 +1114,38 @@ func TestPreflightNonStandardConfigPath(t *testing.T) {
 	}
 }
 
-func TestPreflightRunsOncePerProcess(t *testing.T) {
+func TestPreflightSkipsDeepChecksWhileMainPIDUnchanged(t *testing.T) {
 	env := newTestEnv(t)
 	if err := env.i.Reconcile(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	// Break the preflight inputs: a cached preflight must not re-probe.
-	env.host.unitShow = "LoadState=not-found\n"
-	env.host.showErr = errors.New("should not be called again")
+	if err := os.WriteFile(filepath.Join(env.i.procRoot, "1234", "cmdline"),
+		[]byte("/usr/bin/containerd\x00--config\x00/var/lib/other/config.toml\x00"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := env.i.Reconcile(t.Context()); err != nil {
-		t.Fatalf("cached preflight re-probed the host: %v", err)
+		t.Fatalf("re-ran deep checks for an unchanged MainPID: %v", err)
+	}
+}
+
+func TestPreflightRevalidatesWhenContainerdRestarts(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	env.host.unitShow = "LoadState=loaded\nActiveState=active\nMainPID=5678\n"
+	if err := os.MkdirAll(filepath.Join(env.i.procRoot, "5678"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(env.i.procRoot, "5678", "cmdline"),
+		[]byte("/usr/bin/containerd\x00--config\x00/var/lib/other/config.toml\x00"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := env.i.Reconcile(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "/var/lib/other/config.toml") {
+		t.Fatalf("expected revalidation to reject the new config path, got: %v", err)
 	}
 }
 
@@ -1051,6 +1211,13 @@ func TestReconcileRollsBackWhenContainerdUnhealthy(t *testing.T) {
 	}
 	if got := env.node.label(LabelGVisorReady); got != "false" {
 		t.Errorf("ready label = %q, want false", got)
+	}
+	st := env.state(t)
+	if st.Pending != nil {
+		t.Error("settled rollback left a pending record, forcing a needless recovery restart")
+	}
+	if st.Active != nil {
+		t.Error("failed install recorded an active generation")
 	}
 }
 
@@ -1357,7 +1524,7 @@ func TestStallThresholdClearsSlowInstalls(t *testing.T) {
 		t.Errorf("stallThreshold = %v, must exceed %v (bounded install + one interval)", i.stallThreshold, floor)
 	}
 	// The bound on one iteration must in turn clear the internal budgets it
-	// contains: two artifact downloads plus a restart/rollback pair.
+	// contains: the checksum and archive requests plus a restart/rollback pair.
 	if floor := 2*downloadClient.Timeout + 2*(90*time.Second); i.reconcileTimeout <= floor {
 		t.Errorf("reconcileTimeout = %v, must exceed %v (download + health-wait budgets)", i.reconcileTimeout, floor)
 	}
@@ -1384,7 +1551,491 @@ func newInstallerLike(prev *Installer) *Installer {
 	fresh.healthWait = prev.healthWait
 	fresh.healthPoll = prev.healthPoll
 	fresh.procRoot = prev.procRoot
+	fresh.restartCooldown = prev.restartCooldown
 	return fresh
+}
+
+// upgradeArtifacts drives a real v1 install and captures the records needed
+// to hand-construct mid-transaction crash states for a v2 upgrade.
+type upgradeArtifacts struct {
+	env      *testEnv
+	activeV1 generationRecord
+	activeV2 generationRecord
+	prevV1   string
+}
+
+func setupUpgradeArtifacts(t *testing.T) upgradeArtifacts {
+	t.Helper()
+	env := newTestEnv(t)
+	files := releaseFiles(t, "20260101.0", "20260202.0")
+	srv := gvisorReleaseServer(t, files, &env.downloads)
+	env.i.cfg.DownloadURLBase = srv.URL
+
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	a := upgradeArtifacts{env: env, activeV1: env.activeGen(t)}
+	a.prevV1 = a.activeV1.ManagedBlock
+
+	env.i.cfg.Version = "20260202.0"
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	a.activeV2 = env.activeGen(t)
+	return a
+}
+
+func (a upgradeArtifacts) writeCrashState(t *testing.T, blockOnDisk string, st installerState) {
+	t.Helper()
+	raw, err := os.ReadFile(a.env.i.cfg.hostPath(containerdConfigPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := spliceManagedBlock(raw, blockOnDisk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(a.env.i.cfg.hostPath(containerdConfigPath), next, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st.SchemaVersion = stateSchemaVersion
+	if err := writeJSONFile(a.env.i.statePath(), st); err != nil {
+		t.Fatal(err)
+	}
+	// Crashed before the restart, so the daemon is still on the last block it
+	// successfully loaded, which is the active one.
+	loaded := criStatus{RuntimeReady: true, Handlers: []string{"runc"}}
+	if st.Active != nil {
+		active, err := spliceManagedBlock([]byte(kindStyleConfig), st.Active.ManagedBlock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded = criStatusFromConfig(active, a.env.i.cfg.Handler)
+	}
+	a.env.cri.set(loaded, nil)
+}
+
+func (a upgradeArtifacts) pendingV2() *pendingActivation {
+	return &pendingActivation{Target: a.activeV2, PreviousManagedBlock: a.prevV1, PreviousHandler: "runsc"}
+}
+
+// Crash after the target block was written (before or after its restart, the
+// journal cannot tell): recovery must re-verify the target, restart onto it,
+// and commit.
+func TestRecoveryCommitsTargetForward(t *testing.T) {
+	a := setupUpgradeArtifacts(t)
+	a.writeCrashState(t, a.activeV2.ManagedBlock, installerState{Active: &a.activeV1, Pending: a.pendingV2()})
+	restartsBefore := a.env.host.restarts
+
+	fresh := newInstallerLike(a.env.i)
+	if err := fresh.Reconcile(t.Context()); err != nil {
+		t.Fatalf("recovery failed: %v", err)
+	}
+	if a.env.host.restarts != restartsBefore+1 {
+		t.Errorf("restarts = %d, want one recovery restart", a.env.host.restarts-restartsBefore)
+	}
+	st := a.env.state(t)
+	if st.Pending != nil || st.Active == nil || st.Active.Version != "20260202.0" {
+		t.Errorf("journal not committed: %+v", st)
+	}
+	if got := a.env.node.label(LabelGVisorVersion); got != "20260202.0" {
+		t.Errorf("version label = %q", got)
+	}
+}
+
+// Crash after the activation restart: the daemon already serves the target,
+// so recovery must finish the journal without restarting containerd again.
+func TestRecoveryCommitsWithoutRestartWhenTargetAlreadyServed(t *testing.T) {
+	a := setupUpgradeArtifacts(t)
+	a.writeCrashState(t, a.activeV2.ManagedBlock, installerState{Active: &a.activeV1, Pending: a.pendingV2()})
+	a.env.host.onRestart()
+	restartsBefore := a.env.host.restarts
+
+	fresh := newInstallerLike(a.env.i)
+	if err := fresh.Reconcile(t.Context()); err != nil {
+		t.Fatalf("recovery failed: %v", err)
+	}
+	if a.env.host.restarts != restartsBefore {
+		t.Errorf("restarts = %d, want none: the target was already served", a.env.host.restarts-restartsBefore)
+	}
+	if st := a.env.state(t); st.Pending != nil || st.Active == nil || st.Active.Version != "20260202.0" {
+		t.Errorf("journal not committed: %+v", st)
+	}
+}
+
+// The restart budget is a rate limit, not a latch: once containerd recovers,
+// the node must converge without anyone restarting the installer pod.
+func TestActivationRetriesAfterCooldown(t *testing.T) {
+	env := newTestEnv(t)
+	env.i.restartCooldown = time.Hour
+	// The daemon never picks up the handler, so the activation rolls back.
+	env.host.onRestart = func() {
+		env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc"}}, nil)
+	}
+	if err := env.i.Reconcile(t.Context()); err == nil {
+		t.Fatal("expected the activation to fail")
+	}
+	blocked := env.host.restarts
+	if err := env.i.Reconcile(t.Context()); err == nil {
+		t.Fatal("expected the cooldown to keep refusing")
+	}
+	if env.host.restarts != blocked {
+		t.Fatalf("restarts = %d during cooldown, want %d", env.host.restarts, blocked)
+	}
+
+	// Containerd starts working again and the cooldown lapses.
+	cfgPath := env.i.cfg.hostPath(containerdConfigPath)
+	env.host.onRestart = func() {
+		raw, _ := os.ReadFile(cfgPath) //nolint:gosec // test fixture path
+		env.cri.set(criStatusFromConfig(raw, env.i.cfg.Handler), nil)
+	}
+	env.i.restartCooldown = 0
+	env.i.activationGate.block(time.Now().Add(-time.Hour), "", 0)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatalf("node did not converge after the cooldown lapsed: %v", err)
+	}
+	if got := env.node.label(LabelGVisorReady); got != "true" {
+		t.Errorf("ready label = %q after recovery", got)
+	}
+}
+
+// A containerd that is unhealthy for unrelated reasons must not be restarted
+// on every interval: recovery gets one restart per direction, then gives up.
+func TestRecoveryRestartsAreBounded(t *testing.T) {
+	a := setupUpgradeArtifacts(t)
+	a.writeCrashState(t, a.activeV2.ManagedBlock, installerState{Active: &a.activeV1, Pending: a.pendingV2()})
+	// No restart ever makes the daemon serve anything.
+	a.env.host.onRestart = func() {
+		a.env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc"}}, nil)
+	}
+	a.env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc"}}, nil)
+
+	fresh := newInstallerLike(a.env.i)
+	if err := fresh.Reconcile(t.Context()); err == nil {
+		t.Fatal("expected recovery to fail")
+	}
+	afterFirst := a.env.host.restarts
+	if afterFirst == 0 {
+		t.Fatal("recovery never restarted containerd")
+	}
+	for range 3 {
+		_ = fresh.Reconcile(t.Context())
+	}
+	if a.env.host.restarts != afterFirst {
+		t.Errorf("restarts = %d after further reconciles, want the budget to hold at %d", a.env.host.restarts, afterFirst)
+	}
+}
+
+// The rollback-crash hole the journal exists for: rollback restored the
+// previous block on disk but crashed before its restart, so the daemon may
+// still have the target loaded while disk and (a markerless design's) state
+// would agree on the previous generation. Recovery must force a restart.
+func TestRecoveryRestartsAfterInterruptedRollback(t *testing.T) {
+	a := setupUpgradeArtifacts(t)
+	a.writeCrashState(t, a.prevV1, installerState{Active: &a.activeV1, Pending: a.pendingV2()})
+	// Desired goes back to v1: after recovery, no upgrade should follow.
+	a.env.i.cfg.Version = "20260101.0"
+	restartsBefore := a.env.host.restarts
+
+	fresh := newInstallerLike(a.env.i)
+	if err := fresh.Reconcile(t.Context()); err != nil {
+		t.Fatalf("recovery failed: %v", err)
+	}
+	if a.env.host.restarts != restartsBefore+1 {
+		t.Errorf("restarts = %d, want exactly the mandatory rollback restart", a.env.host.restarts-restartsBefore)
+	}
+	st := a.env.state(t)
+	if st.Pending != nil || st.Active == nil || st.Active.Version != "20260101.0" {
+		t.Errorf("journal not settled on the previous generation: %+v", st)
+	}
+	if got := a.env.node.label(LabelGVisorReady); got != "true" {
+		t.Errorf("ready label = %q after settled rollback", got)
+	}
+}
+
+// A block that is neither the pending target nor its predecessor was written
+// by someone else mid-crash; it must never be blessed with a restart, and the
+// predecessor is restored instead.
+func TestRecoveryRestoresPredecessorOverUnknownBlock(t *testing.T) {
+	a := setupUpgradeArtifacts(t)
+	rogue := "# rogue edit\n" + a.prevV1
+	a.writeCrashState(t, rogue, installerState{Active: &a.activeV1, Pending: a.pendingV2()})
+	a.env.i.cfg.Version = "20260101.0"
+
+	fresh := newInstallerLike(a.env.i)
+	if err := fresh.Reconcile(t.Context()); err != nil {
+		t.Fatalf("recovery failed: %v", err)
+	}
+	block, found, err := managedBlock([]byte(a.env.configOnDisk(t)))
+	if err != nil || !found || block != a.prevV1 {
+		t.Errorf("predecessor block not restored: found=%v err=%v\n%s", found, err, block)
+	}
+	if st := a.env.state(t); st.Pending != nil {
+		t.Errorf("journal not settled: %+v", st)
+	}
+}
+
+// A pending target whose generation was wiped cannot be committed forward;
+// recovery must roll back to the intact previous generation.
+func TestRecoveryRollsBackWhenTargetGenerationBroken(t *testing.T) {
+	a := setupUpgradeArtifacts(t)
+	if err := os.Remove(filepath.Join(a.env.i.cfg.hostPath(a.activeV2.GenerationPath), runscBinary)); err != nil {
+		t.Fatal(err)
+	}
+	a.writeCrashState(t, a.activeV2.ManagedBlock, installerState{Active: &a.activeV1, Pending: a.pendingV2()})
+	a.env.i.cfg.Version = "20260101.0"
+
+	fresh := newInstallerLike(a.env.i)
+	if err := fresh.Reconcile(t.Context()); err != nil {
+		t.Fatalf("recovery failed: %v", err)
+	}
+	st := a.env.state(t)
+	if st.Pending != nil || st.Active == nil || st.Active.Version != "20260101.0" {
+		t.Errorf("expected rollback to v1: %+v", st)
+	}
+	block, _, _ := managedBlock([]byte(a.env.configOnDisk(t)))
+	if block != a.prevV1 {
+		t.Errorf("previous block not restored:\n%s", block)
+	}
+}
+
+// An upgrade restarts containerd under the journal; the old generation
+// directory must survive for the sandboxes still running from it.
+func TestReconcileUpgradeActivatesNewGeneration(t *testing.T) {
+	a := setupUpgradeArtifacts(t)
+	if a.activeV2.GenerationPath == a.activeV1.GenerationPath {
+		t.Fatal("upgrade reused the old generation path")
+	}
+	if _, err := os.Stat(a.env.i.cfg.hostPath(a.activeV1.GenerationPath)); err != nil {
+		t.Error("old generation removed by upgrade")
+	}
+	if got := a.env.node.label(LabelGVisorVersion); got != "20260202.0" {
+		t.Errorf("version label = %q", got)
+	}
+	// Two restarts total: initial install + upgrade activation.
+	if a.env.host.restarts != 2 {
+		t.Errorf("restarts = %d, want 2", a.env.host.restarts)
+	}
+}
+
+// An installDir change is an ordinary activation: the state file lives
+// outside installDir, so the old absolute generation stays recorded and
+// retained while the new location takes over.
+func TestReconcileInstallDirChange(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	oldGen := env.activeGen(t)
+
+	env.i.cfg.InstallDir = "/opt/isola/bin-v2"
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	newGen := env.activeGen(t)
+	if !strings.HasPrefix(newGen.GenerationPath, "/opt/isola/bin-v2/") {
+		t.Errorf("active generation = %s, want it under the new installDir", newGen.GenerationPath)
+	}
+	if _, err := os.Stat(env.i.cfg.hostPath(oldGen.GenerationPath)); err != nil {
+		t.Error("old-installDir generation removed")
+	}
+	if got := env.node.label(LabelGVisorReady); got != "true" {
+		t.Errorf("ready label = %q", got)
+	}
+}
+
+// legacyBlock is what installer versions before the generation layout wrote:
+// flat binary paths and a config under /etc/containerd.
+func legacyBlock() string {
+	return renderManagedBlock(criPluginIDV2, "runsc", "/opt/isola/bin/containerd-shim-runsc-v1", "/etc/containerd/isola-runsc.toml")
+}
+
+// A managed block with no readable state file: the journal was lost, but the
+// block on disk is still what containerd serves.
+func setupOrphanedBlockNode(t *testing.T, env *testEnv) {
+	t.Helper()
+	raw, err := spliceManagedBlock([]byte(kindStyleConfig), legacyBlock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(env.i.cfg.hostPath(containerdConfigPath), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env.host.onRestart()
+}
+
+func TestReconcileAdoptsOrphanedBlock(t *testing.T) {
+	env := newTestEnv(t)
+	setupOrphanedBlockNode(t, env)
+
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatalf("adopting an orphaned block failed: %v", err)
+	}
+	active := env.activeGen(t)
+	if active.Version != "20260101.0" {
+		t.Errorf("active version = %q", active.Version)
+	}
+	block, _, _ := managedBlock([]byte(env.configOnDisk(t)))
+	if block != active.ManagedBlock {
+		t.Errorf("orphaned block not replaced:\n%s", block)
+	}
+	if env.host.restarts != 1 {
+		t.Errorf("restarts = %d, want 1", env.host.restarts)
+	}
+	if got := env.node.label(LabelGVisorReady); got != "true" {
+		t.Errorf("ready label = %q", got)
+	}
+}
+
+// A failed activation rolls back to the block the pending record preserved,
+// so the node keeps serving whatever it served before.
+func TestReconcileOrphanedBlockActivationRollsBack(t *testing.T) {
+	env := newTestEnv(t)
+	setupOrphanedBlockNode(t, env)
+	// The activation restart leaves the runtime broken; the rollback restart
+	// heals it.
+	env.host.onRestart = func() {
+		if env.host.restarts == 1 {
+			env.cri.set(criStatus{}, errors.New("connection refused"))
+		} else {
+			env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc", "runsc"}}, nil)
+		}
+	}
+
+	err := env.i.Reconcile(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "rolled back") {
+		t.Fatalf("expected rollback error, got: %v", err)
+	}
+	block, found, err := managedBlock([]byte(env.configOnDisk(t)))
+	if err != nil || !found || block != legacyBlock() {
+		t.Errorf("legacy block not restored: found=%v err=%v\n%s", found, err, block)
+	}
+	if st := env.state(t); st.Pending != nil || st.Active != nil {
+		t.Errorf("journal not settled after rollback: %+v", st)
+	}
+}
+
+// A handler rename is an activation with rollback verification gated on the
+// OLD handler name, and readiness keyed to the new one.
+func TestReconcileHandlerChange(t *testing.T) {
+	env := newTestEnv(t)
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	env.i.cfg.Handler = "gvisor"
+	if err := env.i.Reconcile(t.Context()); err != nil {
+		t.Fatalf("handler change failed: %v", err)
+	}
+	if active := env.activeGen(t); active.Handler != "gvisor" {
+		t.Errorf("active handler = %q", active.Handler)
+	}
+	if got := env.node.label(LabelGVisorReady); got != "true" {
+		t.Errorf("ready label = %q", got)
+	}
+}
+
+// The rollback predecessor is the ACTIVE block: a drifted on-disk block must
+// never be what a failed upgrade restores and restarts onto.
+func TestActivateRollsBackToActiveBlockNotDriftedOne(t *testing.T) {
+	a := setupUpgradeArtifacts(t)
+	cfgPath := a.env.i.cfg.hostPath(containerdConfigPath)
+	raw, err := os.ReadFile(cfgPath) //nolint:gosec // test fixture path
+	if err != nil {
+		t.Fatal(err)
+	}
+	rogue := "# rogue drift\n" + a.activeV2.ManagedBlock
+	drifted, err := spliceManagedBlock(raw, rogue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfgPath, drifted, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Force a re-activation towards v1 whose restart fails, then heals on the
+	// rollback restart.
+	a.env.i.cfg.Version = "20260101.0"
+	restartsBefore := a.env.host.restarts
+	a.env.host.onRestart = func() {
+		if a.env.host.restarts == restartsBefore+1 {
+			a.env.cri.set(criStatus{}, errors.New("connection refused"))
+		} else {
+			a.env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc", "runsc"}}, nil)
+		}
+	}
+
+	err = a.env.i.Reconcile(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "rolled back") {
+		t.Fatalf("expected rollback error, got: %v", err)
+	}
+	block, found, err := managedBlock([]byte(a.env.configOnDisk(t)))
+	if err != nil || !found {
+		t.Fatalf("no managed block after rollback (err %v)", err)
+	}
+	if block == rogue {
+		t.Error("rollback blessed the drifted block")
+	}
+	if block != a.activeV2.ManagedBlock {
+		t.Errorf("rollback did not restore the active block:\n%s", block)
+	}
+}
+
+// A journal write failure during recovery commit must degrade to an error,
+// never a panic, and must leave the pending record for the next attempt.
+func TestRecoveryCommitSurvivesStateWriteFailure(t *testing.T) {
+	a := setupUpgradeArtifacts(t)
+	a.writeCrashState(t, a.activeV2.ManagedBlock, installerState{Active: &a.activeV1, Pending: a.pendingV2()})
+	stateDir := filepath.Dir(a.env.i.statePath())
+	if err := os.Chmod(stateDir, 0o500); err != nil { //nolint:gosec // read-only dir is the failure under test
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(stateDir, 0o755) }) //nolint:gosec // test host-root dir
+
+	fresh := newInstallerLike(a.env.i)
+	if err := fresh.Reconcile(t.Context()); err == nil {
+		t.Fatal("expected recovery to fail while the state dir is unwritable")
+	}
+	// The daemon settled on the target, so the failed journal write must NOT
+	// trigger a rollback: the target block stays on disk for a forward retry.
+	if block, _, _ := managedBlock([]byte(a.env.configOnDisk(t))); block != a.activeV2.ManagedBlock {
+		t.Errorf("settled commit was rolled back:\n%s", block)
+	}
+	if err := os.Chmod(stateDir, 0o755); err != nil { //nolint:gosec // test host-root dir
+		t.Fatal(err)
+	}
+	if a.env.state(t).Pending == nil {
+		t.Fatal("pending record lost despite failed commit")
+	}
+	if err := fresh.Reconcile(t.Context()); err != nil {
+		t.Fatalf("retry after unblocking state dir failed: %v", err)
+	}
+	if st := a.env.state(t); st.Pending != nil || st.Active == nil || st.Active.Version != "20260202.0" {
+		t.Errorf("journal not committed on retry: %+v", st)
+	}
+}
+
+func TestActivateFreshnessFailureAbandonsPending(t *testing.T) {
+	env := newTestEnv(t)
+	cfgPath := env.i.cfg.hostPath(containerdConfigPath)
+	env.host.dumpFunc = func() ([]byte, error) {
+		// Runs between the reconcile snapshot and the activation re-read.
+		_ = os.Chmod(cfgPath, 0o000)
+		return []byte(kindStyleConfig), nil
+	}
+	t.Cleanup(func() { _ = os.Chmod(cfgPath, 0o600) })
+
+	err := env.i.Reconcile(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "re-reading containerd config") {
+		t.Fatalf("expected freshness re-read error, got: %v", err)
+	}
+	if err := os.Chmod(cfgPath, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if st := env.state(t); st.Pending != nil {
+		t.Error("freshness abort left a pending record")
+	}
+	if env.host.restarts != 0 {
+		t.Error("containerd restarted on the freshness-abort path")
+	}
 }
 
 // The backup can hold credentials the current config no longer does, so

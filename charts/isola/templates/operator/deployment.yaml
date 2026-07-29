@@ -59,6 +59,8 @@ spec:
             - "--rootfssnapshot-service-account={{ include "isola.operator.rootfssnapshotServiceAccountName" . }}"
             - "--gvisor-runsc-path={{ include "isola.operator.gvisorRunscPath" . }}"
             - "--gvisor-runsc-root={{ include "isola.operator.gvisorRunscRoot" . }}"
+            - "--gvisor-install-dir={{ include "isola.operator.gvisorInstallDir" . }}"
+            - "--containerd-state-dir={{ .Values.operator.sandboxRuntime.rootfssnapshot.containerdStateDir }}"
             {{- $hostMountPath := include "isola.operator.rootfssnapshotHostMountPath" . }}
             {{- if $hostMountPath }}
             - "--rootfssnapshot-host-mount-path={{ $hostMountPath }}"

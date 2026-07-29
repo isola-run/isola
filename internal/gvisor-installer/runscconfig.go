@@ -16,8 +16,12 @@ package gvisorinstaller
 
 import (
 	"bytes"
+	"crypto/sha512"
+	"encoding/hex"
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
 	"strconv"
 
 	"github.com/BurntSushi/toml"
@@ -26,8 +30,9 @@ import (
 const runscShimConfigHeader = "# Managed by the isola gvisor-installer, do not edit (changes are overwritten).\n" +
 	"# Source of truth: the gvisor.installer values of the isola Helm release.\n"
 
-// renderRunscShimConfig pins binary_name because the shim otherwise looks for
-// "runsc" on containerd's $PATH, which the install dir is deliberately not on.
+// binary_name pinned to the generation's runsc is what keeps a sandbox on
+// its generation for life: the shim persists it at sandbox create, so
+// retained old generations keep old sandboxes release-consistent.
 func renderRunscShimConfig(baseConfig []byte, runscPath string, systemdCgroup bool) ([]byte, error) {
 	var doc map[string]any
 	if err := toml.Unmarshal(baseConfig, &doc); err != nil {
@@ -56,23 +61,66 @@ func renderRunscShimConfig(baseConfig []byte, runscPath string, systemdCgroup bo
 	return buf.Bytes(), nil
 }
 
-// ensureRunscShimConfig needs no containerd restart: the shim reads
-// ConfigPath at sandbox start, so changes apply to new sandboxes only.
-func (i *Installer) ensureRunscShimConfig(dump []byte) error {
+func (i *Installer) desiredRunscShimConfig(g Generation, dump []byte) ([]byte, error) {
 	base, err := os.ReadFile(i.cfg.RunscConfigSrc)
 	if err != nil {
-		return fmt.Errorf("reading runsc config source: %w", err)
+		return nil, fmt.Errorf("reading runsc config source: %w", err)
 	}
-	desired, err := renderRunscShimConfig(base, i.cfg.runscPath(), systemdCgroupFromDump(dump))
-	if err != nil {
-		return err
-	}
+	return renderRunscShimConfig(base, g.runscPath(), systemdCgroupFromDump(dump))
+}
 
-	dest := i.cfg.hostPath(runscShimConfigPath)
-	current, err := os.ReadFile(dest) //nolint:gosec // fixed managed path
-	if err == nil && bytes.Equal(current, desired) {
-		return nil
+// Content-addressed, so the only write that can ever land on an existing path
+// restores that path's own bytes. That matters because the shim re-reads this
+// exact path for every later container in the pod, and a changed config there
+// would change runsc flags under a live sentry.
+func (i *Installer) ensureRunscConfig(g Generation, dump []byte) (string, error) {
+	desired, err := i.desiredRunscShimConfig(g, dump)
+	if err != nil {
+		return "", err
 	}
-	i.log.Info("writing runsc shim config", "path", runscShimConfigPath)
-	return writeFileAtomic(dest, desired)
+	sum := sha512.Sum512(desired)
+	name := hex.EncodeToString(sum[:])[:32] + ".toml"
+	configPath := path.Join(i.cfg.configsDir(), name)
+	dest := i.cfg.hostPath(configPath)
+
+	if regularFileEqual(dest, desired) {
+		return configPath, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil { //nolint:gosec // layout must be readable by containerd and shims
+		return "", err
+	}
+	// writeFileAtomic preserves the destination mode, which through a symlink
+	// would be the target's.
+	if fi, err := os.Lstat(dest); err == nil && !fi.Mode().IsRegular() {
+		if err := os.Remove(dest); err != nil {
+			return "", err
+		}
+	}
+	i.log.Info("writing runsc shim config", "path", configPath)
+	if err := writeFileAtomic(dest, desired); err != nil {
+		return "", err
+	}
+	return configPath, nil
+}
+
+func regularFileEqual(p string, want []byte) bool {
+	fi, err := os.Lstat(p)
+	if err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	current, err := os.ReadFile(p) //nolint:gosec // fixed managed path
+	return err == nil && bytes.Equal(current, want)
+}
+
+func (i *Installer) runscConfigIntact(configPath string) bool {
+	dest := i.cfg.hostPath(configPath)
+	data, err := os.ReadFile(dest) //nolint:gosec // path recorded by this installer
+	if err != nil {
+		return false
+	}
+	if fi, err := os.Lstat(dest); err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	sum := sha512.Sum512(data)
+	return path.Base(configPath) == hex.EncodeToString(sum[:])[:32]+".toml"
 }

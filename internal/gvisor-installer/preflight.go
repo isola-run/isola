@@ -39,11 +39,9 @@ var knownDistroMarkers = []struct {
 // loading /etc/containerd/config.toml, where editing that file would be
 // silently ignored and the restart would hit the wrong unit. It observes the
 // live process rather than enumerating distros, so unknown setups are caught
-// too. A pass is cached: the layout cannot change under a running pod.
+// too. Keyed on MainPID rather than cached outright, because containerd can
+// be restarted under a different unit or --config while this pod runs.
 func (i *Installer) preflight(ctx context.Context) error {
-	if i.preflightOK {
-		return nil
-	}
 	out, err := i.host.Run(ctx, "systemctl", "show", "containerd", "--property=LoadState,ActiveState,MainPID")
 	if err != nil {
 		return fmt.Errorf("querying the containerd systemd unit: %w%s", err, i.distroHint(ctx))
@@ -59,6 +57,9 @@ func (i *Installer) preflight(ctx context.Context) error {
 	pid, err := strconv.Atoi(props["MainPID"])
 	if err != nil || pid <= 0 {
 		return fmt.Errorf("containerd systemd unit reports no main PID (MainPID=%q)", props["MainPID"])
+	}
+	if i.preflightPID == pid {
+		return nil
 	}
 	// The host's procfs is directly readable because the pod runs with hostPID.
 	cmdline, err := os.ReadFile(filepath.Join(i.procRoot, strconv.Itoa(pid), "cmdline")) //nolint:gosec // host procfs, PID from systemd
@@ -77,7 +78,7 @@ func (i *Installer) preflight(ctx context.Context) error {
 	if len(st.Handlers) == 0 {
 		return errNoRuntimeHandlers
 	}
-	i.preflightOK = true
+	i.preflightPID = pid
 	i.log.Info("preflight passed: standard systemd-managed containerd", "mainPID", pid)
 	return nil
 }

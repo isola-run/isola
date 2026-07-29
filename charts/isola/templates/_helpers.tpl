@@ -175,10 +175,16 @@ isola: operator.sandboxRuntime.rootfssnapshot.storage.s3
 {{- define "isola.validateValues.gvisorInstaller" -}}
 {{- $inst := .Values.gvisor.installer -}}
 {{- if $inst.enabled -}}
-{{- if or (not $inst.version) (eq $inst.version "latest") -}}
+{{- if not (regexMatch "^[0-9]{8}\\.[0-9]+$" ($inst.version | default "" | toString)) -}}
 isola: gvisor.installer.version
-    version must be a dated gVisor release (e.g. "20260622.0"), not empty or "latest":
-    the installer pins and verifies exact release artifacts.
+    version must be a dated gVisor release of the form YYYYMMDD.PATCH
+    (e.g. "20260721.0"), not empty or "latest": the installer pins and
+    verifies exact release artifacts.
+{{- else if lt (int (regexFind "^[0-9]{8}" ($inst.version | toString))) 20260721 -}}
+isola: gvisor.installer.version
+    version {{ $inst.version }} predates 20260721.0, the first gVisor release
+    published as gvisor.tar.bz2. Older releases ship only loose binaries,
+    which this installer does not install.
 {{- else if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" ($inst.handler | default "")) -}}
 isola: gvisor.installer.handler
     handler must be a lowercase DNS label (letters, digits, hyphens), e.g. "runsc".
@@ -302,16 +308,25 @@ RootfsSnapshot enabled flag
 
 {{/*
 gVisor runsc binary path (only used when rootfssnapshot enabled).
-Defaults to the auto-installer's location when gvisor.installer is enabled,
-so the two features compose without extra configuration.
+Empty when the installer manages the nodes, since the snapshot job then
+resolves the release the sandbox was actually created under.
 */}}
 {{- define "isola.operator.gvisorRunscPath" -}}
 {{- if .Values.operator.sandboxRuntime.rootfssnapshot.runsc.binaryPath -}}
 {{- .Values.operator.sandboxRuntime.rootfssnapshot.runsc.binaryPath -}}
 {{- else if .Values.gvisor.installer.enabled -}}
-{{- printf "%s/runsc" .Values.gvisor.installer.installDir -}}
 {{- else -}}
 /usr/local/bin/runsc
+{{- end -}}
+{{- end }}
+
+{{/*
+gVisor install dir the snapshot job resolves a sandbox's own release under.
+Empty when the installer is not managing this cluster's nodes.
+*/}}
+{{- define "isola.operator.gvisorInstallDir" -}}
+{{- if .Values.gvisor.installer.enabled -}}
+{{- .Values.gvisor.installer.installDir -}}
 {{- end -}}
 {{- end }}
 

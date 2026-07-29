@@ -115,12 +115,17 @@ operator:
 
       # gVisor/runsc paths for rootfs snapshot operations
       # These paths must match your cluster's gVisor installation
+      # containerd's state directory, holding the per-sandbox bundles that
+      # record which gVisor release each sandbox was created with.
+      containerdStateDir: /run/containerd
+
       runsc:
         # Path to runsc on the node. Leave empty for the automatic default:
-        # <gvisor.installer.installDir>/runsc when the gVisor installer is
-        # enabled, /usr/local/bin/runsc otherwise. Set explicitly if the
+        # /usr/local/bin/runsc when the gVisor installer is disabled, and
+        # nothing when it is enabled, since snapshots then resolve the release
+        # the sandbox was actually created under. Set explicitly if the
         # installer runs in foreign mode (nodes with a pre-existing runsc):
-        # foreign nodes keep their own runsc and the default path won't exist.
+        # foreign nodes keep their own runsc and no release is resolvable.
         binaryPath: ""
         rootDir: /run/containerd/runsc/k8s.io
 
@@ -258,13 +263,16 @@ gvisor:
   installer:
     enabled: false
 
-    # gVisor release to install. Must be a dated release, not "latest".
-    version: "20260622.0"
+    # gVisor release to install. Must be a dated release (not "latest") of
+    # 20260721.0 or later: earlier releases predate the gvisor.tar.bz2 archive
+    # and ship only loose binaries, which this installer does not install.
+    version: "20260721.0"
 
-    # Artifacts are fetched from <downloadURLBase>/<version>/<arch>/.
+    # The release archive is fetched from
+    # <downloadURLBase>/<version>/<arch>/gvisor.tar.bz2.
     # Override for mirrors or air-gapped environments.
     #
-    # TRUST MODEL: must be https. Each binary is checked against the .sha512
+    # TRUST MODEL: must be https. The archive is checked against the .sha512
     # published next to it, but that checksum comes from the same origin, so it
     # only proves the transfer was not corrupted -- it cannot prove the origin
     # served the real gVisor. Whoever controls this origin controls a root
@@ -276,8 +284,12 @@ gvisor:
     # handler). The rootfs snapshot feature requires "runsc" or "gvisor".
     handler: runsc
 
-    # Host directory for the binaries. Deliberately isola-owned (not
+    # Host directory for the installation. Deliberately isola-owned (not
     # /usr/local/bin) so gVisor installed by other means is never overwritten.
+    # Each release lands in an immutable <installDir>/releases/<generation>/
+    # directory; old generations are kept after upgrades because running
+    # sandboxes use them until they stop (see the README for cleanup), and
+    # <installDir>/runsc is a symlink to the active generation's runsc.
     installDir: /opt/isola/bin
 
     # runsc flags for the shim config on each node; values must be strings.

@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -76,6 +77,83 @@ type RootfsSnapshotReconciler struct {
 	GvisorRunscPath string
 	// GvisorRunscRoot is the root directory where runsc stores runtime state
 	GvisorRunscRoot string
+	// GvisorInstallDir is the gvisor-installer's install root on the node,
+	// holding one directory per installed release.
+	GvisorInstallDir string
+	// ContainerdStateDir is containerd's `state` directory, which holds the
+	// per-sandbox bundles naming the release each was created with.
+	ContainerdStateDir string
+}
+
+const (
+	runscLauncherPath      = "/runsc-launcher"
+	containerdCRINamespace = "k8s.io"
+	containerdTaskDirName  = "io.containerd.runtime.v2.task"
+)
+
+func (r *RootfsSnapshotReconciler) containerdBundleRoot() string {
+	return filepath.Join(r.ContainerdStateDir, containerdTaskDirName)
+}
+
+// managedGvisor reports whether the gvisor-installer owns this cluster's
+// nodes. Without it there are no per-release directories to resolve, so the
+// job runs the configured runsc directly.
+func (r *RootfsSnapshotReconciler) managedGvisor() bool { return r.GvisorInstallDir != "" }
+
+// The install dir carries every retained release, so the resolved runsc finds
+// the gvisor-bin/ sidecars beside it.
+func (r *RootfsSnapshotReconciler) snapshotterMounts(runscRoot string) []corev1.VolumeMount {
+	mounts := []corev1.VolumeMount{
+		{Name: "runsc-state", MountPath: runscRoot, ReadOnly: true},
+		{Name: "snapshot-data", MountPath: "/snapshot"},
+	}
+	if r.managedGvisor() {
+		mounts = append(mounts,
+			corev1.VolumeMount{Name: "gvisor-install", MountPath: r.GvisorInstallDir, ReadOnly: true},
+			corev1.VolumeMount{Name: "containerd-bundles", MountPath: r.containerdBundleRoot(), ReadOnly: true})
+	}
+	if r.GvisorRunscPath != "" {
+		mounts = append(mounts, corev1.VolumeMount{Name: "runsc-bin", MountPath: r.GvisorRunscPath, ReadOnly: true})
+	}
+	return mounts
+}
+
+func (r *RootfsSnapshotReconciler) snapshotterHostVolumes() []corev1.Volume {
+	dir := corev1.HostPathDirectory
+	var volumes []corev1.Volume
+	if r.managedGvisor() {
+		volumes = append(volumes,
+			corev1.Volume{Name: "gvisor-install", VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{Path: r.GvisorInstallDir, Type: &dir},
+			}},
+			corev1.Volume{Name: "containerd-bundles", VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{Path: r.containerdBundleRoot(), Type: &dir},
+			}})
+	}
+	if r.GvisorRunscPath != "" {
+		file := corev1.HostPathFile
+		volumes = append(volumes, corev1.Volume{Name: "runsc-bin", VolumeSource: corev1.VolumeSource{
+			HostPath: &corev1.HostPathVolumeSource{Path: r.GvisorRunscPath, Type: &file},
+		}})
+	}
+	return volumes
+}
+
+// On managed nodes the launcher resolves the release the sandbox was created
+// under. Elsewhere there is nothing to resolve, so runsc is run directly.
+func (r *RootfsSnapshotReconciler) snapshotterCommand(containerID, snapshotPath string) (image string, command, args []string) {
+	runscArgs := []string{fmt.Sprintf("--root=%s", r.GvisorRunscRoot), "tar", "rootfs-upper", "--file", snapshotPath, containerID}
+	if !r.managedGvisor() {
+		return "gcr.io/distroless/static:nonroot", []string{r.GvisorRunscPath}, runscArgs
+	}
+	return r.UploaderImage, []string{runscLauncherPath}, append([]string{
+		"--bundle-root=" + r.containerdBundleRoot(),
+		"--namespace=" + containerdCRINamespace,
+		"--container-id=" + containerID,
+		"--install-dir=" + r.GvisorInstallDir,
+		"--fallback=" + r.GvisorRunscPath,
+		"--",
+	}, runscArgs...)
 }
 
 func (r *RootfsSnapshotReconciler) clock() Clock {
@@ -359,7 +437,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 	rootfssnapshotSizeLimit := r.getRootfssnapshotSizeLimit(sandboxPod, containerName)
 
 	hostPathDirectory := corev1.HostPathDirectory
-	hostPathFile := corev1.HostPathFile
+	snapshotterImage, snapshotterCmd, snapshotterArgs := r.snapshotterCommand(containerID, localSnapshotPath)
 
 	uploaderEnv := []corev1.EnvVar{
 		{Name: "ISOLA_BUCKET_URL", Value: r.BucketURL},
@@ -417,10 +495,11 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 					// Init container runs runsc tar to create the snapshot
 					InitContainers: []corev1.Container{
 						{
-							Name:    "snapshotter",
-							Image:   "gcr.io/distroless/static:nonroot",
-							Command: []string{r.GvisorRunscPath},
-							Args:    []string{fmt.Sprintf("--root=%s", r.GvisorRunscRoot), "tar", "rootfs-upper", "--file", localSnapshotPath, containerID},
+							Name:            "snapshotter",
+							Image:           snapshotterImage,
+							ImagePullPolicy: r.UploaderImagePullPolicy,
+							Command:         snapshotterCmd,
+							Args:            snapshotterArgs,
 							SecurityContext: &corev1.SecurityContext{
 								RunAsUser:  ptr.To(int64(0)), // root needed to read runsc state files
 								RunAsGroup: ptr.To(int64(0)),
@@ -430,11 +509,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 								ReadOnlyRootFilesystem:   ptr.To(true),
 								AllowPrivilegeEscalation: ptr.To(false),
 							},
-							VolumeMounts: []corev1.VolumeMount{
-								{Name: "runsc-bin", MountPath: r.GvisorRunscPath, ReadOnly: true},
-								{Name: "runsc-state", MountPath: r.GvisorRunscRoot, ReadOnly: true},
-								{Name: "snapshot-data", MountPath: "/snapshot"},
-							},
+							VolumeMounts: r.snapshotterMounts(r.GvisorRunscRoot),
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
 									corev1.ResourceCPU:    resource.MustParse("50m"),
@@ -474,13 +549,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 						},
 					},
 
-					Volumes: []corev1.Volume{
-						{
-							Name: "runsc-bin",
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{Path: r.GvisorRunscPath, Type: &hostPathFile},
-							},
-						},
+					Volumes: append(r.snapshotterHostVolumes(), []corev1.Volume{
 						{
 							Name: "runsc-state",
 							VolumeSource: corev1.VolumeSource{
@@ -495,7 +564,7 @@ func (r *RootfsSnapshotReconciler) createSnapshotJob(
 								},
 							},
 						},
-					},
+					}...),
 				},
 			},
 		},
