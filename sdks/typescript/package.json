@@ -60,7 +60,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@types/node": "^26.0.1",
     "@vitest/coverage-v8": "4.1.10",
     "publint": "0.3.23",
