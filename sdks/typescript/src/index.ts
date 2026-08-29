@@ -30,7 +30,7 @@ export {
   NotFoundError,
   ValidationError,
 } from "./errors";
-export type { FileOptions, UploadBody } from "./filesystem";
+export type { BinaryBody, FileOptions } from "./filesystem";
 export { Filesystem } from "./filesystem";
 export type {
   CommandResult,

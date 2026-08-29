@@ -39,8 +39,8 @@ def test_filesystem_write_and_read(sandbox_response_copy: dict[str, object]) -> 
 
     with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
-        sandbox.filesystem.write("/workspace/file.txt", b"content", container="worker")
-        downloaded = sandbox.filesystem.read("/workspace/file.txt", container="worker")
+        sandbox.filesystem.write_bytes("/workspace/file.txt", b"content", container="worker")
+        downloaded = sandbox.filesystem.read_bytes("/workspace/file.txt", container="worker")
 
     assert downloaded == b"content"
 
@@ -64,7 +64,7 @@ def test_filesystem_write_from_file_like(sandbox_response_copy: dict[str, object
     with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         file_obj = io.BytesIO(b"print()")
-        sandbox.filesystem.write("/workspace/script.py", file_obj)
+        sandbox.filesystem.write_bytes("/workspace/script.py", file_obj)
 
     assert write_route.calls[0].request.content == b"print()"
 
@@ -84,10 +84,10 @@ async def test_async_filesystem_write_and_read(sandbox_response_copy: dict[str, 
 
     async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
-        await sandbox.filesystem.write("/tmp/data.bin", b"data")
-        downloaded = await sandbox.filesystem.read("/tmp/data.bin")
+        await sandbox.filesystem.write_text("/tmp/data.bin", "data")
+        downloaded = await sandbox.filesystem.read_text("/tmp/data.bin")
 
-    assert downloaded == b"data"
+    assert downloaded == "data"
 
     assert write_route.calls[0].request.url.params["path"] == "/tmp/data.bin"
     assert "container" not in write_route.calls[0].request.url.params
@@ -109,8 +109,8 @@ async def test_async_filesystem_with_container(sandbox_response_copy: dict[str, 
 
     async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
-        await sandbox.filesystem.write("/app/cfg.yaml", b"abc", container="sidecar")
-        await sandbox.filesystem.read("/app/cfg.yaml", container="sidecar")
+        await sandbox.filesystem.write_bytes("/app/cfg.yaml", b"abc", container="sidecar")
+        await sandbox.filesystem.read_bytes("/app/cfg.yaml", container="sidecar")
 
     assert write_route.calls[0].request.url.params["container"] == "sidecar"
     assert read_route.calls[0].request.url.params["container"] == "sidecar"
@@ -124,12 +124,18 @@ def test_filesystem_write_str(sandbox_response_copy: dict[str, object]) -> None:
     write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
         return_value=httpx.Response(204)
     )
+    read_route = respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(200, content=b"print('hello')")
+    )
 
     with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
-        sandbox.filesystem.write("/workspace/hello.py", "print('hello')")
+        sandbox.filesystem.write_text("/workspace/hello.py", "print('hello')")
+        text = sandbox.filesystem.read_text("/workspace/hello.py")
 
+    assert text == "print('hello')"
     assert write_route.calls[0].request.content == b"print('hello')"
+    assert read_route.calls[0].request.url.params["path"] == "/workspace/hello.py"
 
 
 @pytest.mark.asyncio
@@ -144,9 +150,26 @@ async def test_async_filesystem_write_str(sandbox_response_copy: dict[str, objec
 
     async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
-        await sandbox.filesystem.write("/workspace/hello.py", "print('hello')")
+        await sandbox.filesystem.write_text("/workspace/hello.py", "print('hello')")
 
     assert write_route.calls[0].request.content == b"print('hello')"
+
+
+@respx.mock
+def test_filesystem_read_text_raises_on_invalid_utf8(sandbox_response_copy: dict[str, object]) -> None:
+    """read_text decodes strictly: non-UTF-8 content raises, read_bytes returns it intact."""
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(200, content=b"\xff\xfe")
+    )
+
+    with Isola(url="http://localhost:8080") as client:
+        sandbox = client.sandboxes.get("sandbox-123")
+        with pytest.raises(UnicodeDecodeError):
+            sandbox.filesystem.read_text("/workspace/data.bin")
+        assert sandbox.filesystem.read_bytes("/workspace/data.bin") == b"\xff\xfe"
 
 
 class _ChunkedReadValidator(io.BufferedIOBase):
@@ -181,7 +204,7 @@ def test_filesystem_write_streams_without_full_buffering(sandbox_response_copy: 
 
     with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
-        sandbox.filesystem.write("/big.bin", cast(BinaryIO, stream))
+        sandbox.filesystem.write_bytes("/big.bin", cast(BinaryIO, stream))
 
 
 @respx.mock
@@ -199,7 +222,7 @@ def test_filesystem_upload_real_file(sandbox_response_copy: dict[str, object], t
     with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with open(local_file, "rb") as f:
-            sandbox.filesystem.write("/workspace/script.py", f)
+            sandbox.filesystem.write_bytes("/workspace/script.py", f)
 
     assert write_route.calls[0].request.content == b"print('hello')\n"
 
@@ -222,7 +245,7 @@ def test_filesystem_read_raises_on_404(
     with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with pytest.raises(NotFoundError) as exc_info:
-            sandbox.filesystem.read("/nonexistent/file.txt")
+            sandbox.filesystem.read_bytes("/nonexistent/file.txt")
 
     assert exc_info.value.status_code == 404
     assert "file not found" in exc_info.value.message
@@ -243,7 +266,7 @@ def test_filesystem_read_raises_on_500(
     with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with pytest.raises(InternalError) as exc_info:
-            sandbox.filesystem.read("/some/file.txt")
+            sandbox.filesystem.read_bytes("/some/file.txt")
 
     assert exc_info.value.status_code == 500
 
@@ -263,7 +286,7 @@ def test_filesystem_write_raises_on_404(
     with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with pytest.raises(NotFoundError) as exc_info:
-            sandbox.filesystem.write("/workspace/file.txt", b"data")
+            sandbox.filesystem.write_bytes("/workspace/file.txt", b"data")
 
     assert exc_info.value.status_code == 404
 
@@ -283,7 +306,7 @@ def test_filesystem_write_raises_on_500(
     with Isola(url="http://localhost:8080") as client:
         sandbox = client.sandboxes.get("sandbox-123")
         with pytest.raises(InternalError) as exc_info:
-            sandbox.filesystem.write("/workspace/file.txt", b"data")
+            sandbox.filesystem.write_bytes("/workspace/file.txt", b"data")
 
     assert exc_info.value.status_code == 500
     assert "disk full" in exc_info.value.message
@@ -308,7 +331,7 @@ async def test_async_filesystem_read_raises_on_404(
     async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         with pytest.raises(NotFoundError):
-            await sandbox.filesystem.read("/nonexistent/file.txt")
+            await sandbox.filesystem.read_bytes("/nonexistent/file.txt")
 
 
 @pytest.mark.asyncio
@@ -330,4 +353,4 @@ async def test_async_filesystem_write_raises_on_500(
     async with AsyncIsola(url="http://localhost:8080") as client:
         sandbox = await client.sandboxes.get("sandbox-123")
         with pytest.raises(InternalError):
-            await sandbox.filesystem.write("/workspace/file.txt", b"data")
+            await sandbox.filesystem.write_bytes("/workspace/file.txt", b"data")
