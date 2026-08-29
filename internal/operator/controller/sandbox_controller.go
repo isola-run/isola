@@ -268,8 +268,6 @@ func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandbo
 
 func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandboxv1alpha1.Sandbox, baseSandbox *sandboxv1alpha1.Sandbox) error {
 	log := logf.FromContext(ctx)
-	// todo benl reduce verbose logging
-	log.Info("Creating Pod")
 
 	// Apply pod template labels first, then override with our labels.
 	// This prevents templates from overriding app.kubernetes.io/* etc.
@@ -373,7 +371,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 		}
 	}
 
-	configureDNS(sandboxPod, sandbox.Spec.Network)
+	configureDNS(ctx, sandboxPod, sandbox.Spec.Network)
 
 	markContainers(sandboxPod)
 
@@ -442,7 +440,7 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	return nil
 }
 
-func configureDNS(sandboxPod *corev1.Pod, network *sandboxv1alpha1.Network) {
+func configureDNS(ctx context.Context, sandboxPod *corev1.Pod, network *sandboxv1alpha1.Network) {
 	allowClusterDNS := network != nil && network.AllowClusterDNS != nil && *network.AllowClusterDNS
 
 	if allowClusterDNS {
@@ -450,8 +448,11 @@ func configureDNS(sandboxPod *corev1.Pod, network *sandboxv1alpha1.Network) {
 		if len(network.Nameservers) > 0 {
 			if sandboxPod.Spec.DNSConfig == nil {
 				sandboxPod.Spec.DNSConfig = &corev1.PodDNSConfig{}
+			} else if len(sandboxPod.Spec.DNSConfig.Nameservers) > 0 {
+				logf.FromContext(ctx).Info("overriding pod template DNSConfig.Nameservers with Sandbox network.nameservers",
+					"templateNameservers", sandboxPod.Spec.DNSConfig.Nameservers,
+					"networkNameservers", network.Nameservers)
 			}
-			// todo benl: log warn if pod spec has nameservers already?
 			sandboxPod.Spec.DNSConfig.Nameservers = network.Nameservers
 		}
 	} else {
