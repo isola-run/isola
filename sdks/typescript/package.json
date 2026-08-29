@@ -60,15 +60,15 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.10",
     "@types/node": "^26.0.1",
-    "@vitest/coverage-v8": "4.1.10",
-    "publint": "0.3.23",
+    "@vitest/coverage-v8": "4.1.11",
+    "publint": "0.3.24",
     "tsdown": "0.22.14",
     "tsx": "^4.19.2",
     "typescript": "7.0.2",
-    "vite": "8.2.1",
-    "vitest": "4.1.10"
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
   },
   "publishConfig": {
     "access": "public",
