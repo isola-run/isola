@@ -54,13 +54,15 @@ func NewPIDResolver(procFS proc.ProcFS) *PIDResolver {
 }
 
 func (r *PIDResolver) FindCachedContainerPID(containerName string) (int, error) {
-	r.pidMu.RLock()
-	pid, ok := r.cachedPIDs[containerName]
-	r.pidMu.RUnlock()
+	if containerName != "" {
+		r.pidMu.RLock()
+		pid, ok := r.cachedPIDs[containerName]
+		r.pidMu.RUnlock()
 
-	if ok {
-		if name, found := proc.GetContainerName(pid); found && (containerName == "" || name == containerName) {
-			return pid, nil
+		if ok {
+			if name, found := proc.GetContainerName(pid); found && name == containerName {
+				return pid, nil
+			}
 		}
 	}
 
@@ -69,9 +71,11 @@ func (r *PIDResolver) FindCachedContainerPID(containerName string) (int, error) 
 		return 0, err
 	}
 
-	r.pidMu.Lock()
-	r.cachedPIDs[containerName] = newPID
-	r.pidMu.Unlock()
+	if containerName != "" {
+		r.pidMu.Lock()
+		r.cachedPIDs[containerName] = newPID
+		r.pidMu.Unlock()
+	}
 
 	return newPID, nil
 }
