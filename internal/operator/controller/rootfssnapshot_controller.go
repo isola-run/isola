@@ -47,6 +47,8 @@ const (
 	defaultTTLSecondsAfterFinished int32 = 300
 )
 
+const uploadResultRequeueInterval = 5 * time.Second
+
 // defaultRootfssnapshotSizeLimit is used when the container has no ephemeral storage limit.
 var defaultRootfssnapshotSizeLimit = resource.MustParse("1Gi")
 
@@ -257,8 +259,12 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 		log.Info("Snapshot job completed", "job", jobName)
 
 		// Read the upload result from the job pod's termination message
-		result, err := r.getUploadResult(ctx, job)
+		result, retryable, err := r.getUploadResult(ctx, job)
 		if err != nil {
+			if retryable {
+				log.Info("Upload result not yet readable, requeuing", "reason", err.Error())
+				return ctrl.Result{RequeueAfter: uploadResultRequeueInterval}, nil
+			}
 			log.Error(err, "Failed to read upload result from termination message")
 			r.Recorder.Eventf(snap, nil, corev1.EventTypeWarning, "TerminationLogReadFailed", "ReadFailed", "%s", err.Error())
 			return r.setFailed(ctx, baseSnap, snap, fmt.Sprintf("Failed to read upload result: %v", err))
@@ -283,18 +289,18 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 
 // getUploadResult reads the upload result from the job pod's termination message.
 // The snapshot-uploader writes a JSON UploadResult to /dev/termination-log when it completes.
-func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *batchv1.Job) (*snapshotpkg.UploadResult, error) {
+func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *batchv1.Job) (result *snapshotpkg.UploadResult, retryable bool, err error) {
 	// Find the pod created by this job
 	podList := &corev1.PodList{}
 	if err := r.List(ctx, podList,
 		client.InNamespace(job.Namespace),
 		client.MatchingLabels{"job-name": job.Name},
 	); err != nil {
-		return nil, fmt.Errorf("failed to list job pods: %w", err)
+		return nil, true, fmt.Errorf("failed to list job pods: %w", err)
 	}
 
 	if len(podList.Items) == 0 {
-		return nil, fmt.Errorf("no pods found for job %s", job.Name)
+		return nil, true, fmt.Errorf("no pods found for job %s", job.Name)
 	}
 
 	// Get the most recent pod (should only be one for BackoffLimit=0)
@@ -310,18 +316,18 @@ func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *bat
 		if cs.Name == "snapshot-uploader" && cs.State.Terminated != nil {
 			message := cs.State.Terminated.Message
 			if message == "" {
-				return nil, fmt.Errorf("snapshot-uploader container has no termination message")
+				return nil, false, fmt.Errorf("snapshot-uploader container has no termination message")
 			}
 
 			var result snapshotpkg.UploadResult
 			if err := json.Unmarshal([]byte(message), &result); err != nil {
-				return nil, fmt.Errorf("failed to parse termination message: %w", err)
+				return nil, false, fmt.Errorf("failed to parse termination message: %w", err)
 			}
-			return &result, nil
+			return &result, false, nil
 		}
 	}
 
-	return nil, fmt.Errorf("snapshot-uploader container not found or not terminated")
+	return nil, true, fmt.Errorf("snapshot-uploader container not found or not terminated")
 }
 
 // getRootfssnapshotSizeLimit returns the ephemeral storage limit for a container.
