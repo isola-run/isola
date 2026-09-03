@@ -218,6 +218,9 @@ type SandboxStatus struct {
 	// +optional
 	TerminationDeadlineAt *metav1.Time `json:"terminationDeadlineAt,omitempty"`
 
+	// +optional
+	PodCreatedAt *metav1.Time `json:"podCreatedAt,omitempty"`
+
 	// PodIP is the IP address of the sandbox pod.
 	// +optional
 	PodIP string `json:"podIP,omitempty"`
