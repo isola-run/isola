@@ -71,12 +71,19 @@ function checkFailed(snapshotId: string, status: RootfsSnapshotStatus): void {
   }
 }
 
+function completedBeforeCleanup(seenDuringWait: boolean, ttlSecondsAfterFinished: number | undefined): boolean {
+  if (seenDuringWait) return true;
+  return ttlSecondsAfterFinished !== undefined && ttlSecondsAfterFinished <= POLL_INTERVAL_MS / 1000;
+}
+
 function waitUntilComplete(
   api: HttpClient,
-  snapshotId: string,
+  initial: RootfsSnapshotData,
+  ttlSecondsAfterFinished: number | undefined,
   maxWaitMs: number,
   signal: AbortSignal | undefined,
 ): Promise<RootfsSnapshotData> {
+  const snapshotId = initial.id;
   return pollUntilDone<RootfsSnapshotData>({
     poll: (s) =>
       api.requestModel<RootfsSnapshotData>(
@@ -88,6 +95,12 @@ function waitUntilComplete(
     intervalMs: POLL_INTERVAL_MS,
     maxWaitMs,
     signal,
+    initialValue: initial,
+    onNotFound: ({ lastValue, seenDuringWait }) => {
+      if (!completedBeforeCleanup(seenDuringWait, ttlSecondsAfterFinished)) return undefined;
+      const base = lastValue ?? initial;
+      return { ...base, status: "Succeeded" };
+    },
     onTimeout: (cause) => {
       throw new IsolaTimeoutError(
         `rootfs snapshot ${snapshotId} did not reach complete state within ${maxWaitMs}ms`,
@@ -156,7 +169,7 @@ export class RootfsSnapshots {
     const maxWaitMs = opts.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
     let finalData = data;
     if (data.status !== "Succeeded" && maxWaitMs !== 0) {
-      finalData = await waitUntilComplete(this._api, data.id, maxWaitMs, req.signal);
+      finalData = await waitUntilComplete(this._api, data, opts.ttlSecondsAfterFinished, maxWaitMs, req.signal);
     }
     return new RootfsSnapshot(finalData);
   }
