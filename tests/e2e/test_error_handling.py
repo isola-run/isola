@@ -63,7 +63,7 @@ def test_filesystem_on_nonexistent_sandbox(isola_client: Isola) -> None:
     filesystem = Filesystem(isola_client._api, FAKE_SANDBOX_ID)
 
     with pytest.raises(IsolaError) as exc_info:
-        filesystem.read("/tmp/anything.txt")
+        filesystem.read_bytes("/tmp/anything.txt")
 
     assert exc_info.value.status_code >= 400
 
