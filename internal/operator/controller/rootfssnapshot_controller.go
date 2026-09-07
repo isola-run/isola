@@ -52,9 +52,10 @@ var defaultRootfssnapshotSizeLimit = resource.MustParse("1Gi")
 
 type RootfsSnapshotReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder events.EventRecorder
-	Clock    Clock
+	APIReader client.Reader
+	Scheme    *runtime.Scheme
+	Recorder  events.EventRecorder
+	Clock     Clock
 
 	// BucketURL is the bucket URL for rootfs snapshot storage (e.g., s3://bucket?region=us-east-1)
 	BucketURL string
@@ -286,7 +287,11 @@ func (r *RootfsSnapshotReconciler) reconcileSnapshotJob(
 func (r *RootfsSnapshotReconciler) getUploadResult(ctx context.Context, job *batchv1.Job) (*snapshotpkg.UploadResult, error) {
 	// Find the pod created by this job
 	podList := &corev1.PodList{}
-	if err := r.List(ctx, podList,
+	reader := r.APIReader
+	if reader == nil {
+		reader = r.Client
+	}
+	if err := reader.List(ctx, podList,
 		client.InNamespace(job.Namespace),
 		client.MatchingLabels{"job-name": job.Name},
 	); err != nil {

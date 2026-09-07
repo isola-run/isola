@@ -71,6 +71,25 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Spec.Containers[0].Image).To(Equal("python:3.11"))
 		})
 
+		It("should tolerate a pod created before the cache observes it", func() {
+			sandboxName := "sandbox-pod-create-race"
+			sandbox := createSandbox(ctx, sandboxName)
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			Expect(k8sClient.Create(ctx, &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: testNamespace},
+				Spec: corev1.PodSpec{
+					Containers:    []corev1.Container{{Name: "sandbox", Image: "busybox:latest"}},
+					RestartPolicy: corev1.RestartPolicyNever,
+				},
+			})).To(Succeed())
+			defer deletePod(ctx, podName)
+
+			err := reconciler.CreateSandboxPod(ctx, sandbox, sandbox.DeepCopy())
+			Expect(err).NotTo(HaveOccurred())
+		})
+
 		It("should inject sandbox-sidecar as init container", func() {
 			sandboxName := "sandbox-sidecar"
 
