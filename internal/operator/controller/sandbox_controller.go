@@ -1114,6 +1114,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		}); err != nil {
 			return ctrl.Result{}, false, err
 		}
+		rootfsSnapshotCompletedTotal.WithLabelValues("failed").Inc()
 		// return true for cleanupDone so the sandbox gets deleted and as a result
 		// the rootfssnapshot due to it being owned by the sandboxed
 		return ctrl.Result{}, true, nil
@@ -1132,6 +1133,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		}); err != nil {
 			return ctrl.Result{}, false, err
 		}
+		rootfsSnapshotCompletedTotal.WithLabelValues("failed").Inc()
 		return ctrl.Result{}, true, nil
 	}
 
@@ -1150,6 +1152,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		}); err != nil {
 			return ctrl.Result{}, false, err
 		}
+		rootfsSnapshotCompletedTotal.WithLabelValues("failed").Inc()
 		return ctrl.Result{}, true, nil
 	}
 
@@ -1174,6 +1177,7 @@ func (r *SandboxReconciler) handleRootfsSnapshot(
 		}); err != nil {
 			return ctrl.Result{}, false, err
 		}
+		rootfsSnapshotCompletedTotal.WithLabelValues("failed").Inc()
 		return ctrl.Result{}, true, nil
 	}
 
