@@ -212,7 +212,7 @@ func (r *SandboxReconciler) markSandboxSucceeded(ctx context.Context, baseSandbo
 	if existing := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition); existing != nil {
 		return nil
 	}
-	return r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               sandboxv1alpha1.SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
@@ -227,7 +227,11 @@ func (r *SandboxReconciler) markSandboxSucceeded(ctx context.Context, baseSandbo
 			Message:            message,
 			ObservedGeneration: sandbox.Generation,
 		},
-	})
+	}); err != nil {
+		return err
+	}
+	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, reason, reason, "%s", message)
+	return nil
 }
 
 // markSandboxFailed sets Succeeded=False and Ready=False if the sandbox is not already terminal.
@@ -236,7 +240,7 @@ func (r *SandboxReconciler) markSandboxFailed(ctx context.Context, baseSandbox *
 	if existing := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition); existing != nil {
 		return nil
 	}
-	return r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
+	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
 		{
 			Type:               sandboxv1alpha1.SandboxReadyCondition,
 			Status:             metav1.ConditionFalse,
@@ -251,7 +255,11 @@ func (r *SandboxReconciler) markSandboxFailed(ctx context.Context, baseSandbox *
 			Message:            message,
 			ObservedGeneration: sandbox.Generation,
 		},
-	})
+	}); err != nil {
+		return err
+	}
+	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeWarning, reason, reason, "%s", message)
+	return nil
 }
 
 func (r *SandboxReconciler) patchStatus(ctx context.Context, baseSandbox *sandboxv1alpha1.Sandbox, newSandbox *sandboxv1alpha1.Sandbox, newConditions []metav1.Condition) error {
@@ -820,7 +828,6 @@ func (r *SandboxReconciler) determineSucceededCondition(sandbox *sandboxv1alpha1
 
 func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// todo benl: pass params by value sometimes, to avoid dereferencing nils by accident
-	// todo benl: add r.RecordEvent for events (observability)
 	log := logf.FromContext(ctx)
 
 	log.Info("Reconciling Sandbox")

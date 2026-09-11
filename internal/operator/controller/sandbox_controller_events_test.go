@@ -21,6 +21,7 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
@@ -170,6 +171,66 @@ var _ = Describe("Sandbox Controller", func() {
 
 			// Check for Warning SnapshotFailed event
 			Eventually(recorder.Events).Should(Receive(ContainSubstring("Warning SnapshotFailed")))
+		})
+
+		It("should record a Timeout event when the sandbox times out", func() {
+			sandboxName := "sandbox-event-timeout"
+
+			timeout := int64(1)
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.TimeoutSeconds = &timeout
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := bindPodToNode(ctx, podName)
+			makePodReady(ctx, pod, "containerd://abc", fakeClock)
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			drainRecorderEvents(recorder.Events)
+
+			fakeClock.Advance(2 * time.Second)
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(recorder.Events).Should(Receive(Equal("Normal Timeout Sandbox timed out")))
+		})
+
+		It("should record a StartupTimeoutExceeded event when the pod misses the startup deadline", func() {
+			sandboxName := "sandbox-event-startup-timeout"
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.StartupTimeoutSeconds = ptr.To(int64(10))
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+
+			drainRecorderEvents(recorder.Events)
+
+			// Pod stays pending (don't make it ready)
+			fakeClock.Set(pod.CreationTimestamp.Add(11 * time.Second))
+
+			_, err = doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(recorder.Events).Should(Receive(ContainSubstring("Warning StartupTimeoutExceeded")))
 		})
 	})
 
