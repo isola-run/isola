@@ -45,6 +45,7 @@ func (b *DirectCommandBuilder) Build(ctx context.Context, _ int, req sidecarapi.
 	cmd.Env = env
 	cmd.Dir = req.Cwd
 	cmd.WaitDelay = waitDelayGracePeriod
+	setupProcessGroup(cmd)
 	return cmd, nil
 }
 

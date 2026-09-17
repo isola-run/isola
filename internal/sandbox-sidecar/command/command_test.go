@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -75,6 +76,10 @@ func extractSSEData(body string) string {
 	}
 
 	return result.String()
+}
+
+func processAlive(pid int) bool {
+	return syscall.Kill(pid, 0) == nil
 }
 
 var _ = Describe("Command Handlers", func() {
@@ -980,6 +985,78 @@ var _ = Describe("Command Handlers", func() {
 				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
 				return status.ExitCode
 			}).Should(HaveValue(Equal(-1)))
+		})
+	})
+
+	Describe("process group termination", func() {
+		startWithChild := func(extra map[string]any) (string, int) {
+			f, err := os.CreateTemp("", "sidecar-child-pid-*")
+			Expect(err).NotTo(HaveOccurred())
+			pidFile := f.Name()
+			Expect(f.Close()).To(Succeed())
+			DeferCleanup(func() { _ = os.Remove(pidFile) })
+
+			req := map[string]any{
+				"args": []string{"/bin/sh", "-c", `sleep 300 & echo $! > "$CHILD_PID_FILE"; wait`},
+				"env":  map[string]string{"CHILD_PID_FILE": pidFile},
+			}
+			for k, v := range extra {
+				req[k] = v
+			}
+			body, err := json.Marshal(req)
+			Expect(err).NotTo(HaveOccurred())
+
+			resp := commandAPI.Post("/v1/commands", "Content-Type: application/json", strings.NewReader(string(body)))
+			Expect(resp.Code).To(Equal(http.StatusAccepted))
+			var result sidecarapi.CreateCommandResponse
+			Expect(json.NewDecoder(resp.Body).Decode(&result)).To(Succeed())
+
+			var childPID int
+			Eventually(func() bool {
+				data, readErr := os.ReadFile(pidFile) //nolint:gosec // test-created temp file path
+				if readErr != nil {
+					return false
+				}
+				pid, convErr := strconv.Atoi(strings.TrimSpace(string(data)))
+				if convErr != nil {
+					return false
+				}
+				childPID = pid
+				return true
+			}, "3s", "20ms").Should(BeTrue())
+
+			DeferCleanup(func() { _ = syscall.Kill(childPID, syscall.SIGKILL) })
+			return result.ID, childPID
+		}
+
+		waitExited := func(id string) {
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", id))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				return status.ExitCode
+			}, "5s").ShouldNot(BeNil())
+		}
+
+		It("kills the whole process tree on DELETE", func() {
+			id, childPID := startWithChild(nil)
+			Expect(processAlive(childPID)).To(BeTrue(), "child should be running before kill")
+
+			resp := commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", id))
+			Expect(resp.Code).To(Equal(http.StatusNoContent))
+
+			waitExited(id)
+			Eventually(func() bool { return processAlive(childPID) }, "3s", "20ms").
+				Should(BeFalse(), "forked child must not survive after the command is killed")
+		})
+
+		It("kills the whole process tree on timeout", func() {
+			id, childPID := startWithChild(map[string]any{"timeoutSeconds": 1})
+			Expect(processAlive(childPID)).To(BeTrue(), "child should be running before timeout")
+
+			waitExited(id)
+			Eventually(func() bool { return processAlive(childPID) }, "3s", "20ms").
+				Should(BeFalse(), "forked child must not survive after the command times out")
 		})
 	})
 
