@@ -20,3 +20,5 @@ const IsolaContainerNameEnv = "ISOLA_CONTAINER_NAME"
 
 // SidecarPort is the HTTP port the sandbox-sidecar listens on.
 const SidecarPort = 10032
+
+const SidecarCommandOutputDir = "/run/isola/commands"

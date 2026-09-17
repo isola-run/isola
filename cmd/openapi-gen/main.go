@@ -108,7 +108,7 @@ func setupSandboxSidecar() huma.API {
 
 	v1 := huma.NewGroup(api, "/v1")
 	sidecarFs.Register(v1, sidecarFs.New(nil, nil, nil))
-	sidecarCmd.Register(v1, sidecarCmd.New(nil, nil, nil, nil))
+	sidecarCmd.Register(v1, sidecarCmd.New(nil, nil, nil, nil, ""))
 
 	return api
 }

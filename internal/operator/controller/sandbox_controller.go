@@ -101,6 +101,8 @@ type SandboxReconciler struct {
 const (
 	sandboxSidecarContainerName = "sandbox-sidecar"
 
+	sandboxCommandOutputVolumeName = "command-output"
+
 	// Trust boundary label: identifies untrusted sandbox pods for NetworkPolicy selection
 	LabelSandbox = "isola.run/sandbox"
 
@@ -188,6 +190,9 @@ func (r *SandboxReconciler) buildSandboxSidecarContainer() corev1.Container {
 				Add: []corev1.Capability{"SYS_PTRACE"},
 			},
 		},
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: sandboxCommandOutputVolumeName, MountPath: constants.SidecarCommandOutputDir},
+		},
 	}
 }
 
@@ -204,6 +209,13 @@ func markContainers(sandboxPod *corev1.Pod) {
 func (r *SandboxReconciler) injectSandboxSidecar(sandboxPod *corev1.Pod) {
 	sidecarContainer := r.buildSandboxSidecarContainer()
 	sandboxPod.Spec.InitContainers = append(sandboxPod.Spec.InitContainers, sidecarContainer)
+
+	sandboxPod.Spec.Volumes = append(sandboxPod.Spec.Volumes, corev1.Volume{
+		Name: sandboxCommandOutputVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory},
+		},
+	})
 }
 
 // markSandboxSucceeded sets Succeeded=True and Ready=False if the sandbox is not already terminal.
