@@ -46,6 +46,10 @@ import (
 // but it's a safety precaution for infinitely blocking after process kill
 const waitDelayGracePeriod = 5 * time.Second
 
+// how long a finished command's entry (and its output files) is kept around before
+// being reaped, giving clients time to poll the final status/output after exit.
+const defaultCommandReapAfter = 10 * time.Minute
+
 const statusClientClosedRequest = 499
 
 // sseKeepaliveInterval controls how often keepalive comments are sent on SSE streams
@@ -150,7 +154,8 @@ type commandEntry struct {
 	stdinPipe   io.WriteCloser
 	stdinMu     sync.Mutex // serialize concurrent stdin writes
 	stdinClosed bool
-	exitCode    int // only valid after done is closed
+	exitCode    int       // only valid after done is closed
+	finishedAt  time.Time // only valid after done is closed
 	done        chan struct{}
 	outputDir   string
 }
@@ -160,6 +165,7 @@ type Handlers struct {
 	procFS      proc.ProcFS
 	pidResolver *sandboxsidecar.PIDResolver
 	cmdBuilder  CommandBuilder
+	reapAfter   time.Duration
 
 	cmdMu    sync.RWMutex
 	commands map[string]*commandEntry
@@ -171,11 +177,41 @@ func New(logger *slog.Logger, procFS proc.ProcFS, pidResolver *sandboxsidecar.PI
 		procFS:      procFS,
 		pidResolver: pidResolver,
 		cmdBuilder:  cmdBuilder,
+		reapAfter:   defaultCommandReapAfter,
 		commands:    make(map[string]*commandEntry),
 	}
 }
 
+// reapExpired removes commands that exited more than reapAfter ago from the map and
+// deletes their output files. Without this, every command ever run against a sandbox
+// would stay resident in sidecar memory (and disk, for stdout/stderr) for the pod's
+// entire lifetime. Called opportunistically from PostCommand so long-running sandboxes
+// that keep issuing commands eventually reclaim resources from old ones.
+func (h *Handlers) reapExpired() {
+	h.cmdMu.Lock()
+	var expired []*commandEntry
+	for id, entry := range h.commands {
+		select {
+		case <-entry.done:
+			if time.Since(entry.finishedAt) > h.reapAfter {
+				expired = append(expired, entry)
+				delete(h.commands, id)
+			}
+		default:
+		}
+	}
+	h.cmdMu.Unlock()
+
+	for _, entry := range expired {
+		if err := os.RemoveAll(entry.outputDir); err != nil {
+			h.logger.Warn("failed to remove expired command output directory", "error", err, "cmdID", entry.cmdID)
+		}
+	}
+}
+
 func (h *Handlers) PostCommand(_ context.Context, input *CreateCommandInput) (*CreateCommandOutput, error) {
+	h.reapExpired()
+
 	pid, err := h.pidResolver.FindCachedContainerPID(input.Container)
 	if err != nil {
 		h.logger.Warn("failed to determine container pid", "error", err, "container", input.Container)
@@ -323,6 +359,7 @@ func (h *Handlers) waitForExit(entry *commandEntry) {
 	}
 
 	entry.exitCode = exitCode
+	entry.finishedAt = time.Now()
 }
 
 func (h *Handlers) getCommandEntry(cmdID string) (*commandEntry, error) {
@@ -579,7 +616,6 @@ func (h *Handlers) CloseCommandStdin(_ context.Context, input *CloseCommandStdin
 	return nil, nil
 }
 
-// todo benl: delete from commands map (eventually?) to constraint memory?
 func (h *Handlers) DeleteCommand(_ context.Context, input *DeleteCommandInput) (*struct{}, error) {
 	entry, err := h.getCommandEntry(input.ID)
 	if err != nil {

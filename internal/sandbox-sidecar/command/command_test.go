@@ -579,6 +579,63 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
+	Describe("command reaping", func() {
+		It("removes long-finished commands from memory and disk on the next PostCommand", func() {
+			code, result := postCommand(`{"args": ["true"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				return status.ExitCode
+			}).ShouldNot(BeNil())
+
+			commandHandlers.cmdMu.RLock()
+			entry := commandHandlers.commands[result.ID]
+			commandHandlers.cmdMu.RUnlock()
+			outputDir := entry.outputDir
+
+			// simulate the reap TTL having elapsed
+			commandHandlers.cmdMu.Lock()
+			entry.finishedAt = time.Now().Add(-time.Hour)
+			commandHandlers.cmdMu.Unlock()
+
+			// reaping runs opportunistically from PostCommand
+			code, _ = postCommand(`{"args": ["true"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			commandHandlers.cmdMu.RLock()
+			_, stillPresent := commandHandlers.commands[result.ID]
+			commandHandlers.cmdMu.RUnlock()
+			Expect(stillPresent).To(BeFalse())
+
+			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
+			Expect(resp.Code).To(Equal(http.StatusNotFound))
+
+			_, err := os.Stat(outputDir)
+			Expect(os.IsNotExist(err)).To(BeTrue())
+		})
+
+		It("keeps unfinished commands regardless of age", func() {
+			code, result := postCommand(`{"args": ["sleep", "60"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			commandHandlers.cmdMu.RLock()
+			entry := commandHandlers.commands[result.ID]
+			commandHandlers.cmdMu.RUnlock()
+
+			commandHandlers.reapExpired()
+
+			commandHandlers.cmdMu.RLock()
+			_, stillPresent := commandHandlers.commands[result.ID]
+			commandHandlers.cmdMu.RUnlock()
+			Expect(stillPresent).To(BeTrue())
+
+			commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", entry.cmdID))
+		})
+	})
+
 	Describe("Timeout", func() {
 		It("kills the process after timeout expires", func() {
 			code, result := postCommand(`{"args": ["sleep", "60"], "timeoutSeconds": 1}`)
