@@ -39,9 +39,9 @@ with Isola(url="http://localhost:8080") as client:  # or set ISOLA_URL env var
     result = sandbox.commands.run("python3", "-c", "print('hello from the sandbox')")
     print(result.stdout)    # "hello from the sandbox\n"
 
-    sandbox.filesystem.write("/tmp/hello.txt", "Hello, World!")
-    data = sandbox.filesystem.read("/tmp/hello.txt")
-    print(data.decode())    # "Hello, World!"
+    sandbox.filesystem.write_text("/tmp/hello.txt", "Hello, World!")
+    text = sandbox.filesystem.read_text("/tmp/hello.txt")
+    print(text)    # "Hello, World!"
 
     sandbox.delete()
 ```
@@ -58,9 +58,9 @@ const sandbox = await client.sandboxes.create({ image: "python:3.12-slim" });
 const result = await sandbox.commands.run(["python3", "-c", "print('hello from the sandbox')"]);
 console.log(result.stdout); // "hello from the sandbox\n"
 
-await sandbox.filesystem.write("/tmp/hello.txt", "Hello, World!");
-const data = await sandbox.filesystem.read("/tmp/hello.txt");
-console.log(new TextDecoder().decode(data)); // "Hello, World!"
+await sandbox.filesystem.writeText("/tmp/hello.txt", "Hello, World!");
+const text = await sandbox.filesystem.readText("/tmp/hello.txt");
+console.log(text); // "Hello, World!"
 
 await sandbox.delete();
 ```
@@ -136,9 +136,9 @@ sandbox = client.sandboxes.create(
 Read and write files inside sandboxes. Parent directories are created automatically.
 
 ```python
-sandbox.filesystem.write("/app/main.py", "print('hello from the sandbox')")
-data = sandbox.filesystem.read("/app/main.py")
-print(data.decode())  # "print('hello from the sandbox')"
+sandbox.filesystem.write_text("/app/main.py", "print('hello from the sandbox')")
+text = sandbox.filesystem.read_text("/app/main.py")
+print(text)  # "print('hello from the sandbox')"
 ```
 
 ### Command execution
