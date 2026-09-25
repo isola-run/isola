@@ -943,7 +943,9 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	if sandboxPod == nil {
+	isTerminal := meta.FindStatusCondition(sandbox.Status.Conditions, sandboxv1alpha1.SandboxSucceededCondition) != nil
+
+	if sandboxPod == nil && !isTerminal {
 		if err := r.CreateSandboxPod(ctx, sandbox, baseSandbox); err != nil {
 			return ctrl.Result{}, err
 		}
