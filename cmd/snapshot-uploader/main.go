@@ -67,13 +67,17 @@ type blobUploader struct {
 }
 
 func (u *blobUploader) upload(ctx context.Context, key string, r io.Reader) (int64, error) {
-	w, err := u.bucket.NewWriter(ctx, key, nil)
+	writeCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	w, err := u.bucket.NewWriter(writeCtx, key, nil)
 	if err != nil {
 		return 0, err
 	}
 
 	written, err := io.Copy(w, r)
 	if err != nil {
+		cancel()
 		_ = w.Close()
 		return 0, err
 	}
@@ -185,6 +189,15 @@ func uploadSnapshot(ctx context.Context, logger *slog.Logger, uploader objectUpl
 	if err != nil {
 		logger.Error("failed to upload", "error", err)
 		return err
+	}
+
+	if written != stat.Size() {
+		logger.Error("upload size mismatch, snapshot is truncated",
+			"bytes_written", written,
+			"file_size", stat.Size(),
+			"key", snapshotKey,
+		)
+		return fmt.Errorf("upload size mismatch: wrote %d bytes, expected %d", written, stat.Size())
 	}
 
 	logger.Info("upload complete",
