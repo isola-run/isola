@@ -390,6 +390,10 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	}
 
 	if err := r.Create(ctx, sandboxPod); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			log.Info("Pod already exists; waiting for cache to observe it", "pod", sandboxPod.Name)
+			return nil
+		}
 		log.Error(err, "Failed creating Pod")
 
 		// Best effort status patch - log but don't override the original create error.

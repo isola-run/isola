@@ -15,21 +15,36 @@
 package controller
 
 import (
+	"context"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	sandboxv1alpha1 "github.com/isola-run/isola/api/v1alpha1"
 	snapshotpkg "github.com/isola-run/isola/internal/snapshot"
 )
+
+type podListHidingClient struct {
+	client.Client
+}
+
+func (c *podListHidingClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	if pods, ok := list.(*corev1.PodList); ok {
+		pods.Items = nil
+		return nil
+	}
+	return c.Client.List(ctx, list, opts...)
+}
 
 var _ = Describe("RootfsSnapshot Controller", func() {
 	var (
@@ -462,6 +477,28 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 	})
 
 	Context("Upload Result Error Handling", func() {
+		It("should bypass a stale cache when reading a completed job result", func() {
+			jobName := "snap-stale-cache-job"
+			defer deleteSnapshotJobPod(ctx, jobName)
+
+			want := &snapshotpkg.UploadResult{
+				SnapshotKey:  "rootfssnapshots/" + testNamespace + "/snap-stale-cache.tar",
+				BytesWritten: 2048,
+			}
+			createSnapshotJobPodWithTerminationMessage(ctx, jobName, want)
+
+			staleReconciler := &RootfsSnapshotReconciler{
+				Client:    &podListHidingClient{Client: k8sClient},
+				APIReader: k8sClient,
+			}
+			result, err := staleReconciler.getUploadResult(ctx, &batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{Name: jobName, Namespace: testNamespace},
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal(want))
+		})
+
 		It("should fail when job pod has no termination message", func() {
 			snapName := "snap-no-term-msg"
 			sandboxName := "sandbox-no-term-msg"

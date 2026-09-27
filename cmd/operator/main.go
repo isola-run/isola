@@ -188,6 +188,7 @@ func main() {
 	// It creates Jobs to snapshot container rootfs and upload to bucket storage.
 	if err := (&controller.RootfsSnapshotReconciler{
 		Client:                  mgr.GetClient(),
+		APIReader:               mgr.GetAPIReader(),
 		Scheme:                  mgr.GetScheme(),
 		Clock:                   controller.RealClock{},
 		BucketURL:               rootfssnapshotBucketURL,
