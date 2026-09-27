@@ -41,6 +41,6 @@ var (
 		Namespace: "isola",
 		Subsystem: "rootfssnapshot",
 		Name:      "completed_total",
-		Help:      "Total number of rootfs snapshots that reached a terminal state.",
+		Help:      "Total number of rootfs snapshot attempts that reached a terminal state.",
 	}, []string{"result"})
 )
