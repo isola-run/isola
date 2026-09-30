@@ -143,8 +143,10 @@ if check_optional_tool "govulncheck" "Install: go install golang.org/x/vuln/cmd/
 fi
 check_optional_tool "lefthook" "Install: go install github.com/evilmartians/lefthook/v2@${LEFTHOOK_VERSION}" && HAS_LEFTHOOK=1
 
-check_optional_tool "setup-envtest" "Install: go install sigs.k8s.io/controller-runtime/tools/setup-envtest@${SETUP_ENVTEST_VERSION}"
-check_optional_tool "controller-gen" "Install: go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}"
+# check_optional_tool returns 1 when the tool is missing; under `set -e` a bare call
+# (not part of an if/&&/|| construct) would abort the script right here.
+check_optional_tool "setup-envtest" "Install: go install sigs.k8s.io/controller-runtime/tools/setup-envtest@${SETUP_ENVTEST_VERSION}" || true
+check_optional_tool "controller-gen" "Install: go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}" || true
 
 # https://kind.sigs.k8s.io/docs/user/local-registry/
 echo ""
