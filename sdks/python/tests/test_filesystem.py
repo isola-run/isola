@@ -96,6 +96,24 @@ async def test_async_filesystem_write_and_read(sandbox_response_copy: dict[str, 
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_async_filesystem_write_from_file_like(sandbox_response_copy: dict[str, object]) -> None:
+    respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
+        return_value=httpx.Response(200, json=sandbox_response_copy)
+    )
+    write_route = respx.post("http://localhost:8080/v1/sandboxes/sandbox-123/filesystem").mock(
+        return_value=httpx.Response(204)
+    )
+
+    async with AsyncIsola(url="http://localhost:8080") as client:
+        sandbox = await client.sandboxes.get("sandbox-123")
+        file_obj = io.BytesIO(b"print()")
+        await sandbox.filesystem.write("/workspace/script.py", file_obj)
+
+    assert write_route.calls[0].request.content == b"print()"
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_async_filesystem_with_container(sandbox_response_copy: dict[str, object]) -> None:
     respx.get("http://localhost:8080/v1/sandboxes/sandbox-123").mock(
         return_value=httpx.Response(200, json=sandbox_response_copy)
