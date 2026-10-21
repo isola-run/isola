@@ -47,12 +47,15 @@ var _ = Describe("Sandbox CRD validation", func() {
 		})
 	})
 
-	Describe("spec.timeoutSeconds is fully immutable", func() {
-		It("rejects unset to set", func() {
+	Describe("spec.timeoutSeconds is immutable once set", func() {
+		// The unset → set transition is permitted to support warm-pool adoption:
+		// the WarmSandboxPool controller stamps pooled Sandboxes without timeoutSeconds
+		// and the api-gateway sets it at adoption time.
+		It("accepts unset to set", func() {
 			sb := minimalSandbox("sb")
 			Expect(k8sClient.Create(ctx, sb)).To(Succeed())
 			sb.Spec.TimeoutSeconds = ptr.To[int64](60)
-			Expect(k8sClient.Update(ctx, sb)).ToNot(Succeed())
+			Expect(k8sClient.Update(ctx, sb)).To(Succeed())
 		})
 		It("rejects set to different value", func() {
 			sb := minimalSandbox("sb")
