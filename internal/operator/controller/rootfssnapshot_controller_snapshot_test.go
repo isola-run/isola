@@ -185,6 +185,55 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			Expect(snap.Status.CompletionTime).NotTo(BeNil())
 		})
 
+		It("should mark complete when job succeeds even after the sandbox pod stops being ready", func() {
+			snapName := "snap-pod-exited"
+			sandboxName := "sandbox-pod-exited"
+			podName := sandboxName + "-pod"
+			runtimeClassName := "gvisor-pod-exited"
+
+			createRuntimeClassForSnapshot(ctx, runtimeClassName, "runsc")
+			defer deleteRuntimeClassForSnapshot(ctx, runtimeClassName)
+
+			createSnapshotPod(ctx, podName, runtimeClassName,
+				[]corev1.Container{{Name: "main", Image: "busybox"}},
+				[]corev1.ContainerStatus{{Name: "main", ContainerID: "containerd://podexited789", Ready: true}},
+			)
+			defer deleteSnapshotPod(ctx, podName)
+
+			createRootfsSnapshotCR(ctx, snapName, sandboxName)
+			defer deleteRootfsSnapshotCR(ctx, snapName)
+
+			jobName := snapName + "-job"
+			defer deleteSnapshotJob(ctx, jobName)
+			defer deleteSnapshotJobPod(ctx, jobName)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			createSnapshotJobPodWithTerminationMessage(ctx, jobName, &snapshotpkg.UploadResult{
+				SnapshotKey:  "rootfssnapshots/" + testNamespace + "/" + sandboxName + ".tar",
+				BytesWritten: 1024,
+			})
+			setSnapshotJobComplete(ctx, jobName)
+			markSnapshotPodExited(ctx, podName)
+
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: snapName, Namespace: testNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			snap := getRootfsSnapshotCR(ctx, snapName)
+			Expect(snap).NotTo(BeNil())
+
+			readyCond := meta.FindStatusCondition(snap.Status.Conditions, sandboxv1alpha1.RootfsSnapshotSucceededCondition)
+			Expect(readyCond).NotTo(BeNil())
+			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(readyCond.Reason).To(Equal(sandboxv1alpha1.ReasonRootfsSnapshotSucceeded))
+			Expect(snap.Status.SnapshotKey).To(Equal("rootfssnapshots/" + testNamespace + "/" + sandboxName + ".tar"))
+		})
+
 		It("should mark failed when job fails", func() {
 			snapName := "snap-fail"
 			sandboxName := "sandbox-fail"
