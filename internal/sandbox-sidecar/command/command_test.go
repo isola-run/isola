@@ -82,6 +82,7 @@ var _ = Describe("Command Handlers", func() {
 		commandAPI      humatest.TestAPI
 		commandHandler  http.Handler
 		commandHandlers *Handlers
+		testOutputDir   string
 	)
 
 	BeforeEach(func() {
@@ -94,7 +95,11 @@ var _ = Describe("Command Handlers", func() {
 			uid:     0,
 			gid:     0,
 		}
-		commandHandlers = New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), mockProcFS, sandboxsidecar.NewPIDResolver(mockProcFS), &DirectCommandBuilder{})
+		var err error
+		testOutputDir, err = os.MkdirTemp("", "sidecar-test-output-*")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { _ = os.RemoveAll(testOutputDir) })
+		commandHandlers = New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), mockProcFS, sandboxsidecar.NewPIDResolver(mockProcFS), &DirectCommandBuilder{}, testOutputDir)
 		Register(v1, commandHandlers)
 	})
 
@@ -119,6 +124,31 @@ var _ = Describe("Command Handlers", func() {
 			Expect(resp.Code).To(Equal(http.StatusUnprocessableEntity))
 		})
 
+	})
+
+	Describe("output isolation from rootfs snapshots", func() {
+		It("writes command output outside the target container rootfs", func() {
+			code, result := postCommand(`{"args": ["echo", "-n", "secret-output"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+
+			Eventually(func() string {
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
+				return extractSSEData(resp.Body.String())
+			}).Should(Equal("secret-output"))
+
+			capturedBySnapshot := filepath.Join(testRootDir, "var", "run", "isola", "commands")
+			_, statErr := os.Stat(capturedBySnapshot)
+			Expect(os.IsNotExist(statErr)).To(BeTrue(),
+				"command output must not exist under the snapshotted container rootfs")
+
+			commandHandlers.cmdMu.RLock()
+			entry := commandHandlers.commands[result.ID]
+			commandHandlers.cmdMu.RUnlock()
+			Expect(entry.outputDir).NotTo(HavePrefix(testRootDir))
+			data, readErr := os.ReadFile(filepath.Join(entry.outputDir, "stdout"))
+			Expect(readErr).NotTo(HaveOccurred())
+			Expect(string(data)).To(Equal("secret-output"))
+		})
 	})
 
 	Describe("GET /commands/{id}/status", func() {
@@ -736,19 +766,16 @@ var _ = Describe("Command Handlers", func() {
 
 	Describe("output directory creation failure", func() {
 		It("returns 500 when MkdirAll fails", func() {
-			// Create a separate mock whose rootDir has a file blocking the path.
-			// MkdirAll will fail because "var" is a regular file, not a directory.
-			blockedRoot, err := os.MkdirTemp("", "sidecar-test-blocked-*")
+			blockerDir, err := os.MkdirTemp("", "sidecar-test-blocked-*")
 			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(func() { _ = os.RemoveAll(blockedRoot) })
-
-			// Place a regular file at <root>/var so MkdirAll(<root>/var/run/isola/...) fails
-			Expect(os.WriteFile(filepath.Join(blockedRoot, "var"), []byte("blocker"), 0600)).To(Succeed())
+			DeferCleanup(func() { _ = os.RemoveAll(blockerDir) })
+			blockerFile := filepath.Join(blockerDir, "not-a-dir")
+			Expect(os.WriteFile(blockerFile, []byte("blocker"), 0600)).To(Succeed())
 
 			_, blockedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Blocked Test API", "0.1.0"))
 			blockedV1 := huma.NewGroup(blockedAPI, "/v1")
-			blockedMock := &MockProcFS{rootDir: blockedRoot, cwd: testCwd}
-			blockedHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), blockedMock, sandboxsidecar.NewPIDResolver(blockedMock), &DirectCommandBuilder{})
+			blockedMock := &MockProcFS{rootDir: testRootDir, cwd: testCwd}
+			blockedHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), blockedMock, sandboxsidecar.NewPIDResolver(blockedMock), &DirectCommandBuilder{}, blockerFile)
 			Register(blockedV1, blockedHandlers)
 
 			resp := blockedAPI.Post("/v1/commands", "Content-Type: application/json",
@@ -1024,7 +1051,7 @@ var _ = Describe("Command Handlers", func() {
 			_, isolatedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Stat Fail API", "0.1.0"))
 			isolatedV1 := huma.NewGroup(isolatedAPI, "/v1")
 			isolatedMock := &MockProcFS{rootDir: isolatedRoot, cwd: testCwd}
-			isolatedHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, sandboxsidecar.NewPIDResolver(isolatedMock), &DirectCommandBuilder{})
+			isolatedHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, sandboxsidecar.NewPIDResolver(isolatedMock), &DirectCommandBuilder{}, testOutputDir)
 			Register(isolatedV1, isolatedHandlers)
 
 			resp := isolatedAPI.Post("/v1/commands", "Content-Type: application/json",
@@ -1099,7 +1126,7 @@ var _ = Describe("Command Handlers", func() {
 				cwd:           testCwd,
 				findMarkedErr: fmt.Errorf("container not found"),
 			}
-			failingHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), failingMock, sandboxsidecar.NewPIDResolver(failingMock), &DirectCommandBuilder{})
+			failingHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), failingMock, sandboxsidecar.NewPIDResolver(failingMock), &DirectCommandBuilder{}, testOutputDir)
 			Register(failingV1, failingHandlers)
 
 			resp := failingAPI.Post("/v1/commands", "Content-Type: application/json",
@@ -1153,8 +1180,9 @@ var _ = Describe("Command Handlers", func() {
 			_, isolatedAPI := humatest.New(GinkgoT(), huma.DefaultConfig("Builder Fail API", "0.1.0"))
 			isolatedV1 := huma.NewGroup(isolatedAPI, "/v1")
 			isolatedMock := &MockProcFS{rootDir: isolatedRoot, cwd: testCwd}
+			outputBase := filepath.Join(isolatedRoot, "output")
 			failBuilder := &FailingCommandBuilder{err: fmt.Errorf("build error")}
-			isolatedHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, sandboxsidecar.NewPIDResolver(isolatedMock), failBuilder)
+			isolatedHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), isolatedMock, sandboxsidecar.NewPIDResolver(isolatedMock), failBuilder, outputBase)
 			Register(isolatedV1, isolatedHandlers)
 
 			resp := isolatedAPI.Post("/v1/commands", "Content-Type: application/json",
@@ -1162,8 +1190,7 @@ var _ = Describe("Command Handlers", func() {
 			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
 
 			// Verify cleanup happened
-			commandsDir := filepath.Join(isolatedRoot, "var", "run", "isola", "commands")
-			entries, err := os.ReadDir(commandsDir)
+			entries, err := os.ReadDir(outputBase)
 			if err != nil && !os.IsNotExist(err) {
 				Fail(fmt.Sprintf("unexpected error reading commands dir: %v", err))
 			}
@@ -1182,7 +1209,7 @@ var _ = Describe("Command Handlers", func() {
 				cwd:           testCwd,
 				getEnvironErr: fmt.Errorf("permission denied"),
 			}
-			envFailHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), envFailMock, sandboxsidecar.NewPIDResolver(envFailMock), &DirectCommandBuilder{})
+			envFailHandlers := New(slog.New(slog.NewTextHandler(GinkgoWriter, nil)), envFailMock, sandboxsidecar.NewPIDResolver(envFailMock), &DirectCommandBuilder{}, testOutputDir)
 			Register(envFailV1, envFailHandlers)
 
 			resp := envFailAPI.Post("/v1/commands", "Content-Type: application/json",

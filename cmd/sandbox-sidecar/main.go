@@ -92,7 +92,7 @@ func main() {
 
 	v1 := huma.NewGroup(api, "/v1")
 	filesystem.Register(v1, filesystem.New(logger, procFS, pidResolver))
-	command.Register(v1, command.New(logger, procFS, pidResolver, &command.ChrootCommandBuilder{}))
+	command.Register(v1, command.New(logger, procFS, pidResolver, &command.ChrootCommandBuilder{}, command.DefaultCommandOutputDir))
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", constants.SidecarPort),
