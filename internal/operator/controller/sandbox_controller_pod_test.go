@@ -178,6 +178,57 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(pod.Annotations).To(HaveKeyWithValue("dev.gvisor.flag.overlay2", "root:self"))
 		})
 
+		It("should strip operator-owned egress-authorization labels from the pod template", func() {
+			sandboxName := "sandbox-strip-labels"
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.PodTemplate.Labels = map[string]string{
+					LabelAllowIPv4Internet: "true",
+					LabelAllowClusterDNS:   "true",
+					"team":                 "blue",
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Labels).NotTo(HaveKey(LabelAllowIPv4Internet))
+			Expect(pod.Labels).NotTo(HaveKey(LabelAllowClusterDNS))
+			Expect(pod.Labels).To(HaveKeyWithValue("team", "blue"))
+		})
+
+		It("should strip operator-owned gVisor annotations from the pod template", func() {
+			sandboxName := "sandbox-strip-annotations"
+
+			createSandbox(ctx, sandboxName, func(s *sandboxv1alpha1.Sandbox) {
+				s.Spec.PodTemplate.Annotations = map[string]string{
+					"dev.gvisor.tar.rootfs.upper.sandbox": "/host/snapshots/victim/secret.tar",
+					"dev.gvisor.flag.qdisc":               "tbf",
+					"team":                                "blue",
+				}
+			})
+			defer deleteSandbox(ctx, sandboxName)
+
+			podName := sandboxName + "-pod"
+			defer deletePod(ctx, podName)
+
+			_, err := doReconcile(ctx, reconciler, sandboxName)
+			Expect(err).NotTo(HaveOccurred())
+
+			pod := getPod(ctx, podName)
+			Expect(pod).NotTo(BeNil())
+			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.tar.rootfs.upper.sandbox"))
+			Expect(pod.Annotations).NotTo(HaveKey("dev.gvisor.flag.qdisc"))
+			Expect(pod.Annotations).To(HaveKeyWithValue("dev.gvisor.flag.overlay2", "root:self"))
+			Expect(pod.Annotations).To(HaveKeyWithValue("team", "blue"))
+		})
+
 		It("should inject sleep infinity when no command is specified", func() {
 			sandboxName := "sandbox-default-cmd"
 
