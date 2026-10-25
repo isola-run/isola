@@ -1,6 +1,6 @@
 module github.com/isola-run/isola
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/danielgtaylor/huma/v2 v2.39.1
