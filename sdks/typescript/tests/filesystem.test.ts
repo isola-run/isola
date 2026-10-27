@@ -13,8 +13,8 @@
 // limitations under the License.
 
 // Mirrors sdks/python/tests/test_filesystem.py, same scenarios, adapted to
-// the TypeScript SDK's UploadBody types (Uint8Array, ArrayBuffer, Blob,
-// ReadableStream, string).
+// the TypeScript SDK's split read/write methods and BinaryBody types
+// (Uint8Array, ArrayBuffer, Blob, ReadableStream).
 
 import { describe, expect, it } from "vitest";
 import { Isola } from "../src/client";
@@ -36,7 +36,7 @@ function bytesResponse(body: Uint8Array, init: ResponseInit = {}): Response {
 }
 
 describe("Filesystem.write/read", () => {
-  it("write(Uint8Array) with container then read", async () => {
+  it("writeBytes(Uint8Array) with container then readBytes", async () => {
     const stub = makeStubFetch(
       jsonResponse(sandboxResponseFixture()),
       emptyResponse(204),
@@ -44,10 +44,10 @@ describe("Filesystem.write/read", () => {
     );
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
     const sandbox = await client.sandboxes.get("sandbox-123");
-    await sandbox.filesystem.write("/workspace/file.txt", new TextEncoder().encode("content"), {
+    await sandbox.filesystem.writeBytes("/workspace/file.txt", new TextEncoder().encode("content"), {
       container: "worker",
     });
-    const downloaded = await sandbox.filesystem.read("/workspace/file.txt", { container: "worker" });
+    const downloaded = await sandbox.filesystem.readBytes("/workspace/file.txt", { container: "worker" });
     expect(new TextDecoder().decode(downloaded)).toBe("content");
 
     expect(stub.calls).toHaveLength(3);
@@ -65,11 +65,11 @@ describe("Filesystem.write/read", () => {
     expect(getSearchParam(readCall.url, "container")).toBe("worker");
   });
 
-  it("write(string) is encoded as UTF-8 bytes", async () => {
+  it("writeText(string) is encoded as UTF-8 bytes", async () => {
     const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), emptyResponse(204));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
     const sandbox = await client.sandboxes.get("sandbox-123");
-    await sandbox.filesystem.write("/workspace/hello.py", "print('hello')");
+    await sandbox.filesystem.writeText("/workspace/hello.py", "print('hello')");
 
     const writeCall = stub.calls[1]!;
     expect(writeCall.bodyText).toBe("print('hello')");
@@ -77,29 +77,55 @@ describe("Filesystem.write/read", () => {
     expect(writeCall.body).toEqual(new TextEncoder().encode("print('hello')"));
   });
 
-  it("write(Blob) sends the bytes inside the blob", async () => {
+  it("readText decodes the response body as UTF-8", async () => {
+    const stub = makeStubFetch(
+      jsonResponse(sandboxResponseFixture()),
+      bytesResponse(new TextEncoder().encode("Hello, World!")),
+    );
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+    const text = await sandbox.filesystem.readText("/tmp/hello.txt");
+    expect(text).toBe("Hello, World!");
+
+    const readCall = stub.calls[1]!;
+    expect(readCall.method).toBe("GET");
+    expect(getSearchParam(readCall.url, "path")).toBe("/tmp/hello.txt");
+  });
+
+  it("readText throws on invalid UTF-8 (readBytes returns the raw bytes intact)", async () => {
+    const invalid = new Uint8Array([0xff, 0xfe]);
+    const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), bytesResponse(invalid), bytesResponse(invalid));
+    const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
+    const sandbox = await client.sandboxes.get("sandbox-123");
+
+    await expect(sandbox.filesystem.readText("/workspace/data.bin")).rejects.toThrow();
+    const raw = await sandbox.filesystem.readBytes("/workspace/data.bin");
+    expect(raw).toEqual(invalid);
+  });
+
+  it("writeBytes(Blob) sends the bytes inside the blob", async () => {
     const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), emptyResponse(204));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
     const sandbox = await client.sandboxes.get("sandbox-123");
     const blob = new Blob([new TextEncoder().encode("blob-bytes")]);
-    await sandbox.filesystem.write("/workspace/blob.bin", blob);
+    await sandbox.filesystem.writeBytes("/workspace/blob.bin", blob);
 
     const writeCall = stub.calls[1]!;
     expect(writeCall.bodyText).toBe("blob-bytes");
   });
 
-  it("write(ArrayBuffer) sends the buffer's bytes", async () => {
+  it("writeBytes(ArrayBuffer) sends the buffer's bytes", async () => {
     const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), emptyResponse(204));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
     const sandbox = await client.sandboxes.get("sandbox-123");
     const buf = new TextEncoder().encode("buffer-bytes").buffer;
-    await sandbox.filesystem.write("/workspace/ab.bin", buf);
+    await sandbox.filesystem.writeBytes("/workspace/ab.bin", buf);
 
     const writeCall = stub.calls[1]!;
     expect(writeCall.bodyText).toBe("buffer-bytes");
   });
 
-  it("write(ReadableStream) consumes the stream and uses duplex: 'half'", async () => {
+  it("writeBytes(ReadableStream) consumes the stream and uses duplex: 'half'", async () => {
     let capturedDuplex: string | undefined;
     const stub = makeStubFetch(
       jsonResponse(sandboxResponseFixture()),
@@ -126,14 +152,14 @@ describe("Filesystem.write/read", () => {
         controller.close();
       },
     });
-    await sandbox.filesystem.write("/workspace/stream.bin", stream);
+    await sandbox.filesystem.writeBytes("/workspace/stream.bin", stream);
 
     const writeCall = stub.calls[1]!;
     expect(writeCall.bodyText).toBe("stream-bytes");
     expect(capturedDuplex).toBe("half");
   });
 
-  it("write(ReadableStream) does NOT retry on transient errors (non-replayable)", async () => {
+  it("writeBytes(ReadableStream) does NOT retry on transient errors (non-replayable)", async () => {
     // First call: GET sandbox. Second call: transient network error mid-stream.
     // After 1 attempt, the request must throw (no retries allowed for streams).
     const responders: Array<Response | TypeError> = [
@@ -157,7 +183,7 @@ describe("Filesystem.write/read", () => {
       },
     });
 
-    await expect(sandbox.filesystem.write("/workspace/stream.bin", stream)).rejects.toThrow();
+    await expect(sandbox.filesystem.writeBytes("/workspace/stream.bin", stream)).rejects.toThrow();
 
     // Exactly 2 fetches: sandbox GET + 1 write attempt.
     expect(stub.calls).toHaveLength(2);
@@ -171,8 +197,8 @@ describe("Filesystem.write/read", () => {
     );
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
     const sandbox = await client.sandboxes.get("sandbox-123");
-    await sandbox.filesystem.write("/tmp/data.bin", new TextEncoder().encode("data"));
-    await sandbox.filesystem.read("/tmp/data.bin");
+    await sandbox.filesystem.writeBytes("/tmp/data.bin", new TextEncoder().encode("data"));
+    await sandbox.filesystem.readBytes("/tmp/data.bin");
 
     const writeCall = stub.calls[1]!;
     expect(getSearchParam(writeCall.url, "path")).toBe("/tmp/data.bin");
@@ -185,7 +211,7 @@ describe("Filesystem.write/read", () => {
 });
 
 describe("Filesystem error handling", () => {
-  it("read() raises NotFoundError on 404", async () => {
+  it("readBytes() raises NotFoundError on 404", async () => {
     const stub = makeStubFetch(
       jsonResponse(sandboxResponseFixture()),
       jsonResponse({ detail: "file not found" }, { status: 404 }),
@@ -195,7 +221,7 @@ describe("Filesystem error handling", () => {
 
     let caught: unknown;
     try {
-      await sandbox.filesystem.read("/nonexistent/file.txt");
+      await sandbox.filesystem.readBytes("/nonexistent/file.txt");
     } catch (err) {
       caught = err;
     }
@@ -204,7 +230,7 @@ describe("Filesystem error handling", () => {
     expect((caught as NotFoundError).message).toContain("file not found");
   });
 
-  it("read() raises InternalError on 500", async () => {
+  it("readBytes() raises InternalError on 500", async () => {
     // 500 is NOT transient, single attempt, no retries.
     const stub = makeStubFetch(
       jsonResponse(sandboxResponseFixture()),
@@ -215,7 +241,7 @@ describe("Filesystem error handling", () => {
 
     let caught: unknown;
     try {
-      await sandbox.filesystem.read("/some/file.txt");
+      await sandbox.filesystem.readBytes("/some/file.txt");
     } catch (err) {
       caught = err;
     }
@@ -223,7 +249,7 @@ describe("Filesystem error handling", () => {
     expect((caught as InternalError).statusCode).toBe(500);
   });
 
-  it("write() raises NotFoundError on 404", async () => {
+  it("writeBytes() raises NotFoundError on 404", async () => {
     const stub = makeStubFetch(
       jsonResponse(sandboxResponseFixture()),
       jsonResponse({ detail: "sandbox not found" }, { status: 404 }),
@@ -232,11 +258,11 @@ describe("Filesystem error handling", () => {
     const sandbox = await client.sandboxes.get("sandbox-123");
 
     await expect(
-      sandbox.filesystem.write("/workspace/file.txt", new TextEncoder().encode("data")),
+      sandbox.filesystem.writeBytes("/workspace/file.txt", new TextEncoder().encode("data")),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it("write() raises InternalError on 500", async () => {
+  it("writeBytes() raises InternalError on 500", async () => {
     const stub = makeStubFetch(
       jsonResponse(sandboxResponseFixture()),
       jsonResponse({ detail: "disk full" }, { status: 500 }),
@@ -246,7 +272,7 @@ describe("Filesystem error handling", () => {
 
     let caught: unknown;
     try {
-      await sandbox.filesystem.write("/workspace/file.txt", new TextEncoder().encode("data"));
+      await sandbox.filesystem.writeBytes("/workspace/file.txt", new TextEncoder().encode("data"));
     } catch (err) {
       caught = err;
     }
@@ -257,13 +283,13 @@ describe("Filesystem error handling", () => {
 });
 
 describe("Filesystem signal propagation", () => {
-  it("write() forwards req.signal to the underlying request", async () => {
+  it("writeBytes() forwards req.signal to the underlying request", async () => {
     const ctrl = new AbortController();
     const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), emptyResponse(204));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
     const sandbox = await client.sandboxes.get("sandbox-123");
 
-    await sandbox.filesystem.write(
+    await sandbox.filesystem.writeBytes(
       "/workspace/file.txt",
       new TextEncoder().encode("data"),
       {},
@@ -274,13 +300,13 @@ describe("Filesystem signal propagation", () => {
     expect(stub.calls[1]?.signal).toBeDefined();
   });
 
-  it("read() forwards req.signal to the underlying request", async () => {
+  it("readBytes() forwards req.signal to the underlying request", async () => {
     const ctrl = new AbortController();
     const stub = makeStubFetch(jsonResponse(sandboxResponseFixture()), bytesResponse(new TextEncoder().encode("x")));
     const client = new Isola({ url: URL_BASE, fetch: stub.fetch, requestTimeoutMs: null });
     const sandbox = await client.sandboxes.get("sandbox-123");
 
-    await sandbox.filesystem.read("/workspace/file.txt", {}, { signal: ctrl.signal });
+    await sandbox.filesystem.readBytes("/workspace/file.txt", {}, { signal: ctrl.signal });
 
     expect(stub.calls[1]?.signal).toBeDefined();
   });

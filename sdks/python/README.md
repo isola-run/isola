@@ -205,18 +205,21 @@ cmd.wait()       # returns exit code
 
 ```python
 # Write text
-sandbox.filesystem.write("/tmp/hello.txt", "Hello, World!")
+sandbox.filesystem.write_text("/tmp/hello.txt", "Hello, World!")
 
 # Write binary data
-sandbox.filesystem.write("/tmp/data.bin", b"\x00\x01\x02")
+sandbox.filesystem.write_bytes("/tmp/data.bin", b"\x00\x01\x02")
 
-# Upload a local file
+# Upload a local file (streamed, not read fully into memory)
 with open("local.tar.gz", "rb") as f:
-    sandbox.filesystem.write("/tmp/archive.tar.gz", f)
+    sandbox.filesystem.write_bytes("/tmp/archive.tar.gz", f)
 
-# Read a file
-data = sandbox.filesystem.read("/tmp/hello.txt")
-print(data.decode())  # "Hello, World!"
+# Read a file as text
+text = sandbox.filesystem.read_text("/tmp/hello.txt")
+print(text)  # "Hello, World!"
+
+# Read a file as raw bytes
+data = sandbox.filesystem.read_bytes("/tmp/data.bin")
 ```
 
 Parent directories are created automatically on uploads.
@@ -394,7 +397,7 @@ Target a specific container when running commands or writing files:
 
 ```python
 result = sandbox.commands.run("wget", "-qO-", "http://127.0.0.1:8080", container="worker")
-sandbox.filesystem.write("/tmp/data.txt", "hello", container="app")
+sandbox.filesystem.write_text("/tmp/data.txt", "hello", container="app")
 ```
 
 ## Error handling
