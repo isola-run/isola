@@ -35,9 +35,9 @@ type generationRecord struct {
 	ManagedBlock  string `json:"managedBlock"`
 }
 
-// Written before the managed block is modified, cleared only after a restart
-// settled the daemon on a known block. While present, on-disk config cannot
-// be trusted to match what containerd has loaded.
+// Saved before changing the managed block or restarting containerd. If the
+// installer stops before confirming the result, this record tells the next
+// process which configuration to finish applying or restore.
 type pendingActivation struct {
 	Target generationRecord `json:"target"`
 	// Empty when no block existed; rollback then removes the block.

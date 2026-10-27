@@ -383,20 +383,32 @@ func (i *Installer) ensureContainerdConfig(ctx context.Context, st *installerSta
 	if servingErr == nil {
 		return false, nil
 	}
-	// Config and journal agree but the daemon disagrees. Restart once per
-	// regression, never on every retry.
+	// The configuration is on disk, but containerd is not using it. Try one
+	// restart. If it starts healthy but still lacks the handler, do not repeat it.
 	if i.convergeRestartedFor == desired {
 		return false, fmt.Errorf("runtime handler still not served after a convergence restart: %w", servingErr)
 	}
 	i.log.Warn("containerd config is up to date but the running daemon does not serve the handler; restarting containerd to converge", "error", servingErr)
-	if _, err := i.host.Run(ctx, "systemctl", "restart", "containerd"); err != nil {
-		// Nothing was restarted; the retry budget is not spent.
+	// systemctl restart can stop containerd and then fail to start it.
+	// Save Pending first so the next reconcile can recover the stopped runtime,
+	// even if the installer process has also restarted.
+	st.Pending = &pendingActivation{
+		Target:               *st.Active,
+		PreviousManagedBlock: st.Active.ManagedBlock,
+		PreviousHandler:      st.Active.Handler,
+	}
+	if err := i.writeState(*st); err != nil {
 		return false, err
 	}
 	i.convergeRestartedFor = desired
-	if err := i.awaitRuntimeReady(ctx); err != nil {
+	if err := i.recoveryRestart(ctx, st.Pending, "commit"); err != nil {
 		return false, err
 	}
+	st.Pending = nil
+	if err := i.writeState(*st); err != nil {
+		return false, err
+	}
+	i.recoveryGate.clear()
 	return false, i.verifyServing(ctx, i.cfg.Handler, &want)
 }
 
@@ -569,6 +581,11 @@ func (i *Installer) recoverPending(ctx context.Context, st *installerState) erro
 		if errors.Is(err, errCommitSettled) {
 			return err
 		}
+		// Both configurations are the same. Rolling back would just restart
+		// containerd again, bypassing the delay between recovery attempts.
+		if p.PreviousManagedBlock == p.Target.ManagedBlock {
+			return err
+		}
 		i.log.Warn("interrupted activation cannot be committed, rolling back", "error", err)
 	} else if !found && p.PreviousManagedBlock != "" || found && block != p.PreviousManagedBlock {
 		// An unrecognized block must never be blessed with a restart just
@@ -633,6 +650,7 @@ func (i *Installer) commitTarget(ctx context.Context, st *installerState) error 
 	}
 	st.Active = &p.Target
 	st.Pending = nil
+	i.recoveryGate.clear()
 	return nil
 }
 

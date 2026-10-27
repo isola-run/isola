@@ -85,7 +85,8 @@ func (n *nodeClient) SetNodeLabels(ctx context.Context, labels map[string]string
 }
 
 func (n *nodeClient) Event(eventType, reason, message string) {
-	// Event delivery must not gate host recovery on API availability.
+	// An unavailable Kubernetes API must not leave the installer waiting
+	// indefinitely just to report an event.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	node, err := n.clientset.CoreV1().Nodes().Get(ctx, n.nodeName, metav1.GetOptions{})
