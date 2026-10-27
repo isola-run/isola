@@ -24,7 +24,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install controller-gen
-        run: go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.0
+        run: go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.23.0
 
       - name: Verify OpenAPI specs are in sync
         run: make check-openapi

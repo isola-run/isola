@@ -291,7 +291,7 @@ func (i *Installer) removeGenerationExtras(dir string, files map[string]extracte
 				return nil
 			}
 			i.log.Info("removing unexpected directory from generation", "dir", rel)
-			if err := os.RemoveAll(p); err != nil {
+			if err := os.RemoveAll(p); err != nil { //nolint:gosec // generation directory is root-owned and only writable by the installer
 				return err
 			}
 			return fs.SkipDir
@@ -301,7 +301,7 @@ func (i *Installer) removeGenerationExtras(dir string, files map[string]extracte
 		}
 		if _, ok := files[rel]; !ok {
 			i.log.Info("removing unexpected file from generation", "file", rel)
-			return os.Remove(p)
+			return os.Remove(p) //nolint:gosec // generation directory is root-owned and only writable by the installer
 		}
 		return nil
 	})
