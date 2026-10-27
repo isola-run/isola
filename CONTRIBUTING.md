@@ -43,8 +43,6 @@ To install or refresh only the Go development tools:
 ./hack/setup.sh --tools-only
 ```
 
-Keep the reported tools directory first on your `PATH` so Git hooks use the updated binaries.
-
 ### Start developing
 
 ```bash
