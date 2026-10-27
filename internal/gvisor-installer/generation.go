@@ -129,6 +129,15 @@ func (i *Installer) verifyGenerationCached(g Generation) error {
 // Exact-set equality with the manifest.
 func (i *Installer) verifyGeneration(g Generation) error {
 	dir := g.hostDir(i.cfg)
+	for _, d := range []string{i.cfg.hostPath(i.cfg.InstallDir), filepath.Dir(dir), dir, filepath.Join(dir, sidecarDirName)} {
+		fi, err := os.Lstat(d)
+		if err != nil || !fi.IsDir() {
+			return fmt.Errorf("generation directory %q missing or not a directory", d)
+		}
+		if fi.Mode().Perm() != 0o755 {
+			return fmt.Errorf("generation directory %q has mode %04o, expected 0755", d, fi.Mode().Perm())
+		}
+	}
 	for name, want := range g.Files {
 		p := filepath.Join(dir, filepath.FromSlash(name))
 		// Lstat: a symlink to matching content must not pass as payload, or

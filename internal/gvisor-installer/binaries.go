@@ -77,6 +77,16 @@ func (i *Installer) ensureGeneration(ctx context.Context) (Generation, bool, err
 	if err := os.MkdirAll(releasesHost, 0o755); err != nil { //nolint:gosec // layout must be world-readable for containerd and shims
 		return Generation{}, false, fmt.Errorf("creating releases dir: %w", err)
 	}
+	// Modular helpers may re-exec as an unprivileged user. MkdirAll alone
+	// preserves restrictive existing modes and is filtered by the umask.
+	for _, dir := range []string{i.cfg.hostPath(i.cfg.InstallDir), releasesHost} {
+		if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
+			return Generation{}, false, fmt.Errorf("installation path %s is not a directory", dir)
+		}
+		if err := os.Chmod(dir, 0o755); err != nil { //nolint:gosec // installer-owned directory must be traversable by unprivileged helpers
+			return Generation{}, false, fmt.Errorf("setting installation directory permissions: %w", err)
+		}
+	}
 	sweepStaleStaging(releasesHost)
 
 	if g, ok := i.intactGeneration(version); ok {
