@@ -54,7 +54,7 @@ docker_build(
     'isola-snapshot-uploader',
     context='.',
     dockerfile='cmd/snapshot-uploader/Dockerfile',
-    only=['cmd/snapshot-uploader/', 'internal/', 'go.mod', 'go.sum'],
+    only=['cmd/snapshot-uploader/', 'cmd/runsc-launcher/', 'internal/', 'go.mod', 'go.sum'],
     match_in_env_vars=True,
 )
 

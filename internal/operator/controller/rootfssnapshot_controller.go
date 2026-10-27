@@ -144,7 +144,7 @@ func (r *RootfsSnapshotReconciler) snapshotterHostVolumes() []corev1.Volume {
 func (r *RootfsSnapshotReconciler) snapshotterCommand(containerID, snapshotPath string) (image string, command, args []string) {
 	runscArgs := []string{fmt.Sprintf("--root=%s", r.GvisorRunscRoot), "tar", "rootfs-upper", "--file", snapshotPath, containerID}
 	if !r.managedGvisor() {
-		return "gcr.io/distroless/static:nonroot", []string{r.GvisorRunscPath}, runscArgs
+		return r.UploaderImage, []string{r.GvisorRunscPath}, runscArgs
 	}
 	return r.UploaderImage, []string{runscLauncherPath}, append([]string{
 		"--bundle-root=" + r.containerdBundleRoot(),

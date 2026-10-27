@@ -17,6 +17,7 @@ package command
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -25,6 +26,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -36,6 +38,22 @@ import (
 	sandboxsidecar "github.com/isola-run/isola/internal/sandbox-sidecar"
 	sidecarapi "github.com/isola-run/isola/internal/sidecar-api"
 )
+
+// failAfterFirstWrite serves the first write and fails every one after it,
+// simulating a stream that dies partway through.
+type failAfterFirstWrite struct {
+	httptest.ResponseRecorder
+	err   error
+	wrote bool
+}
+
+func (w *failAfterFirstWrite) Write(p []byte) (int, error) {
+	if w.wrote {
+		return 0, w.err
+	}
+	w.wrote = true
+	return w.ResponseRecorder.Write(p)
+}
 
 // extractSSEData parses SSE events from a response body and returns the concatenated data.
 func extractSSEData(body string) string {
@@ -739,7 +757,7 @@ var _ = Describe("Command Handlers", func() {
 		})
 	})
 
-	Describe("streaming file read errors", func() {
+	Describe("streaming output file errors", func() {
 		It("aborts streaming on file read error instead of spinning", func() {
 			code, result := postCommand(`{"args": ["sleep", "60"]}`)
 			Expect(code).To(Equal(http.StatusAccepted))
@@ -764,13 +782,64 @@ var _ = Describe("Command Handlers", func() {
 			done := make(chan struct{})
 			go func() {
 				defer GinkgoRecover()
-				commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
-				close(done)
+				defer close(done)
+				Expect(func() {
+					commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stdout", result.ID))
+				}).To(PanicWith(http.ErrAbortHandler))
 			}()
 
-			// With the fix, streamOutput detects the non-EOF read error and returns.
+			// With the fix, streamOutput detects the non-EOF read error and aborts.
 			// Without the fix, it loops forever (sleep 100ms between retries).
 			Eventually(done, "2s").Should(BeClosed())
+		})
+
+		It("returns 500 when the output file cannot be opened", func() {
+			code, result := postCommand(`{"args": ["sleep", "60"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+			DeferCleanup(func() {
+				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.ID))
+			})
+
+			commandHandlers.cmdMu.RLock()
+			entry := commandHandlers.commands[result.ID]
+			commandHandlers.cmdMu.RUnlock()
+
+			// Nothing has been streamed yet, so the failure is reportable as a status
+			// rather than an abort.
+			Expect(os.Remove(filepath.Join(entry.outputDir, "stderr"))).To(Succeed())
+
+			resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/stderr", result.ID))
+			Expect(resp.Code).To(Equal(http.StatusInternalServerError))
+		})
+	})
+
+	Describe("streaming write errors", func() {
+		// The initial keepalive lands, then the first data write fails.
+		streamOnto := func(writeErr error) func() {
+			code, result := postCommand(`{"args": ["echo", "hello"]}`)
+			Expect(code).To(Equal(http.StatusAccepted))
+			DeferCleanup(func() {
+				commandAPI.Delete(fmt.Sprintf("/v1/commands/%s", result.ID))
+			})
+
+			Eventually(func() *int {
+				resp := commandAPI.Get(fmt.Sprintf("/v1/commands/%s/status", result.ID))
+				var status sidecarapi.CommandStatusResponse
+				Expect(json.NewDecoder(resp.Body).Decode(&status)).To(Succeed())
+				return status.ExitCode
+			}).ShouldNot(BeNil())
+
+			mock := &failAfterFirstWrite{ResponseRecorder: *httptest.NewRecorder(), err: writeErr}
+			req := httptest.NewRequest("GET", fmt.Sprintf("/v1/commands/%s/stdout", result.ID), nil)
+			return func() { commandHandler.ServeHTTP(mock, req) }
+		}
+
+		It("aborts the response when an SSE write fails", func() {
+			Expect(streamOnto(errors.New("stream broke"))).To(PanicWith(http.ErrAbortHandler))
+		})
+
+		It("ends quietly when the client disconnects mid-stream", func() {
+			Expect(streamOnto(syscall.EPIPE)).NotTo(Panic())
 		})
 	})
 

@@ -70,8 +70,6 @@ spec:
               value: {{ $inst.downloadURLBase | quote }}
             - name: GVISOR_HANDLER
               value: {{ $inst.handler | quote }}
-            - name: GVISOR_INSTALL_DIR
-              value: {{ $inst.installDir | quote }}
             - name: LOG_LEVEL
               value: {{ $inst.logging.level | quote }}
             - name: LOG_DEV_MODE
@@ -105,7 +103,7 @@ spec:
             - name: containerd-run
               mountPath: /host/run/containerd
             - name: install-dir
-              mountPath: /host{{ $inst.installDir }}
+              mountPath: /host/opt/isola/bin
             - name: runsc-config
               mountPath: /etc/isola-gvisor
               readOnly: true
@@ -125,7 +123,7 @@ spec:
             type: DirectoryOrCreate
         - name: install-dir
           hostPath:
-            path: {{ $inst.installDir }}
+            path: /opt/isola/bin
             type: DirectoryOrCreate
         - name: runsc-config
           configMap:

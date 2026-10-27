@@ -171,3 +171,31 @@ func TestParseArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveRunscFallsBackForExternalSeparateDirectories(t *testing.T) {
+	bundleRoot, installDir := newBundle(t,
+		"/usr/bin/containerd-shim-runsc-v1", "/usr/local/bin/runsc")
+	got, err := resolveRunsc(options{
+		bundleRoot: bundleRoot, namespace: testNS, containerID: testCID,
+		installDir: installDir, fallback: "/usr/local/bin/runsc",
+	})
+	if err != nil || got != "/usr/local/bin/runsc" {
+		t.Fatalf("external fallback = (%q, %v)", got, err)
+	}
+}
+
+func TestResolveRunscRejectsManagedAndExternalDisagreement(t *testing.T) {
+	for _, managedShim := range []bool{true, false} {
+		shim, binary := "/usr/bin/containerd-shim-runsc-v1", "$INSTALL/releases/"+testGen+"/runsc"
+		if managedShim {
+			shim, binary = "$INSTALL/releases/"+testGen+"/containerd-shim-runsc-v1", "/usr/local/bin/runsc"
+		}
+		bundleRoot, installDir := newBundle(t, shim, binary)
+		if _, err := resolveRunsc(options{
+			bundleRoot: bundleRoot, namespace: testNS, containerID: testCID,
+			installDir: installDir, fallback: "/usr/local/bin/runsc",
+		}); err == nil {
+			t.Fatal("conflicting managed and external records were accepted")
+		}
+	}
+}

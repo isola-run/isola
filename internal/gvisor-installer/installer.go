@@ -199,13 +199,13 @@ func (i *Installer) Reconcile(ctx context.Context) error {
 }
 
 func (i *Installer) reconcile(ctx context.Context) (out reconcileOutcome, err error) {
-	if err := i.preflight(ctx); err != nil {
+	st := i.readState()
+	if err := i.preflight(ctx, st.Pending != nil); err != nil {
 		return out, err
 	}
 
 	// While pending exists, neither the on-disk block nor the served handler
 	// can be attributed to a generation, so settle it before classifying.
-	st := i.readState()
 	if st.Pending != nil {
 		if err := i.recoverPending(ctx, &st); err != nil {
 			return out, fmt.Errorf("recovering interrupted activation: %w", err)
@@ -676,12 +676,16 @@ func (i *Installer) rollbackPending(ctx context.Context, st *installerState, raw
 			return fmt.Errorf("restoring previous managed block: %w", err)
 		}
 	}
-	// A spent budget here means the restart already happened, so the journal
-	// write below must still be retryable without another one.
-	if !i.recoveryGate.blocked(time.Now(), recoverySig(p, "roll back")) {
-		if err := i.recoveryRestart(ctx, p, "roll back"); err != nil {
-			return fmt.Errorf("restarting containerd onto the previous config: %w", err)
-		}
+	// Recovery preserves surrounding config, which may have been edited
+	// while this activation was interrupted. Do not stop a healthy daemon
+	// until the complete restored config parses successfully.
+	if _, err := i.host.Run(ctx, "containerd", "config", "dump"); err != nil {
+		return fmt.Errorf("restored containerd config failed validation, leaving recovery pending: %w", err)
+	}
+	// A cooldown records an attempt, not a successful restart. Keep the
+	// journal until a restart has actually settled the predecessor.
+	if err := i.recoveryRestart(ctx, p, "roll back"); err != nil {
+		return fmt.Errorf("restarting containerd onto the previous config: %w", err)
 	}
 	if p.PreviousHandler != "" {
 		// Settled but unhealthy is still settled; the normal flow takes over.
@@ -789,19 +793,19 @@ func (i *Installer) verifyServing(ctx context.Context, handler string, want *run
 	if !slices.Contains(st.Handlers, handler) {
 		return fmt.Errorf("runtime handler %q not served by containerd (handlers: %v)", handler, st.Handlers)
 	}
+	loaded, ok := st.Runtimes[handler]
+	if !ok {
+		return fmt.Errorf("containerd did not report a loaded config for runtime handler %q", handler)
+	}
+	if loaded.Type != runscRuntimeType {
+		return fmt.Errorf("containerd serves handler %q with runtime_type %q, expected %s", handler, loaded.Type, runscRuntimeType)
+	}
 	if want != nil {
-		loaded, ok := st.Runtimes[handler]
-		if !ok {
-			return fmt.Errorf("containerd did not report a loaded config for runtime handler %q", handler)
-		}
 		if loaded.Path != want.ShimPath {
 			return fmt.Errorf("containerd serves handler %q from shim %q, expected %q", handler, loaded.Path, want.ShimPath)
 		}
 		if loaded.ConfigPath != want.ConfigPath {
 			return fmt.Errorf("containerd serves handler %q with ConfigPath %q, expected %q", handler, loaded.ConfigPath, want.ConfigPath)
-		}
-		if loaded.Type != runscRuntimeType {
-			return fmt.Errorf("containerd serves handler %q with runtime_type %q, expected %s", handler, loaded.Type, runscRuntimeType)
 		}
 	}
 	return nil

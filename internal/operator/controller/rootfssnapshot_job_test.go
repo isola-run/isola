@@ -28,8 +28,8 @@ func TestSnapshotterCommandUnmanagedNode(t *testing.T) {
 		UploaderImage:   "example.com/uploader:v1",
 	}
 	image, cmd, args := r.snapshotterCommand("abc", "/snapshot/rootfs.tar")
-	if image == r.UploaderImage {
-		t.Error("unmanaged nodes must not need the uploader image")
+	if image != r.UploaderImage {
+		t.Errorf("image = %q, want the configured uploader image", image)
 	}
 	if len(cmd) != 1 || cmd[0] != "/usr/local/bin/runsc" {
 		t.Errorf("command = %v, want the configured runsc", cmd)

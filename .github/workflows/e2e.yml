@@ -30,11 +30,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       # Build all images in parallel with caching
       - name: Build isola-operator image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: cmd/operator/Dockerfile
@@ -44,7 +44,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=operator
 
       - name: Build sandbox-sidecar image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: cmd/sandbox-sidecar/Dockerfile
@@ -54,7 +54,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=sidecar
 
       - name: Build isola-snapshot-uploader image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: cmd/snapshot-uploader/Dockerfile
@@ -64,7 +64,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=uploader
 
       - name: Build api-gateway image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: cmd/api-gateway/Dockerfile
@@ -74,7 +74,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=api
 
       - name: Build snapshot-mounter image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: cmd/snapshot-mounter
           file: cmd/snapshot-mounter/Dockerfile
@@ -84,7 +84,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=snapshot-mounter
 
       - name: Build gvisor-installer image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: cmd/gvisor-installer/Dockerfile
@@ -94,7 +94,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=gvisor-installer
 
       - name: Create Kind cluster
-        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1
+        uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
           cluster_name: ${{ env.KIND_CLUSTER_NAME }}
           config: hack/kind-config.yaml
@@ -174,7 +174,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
 
       - name: Run E2E tests
         working-directory: tests/e2e
@@ -183,7 +183,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: test-results
           path: tests/e2e/test-results.xml
@@ -230,7 +230,7 @@ jobs:
 
       - name: Upload failure artifacts
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: e2e-failure-logs-${{ github.run_id }}
           path: |

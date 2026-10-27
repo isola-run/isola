@@ -426,7 +426,7 @@ func TestReconcileForeignInstall(t *testing.T) {
 	if err := os.WriteFile(cfgPath, []byte(foreign), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	env.cri.set(criStatus{RuntimeReady: true, Handlers: []string{"runc", "runsc"}}, nil)
+	env.cri.set(criStatusFromConfig([]byte(foreign), "runsc"), nil)
 
 	if err := env.i.Reconcile(t.Context()); err != nil {
 		t.Fatal(err)
@@ -1815,32 +1815,6 @@ func TestReconcileUpgradeActivatesNewGeneration(t *testing.T) {
 	// Two restarts total: initial install + upgrade activation.
 	if a.env.host.restarts != 2 {
 		t.Errorf("restarts = %d, want 2", a.env.host.restarts)
-	}
-}
-
-// An installDir change is an ordinary activation: the state file lives
-// outside installDir, so the old absolute generation stays recorded and
-// retained while the new location takes over.
-func TestReconcileInstallDirChange(t *testing.T) {
-	env := newTestEnv(t)
-	if err := env.i.Reconcile(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	oldGen := env.activeGen(t)
-
-	env.i.cfg.InstallDir = "/opt/isola/bin-v2"
-	if err := env.i.Reconcile(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	newGen := env.activeGen(t)
-	if !strings.HasPrefix(newGen.GenerationPath, "/opt/isola/bin-v2/") {
-		t.Errorf("active generation = %s, want it under the new installDir", newGen.GenerationPath)
-	}
-	if _, err := os.Stat(env.i.cfg.hostPath(oldGen.GenerationPath)); err != nil {
-		t.Error("old-installDir generation removed")
-	}
-	if got := env.node.label(LabelGVisorReady); got != "true" {
-		t.Errorf("ready label = %q", got)
 	}
 }
 

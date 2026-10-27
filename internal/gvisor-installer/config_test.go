@@ -76,7 +76,6 @@ func TestConfigFromEnv(t *testing.T) {
 		{"handler with uppercase", func(t *testing.T) { t.Setenv("GVISOR_HANDLER", "Runsc") }, "GVISOR_HANDLER"},
 		{"handler with marker injection", func(t *testing.T) { t.Setenv("GVISOR_HANDLER", "x# END isola") }, "GVISOR_HANDLER"},
 		{"handler with leading hyphen", func(t *testing.T) { t.Setenv("GVISOR_HANDLER", "-runsc") }, "GVISOR_HANDLER"},
-		{"relative install dir", func(t *testing.T) { t.Setenv("GVISOR_INSTALL_DIR", "opt/bin") }, "absolute"},
 		{"plain http origin", func(t *testing.T) {
 			t.Setenv("GVISOR_DOWNLOAD_URL_BASE", "http://mirror.internal/gvisor")
 		}, "absolute https URL"},

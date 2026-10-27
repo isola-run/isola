@@ -34,8 +34,7 @@ import (
 const (
 	containerdConfigPath       = "/etc/containerd/config.toml"
 	containerdConfigBackupPath = "/etc/containerd/config.toml.isola-orig"
-	// Outside InstallDir so the active/pending record survives installDir
-	// changes.
+	// Keep the recovery journal beside the containerd configuration.
 	stateFilePath = "/etc/containerd/isola-gvisor-state.json"
 	criSocketPath = "/run/containerd/containerd.sock"
 )
@@ -52,9 +51,9 @@ type Config struct {
 	// from <base>/<version>/<arch>/gvisor.tar.bz2. https only, no opt-out.
 	DownloadURLBase string
 	Handler         string
-	InstallDir      string
 
 	// Fixed by the image and DaemonSet spec, fields only so tests can redirect.
+	InstallDir     string
 	HostRoot       string
 	RunscConfigSrc string
 	HealthAddr     string
@@ -75,7 +74,7 @@ func ConfigFromEnv() (Config, error) {
 		Version:         os.Getenv("GVISOR_VERSION"),
 		DownloadURLBase: env.GetOrDefault("GVISOR_DOWNLOAD_URL_BASE", "https://storage.googleapis.com/gvisor/releases/release"),
 		Handler:         env.GetOrDefault("GVISOR_HANDLER", "runsc"),
-		InstallDir:      env.GetOrDefault("GVISOR_INSTALL_DIR", "/opt/isola/bin"),
+		InstallDir:      "/opt/isola/bin",
 
 		HostRoot:       "/host",
 		RunscConfigSrc: "/etc/isola-gvisor/runsc.toml",
@@ -97,9 +96,6 @@ func ConfigFromEnv() (Config, error) {
 	}
 	if !handlerRe.MatchString(cfg.Handler) {
 		return cfg, fmt.Errorf("GVISOR_HANDLER %q must be a lowercase DNS label (letters, digits, hyphens)", cfg.Handler)
-	}
-	if !path.IsAbs(cfg.InstallDir) {
-		return cfg, fmt.Errorf("GVISOR_INSTALL_DIR must be an absolute path, got %q", cfg.InstallDir)
 	}
 	return cfg, nil
 }

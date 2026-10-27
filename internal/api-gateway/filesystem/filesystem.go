@@ -153,11 +153,14 @@ func (h *Handlers) GetFilesystem(ctx context.Context, input *FilesystemReadInput
 			dw := httputil.NewDeadlineWriter(ctx.BodyWriter(), rc, httputil.StreamTimeout)
 
 			if _, err := io.Copy(dw, resp.Body); err != nil {
+				// io.Copy hides which side failed, so only errors a read cannot produce count as a client disconnect
 				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) {
 					h.logger.Warn("client disconnected during file stream", "error", err, "id", input.SandboxID)
-				} else {
-					h.logger.Error("sidecar error streaming file", "error", err, "id", input.SandboxID)
+					return
 				}
+				h.logger.Error("sidecar error streaming file", "error", err, "id", input.SandboxID)
+				// abort the stream with an error, using panic
+				panic(http.ErrAbortHandler)
 			}
 		},
 	}, nil

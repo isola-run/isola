@@ -266,7 +266,7 @@ gvisor:
     # gVisor release to install. Must be a dated release (not "latest") of
     # 20260721.0 or later: earlier releases predate the gvisor.tar.bz2 archive
     # and ship only loose binaries, which this installer does not install.
-    version: "20260721.0"
+    version: "20261019.0"
 
     # The release archive is fetched from
     # <downloadURLBase>/<version>/<arch>/gvisor.tar.bz2.
@@ -284,13 +284,8 @@ gvisor:
     # handler). The rootfs snapshot feature requires "runsc" or "gvisor".
     handler: runsc
 
-    # Host directory for the installation. Deliberately isola-owned (not
-    # /usr/local/bin) so gVisor installed by other means is never overwritten.
-    # Each release lands in an immutable <installDir>/releases/<generation>/
-    # directory; old generations are kept after upgrades because running
-    # sandboxes use them until they stop (see the README for cleanup), and
-    # <installDir>/runsc is a symlink to the active generation's runsc.
-    installDir: /opt/isola/bin
+    # Releases and shim configs are retained under /opt/isola/bin so running
+    # sandboxes keep the binaries and configuration they started with.
 
     # runsc flags for the shim config on each node; values must be strings.
     # systemd-cgroup is auto-detected unless set here.

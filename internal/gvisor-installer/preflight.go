@@ -41,8 +41,8 @@ var knownDistroMarkers = []struct {
 // live process rather than enumerating distros, so unknown setups are caught
 // too. Keyed on MainPID rather than cached outright, because containerd can
 // be restarted under a different unit or --config while this pod runs.
-func (i *Installer) preflight(ctx context.Context) error {
-	out, err := i.host.Run(ctx, "systemctl", "show", "containerd", "--property=LoadState,ActiveState,MainPID")
+func (i *Installer) preflight(ctx context.Context, recovering bool) error {
+	out, err := i.host.Run(ctx, "systemctl", "show", "containerd", "--property=LoadState,ActiveState,MainPID,ExecStart")
 	if err != nil {
 		return fmt.Errorf("querying the containerd systemd unit: %w%s", err, i.distroHint(ctx))
 	}
@@ -51,11 +51,14 @@ func (i *Installer) preflight(ctx context.Context) error {
 		return fmt.Errorf("no containerd systemd unit on this node (LoadState=%s), gVisor auto-install requires a standard systemd-managed containerd%s",
 			props["LoadState"], i.distroHint(ctx))
 	}
-	if props["ActiveState"] != "active" {
+	if props["ActiveState"] != "active" && !recovering {
 		return fmt.Errorf("containerd systemd unit is not active (ActiveState=%s)", props["ActiveState"])
 	}
 	pid, err := strconv.Atoi(props["MainPID"])
 	if err != nil || pid <= 0 {
+		if recovering {
+			return validateRecoveryExecStart(props["ExecStart"])
+		}
 		return fmt.Errorf("containerd systemd unit reports no main PID (MainPID=%q)", props["MainPID"])
 	}
 	if i.preflightPID == pid {
@@ -69,6 +72,11 @@ func (i *Installer) preflight(ctx context.Context) error {
 	if cfg := configFlagFromCmdline(cmdline); cfg != "" && cfg != containerdConfigPath {
 		return fmt.Errorf("containerd runs with a non-standard config (--config %s), gVisor auto-install only manages %s%s",
 			cfg, containerdConfigPath, i.distroHint(ctx))
+	}
+	// Pending recovery must be able to repair a daemon whose CRI plugin did
+	// not start. The live process still establishes ownership of the config.
+	if recovering {
+		return nil
 	}
 	// Refuse before mutating anything we could never verify afterwards.
 	st, err := i.cri.Status(ctx, true)
@@ -121,4 +129,24 @@ func (i *Installer) distroHint(ctx context.Context) string {
 		}
 	}
 	return ""
+}
+
+// With no process to inspect, accept only an unambiguous direct invocation.
+// systemctl joins argv with spaces, so parsing general quoting or wrappers
+// would invent argument boundaries and could authorize the wrong config.
+func validateRecoveryExecStart(value string) error {
+	prefix, rest, ok := strings.Cut(value, " ; argv[]=")
+	binary, direct := strings.CutPrefix(prefix, "{ path=")
+	argv, _, haveArgs := strings.Cut(rest, " ; ")
+	if !ok || !direct || !haveArgs || !filepath.IsAbs(binary) ||
+		filepath.Base(binary) != "containerd" || strings.ContainsAny(binary, " \t\n\\\"'$;{}") {
+		return fmt.Errorf("cannot recover stopped containerd: ExecStart must directly invoke containerd with its standard config")
+	}
+	for _, suffix := range []string{"", " --config " + containerdConfigPath, " --config=" + containerdConfigPath,
+		" -c " + containerdConfigPath, " -c=" + containerdConfigPath} {
+		if argv == binary+suffix {
+			return nil
+		}
+	}
+	return fmt.Errorf("cannot recover stopped containerd: unsupported ExecStart arguments, expected the standard %s config", containerdConfigPath)
 }

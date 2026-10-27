@@ -189,9 +189,6 @@ isola: gvisor.installer.version
 isola: gvisor.installer.handler
     handler must be a lowercase DNS label (letters, digits, hyphens), e.g. "runsc".
     It becomes the RuntimeClass handler and the containerd runtime entry.
-{{- else if not (hasPrefix "/" $inst.installDir) -}}
-isola: gvisor.installer.installDir
-    installDir must be an absolute host path (e.g. /opt/isola/bin).
 {{- else if not (regexMatch "(?i)^https?://[^/]" ($inst.downloadURLBase | default "")) -}}
 isola: gvisor.installer.downloadURLBase
     downloadURLBase must be an absolute https URL,
@@ -326,7 +323,7 @@ Empty when the installer is not managing this cluster's nodes.
 */}}
 {{- define "isola.operator.gvisorInstallDir" -}}
 {{- if .Values.gvisor.installer.enabled -}}
-{{- .Values.gvisor.installer.installDir -}}
+/opt/isola/bin
 {{- end -}}
 {{- end }}
 

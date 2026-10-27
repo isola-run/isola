@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -226,11 +227,13 @@ func (h *Handlers) GetFilesystem(_ context.Context, input *FilesystemReadInput) 
 			dw := httputil.NewDeadlineWriter(ctx.BodyWriter(), rc, httputil.StreamTimeout)
 
 			if _, err := io.Copy(dw, f); err != nil {
-				if errors.Is(err, context.Canceled) {
+				if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
 					h.logger.Warn("client disconnected during file stream", "error", err, "path", targetPath)
-				} else {
-					h.logger.Error("failed to stream file", "error", err, "path", targetPath)
+					return
 				}
+				h.logger.Error("failed to stream file", "error", err, "path", targetPath)
+				// abort the stream with an error, using panic
+				panic(http.ErrAbortHandler)
 			}
 		},
 	}, nil

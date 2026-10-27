@@ -132,14 +132,14 @@ func resolveRunsc(o options) (string, error) {
 	fromShim, shimErr := generationFromShimPath(dir)
 	fromState, haveState := generationFromShimState(dir)
 
-	// Disagreement means something rewrote one of the two records, and
-	// guessing which is authoritative could pair a sentry with the wrong
-	// release.
-	if shimErr == nil && haveState && fromShim != fromState {
+	releases := filepath.Join(o.installDir, "releases")
+	managed := filepath.Dir(fromShim) == releases || filepath.Dir(fromState) == releases
+	// Managed releases keep shim and runsc together. External installations
+	// may legitimately place them in different directories.
+	if managed && shimErr == nil && haveState && fromShim != fromState {
 		return "", fmt.Errorf("containerd records shim generation %q but the shim state records %q", fromShim, fromState)
 	}
 
-	releases := filepath.Join(o.installDir, "releases")
 	for _, gen := range []string{fromShim, fromState} {
 		if gen != "" && filepath.Dir(gen) == releases {
 			return filepath.Join(gen, "runsc"), nil
