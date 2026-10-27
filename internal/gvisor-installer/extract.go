@@ -139,6 +139,9 @@ func (i *Installer) extractTar(r io.Reader, destDir string) (map[string]extracte
 // name ("foo..bar") is fine.
 func normalizeEntryName(raw string) (string, error) {
 	name := strings.TrimSuffix(strings.TrimPrefix(raw, "./"), "/")
+	if !filepath.IsLocal(name) {
+		return "", fmt.Errorf("archive entry %q has an unsafe path", raw)
+	}
 	parts := strings.Split(name, "/")
 	for _, part := range parts {
 		if part == "" || part == "." || part == ".." {
