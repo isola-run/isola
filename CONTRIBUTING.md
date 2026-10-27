@@ -18,20 +18,16 @@ If you have questions, start a [GitHub Discussion](https://github.com/isola-run/
 Install these before running the setup script:
 
 - [Docker](https://docs.docker.com/get-docker/)
-- [Go](https://go.dev/dl/) 1.21+ (the project uses Go 1.26, which is downloaded automatically via [GOTOOLCHAIN](https://go.dev/doc/toolchain))
+- [Go](https://go.dev/dl/) 1.21+ (the project uses Go 1.27, which is downloaded automatically via [GOTOOLCHAIN](https://go.dev/doc/toolchain))
 - [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - [Helm](https://helm.sh/docs/intro/install/)
 - [Tilt](https://docs.tilt.dev/install.html)
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (for the Python SDK)
 - [Node.js](https://nodejs.org/) 22+ and [pnpm](https://pnpm.io/installation) (for the TypeScript SDK)
-- [golangci-lint](https://golangci-lint.run/welcome/install/) (for linting and formatting)
-- [setup-envtest](https://pkg.go.dev/sigs.k8s.io/controller-runtime/tools/setup-envtest) (for unit tests)
 
-Optional:
-- [controller-gen](https://book.kubebuilder.io/reference/controller-gen) -- needed only if you modify CRD types
-- [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) -- vulnerability scanning
-- [lefthook](https://github.com/evilmartians/lefthook) -- Git hooks
+The setup script installs the pinned versions of golangci-lint, setup-envtest,
+controller-gen, govulncheck, and lefthook using the Go version in `go.mod`.
 
 ### One-time setup
 
@@ -39,6 +35,12 @@ Run the setup script to create a Kind cluster with a local registry and gVisor:
 
 ```bash
 ./hack/setup.sh
+```
+
+To install or refresh only the Go development tools:
+
+```bash
+./hack/setup.sh --tools-only
 ```
 
 ### Start developing

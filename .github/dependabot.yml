@@ -16,7 +16,9 @@ updates:
       interval: "weekly"
 
   - package-ecosystem: "uv"
-    directory: "/sdks/python"
+    directories:
+      - "/sdks/python"
+      - "/tests/e2e"
     schedule:
       interval: "weekly"
     groups:
@@ -29,4 +31,18 @@ updates:
       interval: "weekly"
     groups:
       typescript-sdk-deps:
+        patterns: ["*"]
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/cmd/api-gateway"
+      - "/cmd/gvisor-installer"
+      - "/cmd/operator"
+      - "/cmd/sandbox-sidecar"
+      - "/cmd/snapshot-mounter"
+      - "/cmd/snapshot-uploader"
+    schedule:
+      interval: "weekly"
+    groups:
+      container-images:
         patterns: ["*"]

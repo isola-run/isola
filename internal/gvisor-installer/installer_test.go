@@ -1327,7 +1327,7 @@ func TestReconcileAbortsWhenConfigChangedUnderIt(t *testing.T) {
 		}
 		if !edited {
 			edited = true
-			if err := os.WriteFile(cfgPath, append(raw, adminEdit...), 0o600); err != nil {
+			if err := os.WriteFile(cfgPath, append(raw, adminEdit...), 0o600); err != nil { //nolint:gosec // test fixture under t.TempDir
 				return nil, err
 			}
 		}
@@ -1595,7 +1595,7 @@ func (a upgradeArtifacts) writeCrashState(t *testing.T, blockOnDisk string, st i
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(a.env.i.cfg.hostPath(containerdConfigPath), next, 0o600); err != nil {
+	if err := os.WriteFile(a.env.i.cfg.hostPath(containerdConfigPath), next, 0o600); err != nil { //nolint:gosec // test fixture under t.TempDir
 		t.Fatal(err)
 	}
 	st.SchemaVersion = stateSchemaVersion
@@ -1922,7 +1922,7 @@ func TestActivateRollsBackToActiveBlockNotDriftedOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cfgPath, drifted, 0o600); err != nil {
+	if err := os.WriteFile(cfgPath, drifted, 0o600); err != nil { //nolint:gosec // test fixture under t.TempDir
 		t.Fatal(err)
 	}
 	// Force a re-activation towards v1 whose restart fails, then heals on the

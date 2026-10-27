@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM --platform=$BUILDPLATFORM golang:1.26.10-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS builder
 
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown
@@ -42,7 +42,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Alpine (not distroless): the installer needs nsenter to run systemctl and
 # containerd in the host's mount namespace, and runs as root by design
 # (privileged DaemonSet that writes host paths).
-FROM alpine:3.21
+FROM alpine:3.24
 
 RUN apk add --no-cache util-linux-misc
 

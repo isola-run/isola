@@ -58,7 +58,7 @@ func run(argv []string) error {
 	if err != nil {
 		return err
 	}
-	fi, err := os.Stat(runsc)
+	fi, err := os.Stat(runsc) //nolint:gosec // path resolved from containerd state or an administrator-configured fallback
 	if err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm()&0o111 == 0 {
 		return fmt.Errorf("resolved runsc %q is not an executable file", runsc)
 	}

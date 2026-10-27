@@ -22,11 +22,26 @@ REGISTRY_NAME="${REGISTRY_NAME:-kind-registry}"
 REGISTRY_PORT="${REGISTRY_PORT:-5001}"
 
 # Tool versions (keep in sync with CI workflows)
-GOLANGCI_LINT_VERSION="v2.9.0"
-GOVULNCHECK_VERSION="v1.1.4"
-SETUP_ENVTEST_VERSION="release-0.24"
-CONTROLLER_GEN_VERSION="v0.20.0"
-LEFTHOOK_VERSION="v2.0.15"
+GOLANGCI_LINT_VERSION="v2.15.0"
+GOVULNCHECK_VERSION="v1.9.0"
+SETUP_ENVTEST_VERSION="v0.25.2"
+CONTROLLER_GEN_VERSION="v0.23.0"
+LEFTHOOK_VERSION="v2.2.2"
+
+TOOLS_ONLY=0
+case "$*" in
+    "") ;;
+    --tools-only) TOOLS_ONLY=1 ;;
+    -h|--help)
+        echo "Usage: $0 [--tools-only]"
+        echo "  --tools-only  Install pinned Go tools without setting up the cluster"
+        exit 0
+        ;;
+    *)
+        echo "Usage: $0 [--tools-only]" >&2
+        exit 1
+        ;;
+esac
 
 echo "=== Isola Development Environment Setup ==="
 
@@ -41,40 +56,48 @@ check_tool() {
     echo "  [OK] $tool found"
 }
 
-check_optional_tool() {
+install_go_tool() {
     local tool="$1"
-    local hint="$2"
+    local package="$2"
+    local version="$3"
 
-    if ! command -v "$tool" &> /dev/null; then
-        echo "  [SKIP] $tool not found (optional). $hint"
-        return 1
-    fi
-    echo "  [OK] $tool found"
+    echo "  Installing $tool $version with Go $GO_VERSION..."
+    go install "${package}@${version}"
 }
 
 echo ""
 echo "Checking prerequisites..."
-check_tool "docker" "Install Docker: https://docs.docker.com/get-docker/"
-check_tool "kind" "Install Kind: https://kind.sigs.k8s.io/docs/user/quick-start/#installation"
-check_tool "kubectl" "Install kubectl: https://kubernetes.io/docs/tasks/tools/"
-check_tool "helm" "Install Helm: https://helm.sh/docs/intro/install/"
-check_tool "tilt" "Install Tilt: https://docs.tilt.dev/install.html"
-if check_optional_tool "golangci-lint" "Install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"; then
-    installed_version=$(golangci-lint version --short 2>/dev/null || echo "unknown")
-    if [ "$installed_version" != "${GOLANGCI_LINT_VERSION#v}" ]; then
-        echo "    [WARN] Version mismatch: installed $installed_version, expected ${GOLANGCI_LINT_VERSION#v}"
-    fi
+check_tool "go" "Install Go: https://go.dev/dl/"
+if [ "$TOOLS_ONLY" = "0" ]; then
+    check_tool "docker" "Install Docker: https://docs.docker.com/get-docker/"
+    check_tool "kind" "Install Kind: https://kind.sigs.k8s.io/docs/user/quick-start/#installation"
+    check_tool "kubectl" "Install kubectl: https://kubernetes.io/docs/tasks/tools/"
+    check_tool "helm" "Install Helm: https://helm.sh/docs/intro/install/"
+    check_tool "tilt" "Install Tilt: https://docs.tilt.dev/install.html"
 fi
-if check_optional_tool "govulncheck" "Install: go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"; then
-    installed_version=$(govulncheck -version 2>&1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
-    if [ "$installed_version" != "$GOVULNCHECK_VERSION" ]; then
-        echo "    [WARN] Version mismatch: installed $installed_version, expected $GOVULNCHECK_VERSION"
-    fi
-fi
-check_optional_tool "lefthook" "Install: go install github.com/evilmartians/lefthook/v2@${LEFTHOOK_VERSION}" && HAS_LEFTHOOK=1
 
-check_optional_tool "setup-envtest" "Install: go install sigs.k8s.io/controller-runtime/tools/setup-envtest@${SETUP_ENVTEST_VERSION}"
-check_optional_tool "controller-gen" "Install: go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}"
+GO_VERSION=$(awk '$1 == "go" {print $2; exit}' "${ROOT_DIR}/go.mod")
+export GOTOOLCHAIN="go${GO_VERSION}"
+TOOL_BIN=$(go env GOBIN)
+if [ -z "$TOOL_BIN" ]; then
+    TOOL_BIN=$(go env GOPATH)
+    TOOL_BIN="${TOOL_BIN%%:*}/bin"
+fi
+export PATH="${TOOL_BIN}:${PATH}"
+
+echo ""
+echo "Installing development tools..."
+install_go_tool "golangci-lint" "github.com/golangci/golangci-lint/v2/cmd/golangci-lint" "$GOLANGCI_LINT_VERSION"
+install_go_tool "govulncheck" "golang.org/x/vuln/cmd/govulncheck" "$GOVULNCHECK_VERSION"
+install_go_tool "lefthook" "github.com/evilmartians/lefthook/v2" "$LEFTHOOK_VERSION"
+install_go_tool "setup-envtest" "sigs.k8s.io/controller-runtime/tools/setup-envtest" "$SETUP_ENVTEST_VERSION"
+install_go_tool "controller-gen" "sigs.k8s.io/controller-tools/cmd/controller-gen" "$CONTROLLER_GEN_VERSION"
+
+if [ "$TOOLS_ONLY" = "1" ]; then
+    echo ""
+    echo "Tools installed in ${TOOL_BIN}. Keep this directory first on PATH."
+    exit 0
+fi
 
 # https://kind.sigs.k8s.io/docs/user/local-registry/
 echo ""
@@ -141,12 +164,10 @@ echo ""
 echo "Setting kubectl context..."
 kubectl config use-context "kind-${KIND_CLUSTER_NAME}"
 
-if [ "${HAS_LEFTHOOK:-}" = "1" ]; then
-    echo ""
-    echo "Setting up pre-commit hooks..."
-    cd "${ROOT_DIR}" && lefthook install
-    echo "  [OK] Lefthook hooks installed"
-fi
+echo ""
+echo "Setting up pre-commit hooks..."
+cd "${ROOT_DIR}" && lefthook install
+echo "  [OK] Lefthook hooks installed"
 
 echo ""
 echo "=== Setup Complete ==="

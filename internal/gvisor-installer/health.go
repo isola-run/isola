@@ -50,7 +50,7 @@ func ServeHealth(ctx context.Context, addr string, installer *Installer, log *sl
 	}
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
 	}()

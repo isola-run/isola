@@ -1,5 +1,6 @@
 # Lefthook configuration
-# Install: go install github.com/evilmartians/lefthook/v2@v2.0.13 && lefthook install
+# Install tools: ./hack/setup.sh --tools-only
+# Install hooks: lefthook install
 
 pre-commit:
   parallel: true

@@ -13,7 +13,7 @@ GIT_TREE_STATE ?= $(shell if [ -z "$$(git status --porcelain 2>/dev/null)" ]; th
 
 # Go toolchain version — auto-downloads the correct Go toolchain regardless of
 # what's installed locally (requires Go 1.21+). Must match go.mod `go` directive.
-GO_VERSION ?= 1.26.10
+GO_VERSION ?= 1.27.3
 GOTOOLCHAIN = go$(GO_VERSION)
 export GOTOOLCHAIN
 
@@ -116,7 +116,7 @@ fix-all: fmt lint-fix sdk-python-fix-all sdk-typescript-fix-all ## Fix all auto-
 
 ##@ Testing
 
-ENVTEST_K8S_VERSION ?= 1.36
+ENVTEST_K8S_VERSION ?= 1.37
 FOCUS ?=
 SKIP ?=
 GO_TEST_FLAGS ?=
