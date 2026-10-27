@@ -293,13 +293,13 @@ Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/conta
 
 Add `--set gvisor.installer.enabled=true` to the Helm command to install gVisor automatically. The privileged installer requires systemd-managed containerd using `/etc/containerd/config.toml` and writable host paths. It restarts containerd on eligible nodes and leaves existing `runsc` handlers untouched. See [values.yaml](charts/isola/values.yaml) for version pinning and installer options.
 
-Installed releases are retained for running sandboxes, including after `helm uninstall`. Drain gVisor sandboxes and stop the installer before removing the runtime manually.
+Installed releases are retained for running sandboxes, including after `helm uninstall`.
 
 To install gVisor yourself:
 
 0. Ensure your cluster uses [containerd](https://containerd.io/docs/2.2/getting-started/) (the default container runtime on EKS, AKS, GKE and most clusters).
 
-1. Install the current gVisor release on each node using the [installation guide](https://gvisor.dev/docs/user_guide/install/). Keep `runsc`, `containerd-shim-runsc-v1`, and the `gvisor-bin/` directory together.
+1. Install the current gVisor release on each node using the [installation guide](https://gvisor.dev/docs/user_guide/install/).
 
 2. Configure the containerd runtime. Create `/etc/containerd/runsc.toml`:
 
@@ -333,7 +333,7 @@ metadata:
 handler: runsc
 ```
 
-For local development, `tilt up` deploys the installer automatically.
+For local development, `hack/setup.sh` automates all of the above in a Kind cluster and `tilt up` deploys the gVisor installer automatically.
 
 ### Rootfs snapshots (optional)
 
