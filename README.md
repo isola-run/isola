@@ -256,7 +256,7 @@ Set CPU, memory, and ephemeral storage limits on every container. gVisor runs a 
 
 - A Kubernetes cluster (vanilla, EKS, AKS, GKE, or similar).
 - [Helm](https://helm.sh).
-- A [gVisor](https://gvisor.dev) RuntimeClass configured in your cluster (see [gVisor setup](#gvisor-setup) below).
+- A [gVisor](https://gvisor.dev) RuntimeClass (see [gVisor setup](#gvisor-setup) below).
 - (Optional) An S3, GCS, or Azure Blob Storage bucket for rootfs snapshots.
 
 ### Install with Helm
@@ -289,11 +289,17 @@ CRDs are upgraded automatically as part of the Helm chart. To manage CRDs extern
 
 ### gVisor setup
 
-Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) named `gvisor` in your cluster. If your cluster does not already have gVisor installed:
+Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) named `gvisor` in your cluster.
+
+Add `--set gvisor.installer.enabled=true` to the Helm command to install gVisor automatically. The privileged installer requires systemd-managed containerd using `/etc/containerd/config.toml` and writable host paths. It restarts containerd on eligible nodes and leaves existing `runsc` handlers untouched. See [values.yaml](charts/isola/values.yaml) for version pinning and installer options.
+
+Installed releases are retained for running sandboxes, including after `helm uninstall`.
+
+To install gVisor yourself:
 
 0. Ensure your cluster uses [containerd](https://containerd.io/docs/2.2/getting-started/) (the default container runtime on EKS, AKS, GKE and most clusters).
 
-1. Install the `runsc` binary and `containerd-shim-runsc-v1` on each node. See the [gVisor quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions. If you plan to use rootfs snapshots, install [`release-20260126.0`](https://storage.googleapis.com/gvisor/releases/release/20260126/x86_64/runsc) or later. Egress rate limiting (`network.egressRateLimitBytesPerSecond`) requires [`release-20260615.0`](https://github.com/google/gvisor/releases/tag/release-20260615.0) or later.
+1. Install the current gVisor release on each node using the [installation guide](https://gvisor.dev/docs/user_guide/install/).
 
 2. Configure the containerd runtime. Create `/etc/containerd/runsc.toml`:
 
@@ -327,7 +333,7 @@ metadata:
 handler: runsc
 ```
 
-For local development, `hack/setup.sh` automates all of the above in a Kind cluster.
+For local development, `hack/setup.sh` automates all of the above in a Kind cluster and `tilt up` deploys the gVisor installer automatically.
 
 ### Rootfs snapshots (optional)
 
@@ -367,7 +373,7 @@ Credentials can be provided via workload identity (recommended), a pre-existing 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. The quickest path to a local dev environment:
 
 ```bash
-./hack/setup.sh   # one-time: Kind cluster, local registry, gVisor
+./hack/setup.sh   # one-time: Kind cluster and local registry
 tilt up            # start the dev environment
 make test          # run unit tests
 ```

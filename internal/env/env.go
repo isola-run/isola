@@ -17,6 +17,7 @@ package env
 import (
 	"os"
 	"strconv"
+	"time"
 )
 
 func GetOrDefault(key, defaultValue string) string {
@@ -30,6 +31,17 @@ func GetOrDefaultInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intValue, err := strconv.Atoi(value); err == nil {
 			return intValue
+		}
+	}
+	return defaultValue
+}
+
+// GetOrDefaultDuration falls back to defaultValue for unset, unparsable, or
+// non-positive values.
+func GetOrDefaultDuration(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if d, err := time.ParseDuration(value); err == nil && d > 0 {
+			return d
 		}
 	}
 	return defaultValue

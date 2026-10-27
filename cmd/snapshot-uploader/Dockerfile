@@ -28,6 +28,7 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 # Copy required source
 COPY cmd/snapshot-uploader/ cmd/snapshot-uploader/
+COPY cmd/runsc-launcher/ cmd/runsc-launcher/
 COPY internal/ internal/
 
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -41,9 +42,18 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -X github.com/isola-run/isola/internal/version.gitTreeState=${GIT_TREE_STATE}" \
       -o snapshot-uploader ./cmd/snapshot-uploader/main.go
 
+# The snapshot job's init container execs this to reach the runsc release its
+# sandbox was created under, so it ships in the same image.
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-w -s" \
+      -o runsc-launcher ./cmd/runsc-launcher/main.go
+
 FROM gcr.io/distroless/static-debian13:nonroot
 
 COPY --from=builder /workspace/snapshot-uploader /snapshot-uploader
+COPY --from=builder /workspace/runsc-launcher /runsc-launcher
 USER 65532:65532
 
 ENTRYPOINT ["/snapshot-uploader"]

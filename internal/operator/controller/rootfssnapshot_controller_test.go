@@ -57,6 +57,8 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			SnapshotServiceAccount: "test-snapshot-sa",
 			Enabled:                true,
 			GvisorRunscPath:        "/usr/local/bin/runsc",
+			GvisorInstallDir:       "/opt/isola/bin",
+			ContainerdStateDir:     "/run/containerd",
 			GvisorRunscRoot:        "/run/containerd/runsc/k8s.io",
 		}
 	})
@@ -67,15 +69,17 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 			sandboxName := "sandbox-disabled"
 
 			disabledReconciler := &RootfsSnapshotReconciler{
-				Client:          k8sClient,
-				Scheme:          k8sClient.Scheme(),
-				Recorder:        recorder,
-				Clock:           fakeClock,
-				BucketURL:       "s3://test-bucket?region=us-east-1",
-				UploaderImage:   "isola-snapshot-uploader:test",
-				Enabled:         false,
-				GvisorRunscPath: "/usr/local/bin/runsc",
-				GvisorRunscRoot: "/run/containerd/runsc/k8s.io",
+				Client:             k8sClient,
+				Scheme:             k8sClient.Scheme(),
+				Recorder:           recorder,
+				Clock:              fakeClock,
+				BucketURL:          "s3://test-bucket?region=us-east-1",
+				UploaderImage:      "isola-snapshot-uploader:test",
+				Enabled:            false,
+				GvisorRunscPath:    "/usr/local/bin/runsc",
+				GvisorInstallDir:   "/opt/isola/bin",
+				ContainerdStateDir: "/run/containerd",
+				GvisorRunscRoot:    "/run/containerd/runsc/k8s.io",
 			}
 
 			createRootfsSnapshotCR(ctx, snapName, sandboxName)
@@ -101,13 +105,15 @@ var _ = Describe("RootfsSnapshot Controller", func() {
 
 			// Create reconciler without bucket URL
 			noBucketReconciler := &RootfsSnapshotReconciler{
-				Client:          k8sClient,
-				Scheme:          k8sClient.Scheme(),
-				Recorder:        recorder,
-				Clock:           fakeClock,
-				Enabled:         true,
-				GvisorRunscPath: "/usr/local/bin/runsc",
-				GvisorRunscRoot: "/run/containerd/runsc/k8s.io",
+				Client:             k8sClient,
+				Scheme:             k8sClient.Scheme(),
+				Recorder:           recorder,
+				Clock:              fakeClock,
+				Enabled:            true,
+				GvisorRunscPath:    "/usr/local/bin/runsc",
+				GvisorInstallDir:   "/opt/isola/bin",
+				ContainerdStateDir: "/run/containerd",
+				GvisorRunscRoot:    "/run/containerd/runsc/k8s.io",
 				// BucketURL is intentionally empty
 			}
 

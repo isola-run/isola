@@ -5,6 +5,9 @@ COMPONENTS DEPLOYED:
 {{- if .Values.apiGateway.enabled }}
   - API Gateway: REST API for sandbox orchestration
 {{- end }}
+{{- if .Values.gvisor.installer.enabled }}
+  - gVisor Installer: DaemonSet installing gVisor {{ .Values.gvisor.installer.version }} on eligible nodes
+{{- end }}
 
 SANDBOX NAMESPACE: {{ .Values.sandboxNamespace.name }}
 
@@ -29,6 +32,32 @@ ACCESS THE API:
 VERIFY INSTALLATION:
   kubectl get pods -n {{ .Release.Namespace }}
   kubectl get sandboxes -A
+{{- if .Values.gvisor.installer.enabled }}
+
+GVISOR INSTALLER:
+  Nodes become eligible for sandboxes once gVisor is installed and verified
+  (label isola.run/gvisor=true). Watch progress:
+    kubectl get nodes -L isola.run/gvisor,isola.run/gvisor-version
+    kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/component=gvisor-installer
+  Per-node failures are reported as Node events:
+    kubectl get events --field-selector reason=GVisorInstallFailed -A
+{{- if not .Values.gvisor.installer.runtimeClass.create }}
+
+  WARNING: gvisor.installer.runtimeClass.create is false. Make sure your
+  RuntimeClass carries scheduling.nodeSelector isola.run/gvisor: "true",
+  otherwise sandboxes can schedule onto nodes where gVisor is not installed.
+{{- end }}
+{{- $ns := lookup "v1" "Namespace" "" .Release.Namespace }}
+{{- if $ns }}
+{{- $psa := index (($ns.metadata).labels | default dict) "pod-security.kubernetes.io/enforce" | default "" }}
+{{- if and $psa (ne $psa "privileged") }}
+
+  WARNING: namespace {{ .Release.Namespace }} enforces Pod Security level
+  "{{ $psa }}". The privileged installer pods will be rejected. Fix with:
+    kubectl label namespace {{ .Release.Namespace }} pod-security.kubernetes.io/enforce=privileged --overwrite
+{{- end }}
+{{- end }}
+{{- end }}
 
 {{- $bucketUrl := include "isola.operator.storageBucketUrl" . }}
 {{- if not $bucketUrl }}

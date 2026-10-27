@@ -27,7 +27,7 @@ operator:
     rootfssnapshot:
       enabled: true
       runsc:
-        binaryPath: /usr/local/bin/runsc
+        # binaryPath defaults to the installer-managed location.
         rootDir: /run/containerd/runsc/k8s.io
       uploader:
         image:
@@ -58,6 +58,19 @@ operator:
             registry: ""
             repository: snapshot-mounter
             tag: "dev"
+
+gvisor:
+  # The installer manages gVisor on the dev cluster nodes (including the
+  # RuntimeClass), same as a production install.
+  installer:
+    enabled: true
+    image:
+      registry: ""
+      repository: gvisor-installer
+      tag: "dev"
+    logging:
+      level: debug
+      devMode: true
 
 apiGateway:
   image:

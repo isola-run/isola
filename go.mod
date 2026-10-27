@@ -3,6 +3,7 @@ module github.com/isola-run/isola
 go 1.26.10
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-chi/httplog/v2 v2.1.1
@@ -14,9 +15,11 @@ require (
 	github.com/prometheus/client_golang v1.25.0
 	gocloud.dev v0.47.0
 	golang.org/x/sys v0.49.0
+	google.golang.org/grpc v1.83.2
 	k8s.io/api v0.37.1
 	k8s.io/apimachinery v0.37.1
 	k8s.io/client-go v0.37.1
+	k8s.io/cri-api v0.37.1
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/utils v0.0.0-20260626114624-be93311217bd
 	sigs.k8s.io/controller-runtime v0.25.2
@@ -138,7 +141,6 @@ require (
 	google.golang.org/genproto v0.0.0-20260904194346-d0f1323225a4 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260904194346-d0f1323225a4 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260904194346-d0f1323225a4 // indirect
-	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect

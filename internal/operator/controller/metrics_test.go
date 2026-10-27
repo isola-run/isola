@@ -89,6 +89,8 @@ var _ = Describe("Metrics", func() {
 				SnapshotServiceAccount: "test-snapshot-sa",
 				Enabled:                true,
 				GvisorRunscPath:        "/usr/local/bin/runsc",
+				GvisorInstallDir:       "/opt/isola/bin",
+				ContainerdStateDir:     "/run/containerd",
 				GvisorRunscRoot:        "/run/containerd/runsc/k8s.io",
 			}
 		})
