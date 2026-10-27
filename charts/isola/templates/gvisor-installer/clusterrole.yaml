@@ -6,10 +6,9 @@ metadata:
   labels:
     {{- include "isola.gvisorInstaller.labels" . | nindent 4 }}
 rules:
-  # Patch only: the installer writes its own labels and never reads Nodes.
   - apiGroups: [""]
     resources: ["nodes"]
-    verbs: ["patch"]
+    verbs: ["get", "patch"]
   # Surface install progress/failures as events on Node objects.
   - apiGroups: [""]
     resources: ["events"]

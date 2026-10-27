@@ -18,6 +18,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,16 +51,17 @@ type NodeClient interface {
 }
 
 type nodeClient struct {
-	clientset *kubernetes.Clientset
+	clientset kubernetes.Interface
 	nodeName  string
 	recorder  record.EventRecorder
+	log       *slog.Logger
 }
 
-func NewNodeClient(clientset *kubernetes.Clientset, nodeName string) NodeClient {
+func NewNodeClient(clientset kubernetes.Interface, nodeName string, logger *slog.Logger) NodeClient {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: clientset.CoreV1().Events("")})
 	recorder := broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "isola-gvisor-installer", Host: nodeName})
-	return &nodeClient{clientset: clientset, nodeName: nodeName, recorder: recorder}
+	return &nodeClient{clientset: clientset, nodeName: nodeName, recorder: recorder, log: logger}
 }
 
 func (n *nodeClient) SetNodeLabels(ctx context.Context, labels map[string]string) error {
@@ -82,10 +85,13 @@ func (n *nodeClient) SetNodeLabels(ctx context.Context, labels map[string]string
 }
 
 func (n *nodeClient) Event(eventType, reason, message string) {
-	ref := &corev1.ObjectReference{
-		Kind: "Node",
-		Name: n.nodeName,
-		UID:  types.UID(n.nodeName),
+	// Event delivery must not gate host recovery on API availability.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	node, err := n.clientset.CoreV1().Nodes().Get(ctx, n.nodeName, metav1.GetOptions{})
+	if err != nil {
+		n.log.Warn("could not read node for installer event", "node", n.nodeName, "reason", reason, "error", err)
+		return
 	}
-	n.recorder.Event(ref, eventType, reason, message)
+	n.recorder.Event(node, eventType, reason, message)
 }

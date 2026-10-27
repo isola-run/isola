@@ -65,7 +65,7 @@ func main() {
 		logger,
 		gvisorinstaller.NewNsenterExec(),
 		gvisorinstaller.NewCRIClient(cfg.CRISocketPath()),
-		gvisorinstaller.NewNodeClient(clientset, cfg.NodeName),
+		gvisorinstaller.NewNodeClient(clientset, cfg.NodeName, logger),
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
