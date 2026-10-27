@@ -256,7 +256,7 @@ Set CPU, memory, and ephemeral storage limits on every container. gVisor runs a 
 
 - A Kubernetes cluster (vanilla, EKS, AKS, GKE, or similar).
 - [Helm](https://helm.sh).
-- A [gVisor](https://gvisor.dev) RuntimeClass configured in your cluster, or let the chart install it for you with `--set gvisor.installer.enabled=true` (see [gVisor setup](#gvisor-setup) below).
+- A [gVisor](https://gvisor.dev) RuntimeClass (see [gVisor setup](#gvisor-setup) below).
 - (Optional) An S3, GCS, or Azure Blob Storage bucket for rootfs snapshots.
 
 ### Install with Helm
@@ -289,50 +289,17 @@ CRDs are upgraded automatically as part of the Helm chart. To manage CRDs extern
 
 ### gVisor setup
 
-Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) named `gvisor` in your cluster. There are two ways to get one.
+Isola requires a gVisor [RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) named `gvisor` in your cluster.
 
-#### Option A: automatic installation (recommended)
+Add `--set gvisor.installer.enabled=true` to the Helm command to install gVisor automatically. The privileged installer requires systemd-managed containerd using `/etc/containerd/config.toml` and writable host paths. It restarts containerd on eligible nodes and leaves existing `runsc` handlers untouched. See [values.yaml](charts/isola/values.yaml) for version pinning and installer options.
 
-The chart can install and manage gVisor on your nodes for you:
+Installed releases are retained for running sandboxes, including after `helm uninstall`. Drain gVisor sandboxes and stop the installer before removing the runtime manually.
 
-```bash
-helm install isola oci://ghcr.io/isola-run/charts/isola \
-  --namespace isola-system --create-namespace \
-  --set gvisor.installer.enabled=true
-```
-
-This deploys a privileged DaemonSet that downloads the pinned gVisor release archive (sha512-verified, see the trust model below) onto each node, unpacks it into an immutable per-release directory under `/opt/isola/bin/releases/`, registers the `runsc` containerd handler, restarts containerd (running containers are unaffected, and every change is journaled, validated first, and rolled back automatically if containerd does not come back healthy), creates the RuntimeClass, and labels each node `isola.run/gvisor=true` once the live runtime is verified to serve the handler. Sandboxes only schedule onto labeled nodes. Nodes that already have a `runsc` handler are detected, verified, and left untouched (labeled with version `unmanaged`).
-
-Version upgrades install the new release as a fresh directory and switch containerd over to it with the same validated restart, rolled one node at a time by the DaemonSet update. The previous release directory is deliberately kept, because a sandbox pins the gVisor release it was created under and containerd keeps invoking that release for every later exec, kill, delete and snapshot against it. Rootfs snapshots resolve the same pinned release from containerd's own bundle state rather than from whatever is newest on the node.
-
-Shim configs are content-addressed under `/opt/isola/bin/runsc-configs/` and are likewise never rewritten in place, since containerd hands a sandbox's original config path back to the shim for every later container in that pod. Changing `gvisor.installer.runscConfig` therefore produces a new config and a new validated restart.
-
-Once no sandboxes from before an upgrade remain on a node, inactive directories under `/opt/isola/bin/releases/` can be deleted by hand. The active release and config are named in `/etc/containerd/isola-gvisor-state.json`. If in doubt, drain the node's sandboxes first.
-
-Enabling the installer on an existing multi-node cluster restarts containerd on all eligible nodes at roughly the same time. Uninstalling the chart intentionally leaves gVisor on the nodes, since removing a runtime under running sandboxes breaks them. To clean up a node manually, first drain all gVisor sandboxes and stop the installer on that node. Remove the marker-delimited block from the current `/etc/containerd/config.toml`, preserving other configuration changes. Restart containerd and verify it is healthy before deleting `/opt/isola/bin`, `/etc/containerd/isola-gvisor-state.json`, and the `isola.run/gvisor*` node labels. The original config backup is available at `/etc/containerd/config.toml.isola-orig` for emergency recovery, but restoring it also reverts any later configuration changes.
-
-Download trust model. The release archive `gvisor.tar.bz2` is fetched from `gvisor.installer.downloadURLBase` and checked against the `.sha512` published next to it, plus a `runsc --version` cross-check against the pinned release. Be clear on what that buys you: the checksum comes from the same origin as the archive, so it detects a corrupted or truncated transfer, not a malicious one. An origin serving a tampered archive serves a matching digest alongside it. Authenticity rests entirely on trusting the origin and the TLS connection to it, and the installed binaries run as root on every eligible node, so plain `http://` is rejected by both the chart (at install time) and the installer (at startup).
-
-For a mirror or air-gapped environment, host the artifacts behind https on infrastructure you control and verify them out of band before publishing: gVisor's [apt repository](https://gvisor.dev/docs/user_guide/install/) is GPG-signed, unlike the raw release artifacts, so it is the stronger source to mirror from. If https is not an option, install gVisor by your own mechanism instead. The installer leaves a pre-existing `runsc` handler untouched, and can be turned off entirely with `gvisor.installer.enabled=false`.
-
-Node requirements. Each node must run containerd 1.6 or newer as the systemd unit `containerd`, loading the standard `/etc/containerd/config.toml`. The installer verifies this before touching anything and reports a Node event when a node does not qualify. Exclude individual nodes by labeling them `isola.run/gvisor-install=disabled`.
-
-| Nodes | Supported |
-|---|---|
-| kind, kubeadm, EKS (AL2/AL2023), AKS, GKE Ubuntu | Yes |
-| GKE Container-Optimized OS | No. Its filesystem does not provide the writable, persistent paths this installer requires. Use [native gVisor node pools](https://cloud.google.com/kubernetes-engine/docs/how-to/sandbox-pods) |
-| k3s, RKE2, MicroK8s, k0s | No. Detected and refused with a clear error, since they manage containerd outside the standard layout |
-| Bottlerocket, Talos | No. Immutable hosts without standard host access |
-
-For unsupported nodes, install gVisor through the distribution's own mechanism and either disable the installer or exclude those nodes. See the `gvisor.installer` section of `values.yaml` for version pinning, mirrors, and per-node opt-out.
-
-#### Option B: manual installation
-
-If you prefer to manage gVisor yourself:
+To install gVisor yourself:
 
 0. Ensure your cluster uses [containerd](https://containerd.io/docs/2.2/getting-started/) (the default container runtime on EKS, AKS, GKE and most clusters).
 
-1. Install gVisor on each node from the release archive (`gvisor.tar.bz2`), which contains `runsc`, `containerd-shim-runsc-v1`, and the `gvisor-bin/` sidecar directory that `runsc` expects next to its own binary. See the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/) and [quickstart](https://gvisor.dev/docs/user_guide/containerd/quick_start/) for instructions, and keep the extracted files together. Releases from [`release-20260721.0`](https://github.com/google/gvisor/releases/tag/release-20260721.0) onward ship the archive; older releases publish only loose binaries. Egress rate limiting (`network.egressRateLimitBytesPerSecond`) requires `release-20260615.0` or later.
+1. Install the current gVisor release on each node using the [installation guide](https://gvisor.dev/docs/user_guide/install/). Keep `runsc`, `containerd-shim-runsc-v1`, and the `gvisor-bin/` directory together.
 
 2. Configure the containerd runtime. Create `/etc/containerd/runsc.toml`:
 
@@ -366,7 +333,7 @@ metadata:
 handler: runsc
 ```
 
-For local development, the dev values (`values-dev.yaml`) enable the installer, so a Kind cluster gets gVisor automatically when Isola is deployed.
+For local development, `tilt up` deploys the installer automatically.
 
 ### Rootfs snapshots (optional)
 
