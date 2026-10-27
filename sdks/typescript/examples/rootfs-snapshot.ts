@@ -7,7 +7,7 @@ async function main(): Promise<void> {
 
   // 1) Create a sandbox and write some state into it.
   const first = await client.sandboxes.create({ image: "alpine:3.21" });
-  await first.filesystem.write("/state/note.txt", "hello from snapshot\n");
+  await first.filesystem.writeText("/state/note.txt", "hello from snapshot\n");
 
   // 2) Snapshot the rootfs.
   const snapshot = await client.rootfsSnapshots.create({
