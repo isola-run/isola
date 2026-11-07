@@ -329,6 +329,9 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              podCreatedAt:
+                format: date-time
+                type: string
               podIP:
                 description: PodIP is the IP address of the sandbox pod.
                 type: string

@@ -417,6 +417,10 @@ func (r *SandboxReconciler) CreateSandboxPod(ctx context.Context, sandbox *sandb
 	log.Info("Pod created")
 	sandboxCreatedTotal.Inc()
 
+	if sandbox.Status.PodCreatedAt == nil {
+		sandbox.Status.PodCreatedAt = &metav1.Time{Time: sandboxPod.CreationTimestamp.Time}
+	}
+
 	r.Recorder.Eventf(sandbox, nil, corev1.EventTypeNormal, "PodCreated", "Created", "Sandbox Pod created")
 
 	if err := r.patchStatus(ctx, baseSandbox, sandbox, []metav1.Condition{
@@ -617,6 +621,9 @@ func (r *SandboxReconciler) reconcileSandboxStatus(
 	if sandboxPod != nil {
 		sandbox.Status.PodIP = sandboxPod.Status.PodIP
 		sandbox.Status.SidecarVersion = sandboxPod.Annotations[SidecarVersionAnnotation]
+		if sandbox.Status.PodCreatedAt == nil {
+			sandbox.Status.PodCreatedAt = &metav1.Time{Time: sandboxPod.CreationTimestamp.Time}
+		}
 	}
 
 	networkCondition := r.determineNetworkCondition(sandbox)
@@ -905,15 +912,21 @@ func (r *SandboxReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return res, nil
 	}
 
-	// Startup timeout: if the pod exists but is not ready, check if it exceeded the startup deadline
+	podVanished := sandboxPod == nil && sandbox.Status.PodCreatedAt != nil
+
 	var startupDeadline time.Time
-	hasStartupDeadline := sandboxPod != nil && !podutil.IsPodReady(sandboxPod) && sandbox.Spec.StartupTimeoutSeconds != nil
+	hasStartupDeadline := !podutil.IsPodReady(sandboxPod) && sandbox.Spec.StartupTimeoutSeconds != nil && !podVanished
 	if hasStartupDeadline {
-		startupDeadline = sandboxPod.CreationTimestamp.Add(
+		startupAnchor := sandbox.CreationTimestamp
+		msg := fmt.Sprintf("pod not created within %ds of sandbox creation", *sandbox.Spec.StartupTimeoutSeconds)
+		if sandboxPod != nil {
+			startupAnchor = sandboxPod.CreationTimestamp
+			msg = fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds)
+		}
+		startupDeadline = startupAnchor.Add(
 			time.Duration(*sandbox.Spec.StartupTimeoutSeconds) * time.Second)
 		if r.clock().Now().After(startupDeadline) {
 			log.Info("Startup timeout exceeded", "deadline", startupDeadline)
-			msg := fmt.Sprintf("pod not ready within %ds of creation", *sandbox.Spec.StartupTimeoutSeconds)
 			if err := r.markSandboxFailed(ctx, baseSandbox, sandbox, CondReasonStartupTimeoutExceeded, msg); err != nil {
 				log.Error(err, "Failed to patch startup timeout condition")
 			}
