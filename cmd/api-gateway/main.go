@@ -46,6 +46,7 @@ import (
 	"github.com/isola-run/isola/internal/api-gateway/command"
 	"github.com/isola-run/isola/internal/api-gateway/filesystem"
 	"github.com/isola-run/isola/internal/api-gateway/health"
+	"github.com/isola-run/isola/internal/api-gateway/metrics"
 	"github.com/isola-run/isola/internal/api-gateway/rootfssnapshot"
 	"github.com/isola-run/isola/internal/api-gateway/sandbox"
 	"github.com/isola-run/isola/internal/api-gateway/version"
@@ -169,6 +170,9 @@ func main() {
 	}
 
 	r := chi.NewRouter()
+	// Install metrics first so the histogram observes the total server-side latency,
+	// including httplog and the chi.Recoverer (installed by httplog) layers beneath it.
+	r.Use(metrics.Middleware)
 	// httplog.RequestLogger automatically includes chi's RequestID and Recoverer middleware
 	r.Use(httplog.RequestLogger(&httplog.Logger{
 		Logger: logger,
@@ -178,6 +182,7 @@ func main() {
 			Concise:  true,
 		},
 	}))
+	r.Handle("/metrics", metrics.Handler())
 
 	logger.Info("starting api-gateway", "version", internalversion.Get())
 
