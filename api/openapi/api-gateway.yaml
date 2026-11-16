@@ -308,7 +308,7 @@ components:
           type: string
         goVersion:
           examples:
-            - go1.27.3
+            - go1.27.4
           type: string
         platform:
           examples:
