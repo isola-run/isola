@@ -103,6 +103,14 @@ func createSnapshotPodNotReady(ctx context.Context, name, runtimeClassName strin
 	ExpectWithOffset(1, k8sClient.Status().Update(ctx, pod)).To(Succeed())
 }
 
+func markSnapshotPodExited(ctx context.Context, name string) {
+	pod := &corev1.Pod{}
+	ExpectWithOffset(1, k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pod)).To(Succeed())
+	pod.Status.Phase = corev1.PodSucceeded
+	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionFalse, Reason: "PodCompleted"}}
+	ExpectWithOffset(1, k8sClient.Status().Update(ctx, pod)).To(Succeed())
+}
+
 func deleteSnapshotPod(ctx context.Context, name string) {
 	pod := &corev1.Pod{}
 	err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: testNamespace}, pod)
