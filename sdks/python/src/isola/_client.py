@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from typing import Any, BinaryIO, TypeVar
 
@@ -40,6 +41,23 @@ def _stream_pos(content: bytes | BinaryIO | None) -> int | None:
     if hasattr(content, "seekable") and content.seekable():  # type: ignore[union-attr]
         return content.tell()  # type: ignore[union-attr]
     return None
+
+
+_STREAM_CHUNK_SIZE = 65536
+
+
+async def _aiter_in_thread(fileobj: BinaryIO) -> AsyncIterator[bytes]:
+    while True:
+        chunk = await asyncio.to_thread(fileobj.read, _STREAM_CHUNK_SIZE)
+        if not chunk:
+            break
+        yield chunk
+
+
+def _async_content(content: bytes | BinaryIO | None) -> bytes | AsyncIterator[bytes] | None:
+    if content is None or isinstance(content, bytes):
+        return content
+    return _aiter_in_thread(content)
 
 
 class _SyncAPI:
@@ -192,7 +210,7 @@ class _AsyncAPI:
                     url,
                     params=params,
                     json=json_body,
-                    content=content,
+                    content=_async_content(content),
                     headers=headers,
                     timeout=timeout,
                 )
