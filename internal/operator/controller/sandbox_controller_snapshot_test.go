@@ -19,6 +19,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -75,6 +76,7 @@ var _ = Describe("Sandbox Controller", func() {
 			makePodReady(ctx, pod, "containerd://abc123", fakeClock)
 
 			fakeClock.Advance(2 * time.Second)
+			before := testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("failed"))
 
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: sandboxName, Namespace: testNamespace},
@@ -86,6 +88,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Sandbox deleted after snapshot skipped
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(err).To(Satisfy(errors.IsNotFound))
+			Expect(testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("failed"))).To(Equal(before + 1))
 		})
 
 		It("should create RootfsSnapshot for supported runtime (runsc)", func() {
@@ -191,6 +194,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Simulate pod being gone after timeout was set
 			deletePod(ctx, sandboxName+"-pod")
 			fakeClock.Advance(2 * time.Second)
+			before := testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("failed"))
 
 			// Reconcile - sandbox deleted after snapshot skipped (pod missing)
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
@@ -200,6 +204,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(err).To(Satisfy(errors.IsNotFound))
+			Expect(testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("failed"))).To(Equal(before + 1))
 		})
 
 		It("should skip snapshot when pod exists but is not ready", func() {
@@ -235,6 +240,7 @@ var _ = Describe("Sandbox Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
 
 			fakeClock.Advance(2 * time.Second)
+			before := testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("failed"))
 
 			// Reconcile triggers timeout — snapshot should be skipped because pod not ready
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
@@ -248,6 +254,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// Sandbox should be deleted (snapshot skipped, cleanup done)
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(err).To(Satisfy(errors.IsNotFound))
+			Expect(testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("failed"))).To(Equal(before + 1))
 		})
 
 		It("should mark snapshot complete when RootfsSnapshot Ready=True", func() {
@@ -498,6 +505,7 @@ var _ = Describe("Sandbox Controller", func() {
 
 			rootfsSnapshot := getTerminationSnapshot(ctx, sandboxName)
 			Expect(rootfsSnapshot).NotTo(BeNil(), "RootfsSnapshot should be created")
+			before := testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("failed"))
 
 			// Simulate multiple reconciles over time, each 3s apart.
 			// Total elapsed: 4 reconciles * 3s = 12s, which exceeds the 10s snapshot deadline.
@@ -514,6 +522,7 @@ var _ = Describe("Sandbox Controller", func() {
 			// The sandbox should be deleted due to snapshot timeout.
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: sandboxName, Namespace: testNamespace}, &sandboxv1alpha1.Sandbox{})
 			Expect(err).To(Satisfy(errors.IsNotFound), "Sandbox should be deleted after snapshot deadline exceeded")
+			Expect(testutil.ToFloat64(rootfsSnapshotCompletedTotal.WithLabelValues("failed"))).To(Equal(before + 1))
 		})
 	})
 })
